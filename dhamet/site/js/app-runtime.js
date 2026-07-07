@@ -668,10 +668,6 @@ function writeSession(s){
 
     
     let session = readSession();
-    if (session && isGuest(session) && session.uid) {
-      location.href = "pages/mode.html";
-      return;
-    }
     if (session && isRegistered(session) && session.uid) {
       location.href = "pages/dashboard.html";
       return;
