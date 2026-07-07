@@ -13,7 +13,7 @@
     "wrangler": "latest"
   },
   "cloudflare": {
-    "pagesProjectName": "ouglsoft-site",
+    "pagesProjectName": "ouglsoft",
     "dhametPublicPath": "/dhamet",
     "dhametWorkerRoute": "ouglsoft.com/dhamet/api/*"
   }
