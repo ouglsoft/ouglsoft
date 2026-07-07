@@ -1,0 +1,9 @@
+{
+  "name": "ouglsoft-site",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "preview": "wrangler pages dev site --functions functions",
+    "deploy": "wrangler pages deploy site"
+  }
+}

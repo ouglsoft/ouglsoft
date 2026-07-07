@@ -1,0 +1,5 @@
+# Optional future mode: replace _redirects with these lines after creating GitHub Releases.
+# Replace OWNER and repository names with the actual GitHub owner/repositories.
+# Keep asset filenames stable in every release.
+/download/safe-to-spend https://github.com/OWNER/safe-to-spend/releases/latest/download/safe-to-spend.apk 302
+/download/almoathen-shinqiti https://github.com/OWNER/almoathen-shinqiti/releases/latest/download/almoathen-shinqiti.apk 302
