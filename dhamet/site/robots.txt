@@ -1,4 +1,0 @@
-User-agent: *
-Disallow: /
-
-# Staging build only. Do not index this experimental deployment.
