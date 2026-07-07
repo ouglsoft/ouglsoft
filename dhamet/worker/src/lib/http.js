@@ -19,6 +19,13 @@ export function bad(message, status = 400, code) {
   return json({ ok: false, error: code || message || 'bad-request' }, status);
 }
 
+export function redirect(location, extraHeaders = {}, status = 302) {
+  const headers = new Headers(extraHeaders || {});
+  headers.set('location', String(location || '/'));
+  headers.set('cache-control', 'no-store');
+  return new Response(null, { status, headers });
+}
+
 export async function requestBody(request) {
   try { return await request.json(); } catch (_) { return {}; }
 }

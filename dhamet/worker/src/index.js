@@ -1,6 +1,6 @@
 import '../shared/dhamet-utils.js';
 import { cleanPath, splitPath } from './lib/realtime-tree.js';
-import { json, bad, requestBody, now, jsonHeaders } from './lib/http.js';
+import { json, bad, requestBody, now, jsonHeaders, redirect } from './lib/http.js';
 import { base64url, fromBase64url, randomToken } from './lib/security.js';
 import { createGameRouteHandlers } from './routes/game.js';
 import { createLobbyRouteHandlers } from './routes/lobby.js';
