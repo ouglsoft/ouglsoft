@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>الصفحة غير موجودة - ظامت</title>
+  <meta name="description" content="الصفحة المطلوبة غير موجودة أو تم نقلها.">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="theme-color" content="#12382f">
+
+  <link rel="icon" type="image/webp" href="/dhamet/assets/icons/icon.webp">
+  <link rel="stylesheet" href="/dhamet/css/style.css?v=v1.0.2-pulse-optimized">
+
+  <style>
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: #0f2f28;
+      color: #f7f3e8;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    .not-found-page {
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      box-sizing: border-box;
+      text-align: center;
+    }
+
+    .not-found-card {
+      width: min(100%, 560px);
+      padding: 32px 24px;
+      border-radius: 24px;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      box-shadow: 0 18px 48px rgba(0, 0, 0, 0.24);
+      backdrop-filter: blur(8px);
+    }
+
+    .not-found-logo {
+      width: 96px;
+      height: 96px;
+      object-fit: cover;
+      border-radius: 20px;
+      margin-bottom: 18px;
+    }
+
+    .not-found-code {
+      margin: 0 0 8px;
+      font-size: clamp(56px, 14vw, 104px);
+      line-height: 1;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+    }
+
+    .not-found-title {
+      margin: 0 0 12px;
+      font-size: clamp(22px, 5vw, 32px);
+      line-height: 1.35;
+    }
+
+    .not-found-text {
+      margin: 0 auto 24px;
+      max-width: 420px;
+      color: rgba(247, 243, 232, 0.84);
+      font-size: 16px;
+      line-height: 1.8;
+    }
+
+    .not-found-actions {
+      display: flex;
+      gap: 12px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+
+    .not-found-link {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 44px;
+      padding: 0 18px;
+      border-radius: 999px;
+      text-decoration: none;
+      font-weight: 700;
+      transition: transform 0.15s ease, opacity 0.15s ease;
+    }
+
+    .not-found-link:hover,
+    .not-found-link:focus-visible {
+      transform: translateY(-1px);
+      opacity: 0.92;
+    }
+
+    .not-found-link.primary {
+      background: #f7f3e8;
+      color: #12382f;
+    }
+
+    .not-found-link.secondary {
+      background: rgba(255, 255, 255, 0.12);
+      color: #f7f3e8;
+      border: 1px solid rgba(255, 255, 255, 0.24);
+    }
+  </style>
+
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-YV3D9P1HQQ"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){ dataLayer.push(arguments); }
+    gtag("js", new Date());
+    gtag("config", "G-YV3D9P1HQQ");
+  </script>
+</head>
+<body>
+  <main class="not-found-page">
+    <section class="not-found-card" aria-labelledby="not-found-title">
+      <img class="not-found-logo" src="/dhamet/assets/icons/icon.webp" alt="ظامت">
+      <p class="not-found-code">404</p>
+      <h1 id="not-found-title" class="not-found-title">الصفحة غير موجودة</h1>
+      <p class="not-found-text">
+        الرابط الذي حاولت فتحه غير متاح، أو تم نقله، أو لا يدخل ضمن الملفات المنشورة في الموقع.
+      </p>
+      <div class="not-found-actions">
+        <a class="not-found-link primary" href="/dhamet/pages/mode.html">العودة إلى اختيار نمط اللعب</a>
+        <a id="notFoundContactLink" class="not-found-link secondary" href="https://ouglsoft.com/pages/contact.html">تواصل معنا</a>
+      </div>
+    </section>
+  </main>
+  <script>
+    (function () {
+      try {
+        var raw = localStorage.getItem("zamat.lang") || document.documentElement.lang || "ar";
+        var lang = String(raw || "").toLowerCase();
+        var href = "https://ouglsoft.com/pages/contact.html";
+        if (lang.indexOf("ar") === 0) href = "https://ouglsoft.com/ar/pages/contact.html";
+        else if (lang.indexOf("fr") === 0) href = "https://ouglsoft.com/fr/pages/contact.html";
+        var link = document.getElementById("notFoundContactLink");
+        if (link) link.href = href;
+      } catch (_) {}
+    })();
+  </script>
+</body>
+</html>

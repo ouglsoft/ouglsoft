@@ -1,0 +1,69 @@
+PROPRIETARY LICENSE
+===================
+
+Copyright (c) 2026 El Ougl Software SARL
+All rights reserved.
+
+This software package, including source code, runtime files, assets, content, configuration files, deployment scripts,
+and documentation included in this release (collectively, the "Software"), is proprietary and owned by El Ougl Software
+SARL (the "Owner").
+
+1. No open-source grant
+-----------------------
+This license is not an open-source license. No permission is granted to use, copy, modify, publish, distribute,
+sublicense, sell, host, mirror, deploy, or otherwise exploit the Software except as expressly authorized in writing by
+the Owner.
+
+2. Authorized use
+-----------------
+The Software may be used only by the Owner or by persons or organizations that have received prior written permission
+from the Owner. Any authorized use must comply with the scope and conditions stated in that permission.
+
+3. Restrictions
+---------------
+Without prior written permission from the Owner, you may not, in whole or in part:
+
+- copy, reproduce, scrape, extract, or redistribute the Software;
+- modify, adapt, translate, or create derivative works;
+- publish, sublicense, sell, rent, lease, or commercially exploit the Software;
+- run, host, mirror, deploy, or make the Software available through another service;
+- reverse engineer, decompile, or attempt to extract source code, models, credentials, or private implementation details,
+  except to the extent such restriction is prohibited by applicable law.
+
+4. Platform-hosted repositories
+-------------------------------
+If the Software is stored in a hosted repository service, platform features such as viewing, cloning, or repository
+copying do not grant any license beyond what is required for the platform to provide its service. No broader right to
+use, modify, deploy, or distribute the Software is granted.
+
+5. Third-party components
+-------------------------
+The Software may include or rely on third-party libraries, tools, platforms, or services. Those components are governed
+by their own licenses and terms, and this license does not override them.
+
+6. Secrets and deployment configuration
+---------------------------------------
+API keys, credentials, tokens, private identifiers, and service secrets are not licensed for disclosure or reuse. Any
+secrets required for deployment must be supplied by an authorized operator through the relevant hosting platform.
+
+7. Termination
+--------------
+Any permission granted under this license terminates automatically if you violate its terms. Upon termination, you must
+cease all use of the Software and delete any unauthorized copies in your possession or control.
+
+8. Disclaimer of warranty
+-------------------------
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO
+WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NON-INFRINGEMENT.
+
+9. Limitation of liability
+--------------------------
+TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, THE OWNER SHALL NOT BE LIABLE FOR ANY CLAIM, DAMAGE, LOSS, OR OTHER
+LIABILITY ARISING FROM OR RELATED TO THE SOFTWARE OR ITS USE.
+
+10. Contact
+-----------
+For permissions, support, or inquiries, contact El Ougl Software SARL through the official website or by email at:
+
+contact@ouglsoft.com
+info@ouglsoft.com
