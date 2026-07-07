@@ -37,13 +37,13 @@
   X-Content-Type-Options: nosniff
 
 /dhamet/css/*
-  Cache-Control: public, max-age=31536000, immutable
+  Cache-Control: no-cache, max-age=0, must-revalidate
   X-Content-Type-Options: nosniff
 
 /dhamet/js/*
-  Cache-Control: public, max-age=31536000, immutable
+  Cache-Control: no-cache, max-age=0, must-revalidate
   X-Content-Type-Options: nosniff
 
 /dhamet/shared/*
-  Cache-Control: public, max-age=31536000, immutable
+  Cache-Control: no-cache, max-age=0, must-revalidate
   X-Content-Type-Options: nosniff

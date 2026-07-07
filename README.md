@@ -1,14 +1,58 @@
-# OuglSoft website
+# OuglSoft
 
-Clean static website structure for OuglSoft.
+مستودع الموقع الرسمي ولعبة ظامت.
 
-## Structure
+## البنية
 
-- `site/`: public static site files.
-- `functions/`: Cloudflare Pages Functions.
-- `docs/`: internal documentation.
-- `deploy/`: deployment notes.
+```text
+site/                  ملفات الموقع العامة
+functions/             دوال Cloudflare Pages الخاصة بالموقع
+dhamet/site/           واجهة لعبة ظامت
+dhamet/worker/         Worker لعبة ظامت
+dhamet/shared/         ملفات ظامت المشتركة بين الواجهة والـ Worker
+deploy/                سكربتات النشر
+.github/workflows/     GitHub Actions
+```
 
-## Cloudflare Pages
+## النشر
 
-Set the build output directory to `site`. Keep `functions/` at the project root.
+يتم نشر الصفحات من GitHub Actions عبر Workflow:
+
+```text
+Deploy OuglSoft Pages
+```
+
+ينشئ هذا workflow مجلد النشر:
+
+```text
+.deploy/site
+```
+
+ويتضمن ناتج النشر:
+
+```text
+ouglsoft.com/          الموقع
+ouglsoft.com/dhamet/   واجهة ظامت
+```
+
+لا يتضمن نشر الصفحات ملفات Worker أو ملفات GitHub أو سكربتات النشر.
+
+يتم نشر Worker ظامت من GitHub Actions عبر Workflow:
+
+```text
+Deploy Dhamet Worker
+```
+
+مسار Worker المعتمد:
+
+```text
+ouglsoft.com/dhamet/api/*
+```
+
+إعداد اسم مشروع Cloudflare Pages موجود في `package.json` داخل:
+
+```json
+"cloudflare": {
+  "pagesProjectName": "ouglsoft"
+}
+```
