@@ -384,4 +384,16 @@
     <xhtml:link rel="alternate" hreflang="fr" href="https://ouglsoft.com/fr/services/" />
     <xhtml:link rel="alternate" hreflang="x-default" href="https://ouglsoft.com/en/services/" />
   </url>
+  <url>
+    <loc>https://ouglsoft.com/dhamet/</loc>
+    <lastmod>2026-07-07</lastmod>
+  </url>
+  <url>
+    <loc>https://ouglsoft.com/dhamet/pages/mode.html</loc>
+    <lastmod>2026-07-07</lastmod>
+  </url>
+  <url>
+    <loc>https://ouglsoft.com/dhamet/pages/game.html</loc>
+    <lastmod>2026-07-07</lastmod>
+  </url>
 </urlset>

@@ -1,9 +1,20 @@
 {
-  "name": "ouglsoft-site",
+  "name": "ouglsoft-site-dhamet-integrated",
   "private": true,
   "type": "module",
   "scripts": {
-    "preview": "wrangler pages dev site --functions functions",
-    "deploy": "wrangler pages deploy site"
+    "prepare:pages": "node deploy/prepare-pages.mjs",
+    "deploy:pages": "node deploy/deploy-pages.mjs",
+    "deploy:worker": "node deploy/deploy-worker.mjs",
+    "deploy": "npm run deploy:pages && npm run deploy:worker",
+    "preview": "npm run prepare:pages && wrangler pages dev .deploy/site --functions functions"
+  },
+  "devDependencies": {
+    "wrangler": "latest"
+  },
+  "cloudflare": {
+    "pagesProjectName": "ouglsoft-site",
+    "dhametPublicPath": "/dhamet",
+    "dhametWorkerRoute": "ouglsoft.com/dhamet/api/*"
   }
 }

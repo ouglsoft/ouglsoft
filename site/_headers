@@ -25,3 +25,25 @@
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
   Permissions-Policy: camera=(), microphone=(), geolocation=()
+
+/dhamet/*
+  ! Permissions-Policy
+  Permissions-Policy: camera=(), microphone=(self), geolocation=()
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+
+/dhamet/assets/*
+  Cache-Control: public, max-age=31536000, immutable
+  X-Content-Type-Options: nosniff
+
+/dhamet/css/*
+  Cache-Control: public, max-age=31536000, immutable
+  X-Content-Type-Options: nosniff
+
+/dhamet/js/*
+  Cache-Control: public, max-age=31536000, immutable
+  X-Content-Type-Options: nosniff
+
+/dhamet/shared/*
+  Cache-Control: public, max-age=31536000, immutable
+  X-Content-Type-Options: nosniff
