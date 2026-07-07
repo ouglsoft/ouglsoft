@@ -3967,6 +3967,11 @@ if (typeof window !== "undefined") window.AI = AI;
         if (!/^assets\/icons\/users\/(user\d{1,2}|autouser1|autouser2|computeruser)\.png$/i.test(s)) {
           s = String(fallback || "assets/icons/users/user1.png");
         }
+        const allowed = window.ZIconManifest && Array.isArray(window.ZIconManifest) ? window.ZIconManifest : null;
+        if (allowed && !allowed.includes(s)) {
+          s = String(fallback || "assets/icons/users/user1.png");
+        }
+        if (allowed && !allowed.includes(s)) s = "assets/icons/users/user1.png";
         return gameAsset(s);
       }
 

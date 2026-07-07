@@ -57,6 +57,8 @@ body.z-mobile-on .z-card {
   box-sizing: border-box;
   font-size: var(--fs-body);
 }
+
+body.z-mobile-on.z-auth-page.z-has-topbar { padding-top: 0; }
 body.z-mobile-on .z-page-head .btn,
 body.z-mobile-on .z-page-head a,
 body.z-mobile-on .z-topbar,

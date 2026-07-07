@@ -64,7 +64,7 @@ try {
   window.gtag("config", "G-3511LJEQ1R");
 } catch (_) {}
 
-window.ZIconManifest = ["assets/icons/users/user1.png", "assets/icons/users/user2.png", "assets/icons/users/user3.png", "assets/icons/users/user4.png", "assets/icons/users/user5.png", "assets/icons/users/user6.png", "assets/icons/users/user7.png", "assets/icons/users/user8.png", "assets/icons/users/user9.png", "assets/icons/users/user10.png", "assets/icons/users/user11.png", "assets/icons/users/user12.png", "assets/icons/users/user13.png", "assets/icons/users/user14.png", "assets/icons/users/user15.png", "assets/icons/users/user16.png", "assets/icons/users/user17.png", "assets/icons/users/user18.png", "assets/icons/users/user19.png", "assets/icons/users/user20.png", "assets/icons/users/autouser1.png", "assets/icons/users/autouser2.png", "assets/icons/users/computeruser.png"];
+window.ZIconManifest = ["assets/icons/users/user1.png", "assets/icons/users/user2.png", "assets/icons/users/user3.png", "assets/icons/users/user4.png", "assets/icons/users/user5.png", "assets/icons/users/user6.png", "assets/icons/users/user7.png", "assets/icons/users/user8.png", "assets/icons/users/user9.png", "assets/icons/users/user11.png", "assets/icons/users/user12.png", "assets/icons/users/user13.png", "assets/icons/users/user14.png", "assets/icons/users/user15.png", "assets/icons/users/user16.png", "assets/icons/users/user17.png", "assets/icons/users/user18.png", "assets/icons/users/user19.png", "assets/icons/users/user20.png", "assets/icons/users/autouser1.png", "assets/icons/users/autouser2.png", "assets/icons/users/computeruser.png"];
 
 function createDesktopLanguageSelect(id){
   var sel = document.createElement("select");
@@ -134,14 +134,17 @@ function sanitizeUserIconPathShared(p){
   if (!m2) return ZCOMMON_DEFAULT_ICON;
   var name = m2[1];
   if (!/^(user\d+|autouser1|autouser2|computeruser)$/i.test(name)) return ZCOMMON_DEFAULT_ICON;
-  return "assets/icons/users/" + name + ".png";
+  var resolved = "assets/icons/users/" + name + ".png";
+  var allowed = window.ZIconManifest && Array.isArray(window.ZIconManifest) ? window.ZIconManifest : null;
+  if (allowed && allowed.indexOf(resolved) === -1) return ZCOMMON_DEFAULT_ICON;
+  return resolved;
 }
 
 
 function getAllowedUserIcons(){
   var raw = window.ZIconManifest && Array.isArray(window.ZIconManifest) ? window.ZIconManifest : null;
   var fb = [];
-  for (var i = 1; i <= 20; i += 1) fb.push("assets/icons/users/user" + i + ".png");
+  [1,2,3,4,5,6,7,8,9,11,12,13,14,15,16,17,18,19,20].forEach(function(i){ fb.push("assets/icons/users/user" + i + ".png"); });
   fb.push("assets/icons/users/autouser1.png");
   fb.push("assets/icons/users/autouser2.png");
   fb.push("assets/icons/users/computeruser.png");
@@ -243,7 +246,10 @@ function sanitizeUserIconPath(p){
   if (!m2) return DEFAULT_ICON;
   const name = m2[1];
   if (!/^(user\d+|autouser1|autouser2|computeruser)$/i.test(name)) return DEFAULT_ICON;
-  return `assets/icons/users/${name}.png`;
+  const resolved = `assets/icons/users/${name}.png`;
+  const allowed = window.ZIconManifest && Array.isArray(window.ZIconManifest) ? window.ZIconManifest : null;
+  if (allowed && !allowed.includes(resolved)) return DEFAULT_ICON;
+  return resolved;
 }
 
 function persistNickIcon(session){
@@ -1183,7 +1189,7 @@ function buildTopbar() {
                 '<span class="z-hamburger" aria-hidden="true"><span></span></span>' +
               '</button>' +
               '<nav class="z-nav" data-i18n-aria-label="aria.primaryNav">' +
-                '<a class="z-nav-home" href="' + base + '/pages/mode.html" data-i18n="buttons.home"></a>' +
+                '<a class="z-nav-home" href="https://ouglsoft.com/" data-i18n="buttons.home"></a>' +
                 getPublicLinks(base).map(function (item) {
                   var attrs = item.external ? ' data-ouglsoft-link="' + item.legalKind + '"' : '';
                   return '<a href="' + item.href + '"' + attrs + ' data-i18n="' + item.key + '"></a>';
@@ -1328,7 +1334,11 @@ function buildTopbar() {
         var base = getBaseHref();
     
         if (!loggedIn) {
-          
+          if (isLoginPage()) {
+            area.innerHTML = "";
+            applyCurrentShellLanguage();
+            return;
+          }
           area.innerHTML =
             '<div class="z-acc-desktop">' +
               '<a class="btn small secondary z-acc-btn" href="' + base + '/index.html" data-i18n="topbar.login"></a>' +
@@ -1394,7 +1404,7 @@ function buildTopbar() {
           else document.body.classList.remove("z-game-page");
         } catch (_) {}
     
-        var hideTopbar = isLoginPage() && !hasSession();
+        var hideTopbar = false;
     
         if (!hideTopbar) {
           document.body.classList.add("z-has-topbar");

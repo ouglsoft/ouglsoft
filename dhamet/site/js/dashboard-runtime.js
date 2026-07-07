@@ -48,7 +48,7 @@
   function getAllowedIcons() {
     if (typeof Common.getAllowedUserIcons === "function") return Common.getAllowedUserIcons();
     var fb = [];
-    for (var i = 1; i <= 20; i += 1) fb.push("assets/icons/users/user" + i + ".png");
+    [1,2,3,4,5,6,7,8,9,11,12,13,14,15,16,17,18,19,20].forEach(function(i){ fb.push("assets/icons/users/user" + i + ".png"); });
     fb.push("assets/icons/users/autouser1.png");
     fb.push("assets/icons/users/autouser2.png");
     fb.push("assets/icons/users/computeruser.png");
