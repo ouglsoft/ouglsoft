@@ -29,6 +29,25 @@ if (!DhametAIEngine) {
   throw new Error("DhametAIEngine must be loaded before the game runtime");
 }
 
+// Shared browser preferences used by both game-runtime and ui-runtime.
+// Keep this as var/global to avoid cross-script TDZ issues when runtimes are loaded separately.
+var AppPref = globalThis.AppPref || (globalThis.AppPref = {
+  getLang() {
+    const url = new URL(location.href);
+    const q = url.searchParams.get("lang");
+    return q || localStorage.getItem("zamat.lang") || "ar";
+  },
+  setLang(lang) {
+    localStorage.setItem("zamat.lang", lang);
+  },
+  getTheme() {
+    return localStorage.getItem("zamat.theme") || "light";
+  },
+  setTheme(th) {
+    localStorage.setItem("zamat.theme", th);
+  },
+});
+
 const BOARD_N = DhametRulesShared.BOARD_N;
 const TOP = DhametRulesShared.TOP;
 const BOT = DhametRulesShared.BOT;
@@ -3769,22 +3788,7 @@ if (typeof window !== "undefined") window.AI = AI;
           log.scrollTop = 0;
         }
       };
-      const AppPref = {
-        getLang() {
-          const url = new URL(location.href);
-          const q = url.searchParams.get("lang");
-          return q || localStorage.getItem("zamat.lang") || "ar";
-        },
-        setLang(lang) {
-          localStorage.setItem("zamat.lang", lang);
-        },
-        getTheme() {
-          return localStorage.getItem("zamat.theme") || "light";
-        },
-        setTheme(th) {
-          localStorage.setItem("zamat.theme", th);
-        },
-      };
+      // AppPref is initialized globally near the top of this file so ui-runtime can use it safely.
 
       try {
         const sp = new URLSearchParams(location.search || "");

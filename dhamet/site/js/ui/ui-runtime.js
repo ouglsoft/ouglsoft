@@ -1,4 +1,21 @@
 // Dhamet UI runtime.
+// Shared browser preferences. Defined here too because ui-runtime registers the page bootstrap.
+var AppPref = globalThis.AppPref || (globalThis.AppPref = {
+  getLang() {
+    const url = new URL(location.href);
+    const q = url.searchParams.get("lang");
+    return q || localStorage.getItem("zamat.lang") || "ar";
+  },
+  setLang(lang) {
+    localStorage.setItem("zamat.lang", lang);
+  },
+  getTheme() {
+    return localStorage.getItem("zamat.theme") || "light";
+  },
+  setTheme(th) {
+    localStorage.setItem("zamat.theme", th);
+  },
+});
 // Dhamet UI runtime loader and coordination layer.
 // Existing specialized UI modules remain the owners of board rendering, input, status, soufla, capture timer, log, and action state.
 // This file owns UI orchestration, local PvC controls, 3D board runtime, and page bootstrap.
