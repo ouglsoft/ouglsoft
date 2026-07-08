@@ -15,7 +15,7 @@
   } catch {}
 
 
-  importScripts("../shared/dhamet-utils.js", "../shared/dhamet-rules.js", "ai/ai-config.js", "ai/ai-evaluation.js", "ai/ai-search.js", "ai/ai-player.js", "ai/ai-runtime.js", "ai/ai-engine.js", "modes/game-runtime.js");
+  importScripts("../shared/dhamet-utils.js", "../shared/dhamet-rules.js", "ai/ai-config.js", "ai/ai-evaluation.js", "ai/ai-search.js", "ai/ai-player.js", "ai/ai-runtime.js", "ai/ai-engine.js", "ai/ai-worker-game-context.js");
 
   let cancelToken = 0;
 

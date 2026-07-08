@@ -2620,7 +2620,7 @@ const AI = (() => {
       __aiWorkerBridge,
       "decideAction",
       [],
-      _decideActionFastFallback,
+      _decideActionLocal,
       { accept: (a) => typeof a === "number" },
     );
   }
@@ -2933,7 +2933,7 @@ const AI = (() => {
       __aiWorkerBridge,
       "pickSouflaDecision",
       [pending],
-      _pickSouflaDecisionFastFallback,
+      _pickSouflaDecisionLocal,
       { accept: (d) => !!d },
     );
   }
