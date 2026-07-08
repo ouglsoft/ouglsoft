@@ -65,7 +65,7 @@
     const MAX_ROOT_CAPTURE_PATHS = 8192;
     const TT_MAX = 140000;
     const PLAN_MARGIN = 35;
-    const ENGINE_VERSION = 'ai2-rebuild-v1';
+    const ENGINE_VERSION = 'ai2-rebuild-v2-soufla-search';
     const TIMEOUT = { timeout: true };
 
     const LEVEL_DEFAULTS = Object.freeze({
@@ -75,6 +75,15 @@
       hard: Object.freeze({ depth: 7, qDepth: 10, timeMs: 1700, topN: 1, noise: 0, mistakePct: 0, maxNodes: 180000 }),
       strong: Object.freeze({ depth: 9, qDepth: 12, timeMs: 3000, topN: 1, noise: 0, mistakePct: 0, maxNodes: 320000 }),
       expert: Object.freeze({ depth: 11, qDepth: 14, timeMs: 6000, topN: 1, noise: 0, mistakePct: 0, maxNodes: 650000 }),
+    });
+
+    const SOUFLA_LEVEL_DEFAULTS = Object.freeze({
+      beginner: Object.freeze({ depth: 0, qDepth: 2, timeMs: 60, maxNodes: 3000 }),
+      easy: Object.freeze({ depth: 1, qDepth: 3, timeMs: 120, maxNodes: 7000 }),
+      medium: Object.freeze({ depth: 2, qDepth: 4, timeMs: 220, maxNodes: 16000 }),
+      hard: Object.freeze({ depth: 3, qDepth: 5, timeMs: 350, maxNodes: 32000 }),
+      strong: Object.freeze({ depth: 3, qDepth: 6, timeMs: 500, maxNodes: 52000 }),
+      expert: Object.freeze({ depth: 4, qDepth: 8, timeMs: 750, maxNodes: 90000 }),
     });
 
     const DIRS = Object.freeze([
@@ -309,6 +318,21 @@
         noise: base.noise,
         mistakePct: base.mistakePct,
         maxNodes: Number(adv.maxNodes) > 0 ? Math.min(1000000, Number(adv.maxNodes) | 0) : base.maxNodes,
+      };
+    }
+
+    function souflaRuntimeSettings(settings) {
+      const level = levelName(settings);
+      const base = SOUFLA_LEVEL_DEFAULTS[level] || SOUFLA_LEVEL_DEFAULTS.medium;
+      const adv = settings && settings.advanced ? settings.advanced : {};
+      const explicitDepth = Number(adv.souflaDepth);
+      const explicitTime = Number(adv.souflaTimeMs);
+      return {
+        level,
+        depth: Number.isFinite(explicitDepth) && explicitDepth >= 0 ? Math.max(0, Math.min(6, Math.trunc(explicitDepth))) : base.depth,
+        qDepth: base.qDepth,
+        timeMs: Number.isFinite(explicitTime) && explicitTime > 0 ? Math.max(30, Math.min(1500, Math.trunc(explicitTime))) : base.timeMs,
+        maxNodes: base.maxNodes,
       };
     }
 
@@ -693,7 +717,8 @@
       if (term != null) return term;
       const key = state.key();
       const oldAlpha = alpha;
-      const ent = TT.get(key);
+      const table = ctx && ctx.tt ? ctx.tt : TT;
+      const ent = table.get(key);
       let ttMove = null;
       if (ent && ent.depth >= depth) {
         ttMove = ent.move;
@@ -723,7 +748,7 @@
         if (alpha >= beta) break;
       }
       const flag = bestScore <= oldAlpha ? 'upper' : bestScore >= beta ? 'lower' : 'exact';
-      TT.set(key, { depth, score: bestScore, flag, move: cloneMove(bestMove), age: ttAge });
+      table.set(key, { depth, score: bestScore, flag, move: cloneMove(bestMove), age: ttAge });
       return bestScore;
     }
 
@@ -1152,6 +1177,24 @@
       return DhametAIRuntime.isThinking({ localThinking: _thinking, scheduled: _scheduled, bridge: __aiWorkerBridge });
     }
 
+    function applySouflaOptionBoard(pending, opt) {
+      if (!pending || !opt) return null;
+      try {
+        if (opt.kind === 'remove') {
+          if (R.applySouflaRemoval) {
+            const res = R.applySouflaRemoval(Game.board, pending, opt.offenderIdx);
+            if (res && res.ok && res.board) return res.board;
+          }
+          return removeOffenderBoard(Game.board, pending, opt.offenderIdx);
+        }
+        if (opt.kind === 'force' && R.applySouflaForce) {
+          const res = R.applySouflaForce(pending, opt);
+          if (res && res.ok && res.board) return res.board;
+        }
+      } catch (_) {}
+      return null;
+    }
+
     function removeOffenderBoard(board, pending, offenderIdx) {
       const next = R.cloneBoard(board);
       const target = R.resolveOffenderCurrentCell ? R.resolveOffenderCurrentCell(pending, offenderIdx) : offenderIdx;
@@ -1159,26 +1202,97 @@
       return next;
     }
 
+    function compareSouflaOptions(a, b) {
+      if (!b) return true;
+      const ak = a && a.kind === 'force' ? 1 : 0;
+      const bk = b && b.kind === 'force' ? 1 : 0;
+      if (ak !== bk) return ak > bk;
+      const ai = Number(a && a.offenderIdx);
+      const bi = Number(b && b.offenderIdx);
+      if (Number.isFinite(ai) && Number.isFinite(bi) && ai !== bi) return ai < bi;
+      return JSON.stringify(a || {}) < JSON.stringify(b || {});
+    }
+
+    function immediateSouflaScore(state, penalizer) {
+      const term = terminalScore(state, 0);
+      if (term != null) return state.side === penalizer ? term : -term;
+      const moves = generateTurnMoves(state, { capturesOnly: false, limit: 96 });
+      if (!moves.length) return state.side === penalizer ? -WIN_SCORE : WIN_SCORE;
+      return evaluate(state, penalizer);
+    }
+
+    function souflaSearchScore(board, penalizer, settings) {
+      const state = new EngineState(board, penalizer);
+      const started = nowMs();
+      const deadline = settings.timeMs > 0 ? started + settings.timeMs : null;
+      const ctx = {
+        nodes: 0,
+        deadline,
+        maxNodes: settings.maxNodes,
+        qDepth: settings.qDepth,
+        history: new Map(),
+        rootSide: penalizer,
+        tt: new Map(),
+      };
+
+      const staticScore = immediateSouflaScore(state, penalizer);
+      if (settings.depth <= 0 || Math.abs(staticScore) > WIN_SCORE - 1000) {
+        return { score: staticScore, depth: 0, nodes: ctx.nodes, timeMs: nowMs() - started };
+      }
+
+      let bestScore = staticScore;
+      let completedDepth = 0;
+      try {
+        for (let depth = 1; depth <= settings.depth; depth++) {
+          if (deadline != null && nowMs() >= deadline) break;
+          const score = negamax(state, depth, -INF, INF, ctx, 0);
+          bestScore = state.side === penalizer ? score : -score;
+          completedDepth = depth;
+          if (Math.abs(bestScore) > WIN_SCORE - 1000) break;
+        }
+      } catch (e) {
+        if (!(e && e.timeout)) throw e;
+      }
+      return { score: bestScore, depth: completedDepth, nodes: ctx.nodes, timeMs: nowMs() - started };
+    }
+
     function _pickSouflaDecisionLocal(pending) {
       if (!pending || !Array.isArray(pending.options) || !pending.options.length) return null;
       const penalizer = pending.penalizer === BOT_SIDE ? BOT_SIDE : TOP_SIDE;
-      let best = pending.options[0];
+      const settings = souflaRuntimeSettings(Game.settings || {});
+      let best = null;
       let bestScore = -INF;
+      let bestMeta = null;
+
       for (let i = 0; i < pending.options.length; i++) {
         const opt = pending.options[i];
-        let board = null;
-        try {
-          if (opt.kind === 'remove') board = removeOffenderBoard(Game.board, pending, opt.offenderIdx);
-          else if (opt.kind === 'force' && R.applySouflaForce) {
-            const res = R.applySouflaForce(pending, opt);
-            if (res && res.ok) board = res.board;
-          }
-        } catch (_) {}
+        const board = applySouflaOptionBoard(pending, opt);
         if (!board) continue;
-        const st = new EngineState(board, penalizer);
-        const score = evaluate(st, penalizer);
-        if (score > bestScore) { bestScore = score; best = opt; }
+        const meta = souflaSearchScore(board, penalizer, settings);
+        const score = Number(meta && meta.score);
+        if (!Number.isFinite(score)) continue;
+        if (score > bestScore || (score === bestScore && compareSouflaOptions(opt, best))) {
+          bestScore = score;
+          best = opt;
+          bestMeta = meta;
+        }
       }
+
+      if (!best) best = pending.options.find((o) => o && o.kind === 'remove') || pending.options[0];
+      try {
+        if (best && typeof best === 'object') {
+          best = Object.assign({}, best, {
+            ai2Soufla: {
+              engine: ENGINE_VERSION,
+              score: Math.trunc(bestScore),
+              depth: bestMeta ? bestMeta.depth | 0 : 0,
+              nodes: bestMeta ? bestMeta.nodes | 0 : 0,
+              timeMs: bestMeta ? Math.round(bestMeta.timeMs || 0) : 0,
+              level: settings.level,
+            },
+          });
+        }
+      } catch (_) {}
       return best;
     }
 
