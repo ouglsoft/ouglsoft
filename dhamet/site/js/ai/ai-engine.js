@@ -100,6 +100,208 @@ const __AI_SEARCH_LIMITS = DhametAIConfig.SEARCH_LIMITS;
 const __AI_MOVE_FILTER_ALL = DhametAIEvaluation.MOVE_FILTER_ALL;
 const __AI_MOVE_FILTER_NOISY = DhametAIEvaluation.MOVE_FILTER_NOISY;
 const __AI_ENDGAME_PROOF_CACHE = new Map();
+const __AI_SEARCH_TIMEOUT = Symbol("dhamet_ai_search_timeout");
+const __AI_ROOT_SELECTIVE_LEVEL_LIMITS = Object.freeze({
+  beginner: 3,
+  easy: 4,
+  medium: 6,
+  hard: 8,
+  strong: 10,
+  expert: 12,
+});
+
+function __aiSearchNow() {
+  try {
+    if (DhametAISearch && typeof DhametAISearch.now === "function") return DhametAISearch.now();
+  } catch {}
+  try {
+    if (typeof performance !== "undefined" && performance && typeof performance.now === "function") return performance.now();
+  } catch {}
+  return Date.now();
+}
+
+function __aiDeadlineReached(deadline) {
+  try {
+    if (DhametAISearch && typeof DhametAISearch.deadlineReached === "function") {
+      return DhametAISearch.deadlineReached(deadline);
+    }
+  } catch {}
+  return deadline != null && __aiSearchNow() >= deadline;
+}
+
+function __aiRemainingMs(deadline) {
+  if (deadline == null) return Infinity;
+  return Math.max(0, deadline - __aiSearchNow());
+}
+
+function __aiIsSearchTimeout(v) {
+  return v === __AI_SEARCH_TIMEOUT;
+}
+
+function __aiIsFiniteSearchScore(v) {
+  return typeof v === "number" && Number.isFinite(v);
+}
+
+function __aiSafeEvalScore(side, evalFn) {
+  const v = Number(evalFn(side));
+  return Number.isFinite(v) ? v : 0;
+}
+
+function __aiStoreScore(map, action, score) {
+  if (!map || !__aiIsFiniteSearchScore(score)) return false;
+  map.set(action | 0, score);
+  return true;
+}
+
+function __aiScoreFromMap(scores, action, fallback = -Infinity) {
+  if (!scores || typeof scores.has !== "function" || !scores.has(action)) return fallback;
+  const v = scores.get(action);
+  return __aiIsFiniteSearchScore(v) ? v : fallback;
+}
+
+function __aiRootStaticScore(side, action, evalFn) {
+  const snap = snapshotStateSim();
+  try {
+    applyActionSim(action);
+    return __aiSafeEvalScore(side, evalFn);
+  } finally {
+    restoreSnapshotSim(snap);
+  }
+}
+
+function __aiRootSearchScore(side, action, turnDepthIter, deadline, budget, evalFn, tables) {
+  if (__aiDeadlineReached(deadline)) return __AI_SEARCH_TIMEOUT;
+  const snap = snapshotStateSim();
+  try {
+    applyActionSim(action);
+    const dec = Game.player !== side ? 1 : 0;
+    const v = __aiAlphaBeta(
+      Math.max(0, Math.trunc(turnDepthIter) - dec),
+      -__AI_SEARCH_INF,
+      __AI_SEARCH_INF,
+      deadline,
+      budget,
+      side,
+      evalFn,
+      tables.tt,
+      0,
+      tables.killers,
+      tables.history,
+    );
+    return __aiIsFiniteSearchScore(v) ? v : __AI_SEARCH_TIMEOUT;
+  } finally {
+    restoreSnapshotSim(snap);
+  }
+}
+
+function __aiSortRootActions(side, actions, scores, history) {
+  actions.sort((a, b) => {
+    const sa = __aiScoreFromMap(scores, a);
+    const sb = __aiScoreFromMap(scores, b);
+    if (sa !== sb) return sb - sa;
+    const ha = history && typeof history.get === "function" ? history.get(a) || 0 : 0;
+    const hb = history && typeof history.get === "function" ? history.get(b) || 0 : 0;
+    if (ha !== hb) return hb - ha;
+    return __aiActionOrderScore(side, b) - __aiActionOrderScore(side, a);
+  });
+  return actions;
+}
+
+function __aiRootPostMoveRisk(side, action) {
+  if (action === ACTION_ENDCHAIN) return 0;
+  const snap = snapshotStateSim();
+  try {
+    applyActionSim(action);
+    if (Game.player !== -side) return 0;
+    let risk = 0;
+    try {
+      const info = immediateCapturableInfo(-side);
+      const count = info && Number.isFinite(Number(info.count)) ? info.count | 0 : 0;
+      const kings = info && Number.isFinite(Number(info.kingVictims)) ? info.kingVictims | 0 : 0;
+      risk += count * 220;
+      risk += kings * 3600;
+    } catch {}
+    try {
+      const longest = longestCaptureLenCached(-side) | 0;
+      if (longest > 1) risk += (longest - 1) * 520;
+    } catch {}
+    return Math.max(0, risk);
+  } finally {
+    restoreSnapshotSim(snap);
+  }
+}
+
+function __aiBuildSelectiveRootCandidates(side, acts, scores, previousScores, remainingMs, capMs, levelName) {
+  if (!acts.length || remainingMs < 35) return [];
+  const levelKey = String(levelName || "medium");
+  const baseLimit = __AI_ROOT_SELECTIVE_LEVEL_LIMITS[levelKey] || __AI_ROOT_SELECTIVE_LEVEL_LIMITS.medium;
+  let timeLimit = baseLimit;
+  if (remainingMs < 120) timeLimit = Math.min(timeLimit, 3);
+  else if (remainingMs < 300) timeLimit = Math.min(timeLimit, 5);
+  else if (remainingMs > 2500) timeLimit = Math.min(acts.length, timeLimit + 2);
+  if (capMs !== Infinity && Number.isFinite(Number(capMs))) {
+    const fractionLeft = capMs > 0 ? remainingMs / capMs : 0;
+    if (fractionLeft < 0.08) timeLimit = Math.min(timeLimit, 4);
+  }
+  const limit = Math.max(1, Math.min(acts.length, timeLimit | 0));
+
+  const ordered = __aiSortRootActions(side, acts.slice(), scores, null);
+  const selected = new Set();
+  for (let i = 0; i < Math.min(limit, ordered.length); i++) selected.add(ordered[i]);
+
+  const best = __aiScoreFromMap(scores, ordered[0], 0);
+  const closeMargin = 160 + Math.max(0, Math.min(260, Math.abs(best) * 0.025));
+  for (let i = 0; i < ordered.length; i++) {
+    const a = ordered[i];
+    const s = __aiScoreFromMap(scores, a);
+    if (s >= best - closeMargin) selected.add(a);
+  }
+
+  const riskRows = [];
+  for (let i = 0; i < acts.length; i++) {
+    const a = acts[i];
+    if (__aiNoisyAction(a)) selected.add(a);
+    const cur = __aiScoreFromMap(scores, a, 0);
+    const prev = previousScores ? __aiScoreFromMap(previousScores, a, cur) : cur;
+    if (Math.abs(cur - prev) >= 220) selected.add(a);
+    const risk = __aiRootPostMoveRisk(side, a);
+    riskRows.push([a, risk]);
+    if (risk >= 1200) selected.add(a);
+  }
+
+  riskRows.sort((x, y) => x[1] - y[1]);
+  for (let i = 0; i < Math.min(2, riskRows.length); i++) selected.add(riskRows[i][0]);
+
+  const finalLimit = Math.max(limit, Math.min(acts.length, limit + Math.ceil(limit / 2)));
+  const out = ordered.filter((a) => selected.has(a));
+  return out.slice(0, Math.max(1, finalLimit));
+}
+
+function __aiApplyRootSafetyGuard(side, scores, acts, deadline = null) {
+  if (!scores || !acts.length) return scores;
+  if (__aiRemainingMs(deadline) < 20) return scores;
+  const risks = new Map();
+  let minRisk = Infinity;
+  for (let i = 0; i < acts.length; i++) {
+    if (__aiDeadlineReached(deadline)) return scores;
+    const a = acts[i];
+    const risk = __aiRootPostMoveRisk(side, a);
+    risks.set(a, risk);
+    if (risk < minRisk) minRisk = risk;
+  }
+  if (!Number.isFinite(minRisk)) minRisk = 0;
+  for (let i = 0; i < acts.length; i++) {
+    const a = acts[i];
+    const s = __aiScoreFromMap(scores, a, null);
+    if (!__aiIsFiniteSearchScore(s)) continue;
+    const excess = Math.max(0, (risks.get(a) || 0) - minRisk);
+    if (excess >= 900) {
+      const penalty = Math.min(4200, Math.floor(excess * 0.85));
+      scores.set(a, s - penalty);
+    }
+  }
+  return scores;
+}
 
 function __aiTerminalScore(winnerSide, perspectiveSide, actionPly = 0) {
   return DhametAIEvaluation.terminalScore(winnerSide, perspectiveSide, actionPly);
@@ -1587,23 +1789,24 @@ function __aiQuiescence(
 ) {
   if (budget) {
     budget.n--;
-    if (budget.n < 0) return evalFn(rootSide);
+    if (budget.n < 0) return __AI_SEARCH_TIMEOUT;
   }
 
   const term = simTerminalScore(rootSide, searchActionPly);
   if (term != null) return term;
-  if (deadline != null && performance.now() >= deadline) return evalFn(rootSide);
+  if (__aiDeadlineReached(deadline)) return __AI_SEARCH_TIMEOUT;
 
   const proven = __aiTryEndgameProof(rootSide, deadline, searchActionPly);
   if (proven != null) return proven;
+  if (__aiDeadlineReached(deadline)) return __AI_SEARCH_TIMEOUT;
 
-  if (qActionPly >= __AI_SEARCH_LIMITS.quiescence.maxActionPly) return evalFn(rootSide);
+  if (qActionPly >= __AI_SEARCH_LIMITS.quiescence.maxActionPly) return __aiSafeEvalScore(rootSide, evalFn);
 
   const { mask } = legalActions();
   const acts = __aiPickMovesForSearch(Game.player, mask, __AI_MOVE_FILTER_NOISY);
 
   const mustResolve = Game.inChain || acts.some((a) => __aiIsCaptureAction(a));
-  let stand = evalFn(rootSide);
+  let stand = __aiSafeEvalScore(rootSide, evalFn);
   if (!mustResolve) {
     if (Game.player === rootSide) {
       if (stand >= beta) return stand;
@@ -1615,8 +1818,10 @@ function __aiQuiescence(
   } else {
     stand = Game.player === rootSide ? -Infinity : Infinity;
   }
+
   if (!acts.length) {
     if (Game.inChain && mask[ACTION_ENDCHAIN]) {
+      if (__aiDeadlineReached(deadline)) return __AI_SEARCH_TIMEOUT;
       const snap = snapshotStateSim();
       applyActionSim(ACTION_ENDCHAIN);
       const v = __aiQuiescence(
@@ -1632,58 +1837,41 @@ function __aiQuiescence(
       restoreSnapshotSim(snap);
       return v;
     }
-    return stand;
+    return __aiIsFiniteSearchScore(stand) ? stand : __aiSafeEvalScore(rootSide, evalFn);
   }
 
-  if (Game.player === rootSide) {
-    let best = stand;
-    for (let i = 0; i < acts.length; i++) {
-      if (deadline != null && performance.now() >= deadline) break;
-      if (budget && budget.n < 0) break;
-      const a = acts[i];
-      const snap = snapshotStateSim();
-      applyActionSim(a);
-      const v = __aiQuiescence(
-        alpha,
-        beta,
-        deadline,
-        budget,
-        rootSide,
-        evalFn,
-        qActionPly + 1,
-        searchActionPly + 1,
-      );
-      restoreSnapshotSim(snap);
+  const isMax = Game.player === rootSide;
+  let best = stand;
+  for (let i = 0; i < acts.length; i++) {
+    if (__aiDeadlineReached(deadline)) return __AI_SEARCH_TIMEOUT;
+    if (budget && budget.n < 0) return __AI_SEARCH_TIMEOUT;
+    const a = acts[i];
+    const snap = snapshotStateSim();
+    applyActionSim(a);
+    const v = __aiQuiescence(
+      alpha,
+      beta,
+      deadline,
+      budget,
+      rootSide,
+      evalFn,
+      qActionPly + 1,
+      searchActionPly + 1,
+    );
+    restoreSnapshotSim(snap);
+    if (__aiIsSearchTimeout(v)) return __AI_SEARCH_TIMEOUT;
+
+    if (isMax) {
       if (v > best) best = v;
       if (v > alpha) alpha = v;
-      if (alpha >= beta) break;
-    }
-    return best;
-  } else {
-    let best = stand;
-    for (let i = 0; i < acts.length; i++) {
-      if (deadline != null && performance.now() >= deadline) break;
-      if (budget && budget.n < 0) break;
-      const a = acts[i];
-      const snap = snapshotStateSim();
-      applyActionSim(a);
-      const v = __aiQuiescence(
-        alpha,
-        beta,
-        deadline,
-        budget,
-        rootSide,
-        evalFn,
-        qActionPly + 1,
-        searchActionPly + 1,
-      );
-      restoreSnapshotSim(snap);
+    } else {
       if (v < best) best = v;
       if (v < beta) beta = v;
-      if (alpha >= beta) break;
     }
-    return best;
+    if (alpha >= beta) break;
   }
+
+  return __aiIsFiniteSearchScore(best) ? best : __aiSafeEvalScore(rootSide, evalFn);
 }
 
 function __aiAlphaBeta(
@@ -1701,19 +1889,19 @@ function __aiAlphaBeta(
 ) {
   if (budget) {
     budget.n--;
-    if (budget.n < 0) return evalFn(rootSide);
+    if (budget.n < 0) return __AI_SEARCH_TIMEOUT;
   }
 
   const term = simTerminalScore(rootSide, searchActionPly);
   if (term != null) return term;
-  if (deadline != null && performance.now() >= deadline) return evalFn(rootSide);
+  if (__aiDeadlineReached(deadline)) return __AI_SEARCH_TIMEOUT;
   if (turnDepthRemaining <= 0) {
     return __aiQuiescence(alpha, beta, deadline, budget, rootSide, evalFn, 0, searchActionPly);
   }
 
   const key = __aiHash();
-  const ent = tt.get(key);
-  if (ent && ent.d >= turnDepthRemaining) {
+  const ent = tt && typeof tt.get === "function" ? tt.get(key) : null;
+  if (ent && ent.d >= turnDepthRemaining && __aiIsFiniteSearchScore(ent.v)) {
     if (ent.f === 0) return ent.v;
     if (ent.f === -1 && ent.v <= alpha) return ent.v;
     if (ent.f === 1 && ent.v >= beta) return ent.v;
@@ -1721,7 +1909,7 @@ function __aiAlphaBeta(
 
   const { mask } = legalActions();
   const acts = __aiPickMovesForSearch(Game.player, mask, __AI_MOVE_FILTER_ALL);
-  if (!acts.length) return evalFn(rootSide);
+  if (!acts.length) return __aiSafeEvalScore(rootSide, evalFn);
 
   const a0 = alpha;
   const b0 = beta;
@@ -1730,14 +1918,13 @@ function __aiAlphaBeta(
 
   const ttMove = ent && ent.m != null ? ent.m : null;
   const killerLimit = __AI_SEARCH_LIMITS.killers.maxSearchActionPly;
-  const killerPly = Math.max(0, Math.min(killerLimit - 1, searchActionPly | 0));
   DhametAISearch.bumpPreferredMoves(acts, { killers, killerLimit }, ttMove, searchActionPly);
 
   const isMax = Game.player === rootSide;
 
   for (let i = 0; i < acts.length; i++) {
-    if (deadline != null && performance.now() >= deadline) break;
-    if (budget && budget.n < 0) break;
+    if (__aiDeadlineReached(deadline)) return __AI_SEARCH_TIMEOUT;
+    if (budget && budget.n < 0) return __AI_SEARCH_TIMEOUT;
     const a = acts[i];
 
     const beforePlayer = Game.player;
@@ -1748,9 +1935,7 @@ function __aiAlphaBeta(
     const childTurnDepthRemaining = turnDepthRemaining - (afterPlayer !== beforePlayer ? 1 : 0);
 
     // Full-depth search is intentionally preserved for quiet moves.
-    // The previous late-move reduction depended on heuristic ordering and could
-    // hide quiet forcing moves in mandatory-capture positions.
-
+    // Late-move reductions can hide quiet forcing moves in mandatory-capture positions.
     const v = __aiAlphaBeta(
       childTurnDepthRemaining,
       alpha,
@@ -1766,6 +1951,7 @@ function __aiAlphaBeta(
     );
 
     restoreSnapshotSim(snap);
+    if (__aiIsSearchTimeout(v)) return __AI_SEARCH_TIMEOUT;
 
     if (isMax) {
       if (v > best) {
@@ -1793,10 +1979,14 @@ function __aiAlphaBeta(
     }
   }
 
+  if (!__aiIsFiniteSearchScore(best)) return __AI_SEARCH_TIMEOUT;
+
   let flag = 0;
   if (best <= a0) flag = -1;
   else if (best >= b0) flag = 1;
-  tt.set(key, { d: turnDepthRemaining, v: best, f: flag, m: bestMove });
+  if (tt && typeof tt.set === "function") {
+    tt.set(key, { d: turnDepthRemaining, v: best, f: flag, m: bestMove });
+  }
 
   return best;
 }
@@ -1809,6 +1999,7 @@ async function minimaxScoreActions(side, opts) {
   const turnDepth = __aiNormalizeTurnDepth(opts && opts.depth, __AI_SEARCH_LIMITS.minimax.defaultTurnDepth, __AI_SEARCH_LIMITS.minimax.maxTurnDepth);
   const capMs = __aiNormalizeCapMs(opts && opts.capMs, 250);
   const evalFn = __aiNormalizeEvalFn(opts && opts.evalFn);
+  const levelName = opts && opts.aiLevel != null ? String(opts.aiLevel) : "medium";
 
   const pruneEarlyEndChain =
     opts && Object.prototype.hasOwnProperty.call(opts, "pruneEarlyEndChain")
@@ -1830,88 +2021,100 @@ async function minimaxScoreActions(side, opts) {
   }).actions;
   const acts = acts0.slice();
   acts.sort((a, b) => __aiActionOrderScore(side, b) - __aiActionOrderScore(side, a));
+  if (!acts.length) return new Map();
 
   const deadline = makeDeadline(capMs);
   const budget = null;
 
-  let scores = new Map();
-  const tables = DhametAISearch.createSearchTables(__AI_SEARCH_LIMITS);
-  const tt = tables.tt;
-  const killers = tables.killers;
-  const history = tables.history;
-
-  const maxTurnDepth = Math.max(1, Math.trunc(turnDepth));
-
+  const committedScores = new Map();
   for (let i = 0; i < acts.length; i++) {
-    if (deadline != null && performance.now() >= deadline) break;
-    const a = acts[i];
-    const snap = snapshotStateSim();
-    applyActionSim(a);
-    const v = __aiAlphaBeta(
-      0,
-      -__AI_SEARCH_INF,
-      __AI_SEARCH_INF,
-      deadline,
-      budget,
-      side,
-      evalFn,
-      tt,
-      0,
-      killers,
-      history,
-    );
-    restoreSnapshotSim(snap);
-    scores.set(a, v);
+    __aiStoreScore(committedScores, acts[i], __aiRootStaticScore(side, acts[i], evalFn));
   }
 
+  let scores = new Map(committedScores);
+  let previousCommittedScores = null;
   let lastOrder = acts.slice();
+  let lastFullDepth = 0;
+  let lastDepthMs = 0;
+  const tables = DhametAISearch.createSearchTables(__AI_SEARCH_LIMITS);
+  const maxTurnDepth = Math.max(1, Math.trunc(turnDepth));
 
-  for (let turnDepthIter = 2; turnDepthIter <= maxTurnDepth; turnDepthIter++) {
-    if (deadline != null && performance.now() >= deadline) break;
+  for (let turnDepthIter = 1; turnDepthIter <= maxTurnDepth; turnDepthIter++) {
+    if (__aiDeadlineReached(deadline)) break;
 
-    lastOrder.sort((a, b) => {
-      const sa = scores.has(a) ? scores.get(a) : -Infinity;
-      const sb = scores.has(b) ? scores.get(b) : -Infinity;
-      if (sa !== sb) return sb - sa;
-      const ha = history.get(a) || 0;
-      const hb = history.get(b) || 0;
-      if (ha !== hb) return hb - ha;
-      return __aiActionOrderScore(side, b) - __aiActionOrderScore(side, a);
-    });
+    const remaining = __aiRemainingMs(deadline);
+    if (
+      lastFullDepth > 0 &&
+      capMs !== Infinity &&
+      Number.isFinite(remaining) &&
+      lastDepthMs > 0
+    ) {
+      const growth = turnDepthIter <= 2 ? 1.35 : 1.55;
+      const estimatedMs = lastDepthMs * growth + 8;
+      if (remaining < estimatedMs * 1.15) break;
+    }
 
-    const focus = Math.max(1, Math.min(lastOrder.length, k | 0 || lastOrder.length));
-    for (let i = 0; i < focus; i++) {
-      if (deadline != null && performance.now() >= deadline) break;
+    __aiSortRootActions(side, lastOrder, scores, tables.history);
+
+    const workingScores = new Map(scores);
+    const depthStart = __aiSearchNow();
+    let completed = true;
+
+    for (let i = 0; i < lastOrder.length; i++) {
+      if (__aiDeadlineReached(deadline)) {
+        completed = false;
+        break;
+      }
       const a = lastOrder[i];
-      const snap = snapshotStateSim();
-      applyActionSim(a);
-      const dec = Game.player !== side ? 1 : 0;
-      const v = __aiAlphaBeta(
-        Math.max(0, turnDepthIter - dec),
-        -__AI_SEARCH_INF,
-        __AI_SEARCH_INF,
-        deadline,
-        budget,
-        side,
-        evalFn,
-        tt,
-        0,
-        killers,
-        history,
-      );
-      restoreSnapshotSim(snap);
+      const v = __aiRootSearchScore(side, a, turnDepthIter, deadline, budget, evalFn, tables);
+      if (__aiIsSearchTimeout(v) || !__aiIsFiniteSearchScore(v)) {
+        completed = false;
+        break;
+      }
+      workingScores.set(a, v);
+    }
+
+    if (!completed) break;
+
+    previousCommittedScores = scores;
+    scores = workingScores;
+    lastFullDepth = turnDepthIter;
+    lastDepthMs = Math.max(0, __aiSearchNow() - depthStart);
+  }
+
+  const remainingAfterFullWidth = __aiRemainingMs(deadline);
+  const canSelective =
+    maxTurnDepth > lastFullDepth &&
+    remainingAfterFullWidth > 35 &&
+    (capMs === Infinity || remainingAfterFullWidth > Math.min(900, Math.max(80, capMs * 0.05)));
+
+  if (canSelective) {
+    const selectiveCandidates = __aiBuildSelectiveRootCandidates(
+      side,
+      acts,
+      scores,
+      previousCommittedScores,
+      remainingAfterFullWidth,
+      capMs,
+      levelName,
+    );
+    const targetDepth = Math.min(maxTurnDepth, Math.max(lastFullDepth + 1, 1));
+    const focus = Math.max(1, Math.min(selectiveCandidates.length, k | 0 || selectiveCandidates.length));
+    for (let i = 0; i < focus; i++) {
+      if (__aiDeadlineReached(deadline)) break;
+      const a = selectiveCandidates[i];
+      const v = __aiRootSearchScore(side, a, targetDepth, deadline, budget, evalFn, tables);
+      if (__aiIsSearchTimeout(v) || !__aiIsFiniteSearchScore(v)) break;
       scores.set(a, v);
     }
   }
 
+  __aiApplyRootSafetyGuard(side, scores, acts, deadline);
+
   for (let i = 0; i < acts.length; i++) {
     const a = acts[i];
-    if (!scores.has(a)) {
-      const snap = snapshotStateSim();
-      applyActionSim(a);
-      const v = evalFn(side);
-      restoreSnapshotSim(snap);
-      scores.set(a, v);
+    if (!__aiIsFiniteSearchScore(scores.get(a))) {
+      scores.set(a, __aiRootStaticScore(side, a, evalFn));
     }
   }
 
@@ -1931,7 +2134,7 @@ function quickMinimaxValue(side, opts) {
     enforceMandatory: true,
     enforceLongest: true,
   }).actions;
-  if (!acts0.length) return evalFn(side);
+  if (!acts0.length) return __aiSafeEvalScore(side, evalFn);
   const acts = acts0.slice();
   acts.sort((a, b) => __aiActionOrderScore(side, b) - __aiActionOrderScore(side, a));
 
@@ -1939,34 +2142,16 @@ function quickMinimaxValue(side, opts) {
   const budget = null;
 
   const tables = DhametAISearch.createSearchTables(__AI_SEARCH_LIMITS);
-  const tt = tables.tt;
-  const killers = tables.killers;
-  const history = tables.history;
 
   let best = -Infinity;
   for (let i = 0; i < acts.length; i++) {
-    if (deadline != null && performance.now() >= deadline) break;
+    if (__aiDeadlineReached(deadline)) break;
     const a = acts[i];
-    const snap = snapshotStateSim();
-    applyActionSim(a);
-    const dec = Game.player !== side ? 1 : 0;
-    const v = __aiAlphaBeta(
-      Math.max(0, Math.trunc(turnDepth) - dec),
-      -__AI_SEARCH_INF,
-      __AI_SEARCH_INF,
-      deadline,
-      budget,
-      side,
-      evalFn,
-      tt,
-      0,
-      killers,
-      history,
-    );
-    restoreSnapshotSim(snap);
+    const v = __aiRootSearchScore(side, a, Math.trunc(turnDepth), deadline, budget, evalFn, tables);
+    if (__aiIsSearchTimeout(v) || !__aiIsFiniteSearchScore(v)) break;
     if (v > best) best = v;
   }
-  if (!Number.isFinite(best)) best = evalFn(side);
+  if (!Number.isFinite(best)) best = __aiSafeEvalScore(side, evalFn);
   return best;
 }
 
@@ -2566,6 +2751,7 @@ const AI = (() => {
           depth: turnDepth,
           capMs: remMs === Infinity ? capMs : Math.min(capMs, remMs),
           evalFn: staticEval,
+          aiLevel: adv.aiLevel,
           enforceMandatory: false,
           enforceLongest: false,
         });
