@@ -11,12 +11,12 @@
   const AI_LEVEL_ORDER = Object.freeze(['beginner', 'easy', 'medium', 'hard', 'strong', 'expert']);
 
   const AI_LEVEL_CONFIGS = Object.freeze({
-    beginner: Object.freeze({ minimaxDepth: 2, thinkTimeMs: 220, timeBoostCriticalMs: 80, moveChoiceTopN: 3, moveMistakeRatePct: 18, evalNoise: 70, maxNodes: 18000 }),
-    easy: Object.freeze({ minimaxDepth: 3, thinkTimeMs: 450, timeBoostCriticalMs: 120, moveChoiceTopN: 2, moveMistakeRatePct: 7, evalNoise: 35, maxNodes: 36000 }),
-    medium: Object.freeze({ minimaxDepth: 5, thinkTimeMs: 900, timeBoostCriticalMs: 250, moveChoiceTopN: 1, moveMistakeRatePct: 0, evalNoise: 0, maxNodes: 90000 }),
-    hard: Object.freeze({ minimaxDepth: 7, thinkTimeMs: 1700, timeBoostCriticalMs: 450, moveChoiceTopN: 1, moveMistakeRatePct: 0, evalNoise: 0, maxNodes: 180000 }),
-    strong: Object.freeze({ minimaxDepth: 9, thinkTimeMs: 3000, timeBoostCriticalMs: 800, moveChoiceTopN: 1, moveMistakeRatePct: 0, evalNoise: 0, maxNodes: 320000 }),
-    expert: Object.freeze({ minimaxDepth: 11, thinkTimeMs: 6000, timeBoostCriticalMs: 1500, moveChoiceTopN: 1, moveMistakeRatePct: 0, evalNoise: 0, maxNodes: 650000 }),
+    beginner: Object.freeze({ minimaxDepth: 2, thinkTimeMs: 300, timeBoostCriticalMs: 200, moveChoiceTopN: 3, moveMistakeRatePct: 18, evalNoise: 70, maxNodes: 25000 }),
+    easy: Object.freeze({ minimaxDepth: 4, thinkTimeMs: 800, timeBoostCriticalMs: 400, moveChoiceTopN: 2, moveMistakeRatePct: 6, evalNoise: 30, maxNodes: 60000 }),
+    medium: Object.freeze({ minimaxDepth: 6, thinkTimeMs: 1800, timeBoostCriticalMs: 1200, moveChoiceTopN: 1, moveMistakeRatePct: 0, evalNoise: 0, maxNodes: 140000 }),
+    hard: Object.freeze({ minimaxDepth: 8, thinkTimeMs: 4500, timeBoostCriticalMs: 2500, moveChoiceTopN: 1, moveMistakeRatePct: 0, evalNoise: 0, maxNodes: 320000 }),
+    strong: Object.freeze({ minimaxDepth: 11, thinkTimeMs: 9000, timeBoostCriticalMs: 5000, moveChoiceTopN: 1, moveMistakeRatePct: 0, evalNoise: 0, maxNodes: 700000 }),
+    expert: Object.freeze({ minimaxDepth: 14, thinkTimeMs: 15000, timeBoostCriticalMs: 10000, moveChoiceTopN: 1, moveMistakeRatePct: 0, evalNoise: 0, maxNodes: 1400000 }),
   });
 
   // Search depth naming rule: minimax uses full-turn depth; chained capture
@@ -26,7 +26,7 @@
     minimax: Object.freeze({
       minTurnDepth: 3,
       defaultTurnDepth: 6,
-      maxTurnDepth: 20,
+      maxTurnDepth: 24,
       enforcedMinTurnDepth: 3,
     }),
     quiescence: Object.freeze({
@@ -70,13 +70,13 @@
 
     return {
       aiLevel: level,
-      thinkTimeMs: clampInt(src.thinkTimeMs, 80, 10000, cfg.thinkTimeMs),
-      timeBoostCriticalMs: clampInt(src.timeBoostCriticalMs, 0, 3000, cfg.timeBoostCriticalMs),
-      minimaxDepth: clampInt(src.minimaxDepth, 1, 16, cfg.minimaxDepth),
+      thinkTimeMs: clampInt(src.thinkTimeMs, 80, 30000, cfg.thinkTimeMs),
+      timeBoostCriticalMs: clampInt(src.timeBoostCriticalMs, 0, 15000, cfg.timeBoostCriticalMs),
+      minimaxDepth: clampInt(src.minimaxDepth, 1, 20, cfg.minimaxDepth),
       moveChoiceTopN: clampInt(src.moveChoiceTopN, 1, 12, cfg.moveChoiceTopN),
       moveMistakeRatePct: clampInt(src.moveMistakeRatePct, 0, 100, cfg.moveMistakeRatePct),
       evalNoise: clampInt(src.evalNoise, 0, 200, cfg.evalNoise),
-      maxNodes: clampInt(src.maxNodes, 5000, 1000000, cfg.maxNodes || 90000),
+      maxNodes: clampInt(src.maxNodes, 5000, 2000000, cfg.maxNodes || 140000),
     };
   }
 

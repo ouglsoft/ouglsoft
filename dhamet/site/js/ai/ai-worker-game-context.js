@@ -44,9 +44,9 @@
       boardStyle: '2d',
       advanced: {
         aiLevel: 'medium',
-        thinkTimeMs: 900,
-        timeBoostCriticalMs: 250,
-        minimaxDepth: 5,
+        thinkTimeMs: 1800,
+        timeBoostCriticalMs: 1200,
+        minimaxDepth: 6,
         moveChoiceTopN: 1,
         moveMistakeRatePct: 0,
         evalNoise: 0,
@@ -81,6 +81,7 @@
     history: [],
     settings: defaultSettings(),
     pendingAILevel: null,
+    ai2SouflaTrapMemory: null,
     names: { top: '', bot: '' },
     souflaSticky: { armed: false, clearOnSide: null },
   };

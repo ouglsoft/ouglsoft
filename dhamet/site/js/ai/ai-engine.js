@@ -65,25 +65,25 @@
     const MAX_ROOT_CAPTURE_PATHS = 8192;
     const TT_MAX = 140000;
     const PLAN_MARGIN = 35;
-    const ENGINE_VERSION = 'ai2-rebuild-v2-soufla-search';
+    const ENGINE_VERSION = 'ai2-rebuild-v3-soufla-trap-memory';
     const TIMEOUT = { timeout: true };
 
     const LEVEL_DEFAULTS = Object.freeze({
-      beginner: Object.freeze({ depth: 2, qDepth: 4, timeMs: 220, topN: 3, noise: 70, mistakePct: 18, maxNodes: 18000 }),
-      easy: Object.freeze({ depth: 3, qDepth: 6, timeMs: 450, topN: 2, noise: 35, mistakePct: 7, maxNodes: 36000 }),
-      medium: Object.freeze({ depth: 5, qDepth: 8, timeMs: 900, topN: 1, noise: 0, mistakePct: 0, maxNodes: 90000 }),
-      hard: Object.freeze({ depth: 7, qDepth: 10, timeMs: 1700, topN: 1, noise: 0, mistakePct: 0, maxNodes: 180000 }),
-      strong: Object.freeze({ depth: 9, qDepth: 12, timeMs: 3000, topN: 1, noise: 0, mistakePct: 0, maxNodes: 320000 }),
-      expert: Object.freeze({ depth: 11, qDepth: 14, timeMs: 6000, topN: 1, noise: 0, mistakePct: 0, maxNodes: 650000 }),
+      beginner: Object.freeze({ depth: 2, qDepth: 4, timeMs: 300, criticalTimeMs: 500, topN: 3, noise: 70, mistakePct: 18, maxNodes: 25000 }),
+      easy: Object.freeze({ depth: 4, qDepth: 6, timeMs: 800, criticalTimeMs: 1200, topN: 2, noise: 30, mistakePct: 6, maxNodes: 60000 }),
+      medium: Object.freeze({ depth: 6, qDepth: 8, timeMs: 1800, criticalTimeMs: 3000, topN: 1, noise: 0, mistakePct: 0, maxNodes: 140000 }),
+      hard: Object.freeze({ depth: 8, qDepth: 11, timeMs: 4500, criticalTimeMs: 7000, topN: 1, noise: 0, mistakePct: 0, maxNodes: 320000 }),
+      strong: Object.freeze({ depth: 11, qDepth: 14, timeMs: 9000, criticalTimeMs: 14000, topN: 1, noise: 0, mistakePct: 0, maxNodes: 700000 }),
+      expert: Object.freeze({ depth: 14, qDepth: 18, timeMs: 15000, criticalTimeMs: 25000, topN: 1, noise: 0, mistakePct: 0, maxNodes: 1400000 }),
     });
 
     const SOUFLA_LEVEL_DEFAULTS = Object.freeze({
-      beginner: Object.freeze({ depth: 0, qDepth: 2, timeMs: 60, maxNodes: 3000 }),
-      easy: Object.freeze({ depth: 1, qDepth: 3, timeMs: 120, maxNodes: 7000 }),
-      medium: Object.freeze({ depth: 2, qDepth: 4, timeMs: 220, maxNodes: 16000 }),
-      hard: Object.freeze({ depth: 3, qDepth: 5, timeMs: 350, maxNodes: 32000 }),
-      strong: Object.freeze({ depth: 3, qDepth: 6, timeMs: 500, maxNodes: 52000 }),
-      expert: Object.freeze({ depth: 4, qDepth: 8, timeMs: 750, maxNodes: 90000 }),
+      beginner: Object.freeze({ depth: 1, qDepth: 2, timeMs: 200, maxNodes: 8000, trapDepthBoost: 0, trapTimeMs: 300, trapMaxNodes: 12000, trapBonus: 140, forceHoldMargin: 120 }),
+      easy: Object.freeze({ depth: 2, qDepth: 4, timeMs: 600, maxNodes: 25000, trapDepthBoost: 1, trapTimeMs: 900, trapMaxNodes: 40000, trapBonus: 260, forceHoldMargin: 240 }),
+      medium: Object.freeze({ depth: 4, qDepth: 6, timeMs: 1500, maxNodes: 70000, trapDepthBoost: 1, trapTimeMs: 2400, trapMaxNodes: 110000, trapBonus: 460, forceHoldMargin: 420 }),
+      hard: Object.freeze({ depth: 6, qDepth: 8, timeMs: 4000, maxNodes: 180000, trapDepthBoost: 1, trapTimeMs: 6000, trapMaxNodes: 280000, trapBonus: 700, forceHoldMargin: 650 }),
+      strong: Object.freeze({ depth: 8, qDepth: 10, timeMs: 8000, maxNodes: 400000, trapDepthBoost: 2, trapTimeMs: 11000, trapMaxNodes: 620000, trapBonus: 980, forceHoldMargin: 900 }),
+      expert: Object.freeze({ depth: 10, qDepth: 12, timeMs: 15000, maxNodes: 800000, trapDepthBoost: 2, trapTimeMs: 20000, trapMaxNodes: 1200000, trapBonus: 1300, forceHoldMargin: 1200 }),
     });
 
     const DIRS = Object.freeze([
@@ -275,7 +275,7 @@
 
     const TT = new Map();
     let ttAge = 0;
-    let lastPlan = null;
+    let souflaTrapMemory = null;
 
     function trimTT() {
       if (TT.size <= TT_MAX) return;
@@ -305,10 +305,11 @@
       const adv = settings && settings.advanced ? settings.advanced : {};
       const nDepth = Number(adv.minimaxDepth);
       const nTime = Number(adv.thinkTimeMs);
-      const maxDepth = Number.isFinite(nDepth) && nDepth > 0 ? Math.max(1, Math.min(16, Math.trunc(nDepth))) : base.depth;
-      let timeMs = Number.isFinite(nTime) && nTime > 0 ? Math.max(80, Math.min(10000, Math.trunc(nTime))) : base.timeMs;
+      const maxDepth = Number.isFinite(nDepth) && nDepth > 0 ? Math.max(1, Math.min(20, Math.trunc(nDepth))) : base.depth;
+      let timeMs = Number.isFinite(nTime) && nTime > 0 ? Math.max(80, Math.min(30000, Math.trunc(nTime))) : base.timeMs;
       const critical = isPositionCritical(board, side);
-      if (critical) timeMs = Math.min(10000, Math.ceil(timeMs * 1.3));
+      if (critical) timeMs = Math.max(timeMs, base.criticalTimeMs || Math.ceil(base.timeMs * 1.3));
+      timeMs = Math.min(30000, timeMs);
       return {
         level,
         maxDepth,
@@ -317,7 +318,7 @@
         topN: base.topN,
         noise: base.noise,
         mistakePct: base.mistakePct,
-        maxNodes: Number(adv.maxNodes) > 0 ? Math.min(1000000, Number(adv.maxNodes) | 0) : base.maxNodes,
+        maxNodes: Number(adv.maxNodes) > 0 ? Math.min(2000000, Number(adv.maxNodes) | 0) : base.maxNodes,
       };
     }
 
@@ -329,10 +330,15 @@
       const explicitTime = Number(adv.souflaTimeMs);
       return {
         level,
-        depth: Number.isFinite(explicitDepth) && explicitDepth >= 0 ? Math.max(0, Math.min(6, Math.trunc(explicitDepth))) : base.depth,
+        depth: Number.isFinite(explicitDepth) && explicitDepth >= 0 ? Math.max(0, Math.min(14, Math.trunc(explicitDepth))) : base.depth,
         qDepth: base.qDepth,
-        timeMs: Number.isFinite(explicitTime) && explicitTime > 0 ? Math.max(30, Math.min(1500, Math.trunc(explicitTime))) : base.timeMs,
+        timeMs: Number.isFinite(explicitTime) && explicitTime > 0 ? Math.max(30, Math.min(25000, Math.trunc(explicitTime))) : base.timeMs,
         maxNodes: base.maxNodes,
+        trapDepthBoost: base.trapDepthBoost || 0,
+        trapTimeMs: base.trapTimeMs || base.timeMs,
+        trapMaxNodes: base.trapMaxNodes || base.maxNodes,
+        trapBonus: base.trapBonus || 0,
+        forceHoldMargin: base.forceHoldMargin || 0,
       };
     }
 
@@ -585,7 +591,6 @@
       const mob = quickMobility(state, side) - quickMobility(state, opponent(side));
       score += mob * (phase === 0 ? 2 : 4);
 
-      if (lastPlan && state.side === side) score += planStaticBias(state, side);
       return Math.trunc(score);
     }
 
@@ -671,16 +676,6 @@
       return false;
     }
 
-    function planStaticBias(state, side) {
-      const plan = lastPlan;
-      if (!plan || plan.side !== side || plan.expiresAt <= (Game.moveCount || 0)) return 0;
-      const target = plan.target;
-      if (target == null) return 0;
-      const b = state.board;
-      const v = b[target] | 0;
-      if (v && sideOf(v) === side) return 18;
-      return 0;
-    }
 
     function shouldStop(ctx) {
       if ((ctx.nodes & 1023) === 0) {
@@ -765,8 +760,6 @@
       const moving = state.board[m.from] | 0;
       if (kindOf(moving) === KING_KIND) s += 2000 + kingRayMobility(state.board, m.to) * 25;
       s += CELL_CENTER[m.to] * 35 + CELL_WIDE[m.to] * 30;
-      if (lastPlan && lastPlan.side === state.side && m.from === lastPlan.from) s += 850;
-      if (lastPlan && lastPlan.side === state.side && lastPlan.target != null && m.to === lastPlan.target) s += 650;
       if (ctx && ctx.history) s += ctx.history.get(moveKey(m)) || 0;
       if (ply <= 1 && moveLeavesMajorThreat(state, m)) s -= 120000;
       return s;
@@ -949,6 +942,133 @@
       return move;
     }
 
+    function boardSignature(board) {
+      try {
+        let h = '';
+        for (let r = 0; r < BOARD_SIZE; r++) {
+          const row = board[r] || [];
+          for (let c = 0; c < BOARD_SIZE; c++) h += String(Number(row[c] || 0) | 0) + ',';
+        }
+        return h;
+      } catch (_) { return ''; }
+    }
+
+    function applyFullTurnBoard(board, move, side) {
+      try {
+        if (!board || !move || !Array.isArray(move.path) || !move.path.length) return null;
+        const applied = R.applyMovePath(board, { from: move.from, path: move.path }, side);
+        if (!applied || !applied.ok) return null;
+        if (R.finalizeTurnBoard) {
+          const fin = R.finalizeTurnBoard(applied.board, applied);
+          if (fin && fin.ok && fin.board) return fin.board;
+        }
+        if (applied.promotionPending && R.promoteAt) {
+          const pr = R.promoteAt(applied.board, applied.promotionPending.idx);
+          if (pr && pr.ok && pr.board) return pr.board;
+        }
+        return applied.board;
+      } catch (_) { return null; }
+    }
+
+
+    function fullPathKey(from, path) {
+      return String(from | 0) + '>' + (Array.isArray(path) ? path.map((x) => x | 0).join('.') : '');
+    }
+
+    function buildSouflaTrapMemory(aiMove, result, aiSideValue) {
+      try {
+        if (!aiMove || !Array.isArray(aiMove.path) || !aiMove.path.length) return null;
+        const afterAi = applyFullTurnBoard(Game.board, aiMove, aiSideValue);
+        if (!afterAi) return null;
+        const offenderSide = opponent(aiSideValue);
+        const legal = R.generateLegalMoves(afterAi, offenderSide, { policy: 'strict' });
+        const moves = (legal && Array.isArray(legal.moves) ? legal.moves : []).map(normalizeSharedMove).filter(Boolean);
+        const captures = moves.filter((m) => (m.captures | 0) > 0 && Array.isArray(m.path) && m.path.length);
+        if (!captures.length) return null;
+        const expected = [];
+        for (let i = 0; i < captures.length && expected.length < 64; i++) {
+          const m = captures[i];
+          expected.push({
+            offenderIdx: m.from | 0,
+            path: m.path.slice(),
+            jumps: Array.isArray(m.jumps) ? m.jumps.slice() : [],
+            captures: m.captures | 0,
+            to: m.to | 0,
+            key: fullPathKey(m.from, m.path),
+          });
+        }
+        if (!expected.length) return null;
+        return {
+          engine: ENGINE_VERSION,
+          kind: 'forced-capture-intent',
+          aiSide: aiSideValue,
+          offenderSide,
+          createdAtMoveCount: Game.moveCount | 0,
+          expiresAtMoveCount: (Game.moveCount | 0) + 2,
+          afterAiBoardSig: boardSignature(afterAi),
+          aiMove: cloneMove(aiMove),
+          expected,
+          score: result ? Math.trunc(result.score || 0) : 0,
+          depth: result ? (result.depth | 0) : 0,
+        };
+      } catch (_) { return null; }
+    }
+
+    function setSouflaTrapMemory(mem) {
+      souflaTrapMemory = mem && mem.kind === 'forced-capture-intent' ? mem : null;
+      try { Game.ai2SouflaTrapMemory = souflaTrapMemory ? JSON.parse(JSON.stringify(souflaTrapMemory)) : null; } catch (_) {}
+    }
+
+    function getSouflaTrapMemory() {
+      try {
+        if (souflaTrapMemory && souflaTrapMemory.kind === 'forced-capture-intent') return souflaTrapMemory;
+        const g = Game && Game.ai2SouflaTrapMemory;
+        if (g && g.kind === 'forced-capture-intent') return g;
+      } catch (_) {}
+      return null;
+    }
+
+    function pendingMatchesTrapTurn(pending, mem) {
+      if (!pending || !mem) return false;
+      if (pending.penalizer !== mem.aiSide || pending.offenderSide !== mem.offenderSide) return false;
+      try {
+        const snapBoard = pending.turnStartSnapshot && pending.turnStartSnapshot.board;
+        if (snapBoard && mem.afterAiBoardSig && boardSignature(snapBoard) !== mem.afterAiBoardSig) return false;
+      } catch (_) {}
+      const now = Game.moveCount | 0;
+      if (mem.expiresAtMoveCount != null && now > mem.expiresAtMoveCount + 2) return false;
+      return true;
+    }
+
+    function findSouflaTrapMatch(pending, opt) {
+      if (!opt || opt.kind !== 'force') return null;
+      const mem = getSouflaTrapMemory();
+      if (!pendingMatchesTrapTurn(pending, mem)) return null;
+      const key = fullPathKey(opt.offenderIdx, opt.path);
+      const expected = Array.isArray(mem.expected) ? mem.expected : [];
+      for (let i = 0; i < expected.length; i++) {
+        const e = expected[i];
+        if (e && e.key === key) return { memory: mem, expected: e };
+      }
+      return null;
+    }
+
+    function souflaSettingsForOption(settings, trapMatch) {
+      if (!trapMatch) return settings;
+      return {
+        level: settings.level,
+        depth: Math.min(14, settings.depth + (settings.trapDepthBoost || 0)),
+        qDepth: Math.min(18, settings.qDepth + 2),
+        timeMs: Math.max(settings.timeMs, settings.trapTimeMs || settings.timeMs),
+        maxNodes: Math.max(settings.maxNodes, settings.trapMaxNodes || settings.maxNodes),
+        trapDepthBoost: settings.trapDepthBoost,
+        trapTimeMs: settings.trapTimeMs,
+        trapMaxNodes: settings.trapMaxNodes,
+        trapBonus: settings.trapBonus,
+        forceHoldMargin: settings.forceHoldMargin,
+      };
+    }
+
     function forcedOpeningMove() {
       if (!(Game.forcedEnabled && (Game.forcedPly | 0) < 10)) return null;
       const exp = typeof getForcedOpeningExpectedAction === 'function' ? getForcedOpeningExpectedAction() : null;
@@ -975,7 +1095,8 @@
       const result = searchRoot(state, settings);
       const move = alignWithSharedLegalMove(result.move, Game.board, side);
       if (!move) return null;
-      updatePlan(move, result, side);
+      const trapMemory = buildSouflaTrapMemory(move, result, side);
+      setSouflaTrapMemory(trapMemory);
       return {
         move,
         action: moveToAction(move),
@@ -984,34 +1105,9 @@
         nodes: result.nodes,
         timeMs: Math.round(result.timeMs || 0),
         pv: result.pv || [],
-        plan: lastPlan,
+        souflaTrapMemory: trapMemory,
         engine: ENGINE_VERSION,
       };
-    }
-
-    function updatePlan(move, result, side) {
-      if (!move) { lastPlan = null; return; }
-      const goal = move.captures > 0 ? 'WIN_MATERIAL' : move.promotes ? 'PROMOTE_MAN' : inferPlanGoal(move, side);
-      lastPlan = {
-        engine: ENGINE_VERSION,
-        side,
-        goal,
-        from: move.from,
-        target: move.to,
-        mainLine: result && result.pv ? result.pv.map(cloneMove).slice(0, 4) : [cloneMove(move)],
-        score: result ? result.score : 0,
-        depth: result ? result.depth : 0,
-        confidence: Math.max(0, Math.min(100, Math.abs(result && result.score || 0) / 10)),
-        expiresAt: (Game.moveCount || 0) + 6,
-      };
-    }
-
-    function inferPlanGoal(move, side) {
-      const v = Game && Game.board ? Game.board[CELL_ROW[move.from]][CELL_COL[move.from]] : 0;
-      if (kindOf(v) === KING_KIND) return 'ACTIVATE_KING';
-      const dist = side === TOP_SIDE ? 8 - CELL_ROW[move.to] : CELL_ROW[move.to];
-      if (dist <= 2) return 'PROMOTE_MAN';
-      return 'IMPROVE_POSITION';
     }
 
     const __aiWorkerBridge = DhametAIRuntime.createWorkerBridge({
@@ -1019,7 +1115,7 @@
       workerUrl: () => (typeof assetUrl === 'function' ? assetUrl('js/ai.worker.js') : 'js/ai.worker.js'),
       serializeState: serializeAIWorkerState,
       planTimeoutMs: 0,
-      maxTimeoutMs: 10000,
+      maxTimeoutMs: 30000,
     });
 
     function serializeAIWorkerState() {
@@ -1035,6 +1131,9 @@
         awaitingPenalty: !!Game.awaitingPenalty,
         settings: Game.settings,
         moveCount: Game.moveCount | 0,
+        ai2SouflaTrapMemory: (() => {
+          try { return Game.ai2SouflaTrapMemory || souflaTrapMemory || null; } catch (_) { return null; }
+        })(),
         turnCtx: (() => {
           try {
             if (Turn && Turn.ctx) return { startedFrom: Turn.ctx.startedFrom, capturesDone: Turn.ctx.capturesDone | 0 };
@@ -1130,6 +1229,8 @@
         if (!analysis || !analysis.move) return;
         try { if (sig !== signature()) return; } catch (_) {}
         _lastAnalysis = analysis;
+        if (analysis.souflaTrapMemory) setSouflaTrapMemory(analysis.souflaTrapMemory);
+        else setSouflaTrapMemory(null);
         executeMove(analysis.move);
       } finally {
         _thinking = false;
@@ -1189,7 +1290,13 @@
         }
         if (opt.kind === 'force' && R.applySouflaForce) {
           const res = R.applySouflaForce(pending, opt);
-          if (res && res.ok && res.board) return res.board;
+          if (res && res.ok && res.board) {
+            if (res.applied && R.finalizeTurnBoard) {
+              const fin = R.finalizeTurnBoard(res.board, res.applied);
+              if (fin && fin.ok && fin.board) return fin.board;
+            }
+            return res.board;
+          }
         }
       } catch (_) {}
       return null;
@@ -1262,19 +1369,48 @@
       const settings = souflaRuntimeSettings(Game.settings || {});
       let best = null;
       let bestScore = -INF;
+      let bestRawScore = -INF;
       let bestMeta = null;
+      let bestTrapMatch = null;
+      let bestMatchedForce = null;
+      let bestMatchedForceMeta = null;
+      let bestMatchedForceRaw = -INF;
+      let bestRemoveRaw = -INF;
 
       for (let i = 0; i < pending.options.length; i++) {
         const opt = pending.options[i];
         const board = applySouflaOptionBoard(pending, opt);
         if (!board) continue;
-        const meta = souflaSearchScore(board, penalizer, settings);
-        const score = Number(meta && meta.score);
-        if (!Number.isFinite(score)) continue;
+        const trapMatch = findSouflaTrapMatch(pending, opt);
+        const optSettings = souflaSettingsForOption(settings, trapMatch);
+        const meta = souflaSearchScore(board, penalizer, optSettings);
+        const rawScore = Number(meta && meta.score);
+        if (!Number.isFinite(rawScore)) continue;
+        let score = rawScore;
+        if (trapMatch) score += settings.trapBonus || 0;
+        if (opt.kind === 'remove') bestRemoveRaw = Math.max(bestRemoveRaw, rawScore);
+        if (trapMatch && opt.kind === 'force' && rawScore > bestMatchedForceRaw) {
+          bestMatchedForceRaw = rawScore;
+          bestMatchedForce = opt;
+          bestMatchedForceMeta = Object.assign({}, meta, { trapMatched: true, rawScore });
+        }
         if (score > bestScore || (score === bestScore && compareSouflaOptions(opt, best))) {
           bestScore = score;
+          bestRawScore = rawScore;
           best = opt;
-          bestMeta = meta;
+          bestMeta = Object.assign({}, meta, { trapMatched: !!trapMatch, rawScore });
+          bestTrapMatch = trapMatch;
+        }
+      }
+
+      if (bestMatchedForce && bestRemoveRaw > -INF) {
+        const margin = settings.forceHoldMargin || 0;
+        if (bestMatchedForceRaw >= bestRemoveRaw - margin && bestMatchedForceRaw > -WIN_SCORE / 4) {
+          best = bestMatchedForce;
+          bestMeta = bestMatchedForceMeta;
+          bestRawScore = bestMatchedForceRaw;
+          bestScore = bestMatchedForceRaw + (settings.trapBonus || 0);
+          bestTrapMatch = findSouflaTrapMatch(pending, bestMatchedForce);
         }
       }
 
@@ -1285,10 +1421,13 @@
             ai2Soufla: {
               engine: ENGINE_VERSION,
               score: Math.trunc(bestScore),
+              rawScore: Number.isFinite(bestRawScore) ? Math.trunc(bestRawScore) : Math.trunc(bestScore),
               depth: bestMeta ? bestMeta.depth | 0 : 0,
               nodes: bestMeta ? bestMeta.nodes | 0 : 0,
               timeMs: bestMeta ? Math.round(bestMeta.timeMs || 0) : 0,
               level: settings.level,
+              trapMatched: !!(bestMeta && bestMeta.trapMatched),
+              trapKind: bestTrapMatch ? 'forced-capture-intent' : null,
             },
           });
         }
@@ -1317,7 +1456,7 @@
       _pickSouflaDecisionInternal: _pickSouflaDecisionLocal,
       _analyzeTurnInternal,
       _lastAnalysis: function () { return _lastAnalysis; },
-      _debug: function () { return { ttSize: TT.size, lastPlan, version: ENGINE_VERSION }; },
+      _debug: function () { return { ttSize: TT.size, souflaTrapMemory, version: ENGINE_VERSION }; },
     });
   }
 
