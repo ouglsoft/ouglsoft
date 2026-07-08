@@ -12,17 +12,11 @@
 
   const DhametRulesShared = root.DhametRules;
   const DhametAIConfig = root.DhametAIConfig;
-  const DhametAIEvaluation = root.DhametAIEvaluation;
-  const DhametAISearch = root.DhametAISearch;
-  const DhametAIPlayer = root.DhametAIPlayer;
   const DhametAIRuntime = root.DhametAIRuntime;
   const DhametAIEngine = root.DhametAIEngine;
 
   if (!DhametRulesShared) throw new Error('DhametRules must be loaded before ai-worker-game-context');
   if (!DhametAIConfig) throw new Error('DhametAIConfig must be loaded before ai-worker-game-context');
-  if (!DhametAIEvaluation) throw new Error('DhametAIEvaluation must be loaded before ai-worker-game-context');
-  if (!DhametAISearch) throw new Error('DhametAISearch must be loaded before ai-worker-game-context');
-  if (!DhametAIPlayer) throw new Error('DhametAIPlayer must be loaded before ai-worker-game-context');
   if (!DhametAIRuntime) throw new Error('DhametAIRuntime must be loaded before ai-worker-game-context');
   if (!DhametAIEngine) throw new Error('DhametAIEngine must be loaded before ai-worker-game-context');
 
@@ -44,15 +38,15 @@
     return {
       starter: 'white',
       aiCaptureMode: 'mandatory',
-      aiRandomIgnoreCaptureRatePct: 12,
+      aiRandomIgnoreCaptureRatePct: 0,
       theme: 'light',
       showCoords: false,
       boardStyle: '2d',
       advanced: {
         aiLevel: 'medium',
-        thinkTimeMs: 4000,
-        timeBoostCriticalMs: 2000,
-        minimaxDepth: 6,
+        thinkTimeMs: 900,
+        timeBoostCriticalMs: 250,
+        minimaxDepth: 5,
         moveChoiceTopN: 1,
         moveMistakeRatePct: 0,
         evalNoise: 0,
@@ -97,7 +91,7 @@
     if (!this.settings) this.settings = defaultSettings();
     this.settings.advanced = out;
     if (!this.settings.aiCaptureMode) this.settings.aiCaptureMode = 'mandatory';
-    if (this.settings.aiRandomIgnoreCaptureRatePct == null) this.settings.aiRandomIgnoreCaptureRatePct = 12;
+    if (this.settings.aiRandomIgnoreCaptureRatePct == null) this.settings.aiRandomIgnoreCaptureRatePct = 0;
   };
 
   const Turn = {
@@ -613,66 +607,31 @@
     ACTION_ENDCHAIN,
     BOARD_N,
     BOT,
-    DhametAIConfig,
-    DhametAIEvaluation,
-    DhametAIPlayer,
     DhametAIRuntime,
-    DhametAISearch,
     DhametRulesShared,
     Game,
     KING,
     MAN,
-    N_ACTIONS,
     N_CELLS,
     TOP,
     Turn,
     Visual,
     Worker: null,
     __IN_WORKER,
-    __cacheGet,
-    __cachePut,
     aiSide,
-    applyActionSim,
     applyMove,
-    applyMoveSim,
     assetUrl,
     classifyCapture,
-    clampInt,
     clearTimeout: root.clearTimeout ? root.clearTimeout.bind(root) : function () {},
-    computeLongestForPlayer,
     consumeTurnClearForMove,
     detectCriticalState,
     encodeAction,
-    forwardDir,
-    generateCapturesFrom,
-    generateStepsFrom,
-    getAILevelConfig: DhametAIConfig.getLevelConfig,
     getForcedOpeningExpectedAction,
-    immediateCapturableInfo,
-    idxToRC,
-    inside,
-    isBackRank,
-    isDirAllowedFrom,
-    isForcedOpeningActive,
-    legalActions,
-    longestCaptureLenCached,
-    longestPathsWithJumpsFrom,
     maybeQueueDeferredPromotion,
     normalizeAILevel: DhametAIConfig.normalizeLevel,
-    pieceKind,
-    pieceOwner,
-    rcToIdx,
-    restoreSnapshotSilent,
-    restoreSnapshotSim,
     saveSessionSettings,
-    scheduleComputerChainContinuationIfNeeded,
     scheduleComputerMoveIfNeeded,
     setTimeout: root.setTimeout ? root.setTimeout.bind(root) : function (fn) { if (typeof fn === 'function') fn(); return 0; },
-    simEnter,
-    simExit,
-    snapshotState,
-    snapshotStateSim,
-    valueAt,
   });
 
   Object.assign(root, {

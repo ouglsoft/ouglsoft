@@ -46,16 +46,13 @@
     function rejectAll(err) {
       for (const [id, ent] of pending.entries()) {
         pending.delete(id);
-        try {
-          ent.reject(err);
-        } catch (_) {}
+        try { ent.reject(err); } catch (_) {}
       }
     }
 
     function ensure() {
       if (worker) return worker;
-      const url = workerUrl();
-      worker = new Worker(url);
+      worker = new Worker(workerUrl());
 
       worker.onmessage = (ev) => {
         const msg = ev && ev.data ? ev.data : null;
@@ -65,24 +62,18 @@
         pending.delete(id);
 
         if (msg && msg.cancelled) {
-          try {
-            ent.reject(makeCancelledError());
-          } catch (_) {}
+          try { ent.reject(makeCancelledError()); } catch (_) {}
           return;
         }
         if (msg && msg.error) {
-          try {
-            ent.reject(makeWorkerError());
-          } catch (_) {}
+          try { ent.reject(makeWorkerError()); } catch (_) {}
           return;
         }
         ent.resolve(msg);
       };
 
       worker.onerror = (err) => {
-        try {
-          worker && worker.terminate && worker.terminate();
-        } catch (_) {}
+        try { worker && worker.terminate && worker.terminate(); } catch (_) {}
         worker = null;
         rejectAll(err || makeWorkerError());
       };
@@ -99,59 +90,10 @@
       return await p;
     }
 
-    async function requestWithTimeout(cmd, timeoutMs, payload) {
-      const id = ++reqSeq;
-      const w = ensure();
-      const body = payload && typeof payload === "object" ? payload : {};
-      const maxTimeoutMs = Math.max(0, Math.min(10000, Number(opts.maxTimeoutMs) || 2000));
-      const ms = Math.max(0, Math.min(maxTimeoutMs, Number(timeoutMs) || 0));
-      const p = new Promise((resolve, reject) => {
-        const t = ms
-          ? setTimeout(() => {
-              if (pending.has(id)) pending.delete(id);
-              try {
-                if (worker && typeof worker.terminate === "function") worker.terminate();
-              } catch (_) {}
-              worker = null;
-              try {
-                rejectAll(new Error("ai_worker_timeout"));
-              } catch (_) {}
-              try {
-                reject(new Error("ai_worker_timeout"));
-              } catch (_) {}
-            }, ms)
-          : null;
-        pending.set(id, {
-          resolve: (v) => {
-            if (t) clearTimeout(t);
-            resolve(v);
-          },
-          reject: (e) => {
-            if (t) clearTimeout(t);
-            reject(e);
-          },
-        });
-      });
-      w.postMessage({ cmd, id, state: serializeState(), ...body });
-      return await p;
-    }
-
-    async function decideAction() {
-      const resp = await request("decideAction");
-      const a = resp && typeof resp.action === "number" ? resp.action : null;
-      if (a == null) throw makeBadResponseError();
-      return a;
-    }
-
-    async function computePVCPlan() {
-      const timeoutMs = Number(opts.planTimeoutMs) || 120;
-      const resp = await requestWithTimeout("computePVCPlan", timeoutMs);
-      return resp && resp.plan != null ? resp.plan : null;
-    }
-
-    async function bestChainPath(toIdx, aiSide) {
-      const resp = await request("bestChainPath", { toIdx: toIdx | 0, aiSide: aiSide | 0 });
-      return resp && Array.isArray(resp.bestPath) ? resp.bestPath : null;
+    async function analyzeTurn() {
+      const resp = await request("analyzeTurn");
+      if (!resp || !resp.analysis || !resp.analysis.move) throw makeBadResponseError();
+      return resp.analysis;
     }
 
     async function pickSouflaDecision(pendingObj) {
@@ -159,16 +101,9 @@
       return resp && resp.decision != null ? resp.decision : null;
     }
 
-    async function hasCaptureFrom(idx) {
-      const resp = await request("hasCaptureFrom", { idx: idx | 0 });
-      return !!(resp && resp.hasCapture);
-    }
-
     function cancel() {
       if (!worker) return;
-      try {
-        worker.terminate();
-      } catch (_) {}
+      try { worker.terminate(); } catch (_) {}
       worker = null;
       rejectAll(makeCancelledError());
     }
@@ -177,19 +112,14 @@
       return pending.size > 0;
     }
 
-    return {
+    return Object.freeze({
       canUse,
-      request,
-      requestWithTimeout,
-      decideAction,
-      computePVCPlan,
-      bestChainPath,
+      analyzeTurn,
       pickSouflaDecision,
-      hasCaptureFrom,
       isBusy,
       cancel,
-    };
+    });
   }
 
-  global.DhametAIWorkerClient = { create };
+  global.DhametAIWorkerClient = Object.freeze({ create });
 })(typeof globalThis !== "undefined" ? globalThis : this);

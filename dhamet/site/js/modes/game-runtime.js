@@ -8,9 +8,6 @@
  */
 const DhametRulesShared = globalThis.DhametRules;
 const DhametAIConfig = globalThis.DhametAIConfig;
-const DhametAIEvaluation = globalThis.DhametAIEvaluation;
-const DhametAISearch = globalThis.DhametAISearch;
-const DhametAIPlayer = globalThis.DhametAIPlayer;
 const DhametAIRuntime = globalThis.DhametAIRuntime;
 const DhametAIEngine = globalThis.DhametAIEngine;
 const DhametMatchMode = globalThis.DhametMatchMode || null;
@@ -24,15 +21,6 @@ if (!DhametRulesShared) {
 }
 if (!DhametAIConfig) {
   throw new Error("DhametAIConfig must be loaded before the game runtime");
-}
-if (!DhametAIEvaluation) {
-  throw new Error("DhametAIEvaluation must be loaded before the game runtime");
-}
-if (!DhametAISearch) {
-  throw new Error("DhametAISearch must be loaded before the game runtime");
-}
-if (!DhametAIPlayer) {
-  throw new Error("DhametAIPlayer must be loaded before the game runtime");
 }
 if (!DhametAIRuntime) {
   throw new Error("DhametAIRuntime must be loaded before the game runtime");
@@ -201,16 +189,16 @@ const Game = {
   settings: {
     starter: "white",
     aiCaptureMode: "mandatory",
-    aiRandomIgnoreCaptureRatePct: 12,
+    aiRandomIgnoreCaptureRatePct: 0,
     theme: "light",
     showCoords: false,
     boardStyle: "2d",
 
     advanced: {
       aiLevel: "medium",
-      thinkTimeMs: 4000,
-      timeBoostCriticalMs: 2000,
-      minimaxDepth: 6,
+      thinkTimeMs: 900,
+      timeBoostCriticalMs: 250,
+      minimaxDepth: 5,
       moveChoiceTopN: 1,
       moveMistakeRatePct: 0,
       evalNoise: 0,
@@ -3290,66 +3278,31 @@ const AI = DhametAIEngine.create({
   ACTION_ENDCHAIN,
   BOARD_N,
   BOT,
-  DhametAIConfig,
-  DhametAIEvaluation,
-  DhametAIPlayer,
   DhametAIRuntime,
-  DhametAISearch,
   DhametRulesShared,
   Game,
   KING,
   MAN,
-  N_ACTIONS,
   N_CELLS,
   TOP,
   Turn,
   Visual,
   Worker,
   __IN_WORKER,
-  __cacheGet,
-  __cachePut,
   aiSide,
-  applyActionSim,
   applyMove,
-  applyMoveSim,
   assetUrl,
   classifyCapture,
-  clampInt,
   clearTimeout,
-  computeLongestForPlayer,
   consumeTurnClearForMove,
   detectCriticalState,
   encodeAction,
-  forwardDir,
-  generateCapturesFrom,
-  generateStepsFrom,
-  getAILevelConfig,
   getForcedOpeningExpectedAction,
-  immediateCapturableInfo,
-  idxToRC,
-  inside,
-  isBackRank,
-  isDirAllowedFrom,
-  isForcedOpeningActive,
-  legalActions,
-  longestCaptureLenCached,
-  longestPathsWithJumpsFrom,
   maybeQueueDeferredPromotion,
-  normalizeAILevel,
-  pieceKind,
-  pieceOwner,
-  rcToIdx,
-  restoreSnapshotSilent,
-  restoreSnapshotSim,
+  normalizeAILevel: DhametAIConfig.normalizeLevel,
   saveSessionSettings,
-  scheduleComputerChainContinuationIfNeeded,
   scheduleComputerMoveIfNeeded,
   setTimeout,
-  simEnter,
-  simExit,
-  snapshotState,
-  snapshotStateSim,
-  valueAt,
 });
 globalThis.AI = AI;
 if (typeof window !== "undefined") window.AI = AI;

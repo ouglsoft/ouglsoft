@@ -1,10 +1,9 @@
 /*
  * Dhamet AI runtime helpers.
  *
- * This file contains AI runtime wiring only: worker bridge creation, worker
- * retry/fallback calls, and thinking-state aggregation. It does not contain
- * Dhamet rules, AI evaluation, search, UI rendering, PvP transport, or direct
- * Game mutation.
+ * Runtime wiring only: worker bridge creation, worker retry/fallback calls, and
+ * thinking-state aggregation. AI2 uses one full-turn analysis command plus a
+ * separate soufla-penalty command.
  */
 (function (root) {
   'use strict';
@@ -14,40 +13,30 @@
   }
 
   function createFallbackBridge() {
-    return {
+    return Object.freeze({
       canUse: function () { return false; },
-      decideAction: async function () { throw new Error('ai_worker_client_unavailable'); },
-      computePVCPlan: async function () { return null; },
-      bestChainPath: async function () { return null; },
+      analyzeTurn: async function () { throw new Error('ai_worker_client_unavailable'); },
       pickSouflaDecision: async function () { return null; },
-      hasCaptureFrom: async function () { return false; },
       isBusy: function () { return false; },
       cancel: function () {},
-    };
+    });
   }
 
   function createWorkerBridge(options) {
     const client = root.DhametAIWorkerClient;
     if (client && typeof client.create === 'function') {
-      try {
-        return client.create(options || {});
-      } catch (_) {}
+      try { return client.create(options || {}); } catch (_) {}
     }
     return createFallbackBridge();
   }
 
   function canUseWorker(bridge) {
-    try {
-      return !!(bridge && typeof bridge.canUse === 'function' && bridge.canUse());
-    } catch (_) {
-      return false;
-    }
+    try { return !!(bridge && typeof bridge.canUse === 'function' && bridge.canUse()); }
+    catch (_) { return false; }
   }
 
   function cancelWorker(bridge) {
-    try {
-      if (bridge && typeof bridge.cancel === 'function') bridge.cancel();
-    } catch (_) {}
+    try { if (bridge && typeof bridge.cancel === 'function') bridge.cancel(); } catch (_) {}
   }
 
   async function callWorkerWithRetry(bridge, methodName, args, fallback, options) {
@@ -65,23 +54,17 @@
       return value;
     }
 
-    try {
-      return await runWorkerOnce();
-    } catch (_) {
+    try { return await runWorkerOnce(); }
+    catch (_) {
       cancelWorker(bridge);
-      try {
-        return await runWorkerOnce();
-      } catch (_) {}
+      try { return await runWorkerOnce(); } catch (__) {}
     }
     return await fallbackFn.apply(null, params);
   }
 
   function isBridgeBusy(bridge) {
-    try {
-      return !!(bridge && typeof bridge.isBusy === 'function' && bridge.isBusy());
-    } catch (_) {
-      return false;
-    }
+    try { return !!(bridge && typeof bridge.isBusy === 'function' && bridge.isBusy()); }
+    catch (_) { return false; }
   }
 
   function isThinking(options) {

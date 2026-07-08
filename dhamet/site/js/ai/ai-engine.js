@@ -1,9 +1,11 @@
 /*
- * Dhamet AI engine layer.
+ * Dhamet AI2 engine layer.
  *
- * Contains the computer-player decision/search runtime. It is injected with
- * the current Game runtime dependencies, and does not own UI, online transport,
- * or shared rules.
+ * Full rebuild of the computer-player decision system.  The engine is built
+ * around full-turn moves, strict shared rules, iterative deepening alpha-beta,
+ * persistent transposition memory, a compact internal board, and a single time
+ * budget.  It deliberately avoids the former action-level patched decision
+ * pipeline.  General Dhamet rules remain in shared/dhamet-rules.js.
  */
 (function (root) {
   'use strict';
@@ -14,3208 +16,1195 @@
       ACTION_ENDCHAIN,
       BOARD_N,
       BOT,
-      DhametAIConfig,
-      DhametAIEvaluation,
-      DhametAIPlayer,
       DhametAIRuntime,
-      DhametAISearch,
       DhametRulesShared,
       Game,
       KING,
       MAN,
-      N_ACTIONS,
       N_CELLS,
       TOP,
       Turn,
       Visual,
       Worker,
       __IN_WORKER,
-      __cacheGet,
-      __cachePut,
       aiSide,
-      applyActionSim,
       applyMove,
-      applyMoveSim,
       assetUrl,
       classifyCapture,
-      clampInt,
       clearTimeout,
-      computeLongestForPlayer,
       consumeTurnClearForMove,
       detectCriticalState,
       encodeAction,
-      forwardDir,
-      generateCapturesFrom,
-      generateStepsFrom,
-      getAILevelConfig,
       getForcedOpeningExpectedAction,
-      immediateCapturableInfo,
-      idxToRC,
-      inside,
-      isBackRank,
-      isDirAllowedFrom,
-      isForcedOpeningActive,
-      legalActions,
-      longestCaptureLenCached,
-      longestPathsWithJumpsFrom,
       maybeQueueDeferredPromotion,
       normalizeAILevel,
-      pieceKind,
-      pieceOwner,
-      rcToIdx,
-      restoreSnapshotSilent,
-      restoreSnapshotSim,
       saveSessionSettings,
-      scheduleComputerChainContinuationIfNeeded,
       scheduleComputerMoveIfNeeded,
       setTimeout,
-      simEnter,
-      simExit,
-      snapshotState,
-      snapshotStateSim,
-      valueAt,
     } = deps;
 
-    if (!Game || !DhametAIConfig || !DhametAIEvaluation || !DhametAISearch || !DhametAIPlayer || !DhametAIRuntime) {
+    if (!Game || !DhametRulesShared || !DhametAIRuntime) {
       throw new Error('DhametAIEngine dependencies are incomplete');
     }
 
-const __AI_EVAL_PARAMS = DhametAIEvaluation.EVAL_PARAMS;
-const __AI_TOTAL_PIECES_REFERENCE = DhametAIEvaluation.TOTAL_PIECES_REFERENCE;
+    const R = DhametRulesShared;
+    const BOARD_SIZE = Number(BOARD_N || R.BOARD_N || 9) || 9;
+    const CELLS = Number(N_CELLS || R.N_CELLS || BOARD_SIZE * BOARD_SIZE) || 81;
+    const TOP_SIDE = Number(TOP || R.TOP || 1) || 1;
+    const BOT_SIDE = Number(BOT || R.BOT || -1) || -1;
+    const MAN_KIND = Number(MAN || R.MAN || 1) || 1;
+    const KING_KIND = Number(KING || R.KING || 2) || 2;
+    const ENDCHAIN = typeof ACTION_ENDCHAIN === 'number' ? ACTION_ENDCHAIN : CELLS * CELLS;
 
-const __AI_EVAL_CACHE = new Map();
-const __AI_EVAL_CACHE_MAX = DhametAIEvaluation.EVAL_CACHE_MAX;
-const __AI_STRATEGY_ANALYSIS_CACHE = new Map();
-const __AI_STRATEGY_ANALYSIS_CACHE_MAX = DhametAIEvaluation.STRATEGY_ANALYSIS_CACHE_MAX;
+    const MOVE_STEP = R.MOVE_STEP || 'step';
+    const MOVE_CAPTURE = R.MOVE_CAPTURE || 'capture';
+    const WIN_SCORE = 10000000;
+    const INF = 1000000000;
+    const MAX_CAPTURE_CHAIN_PLY = 64;
+    const MAX_CAPTURE_PATHS_PER_PIECE = 2048;
+    const MAX_ROOT_CAPTURE_PATHS = 8192;
+    const TT_MAX = 140000;
+    const PLAN_MARGIN = 35;
+    const ENGINE_VERSION = 'ai2-rebuild-v1';
+    const TIMEOUT = { timeout: true };
 
-const __AI_PST_MAN = DhametAIEvaluation.createManPst(BOARD_N, N_CELLS, idxToRC);
-const __AI_PST_KING = DhametAIEvaluation.createKingPst(BOARD_N, N_CELLS, idxToRC);
-const __AI_ZOBRIST = DhametAIEvaluation.createZobrist(N_CELLS);
-
-const __AI_SCR_THREAT_ME = DhametAIEvaluation.createThreatScratch(N_CELLS);
-const __AI_SCR_THREAT_OP = DhametAIEvaluation.createThreatScratch(N_CELLS);
-const __AI_WIN_SCORE = DhametAIEvaluation.WIN_SCORE;
-const __AI_SEARCH_INF = DhametAIEvaluation.SEARCH_INF;
-const __AI_SEARCH_LIMITS = DhametAIConfig.SEARCH_LIMITS;
-const __AI_MOVE_FILTER_ALL = DhametAIEvaluation.MOVE_FILTER_ALL;
-const __AI_MOVE_FILTER_NOISY = DhametAIEvaluation.MOVE_FILTER_NOISY;
-const __AI_ENDGAME_PROOF_CACHE = new Map();
-const __AI_SEARCH_TIMEOUT = Symbol("dhamet_ai_search_timeout");
-const __AI_ROOT_SELECTIVE_LEVEL_LIMITS = Object.freeze({
-  beginner: 3,
-  easy: 4,
-  medium: 6,
-  hard: 8,
-  strong: 10,
-  expert: 12,
-});
-
-function __aiSearchNow() {
-  try {
-    if (DhametAISearch && typeof DhametAISearch.now === "function") return DhametAISearch.now();
-  } catch {}
-  try {
-    if (typeof performance !== "undefined" && performance && typeof performance.now === "function") return performance.now();
-  } catch {}
-  return Date.now();
-}
-
-function __aiDeadlineReached(deadline) {
-  try {
-    if (DhametAISearch && typeof DhametAISearch.deadlineReached === "function") {
-      return DhametAISearch.deadlineReached(deadline);
-    }
-  } catch {}
-  return deadline != null && __aiSearchNow() >= deadline;
-}
-
-function __aiRemainingMs(deadline) {
-  if (deadline == null) return Infinity;
-  return Math.max(0, deadline - __aiSearchNow());
-}
-
-function __aiIsSearchTimeout(v) {
-  return v === __AI_SEARCH_TIMEOUT;
-}
-
-function __aiIsFiniteSearchScore(v) {
-  return typeof v === "number" && Number.isFinite(v);
-}
-
-function __aiSafeEvalScore(side, evalFn) {
-  const v = Number(evalFn(side));
-  return Number.isFinite(v) ? v : 0;
-}
-
-function __aiStoreScore(map, action, score) {
-  if (!map || !__aiIsFiniteSearchScore(score)) return false;
-  map.set(action | 0, score);
-  return true;
-}
-
-function __aiScoreFromMap(scores, action, fallback = -Infinity) {
-  if (!scores || typeof scores.has !== "function" || !scores.has(action)) return fallback;
-  const v = scores.get(action);
-  return __aiIsFiniteSearchScore(v) ? v : fallback;
-}
-
-function __aiRootStaticScore(side, action, evalFn) {
-  const snap = snapshotStateSim();
-  try {
-    applyActionSim(action);
-    return __aiSafeEvalScore(side, evalFn);
-  } finally {
-    restoreSnapshotSim(snap);
-  }
-}
-
-function __aiRootSearchScore(side, action, turnDepthIter, deadline, budget, evalFn, tables) {
-  if (__aiDeadlineReached(deadline)) return __AI_SEARCH_TIMEOUT;
-  const snap = snapshotStateSim();
-  try {
-    applyActionSim(action);
-    const dec = Game.player !== side ? 1 : 0;
-    const v = __aiAlphaBeta(
-      Math.max(0, Math.trunc(turnDepthIter) - dec),
-      -__AI_SEARCH_INF,
-      __AI_SEARCH_INF,
-      deadline,
-      budget,
-      side,
-      evalFn,
-      tables.tt,
-      0,
-      tables.killers,
-      tables.history,
-    );
-    return __aiIsFiniteSearchScore(v) ? v : __AI_SEARCH_TIMEOUT;
-  } finally {
-    restoreSnapshotSim(snap);
-  }
-}
-
-function __aiSortRootActions(side, actions, scores, history) {
-  actions.sort((a, b) => {
-    const sa = __aiScoreFromMap(scores, a);
-    const sb = __aiScoreFromMap(scores, b);
-    if (sa !== sb) return sb - sa;
-    const ha = history && typeof history.get === "function" ? history.get(a) || 0 : 0;
-    const hb = history && typeof history.get === "function" ? history.get(b) || 0 : 0;
-    if (ha !== hb) return hb - ha;
-    return __aiActionOrderScore(side, b) - __aiActionOrderScore(side, a);
-  });
-  return actions;
-}
-
-function __aiRootPostMoveRisk(side, action) {
-  if (action === ACTION_ENDCHAIN) return 0;
-  const snap = snapshotStateSim();
-  try {
-    applyActionSim(action);
-    if (Game.player !== -side) return 0;
-    let risk = 0;
-    try {
-      const info = immediateCapturableInfo(-side);
-      const count = info && Number.isFinite(Number(info.count)) ? info.count | 0 : 0;
-      const kings = info && Number.isFinite(Number(info.kingVictims)) ? info.kingVictims | 0 : 0;
-      risk += count * 220;
-      risk += kings * 3600;
-    } catch {}
-    try {
-      const longest = longestCaptureLenCached(-side) | 0;
-      if (longest > 1) risk += (longest - 1) * 520;
-    } catch {}
-    return Math.max(0, risk);
-  } finally {
-    restoreSnapshotSim(snap);
-  }
-}
-
-function __aiBuildSelectiveRootCandidates(side, acts, scores, previousScores, remainingMs, capMs, levelName) {
-  if (!acts.length || remainingMs < 35) return [];
-  const levelKey = String(levelName || "medium");
-  const baseLimit = __AI_ROOT_SELECTIVE_LEVEL_LIMITS[levelKey] || __AI_ROOT_SELECTIVE_LEVEL_LIMITS.medium;
-  let timeLimit = baseLimit;
-  if (remainingMs < 120) timeLimit = Math.min(timeLimit, 3);
-  else if (remainingMs < 300) timeLimit = Math.min(timeLimit, 5);
-  else if (remainingMs > 2500) timeLimit = Math.min(acts.length, timeLimit + 2);
-  if (capMs !== Infinity && Number.isFinite(Number(capMs))) {
-    const fractionLeft = capMs > 0 ? remainingMs / capMs : 0;
-    if (fractionLeft < 0.08) timeLimit = Math.min(timeLimit, 4);
-  }
-  const limit = Math.max(1, Math.min(acts.length, timeLimit | 0));
-
-  const ordered = __aiSortRootActions(side, acts.slice(), scores, null);
-  const selected = new Set();
-  for (let i = 0; i < Math.min(limit, ordered.length); i++) selected.add(ordered[i]);
-
-  const best = __aiScoreFromMap(scores, ordered[0], 0);
-  const closeMargin = 160 + Math.max(0, Math.min(260, Math.abs(best) * 0.025));
-  for (let i = 0; i < ordered.length; i++) {
-    const a = ordered[i];
-    const s = __aiScoreFromMap(scores, a);
-    if (s >= best - closeMargin) selected.add(a);
-  }
-
-  const riskRows = [];
-  for (let i = 0; i < acts.length; i++) {
-    const a = acts[i];
-    if (__aiNoisyAction(a)) selected.add(a);
-    const cur = __aiScoreFromMap(scores, a, 0);
-    const prev = previousScores ? __aiScoreFromMap(previousScores, a, cur) : cur;
-    if (Math.abs(cur - prev) >= 220) selected.add(a);
-    const risk = __aiRootPostMoveRisk(side, a);
-    riskRows.push([a, risk]);
-    if (risk >= 1200) selected.add(a);
-  }
-
-  riskRows.sort((x, y) => x[1] - y[1]);
-  for (let i = 0; i < Math.min(2, riskRows.length); i++) selected.add(riskRows[i][0]);
-
-  const finalLimit = Math.max(limit, Math.min(acts.length, limit + Math.ceil(limit / 2)));
-  const out = ordered.filter((a) => selected.has(a));
-  return out.slice(0, Math.max(1, finalLimit));
-}
-
-function __aiApplyRootSafetyGuard(side, scores, acts, deadline = null) {
-  if (!scores || !acts.length) return scores;
-  if (__aiRemainingMs(deadline) < 20) return scores;
-  const risks = new Map();
-  let minRisk = Infinity;
-  for (let i = 0; i < acts.length; i++) {
-    if (__aiDeadlineReached(deadline)) return scores;
-    const a = acts[i];
-    const risk = __aiRootPostMoveRisk(side, a);
-    risks.set(a, risk);
-    if (risk < minRisk) minRisk = risk;
-  }
-  if (!Number.isFinite(minRisk)) minRisk = 0;
-  for (let i = 0; i < acts.length; i++) {
-    const a = acts[i];
-    const s = __aiScoreFromMap(scores, a, null);
-    if (!__aiIsFiniteSearchScore(s)) continue;
-    const excess = Math.max(0, (risks.get(a) || 0) - minRisk);
-    if (excess >= 900) {
-      const penalty = Math.min(4200, Math.floor(excess * 0.85));
-      scores.set(a, s - penalty);
-    }
-  }
-  return scores;
-}
-
-function __aiTerminalScore(winnerSide, perspectiveSide, actionPly = 0) {
-  return DhametAIEvaluation.terminalScore(winnerSide, perspectiveSide, actionPly);
-}
-
-
-function __aiLegalActionStats(side) {
-  const out = {
-    ok: false,
-    steps: 0,
-    captures: 0,
-    kingSteps: 0,
-    kingCaptures: 0,
-    promotionMoves: 0,
-    captureValue: 0,
-    victims: [],
-  };
-
-  const snap = snapshotStateSim();
-  try {
-    if (Game.inChain) {
-      if (Game.player !== side) return out;
-    } else {
-      Game.player = side;
-      Game.inChain = false;
-      Game.chainPos = null;
-    }
-
-    const { mask } = legalActions();
-    const { actions } = listLegalActionsFromMask(mask, {
-      pruneEarlyEndChain: true,
-      enforceMandatory: true,
-      enforceLongest: true,
+    const LEVEL_DEFAULTS = Object.freeze({
+      beginner: Object.freeze({ depth: 2, qDepth: 4, timeMs: 220, topN: 3, noise: 70, mistakePct: 18, maxNodes: 18000 }),
+      easy: Object.freeze({ depth: 3, qDepth: 6, timeMs: 450, topN: 2, noise: 35, mistakePct: 7, maxNodes: 36000 }),
+      medium: Object.freeze({ depth: 5, qDepth: 8, timeMs: 900, topN: 1, noise: 0, mistakePct: 0, maxNodes: 90000 }),
+      hard: Object.freeze({ depth: 7, qDepth: 10, timeMs: 1700, topN: 1, noise: 0, mistakePct: 0, maxNodes: 180000 }),
+      strong: Object.freeze({ depth: 9, qDepth: 12, timeMs: 3000, topN: 1, noise: 0, mistakePct: 0, maxNodes: 320000 }),
+      expert: Object.freeze({ depth: 11, qDepth: 14, timeMs: 6000, topN: 1, noise: 0, mistakePct: 0, maxNodes: 650000 }),
     });
 
-    out.ok = true;
-    for (let i = 0; i < actions.length; i++) {
-      const a = actions[i];
-      if (a === ACTION_ENDCHAIN) continue;
-      const from = Math.floor(a / N_CELLS);
-      const to = a % N_CELLS;
-      const v = valueAt(from);
-      if (!v || pieceOwner(v) !== side) continue;
+    const DIRS = Object.freeze([
+      [-1, 0], [1, 0], [0, -1], [0, 1], [-1, 1], [1, -1], [-1, -1], [1, 1],
+    ]);
 
-      const kind = pieceKind(v);
-      const [isCap, jumped] = classifyCapture(from, to);
-      if (isCap) {
-        out.captures++;
-        if (kind === KING) out.kingCaptures++;
-        if (jumped != null) {
-          out.victims.push(jumped);
-          const jv = valueAt(jumped);
-          if (jv) out.captureValue += pieceKind(jv) === KING ? __AI_EVAL_PARAMS.king : __AI_EVAL_PARAMS.man;
+    const NEXT = Array.from({ length: CELLS }, () => new Int16Array(DIRS.length).fill(-1));
+    const CELL_ROW = new Int8Array(CELLS);
+    const CELL_COL = new Int8Array(CELLS);
+    const CELL_WIDE = new Int8Array(CELLS);
+    const CELL_CENTER = new Int16Array(CELLS);
+    const CELL_PROMO_TOP = new Int8Array(CELLS);
+    const CELL_PROMO_BOT = new Int8Array(CELLS);
+
+    for (let idx = 0; idx < CELLS; idx++) {
+      const rc = R.rc(idx);
+      const r = rc[0] | 0;
+      const c = rc[1] | 0;
+      CELL_ROW[idx] = r;
+      CELL_COL[idx] = c;
+      CELL_WIDE[idx] = R.pointType(idx) === 'wasaa' ? 1 : 0;
+      const centerDist = Math.abs(r - 4) + Math.abs(c - 4);
+      CELL_CENTER[idx] = 8 - centerDist;
+      CELL_PROMO_TOP[idx] = Math.max(0, r);
+      CELL_PROMO_BOT[idx] = Math.max(0, 8 - r);
+      for (let d = 0; d < DIRS.length; d++) {
+        const dr = DIRS[d][0];
+        const dc = DIRS[d][1];
+        const rr = r + dr;
+        const cc = c + dc;
+        if (R.inside(rr, cc) && R.canStepFrom(null, r, c, dr, dc)) NEXT[idx][d] = R.idx(rr, cc);
+      }
+    }
+
+    function nowMs() {
+      try {
+        if (typeof performance !== 'undefined' && performance && typeof performance.now === 'function') return performance.now();
+      } catch (_) {}
+      return Date.now();
+    }
+
+    function sideOf(v) { return v > 0 ? TOP_SIDE : v < 0 ? BOT_SIDE : 0; }
+    function kindOf(v) { const a = Math.abs(v | 0); return a === KING_KIND ? KING_KIND : a === MAN_KIND ? MAN_KIND : 0; }
+    function piece(side, kind) { return (side === BOT_SIDE ? -1 : 1) * (kind === KING_KIND ? KING_KIND : MAN_KIND); }
+    function opponent(side) { return side === TOP_SIDE ? BOT_SIDE : TOP_SIDE; }
+    function forward(side) { return side === TOP_SIDE ? 1 : -1; }
+    function isBackRankIdx(idx, side) { return side === TOP_SIDE ? CELL_ROW[idx] === BOARD_SIZE - 1 : CELL_ROW[idx] === 0; }
+    function encode(from, to) { return typeof encodeAction === 'function' ? encodeAction(from, to) : ((from | 0) * CELLS + (to | 0)); }
+
+    function hashSeed(i) {
+      let x = (0x9e3779b9 ^ ((i + 1) * 0x85ebca6b)) >>> 0;
+      x ^= x >>> 16;
+      x = Math.imul(x, 0x7feb352d) >>> 0;
+      x ^= x >>> 15;
+      x = Math.imul(x, 0x846ca68b) >>> 0;
+      x ^= x >>> 16;
+      return x >>> 0;
+    }
+
+    const ZOBRIST = Array.from({ length: CELLS }, (_, idx) => ({
+      '-2': hashSeed(idx * 5 + 0),
+      '-1': hashSeed(idx * 5 + 1),
+      '1': hashSeed(idx * 5 + 2),
+      '2': hashSeed(idx * 5 + 3),
+    }));
+    const Z_SIDE_TOP = hashSeed(9991);
+    const Z_SIDE_BOT = hashSeed(9992);
+
+    function pieceHash(idx, v) {
+      const row = ZOBRIST[idx];
+      return row && row[String(v)] ? row[String(v)] : 0;
+    }
+
+    function boardToArray(board) {
+      const out = new Int8Array(CELLS);
+      if (Array.isArray(board)) {
+        for (let r = 0; r < BOARD_SIZE; r++) {
+          const row = board[r] || [];
+          for (let c = 0; c < BOARD_SIZE; c++) out[r * BOARD_SIZE + c] = Number(row[c] || 0) | 0;
         }
-      } else {
-        out.steps++;
-        if (kind === KING) out.kingSteps++;
       }
-
-      if (kind === MAN && isBackRank(to, side)) out.promotionMoves++;
-    }
-  } catch (_) {
-    out.ok = false;
-  } finally {
-    restoreSnapshotSim(snap);
-  }
-  return out;
-}
-
-function __aiHash() {
-  let h = 0n;
-  for (let i = 0; i < N_CELLS; i++) {
-    const v = valueAt(i);
-    if (!v) continue;
-    const t = v > 0 ? (Math.abs(v) === 2 ? 1 : 0) : Math.abs(v) === 2 ? 3 : 2;
-    h ^= __AI_ZOBRIST.piece[i][t];
-  }
-  if (Game.player === TOP) h ^= __AI_ZOBRIST.turn;
-  if (Game.inChain) h ^= __AI_ZOBRIST.chain;
-  if (Game.chainPos != null) h ^= __AI_ZOBRIST.chainPos[Game.chainPos | 0];
-  return h;
-}
-
-function __aiCountAndFeatures(perspectiveSide) {
-  let myMen = 0,
-    myKings = 0,
-    opMen = 0,
-    opKings = 0;
-  let myPst = 0,
-    opPst = 0;
-  let myAdv = 0,
-    opAdv = 0;
-  let myBack = 0,
-    opBack = 0;
-  let myEdge = 0,
-    opEdge = 0;
-  let myCaps = 0,
-    opCaps = 0;
-  let myKingCaps = 0,
-    opKingCaps = 0;
-  let myMoves = 0,
-    opMoves = 0;
-  let myKingMoves = 0,
-    opKingMoves = 0;
-  let myProm = 0,
-    opProm = 0;
-  let myNearProm = 0,
-    opNearProm = 0;
-
-  const threatenedMe = __AI_SCR_THREAT_ME;
-  const threatenedOp = __AI_SCR_THREAT_OP;
-  threatenedMe.fill(0);
-  threatenedOp.fill(0);
-
-  for (let i = 0; i < N_CELLS; i++) {
-    const v = valueAt(i);
-    if (!v) continue;
-    const side = pieceOwner(v);
-    const kind = pieceKind(v);
-    const [r, c] = idxToRC(i);
-    const lane = c === 0 || c === BOARD_N - 1;
-    const edge = (r === 0 || c === 0 || r === BOARD_N - 1 || c === BOARD_N - 1) && !lane;
-
-    let steps = [];
-    let caps = [];
-    try {
-      steps = generateStepsFrom(i, v);
-    } catch {}
-    try {
-      caps = generateCapturesFrom(i, v);
-    } catch {}
-
-    for (let j = 0; j < caps.length; j++) {
-      const capIdx = caps[j][1];
-      if (capIdx == null) continue;
-      if (side === perspectiveSide) threatenedOp[capIdx] = 1;
-      else threatenedMe[capIdx] = 1;
+      return out;
     }
 
-    if (side === perspectiveSide) {
-      if (kind === KING) {
-        myKings++;
-        myPst += __AI_PST_KING[i];
-      myKingMoves += steps.length;
-        myKingCaps += caps.length;
-      } else {
-        myMen++;
-        myPst += __AI_PST_MAN[i];
-        const dist = perspectiveSide === TOP ? BOARD_N - 1 - r : r;
-        myAdv += BOARD_N - 1 - dist;
-        myProm += (BOARD_N - 1 - dist) / (BOARD_N - 1);
-        for (let t = 0; t < steps.length; t++) {
-          const toIdx = steps[t];
-          if (isBackRank(toIdx, perspectiveSide)) {
-            myNearProm++;
-            break;
-          }
+    function arrayToBoard(arr) {
+      const b = Array.from({ length: BOARD_SIZE }, () => Array(BOARD_SIZE).fill(0));
+      for (let i = 0; i < CELLS; i++) b[(i / BOARD_SIZE) | 0][i % BOARD_SIZE] = arr[i] | 0;
+      return b;
+    }
+
+    function cloneMove(m) {
+      if (!m) return null;
+      return {
+        type: m.type,
+        from: m.from | 0,
+        to: m.to | 0,
+        path: Array.isArray(m.path) ? m.path.slice() : [],
+        jumps: Array.isArray(m.jumps) ? m.jumps.slice() : [],
+        captures: m.captures | 0,
+        promotes: !!m.promotes,
+        capturedValue: Number(m.capturedValue || 0) || 0,
+        capturedKings: Number(m.capturedKings || 0) || 0,
+      };
+    }
+
+    function moveKey(m) {
+      if (!m) return '';
+      return String(m.from) + '>' + (m.path || []).join('.') + '#' + (m.jumps || []).join('.');
+    }
+
+    function movesEqual(a, b) { return !!a && !!b && moveKey(a) === moveKey(b); }
+
+    function moveToAction(move) {
+      if (!move || !move.path || !move.path.length) return ENDCHAIN;
+      return encode(move.from, move.path[0]);
+    }
+
+    class EngineState {
+      constructor(board, side) {
+        this.board = boardToArray(board);
+        this.side = side === BOT_SIDE ? BOT_SIDE : TOP_SIDE;
+        this.ply = 0;
+        this.hash = this.computeHash();
+      }
+      computeHash() {
+        let h = this.side === TOP_SIDE ? Z_SIDE_TOP : Z_SIDE_BOT;
+        const b = this.board;
+        for (let i = 0; i < CELLS; i++) {
+          const v = b[i] | 0;
+          if (v) h = (h ^ pieceHash(i, v)) >>> 0;
         }
-        if (isBackRank(i, perspectiveSide)) myBack++;
+        return h >>> 0;
       }
-      if (edge) myEdge++;
-      myMoves += steps.length;
-      myCaps += caps.length;
-    } else {
-      if (kind === KING) {
-        opKings++;
-        opPst += __AI_PST_KING[i];
-      opKingMoves += steps.length;
-        opKingCaps += caps.length;
-      } else {
-        opMen++;
-        opPst += __AI_PST_MAN[i];
-        const dist = side === TOP ? BOARD_N - 1 - r : r;
-        opAdv += BOARD_N - 1 - dist;
-        opProm += (BOARD_N - 1 - dist) / (BOARD_N - 1);
-        for (let t = 0; t < steps.length; t++) {
-          const toIdx = steps[t];
-          if (isBackRank(toIdx, side)) {
-            opNearProm++;
-            break;
-          }
+      key() { return (this.hash >>> 0).toString(36) + '|' + this.side; }
+      set(idx, value, undo) {
+        idx |= 0;
+        value |= 0;
+        const old = this.board[idx] | 0;
+        if (old === value) return;
+        if (!undo.seen[idx]) {
+          undo.seen[idx] = 1;
+          undo.changes.push([idx, old]);
         }
-        if (isBackRank(i, side)) opBack++;
+        if (old) this.hash = (this.hash ^ pieceHash(idx, old)) >>> 0;
+        if (value) this.hash = (this.hash ^ pieceHash(idx, value)) >>> 0;
+        this.board[idx] = value;
       }
-      if (edge) opEdge++;
-      opMoves += steps.length;
-      opCaps += caps.length;
-    }
-  }
-
-  const myLegal = __aiLegalActionStats(perspectiveSide);
-  const opLegal = __aiLegalActionStats(-perspectiveSide);
-  if (myLegal.ok || opLegal.ok) {
-    threatenedMe.fill(0);
-    threatenedOp.fill(0);
-
-    if (myLegal.ok) {
-      myMoves = myLegal.steps;
-      myCaps = myLegal.captures;
-      myKingMoves = myLegal.kingSteps;
-      myKingCaps = myLegal.kingCaptures;
-      myNearProm = Math.max(myNearProm, myLegal.promotionMoves | 0);
-      for (let i = 0; i < myLegal.victims.length; i++) threatenedOp[myLegal.victims[i]] = 1;
-    }
-
-    if (opLegal.ok) {
-      opMoves = opLegal.steps;
-      opCaps = opLegal.captures;
-      opKingMoves = opLegal.kingSteps;
-      opKingCaps = opLegal.kingCaptures;
-      opNearProm = Math.max(opNearProm, opLegal.promotionMoves | 0);
-      for (let i = 0; i < opLegal.victims.length; i++) threatenedMe[opLegal.victims[i]] = 1;
-    }
-  }
-
-  let myVuln = 0,
-    opVuln = 0,
-    myVulnMen = 0,
-    myVulnKings = 0,
-    opVulnMen = 0,
-    opVulnKings = 0;
-  for (let i = 0; i < N_CELLS; i++) {
-    if (threatenedMe[i]) {
-      const v = valueAt(i);
-      if (v && pieceOwner(v) === perspectiveSide) {
-        myVuln++;
-        if (pieceKind(v) === KING) myVulnKings++;
-        else myVulnMen++;
+      makeMove(move) {
+        const undo = {
+          changes: [],
+          seen: new Uint8Array(CELLS),
+          side: this.side,
+          hash: this.hash,
+          ply: this.ply,
+        };
+        const from = move.from | 0;
+        const path = move.path || [];
+        const jumps = move.jumps || [];
+        let cur = from;
+        let v = this.board[from] | 0;
+        const startKind = kindOf(v);
+        const startSide = sideOf(v);
+        for (let i = 0; i < path.length; i++) {
+          const to = path[i] | 0;
+          this.set(cur, 0, undo);
+          if (jumps[i] != null) this.set(jumps[i] | 0, 0, undo);
+          this.set(to, v, undo);
+          cur = to;
+        }
+        if (v && startKind === MAN_KIND && isBackRankIdx(cur, startSide)) {
+          this.set(cur, piece(startSide, KING_KIND), undo);
+        }
+        this.hash = (this.hash ^ (this.side === TOP_SIDE ? Z_SIDE_TOP : Z_SIDE_BOT)) >>> 0;
+        this.side = opponent(this.side);
+        this.hash = (this.hash ^ (this.side === TOP_SIDE ? Z_SIDE_TOP : Z_SIDE_BOT)) >>> 0;
+        this.ply++;
+        return undo;
+      }
+      undoMove(undo) {
+        this.side = undo.side;
+        this.hash = undo.hash;
+        this.ply = undo.ply;
+        for (let i = undo.changes.length - 1; i >= 0; i--) {
+          const pair = undo.changes[i];
+          this.board[pair[0]] = pair[1];
+        }
       }
     }
-    if (threatenedOp[i]) {
-      const v = valueAt(i);
-      if (v && pieceOwner(v) !== perspectiveSide) {
-        opVuln++;
-        if (pieceKind(v) === KING) opVulnKings++;
-        else opVulnMen++;
+
+    const TT = new Map();
+    let ttAge = 0;
+    let lastPlan = null;
+
+    function trimTT() {
+      if (TT.size <= TT_MAX) return;
+      const target = Math.floor(TT_MAX * 0.72);
+      for (const [k, v] of TT.entries()) {
+        if (TT.size <= target) break;
+        if (!v || v.age !== ttAge) TT.delete(k);
+      }
+      if (TT.size > TT_MAX) {
+        for (const k of TT.keys()) {
+          if (TT.size <= target) break;
+          TT.delete(k);
+        }
       }
     }
-  }
 
-  return {
-    myMen,
-    myKings,
-    opMen,
-    opKings,
-    myPst,
-    opPst,
-    myAdv,
-    opAdv,
-    myBack,
-    opBack,
-    myEdge,
-    opEdge,
-    myCaps,
-    opCaps,
-    myKingCaps,
-    opKingCaps,
-    myMoves,
-    opMoves,
-    myKingMoves,
-    opKingMoves,
-    myVuln,
-    opVuln,
-    myVulnMen,
-    myVulnKings,
-    opVulnMen,
-    opVulnKings,
-    myProm,
-    opProm,
-    myNearProm,
-    opNearProm,
-    myLegalCaptureValue: myLegal.ok ? myLegal.captureValue : 0,
-    opLegalCaptureValue: opLegal.ok ? opLegal.captureValue : 0,
-  };
-}
+    function levelName(settings) {
+      const src = settings && settings.advanced ? settings.advanced : {};
+      if (typeof normalizeAILevel === 'function') return normalizeAILevel(src.aiLevel || 'medium');
+      const v = String(src.aiLevel || 'medium');
+      return LEVEL_DEFAULTS[v] ? v : 'medium';
+    }
 
+    function runtimeSettings(settings, side, board) {
+      const level = levelName(settings);
+      const base = LEVEL_DEFAULTS[level] || LEVEL_DEFAULTS.medium;
+      const adv = settings && settings.advanced ? settings.advanced : {};
+      const nDepth = Number(adv.minimaxDepth);
+      const nTime = Number(adv.thinkTimeMs);
+      const maxDepth = Number.isFinite(nDepth) && nDepth > 0 ? Math.max(1, Math.min(16, Math.trunc(nDepth))) : base.depth;
+      let timeMs = Number.isFinite(nTime) && nTime > 0 ? Math.max(80, Math.min(10000, Math.trunc(nTime))) : base.timeMs;
+      const critical = isPositionCritical(board, side);
+      if (critical) timeMs = Math.min(10000, Math.ceil(timeMs * 1.3));
+      return {
+        level,
+        maxDepth,
+        qDepth: base.qDepth,
+        timeMs,
+        topN: base.topN,
+        noise: base.noise,
+        mistakePct: base.mistakePct,
+        maxNodes: Number(adv.maxNodes) > 0 ? Math.min(1000000, Number(adv.maxNodes) | 0) : base.maxNodes,
+      };
+    }
 
+    function isPositionCritical(board, side) {
+      try {
+        const state = new EngineState(board, side);
+        const moves = generateTurnMoves(state, { capturesOnly: false, limit: 64 });
+        if (moves.some((m) => m.captures > 0 || m.promotes || m.capturedKings > 0)) return true;
+        const oppState = new EngineState(board, opponent(side));
+        const oppMoves = generateTurnMoves(oppState, { capturesOnly: false, limit: 64 });
+        return oppMoves.some((m) => m.captures > 1 || m.capturedKings > 0 || m.promotes);
+      } catch (_) {
+        try { return typeof detectCriticalState === 'function' && detectCriticalState(side); } catch (__) { return false; }
+      }
+    }
 
-function __aiLaneCrownScanNoFeatures(side) {
-  const threatenedMe = __AI_SCR_THREAT_ME;
-  const threatenedOp = __AI_SCR_THREAT_OP;
-
-  let myMinSafe = 99;
-  let opMinSafe = 99;
-
-  let myLane0Men = 0;
-  let opLane0Men = 0;
-
-  let myLane0MinSafe = 99;
-  let myLane0ClearMinSafe = 99;
-  let myLane0Sup = 0;
-  let myLane0Lone = 0;
-  let myLane0Suicidal = 0;
-
-  let myReinfNearSafe = 0;
-
-  let opLane8Men = 0;
-  let opLane8MinSafe = 99;
-  let opLane8ClearMinSafe = 99;
-
-  for (let i = 0; i < N_CELLS; i++) {
-    const v = valueAt(i);
-    if (!v || pieceKind(v) !== MAN) continue;
-    const owner = pieceOwner(v);
-    const [r, c] = idxToRC(i);
-    const dist = owner === TOP ? BOARD_N - 1 - r : r;
-
-    if (owner === side) {
-      if (!threatenedMe[i] && dist < myMinSafe) myMinSafe = dist;
-
-      if (c === 0) {
-        myLane0Men++;
-        const safe = !threatenedMe[i];
-        if (safe) {
-          if (dist < myLane0MinSafe) myLane0MinSafe = dist;
-
-          let clear = true;
-          if (owner === TOP) {
-            for (let rr = r + 1; rr <= BOARD_N - 1; rr++) {
-              if (Game.board[rr][0] !== 0) {
-                clear = false;
-                break;
-              }
-            }
-          } else {
-            for (let rr = r - 1; rr >= 0; rr--) {
-              if (Game.board[rr][0] !== 0) {
-                clear = false;
-                break;
-              }
+    function stepMoves(state, side, out) {
+      const b = state.board;
+      const fwd = forward(side);
+      for (let from = 0; from < CELLS; from++) {
+        const v = b[from] | 0;
+        if (!v || sideOf(v) !== side) continue;
+        const k = kindOf(v);
+        if (k === MAN_KIND) {
+          for (let d = 0; d < DIRS.length; d++) {
+            if (DIRS[d][0] !== fwd || Math.abs(DIRS[d][1]) > 1) continue;
+            const to = NEXT[from][d];
+            if (to >= 0 && !b[to]) {
+              out.push({ type: MOVE_STEP, from, to, path: [to], jumps: [], captures: 0, promotes: isBackRankIdx(to, side), capturedValue: 0, capturedKings: 0 });
             }
           }
-          if (clear && dist < myLane0ClearMinSafe) myLane0ClearMinSafe = dist;
-
-          let sup = false;
-          for (let dr = -2; dr <= 2 && !sup; dr++) {
-            const rr = r + dr;
-            if (rr < 0 || rr >= BOARD_N) continue;
-            for (let dc = -2; dc <= 2; dc++) {
-              const cc = c + dc;
-              if (cc < 0 || cc >= BOARD_N) continue;
-              if (dr === 0 && dc === 0) continue;
-              const j = rcToIdx(rr, cc);
-              const vv = valueAt(j);
-              if (vv && pieceOwner(vv) === side) {
-                sup = true;
-                break;
-              }
+        } else if (k === KING_KIND) {
+          for (let d = 0; d < DIRS.length; d++) {
+            let to = NEXT[from][d];
+            while (to >= 0 && !b[to]) {
+              out.push({ type: MOVE_STEP, from, to, path: [to], jumps: [], captures: 0, promotes: false, capturedValue: 0, capturedKings: 0 });
+              to = NEXT[to][d];
             }
           }
-          if (sup) myLane0Sup++;
-          else myLane0Lone++;
-        } else {
-          let sup = false;
-          for (let dr = -2; dr <= 2 && !sup; dr++) {
-            const rr = r + dr;
-            if (rr < 0 || rr >= BOARD_N) continue;
-            for (let dc = -2; dc <= 2; dc++) {
-              const cc = c + dc;
-              if (cc < 0 || cc >= BOARD_N) continue;
-              if (dr === 0 && dc === 0) continue;
-              const j = rcToIdx(rr, cc);
-              const vv = valueAt(j);
-              if (vv && pieceOwner(vv) === side) {
-                sup = true;
-                break;
-              }
-            }
-          }
-          if (!sup && dist <= 6) myLane0Suicidal++;
-        }
-      } else if (c === 1 || c === 2) {
-        if (!threatenedMe[i]) myReinfNearSafe++;
-      }
-    } else {
-      if (!threatenedOp[i] && dist < opMinSafe) opMinSafe = dist;
-
-      if (c === 0) opLane0Men++;
-
-      if (c === BOARD_N - 1) {
-        opLane8Men++;
-        const safe = !threatenedOp[i];
-        if (safe) {
-          if (dist < opLane8MinSafe) opLane8MinSafe = dist;
-
-          let clear = true;
-          if (owner === TOP) {
-            for (let rr = r + 1; rr <= BOARD_N - 1; rr++) {
-              if (Game.board[rr][BOARD_N - 1] !== 0) {
-                clear = false;
-                break;
-              }
-            }
-          } else {
-            for (let rr = r - 1; rr >= 0; rr--) {
-              if (Game.board[rr][BOARD_N - 1] !== 0) {
-                clear = false;
-                break;
-              }
-            }
-          }
-          if (clear && dist < opLane8ClearMinSafe) opLane8ClearMinSafe = dist;
         }
       }
     }
-  }
 
-  return {
-    myMinSafe,
-    opMinSafe,
-    myLane0Men,
-    opLane0Men,
-    myLane0MinSafe,
-    myLane0ClearMinSafe,
-    myLane0Sup,
-    myLane0Lone,
-    myLane0Suicidal,
-    myReinfNearSafe,
-    opLane8Men,
-    opLane8MinSafe,
-    opLane8ClearMinSafe,
-  };
-}
-
-function __aiCrownPriority(side) {
-  const f = __aiCountAndFeatures(side);
-  const totalPieces = (f.myMen + f.myKings + f.opMen + f.opKings) | 0;
-  const denom = Math.max(1, __AI_TOTAL_PIECES_REFERENCE);
-  const gameProgress = Math.max(0, Math.min(1, totalPieces / denom));
-  const endgame = 1 - gameProgress;
-
-  const lc = __aiLaneCrownScanNoFeatures(side);
-
-  const myD = lc.myMinSafe | 0;
-  const opD = lc.opMinSafe | 0;
-
-  const myLane0 = lc.myLane0ClearMinSafe | 0;
-  const opLane8 = lc.opLane8ClearMinSafe | 0;
-
-  let p = 0;
-
-  if (opLane8 <= 5 || opD <= 4) p = 2;
-  else if (opLane8 <= 7 || opD <= 6) p = 1;
-
-  if (myLane0 <= 5 || myD <= 4) p = Math.max(p, 2);
-  else if (myLane0 <= 7 || myD <= 6) p = Math.max(p, 1);
-
-  if ((lc.myLane0Sup | 0) > 0 && (myLane0 <= 10 || myD <= 10)) p = Math.max(p, 1);
-  if ((lc.myLane0Sup | 0) >= 2 && (myLane0 <= 9 || myD <= 9)) p = Math.max(p, 2);
-
-  if ((lc.myLane0Lone | 0) > 0 && (lc.myLane0MinSafe | 0) <= 6) p = Math.max(0, p - 1);
-  if ((lc.myLane0Suicidal | 0) > 0) p = Math.max(0, p - 1);
-
-  const my0 = lc.myLane0Men | 0;
-  const op0 = lc.opLane0Men | 0;
-  const reinf = lc.myReinfNearSafe | 0;
-
-  if (my0 >= op0 + 1 && reinf > 0 && myLane0 <= 11) p = Math.max(p, 1);
-  if (my0 >= op0 + 2 && reinf >= 2 && myLane0 <= 10) p = Math.max(p, 2);
-  if (op0 >= my0 + 2 && (lc.myLane0MinSafe | 0) <= 8) p = Math.max(0, p - 1);
-
-  if (endgame >= 0.45 && f.opKings > 0 && totalPieces <= 22) {
-    let Lop = 0;
-    try {
-      Lop = longestCaptureLenCached(-side) | 0;
-    } catch {
-      Lop = 0;
-    }
-    if (Lop >= 4) p = 2;
-    else if (Lop >= 2) p = Math.max(p, 1);
-  }
-
-  if (endgame >= 0.45 && f.myKings > 0 && totalPieces <= 22) {
-    let Lmy = 0;
-    try {
-      Lmy = longestCaptureLenCached(side) | 0;
-    } catch {
-      Lmy = 0;
-    }
-    if (Lmy >= 4) p = Math.max(p, 1);
-  }
-
-  p = Math.max(p, __aiStrategicPriority(side) | 0);
-
-  return p;
-}
-
-function __aiCrownOffenseBoost(side) {
-  const f = __aiCountAndFeatures(side);
-  const totalPieces = (f.myMen + f.myKings + f.opMen + f.opKings) | 0;
-  const denom = Math.max(1, __AI_TOTAL_PIECES_REFERENCE);
-  const gameProgress = Math.max(0, Math.min(1, totalPieces / denom));
-  const endgame = 1 - gameProgress;
-
-  const lc = __aiLaneCrownScanNoFeatures(side);
-
-  const myD = lc.myMinSafe | 0;
-  const myLane0 = lc.myLane0ClearMinSafe | 0;
-
-  let b = 0;
-
-  if (endgame >= 0.45 && (lc.myLane0Sup | 0) > 0 && (myLane0 <= 10 || myD <= 10)) b = 1;
-  if (endgame >= 0.6 && (lc.myLane0Sup | 0) > 0 && (myLane0 <= 9 || myD <= 9)) b = 2;
-
-  const my0 = lc.myLane0Men | 0;
-  const op0 = lc.opLane0Men | 0;
-  const reinf = lc.myReinfNearSafe | 0;
-
-  if (my0 >= op0 + 1 && reinf > 0 && myLane0 <= 11) b = Math.max(b, 1);
-  if (my0 >= op0 + 2 && reinf >= 2 && myLane0 <= 10) b = Math.max(b, 2);
-
-  if ((lc.myLane0Lone | 0) > 0 && endgame < 0.75) b = Math.max(0, b - 1);
-  if ((lc.myLane0Suicidal | 0) > 0) b = Math.max(0, b - 1);
-
-  const opD = lc.opMinSafe | 0;
-  const opLane8 = lc.opLane8ClearMinSafe | 0;
-  if (opD <= 5 || opLane8 <= 6) b = Math.max(0, b - 1);
-
-  b = Math.max(b, __aiStrategicOffenseBoost(side) | 0);
-
-  return b;
-}
-
-const __AI_STRATEGY_WEIGHTS = DhametAIEvaluation.STRATEGY_WEIGHTS;
-
-function __aiDirsForCell(r, c) {
-  return DhametRulesShared.dirsFrom(r, c);
-}
-
-function __aiEdgeDistanceIdx(idx) {
-  const [r, c] = idxToRC(idx);
-  return Math.min(r, c, BOARD_N - 1 - r, BOARD_N - 1 - c);
-}
-
-function __aiCentralWeightIdx(idx) {
-  const [r, c] = idxToRC(idx);
-  if (r >= 3 && r <= 5 && c >= 3 && c <= 5) return 3;
-  if (r >= 2 && r <= 6 && c >= 2 && c <= 6) return 2;
-  if (r >= 1 && r <= 7 && c >= 1 && c <= 7) return 1;
-  return 0;
-}
-
-function __aiForwardDistanceToCrown(idx, side) {
-  const [r] = idxToRC(idx);
-  return side === TOP ? BOARD_N - 1 - r : r;
-}
-
-function __aiForwardProgress(idx, side) {
-  return BOARD_N - 1 - __aiForwardDistanceToCrown(idx, side);
-}
-
-function __aiColumnPathClearToCrown(idx, side) {
-  const [r, c] = idxToRC(idx);
-  const step = forwardDir(side);
-  for (let rr = r + step; rr >= 0 && rr < BOARD_N; rr += step) {
-    if (Game.board[rr][c] !== 0) return false;
-  }
-  return true;
-}
-
-function __aiNearbyFriendCount(idx, side, radius = 1) {
-  const [r, c] = idxToRC(idx);
-  let n = 0;
-  for (let dr = -radius; dr <= radius; dr++) {
-    const rr = r + dr;
-    if (rr < 0 || rr >= BOARD_N) continue;
-    for (let dc = -radius; dc <= radius; dc++) {
-      if (dr === 0 && dc === 0) continue;
-      const cc = c + dc;
-      if (cc < 0 || cc >= BOARD_N) continue;
-      const v = Game.board[rr][cc];
-      if (v && pieceOwner(v) === side) n++;
-    }
-  }
-  return n;
-}
-
-function __aiRawThreatSet(attackerSide) {
-  const threatened = new Uint8Array(N_CELLS);
-  for (let idx = 0; idx < N_CELLS; idx++) {
-    const v = valueAt(idx);
-    if (!v || pieceOwner(v) !== attackerSide) continue;
-    const caps = generateCapturesFrom(idx, v);
-    for (let i = 0; i < caps.length; i++) {
-      const jumped = caps[i][1];
-      if (jumped != null) threatened[jumped] = 1;
-    }
-  }
-  return threatened;
-}
-
-function __aiCrownRouteValue(idx, side, threatenedByOpponent) {
-  const v = valueAt(idx);
-  if (!v || pieceOwner(v) !== side || pieceKind(v) !== MAN) return 0;
-  const [, c] = idxToRC(idx);
-  const dist = __aiForwardDistanceToCrown(idx, side);
-  const progress = __aiForwardProgress(idx, side);
-  const edgeDist = __aiEdgeDistanceIdx(idx);
-  const onSideLane = c === 0 || c === BOARD_N - 1;
-  const nearSideLane = c === 1 || c === BOARD_N - 2;
-  const safe = threatenedByOpponent && threatenedByOpponent[idx] ? 0 : 1;
-  const clear = __aiColumnPathClearToCrown(idx, side) ? 1 : 0;
-  const support = Math.min(3, __aiNearbyFriendCount(idx, side, 1));
-  const central = __aiCentralWeightIdx(idx);
-
-  let score = 0;
-  if (dist <= 5) score += (6 - dist) * (6 - dist) * 2.8;
-  score += progress * 1.1;
-  if (onSideLane) score += 18 + progress * 1.4;
-  else if (nearSideLane) score += 8 + progress * 0.8;
-  if (clear) score += onSideLane ? 16 : 8;
-  if (safe) score += dist <= 3 ? 18 : 7;
-  else score -= dist <= 3 ? 24 : 10;
-  score += support * (onSideLane || nearSideLane ? 5 : 2);
-  if (central >= 2 && dist <= 4) score -= central * 3;
-  if (edgeDist === 0 && !onSideLane && dist > 2) score -= 4;
-  return score;
-}
-
-function __aiCrownPressureRaw(side, threatenedByOpponent) {
-  let score = 0;
-  let close = 0;
-  let edgeClose = 0;
-  for (let idx = 0; idx < N_CELLS; idx++) {
-    const v = valueAt(idx);
-    if (!v || pieceOwner(v) !== side || pieceKind(v) !== MAN) continue;
-    const val = __aiCrownRouteValue(idx, side, threatenedByOpponent);
-    score += val;
-    const dist = __aiForwardDistanceToCrown(idx, side);
-    if (dist <= 3) close++;
-    const [, c] = idxToRC(idx);
-    if (dist <= 4 && (c === 0 || c === BOARD_N - 1 || c === 1 || c === BOARD_N - 2)) edgeClose++;
-  }
-  return { score, close, edgeClose };
-}
-
-function __aiKingPressure(side, crownPressure) {
-  let kings = 0;
-  for (let idx = 0; idx < N_CELLS; idx++) {
-    const v = valueAt(idx);
-    if (v && pieceOwner(v) === side && pieceKind(v) === KING) kings++;
-  }
-  const crown = Math.min(1.35, Math.max(0, (crownPressure && crownPressure.score ? crownPressure.score : 0) / 115));
-  const close = Math.min(0.75, ((crownPressure && crownPressure.close ? crownPressure.close : 0) * 0.25));
-  return kings * 1.15 + crown + close;
-}
-
-function __aiApproxKingPressure(side) {
-  let kings = 0;
-  let crown = 0;
-  for (let idx = 0; idx < N_CELLS; idx++) {
-    const v = valueAt(idx);
-    if (!v || pieceOwner(v) !== side) continue;
-    if (pieceKind(v) === KING) {
-      kings++;
-      continue;
-    }
-    const dist = __aiForwardDistanceToCrown(idx, side);
-    if (dist > 4) continue;
-    const [, c] = idxToRC(idx);
-    const edgeLane = c === 0 || c === BOARD_N - 1;
-    const nearEdgeLane = c === 1 || c === BOARD_N - 2;
-    crown += (5 - dist) * (edgeLane ? 18 : nearEdgeLane ? 11 : 7);
-    if (__aiColumnPathClearToCrown(idx, side)) crown += edgeLane ? 18 : 7;
-  }
-  return kings * 1.15 + Math.min(1.35, crown / 115);
-}
-
-function __aiCentralClusterScore(side) {
-  let score = 0;
-  for (let idx = 0; idx < N_CELLS; idx++) {
-    const v = valueAt(idx);
-    if (!v || pieceOwner(v) !== side) continue;
-    const central = __aiCentralWeightIdx(idx);
-    if (!central) continue;
-    const support = Math.min(4, __aiNearbyFriendCount(idx, side, 1));
-    const edgeDist = __aiEdgeDistanceIdx(idx);
-    score += central * (4 + support * 1.4 + (pieceKind(v) === KING ? 1.5 : 0));
-    if (edgeDist >= 3) score += 2;
-  }
-  return score;
-}
-
-function __aiEdgeFortressScore(side, enemyKingPressure) {
-  if (enemyKingPressure <= 0.05) return 0;
-  let score = 0;
-  for (let idx = 0; idx < N_CELLS; idx++) {
-    const v = valueAt(idx);
-    if (!v || pieceOwner(v) !== side) continue;
-    const [r, c] = idxToRC(idx);
-    const edgeDist = __aiEdgeDistanceIdx(idx);
-    if (edgeDist > 1) continue;
-    const support = Math.min(4, __aiNearbyFriendCount(idx, side, 1));
-    const corner = (r === 0 || r === BOARD_N - 1) && (c === 0 || c === BOARD_N - 1);
-    score += edgeDist === 0 ? 11 : 5;
-    score += support * (edgeDist === 0 ? 2.8 : 1.7);
-    if (corner) score += 4;
-    if (pieceKind(v) === MAN && (c === 0 || c === BOARD_N - 1)) score += 4;
-  }
-  return score * Math.min(2.25, enemyKingPressure);
-}
-
-function __aiKingRayExposure(attackerSide, victimSide) {
-  let score = 0;
-  for (let idx = 0; idx < N_CELLS; idx++) {
-    const v = valueAt(idx);
-    if (!v || pieceOwner(v) !== attackerSide || pieceKind(v) !== KING) continue;
-    const [r, c] = idxToRC(idx);
-    const dirs = __aiDirsForCell(r, c);
-    for (let d = 0; d < dirs.length; d++) {
-      const [dr, dc] = dirs[d];
-      let rr = r + dr;
-      let cc = c + dc;
-      while (inside(rr, cc)) {
-        if (!isDirAllowedFrom(rr - dr, cc - dc, dr, dc)) break;
-        const cell = Game.board[rr][cc];
-        if (cell === 0) {
-          rr += dr;
-          cc += dc;
-          continue;
-        }
-        if (pieceOwner(cell) === attackerSide) break;
-        if (pieceOwner(cell) === victimSide) {
-          let lr = rr + dr;
-          let lc = cc + dc;
-          let landing = false;
-          while (inside(lr, lc)) {
-            if (!isDirAllowedFrom(lr - dr, lc - dc, dr, dc)) break;
-            if (Game.board[lr][lc] !== 0) break;
-            landing = true;
-            break;
-          }
-          if (landing) {
-            const vidx = rcToIdx(rr, cc);
-            const central = __aiCentralWeightIdx(vidx);
-            const edgeDist = __aiEdgeDistanceIdx(vidx);
-            score += 10 + central * 7 + (pieceKind(cell) === KING ? 28 : 0);
-            if (edgeDist === 0) score -= 6;
-            else if (edgeDist === 1) score -= 2;
+    function captureOptionsFrom(state, from) {
+      const b = state.board;
+      const v = b[from] | 0;
+      if (!v) return [];
+      const side = sideOf(v);
+      const k = kindOf(v);
+      const out = [];
+      if (k === MAN_KIND) {
+        for (let d = 0; d < DIRS.length; d++) {
+          const mid = NEXT[from][d];
+          if (mid < 0) continue;
+          const land = NEXT[mid][d];
+          if (land < 0) continue;
+          const mv = b[mid] | 0;
+          if (mv && sideOf(mv) === opponent(side) && !b[land]) {
+            out.push({ from, to: land, jumped: mid, capturedValue: captureValue(mv), capturedKing: kindOf(mv) === KING_KIND ? 1 : 0 });
           }
         }
-        break;
+        return out;
       }
-    }
-  }
-  return Math.max(0, score);
-}
 
-function __aiOneHoleCollapseRisk(attackerSide, victimSide) {
-  let score = 0;
-  for (let idx = 0; idx < N_CELLS; idx++) {
-    const v = valueAt(idx);
-    if (!v || pieceOwner(v) !== attackerSide || pieceKind(v) !== KING) continue;
-    const [r, c] = idxToRC(idx);
-    const dirs = __aiDirsForCell(r, c);
-    for (let d = 0; d < dirs.length; d++) {
-      const [dr, dc] = dirs[d];
-      let rr = r + dr;
-      let cc = c + dc;
-      let firstVictim = null;
-      while (inside(rr, cc)) {
-        if (!isDirAllowedFrom(rr - dr, cc - dc, dr, dc)) break;
-        const cell = Game.board[rr][cc];
-        if (cell === 0) {
-          rr += dr;
-          cc += dc;
-          continue;
-        }
-        const owner = pieceOwner(cell);
-        if (owner === attackerSide) break;
-        if (owner === victimSide) {
-          const currentIdx = rcToIdx(rr, cc);
-          if (firstVictim == null) {
-            firstVictim = currentIdx;
-            rr += dr;
-            cc += dc;
+      for (let d = 0; d < DIRS.length; d++) {
+        let pos = NEXT[from][d];
+        let jumped = -1;
+        let jumpedVal = 0;
+        while (pos >= 0) {
+          const cur = b[pos] | 0;
+          if (!cur) {
+            if (jumped >= 0) out.push({ from, to: pos, jumped, capturedValue: captureValue(jumpedVal), capturedKing: kindOf(jumpedVal) === KING_KIND ? 1 : 0 });
+            pos = NEXT[pos][d];
             continue;
           }
-          let lr = rr + dr;
-          let lc = cc + dc;
-          let landing = false;
-          while (inside(lr, lc)) {
-            if (!isDirAllowedFrom(lr - dr, lc - dc, dr, dc)) break;
-            if (Game.board[lr][lc] !== 0) break;
-            landing = true;
-            break;
-          }
-          if (landing) {
-            const firstCentral = __aiCentralWeightIdx(firstVictim);
-            const secondCentral = __aiCentralWeightIdx(currentIdx);
-            score += 12 + firstCentral * 8 + secondCentral * 5;
-          }
-          break;
+          if (sideOf(cur) === side || jumped >= 0) break;
+          jumped = pos;
+          jumpedVal = cur;
+          pos = NEXT[pos][d];
         }
-        break;
       }
+      return out;
     }
-  }
-  return score;
-}
 
-function __aiForcedOpenerRisk(attackerSide, victimSide) {
-  let score = 0;
-  for (let idx = 0; idx < N_CELLS; idx++) {
-    const v = valueAt(idx);
-    if (!v || pieceOwner(v) !== victimSide) continue;
-    const central = __aiCentralWeightIdx(idx);
-    if (!central) continue;
-    const caps = generateCapturesFrom(idx, v);
-    for (let i = 0; i < caps.length; i++) {
-      const jumped = caps[i][1];
-      if (jumped == null) continue;
-      const jv = valueAt(jumped);
-      if (!jv || pieceOwner(jv) !== attackerSide) continue;
-      const jCentral = __aiCentralWeightIdx(jumped);
-      score += 7 + central * 6 + jCentral * 3;
-      if (pieceKind(v) === KING) score += 8;
-    }
-  }
+    function captureValue(v) { return kindOf(v) === KING_KIND ? 380 : 100; }
 
-  for (let idx = 0; idx < N_CELLS; idx++) {
-    const v = valueAt(idx);
-    if (!v || pieceOwner(v) !== attackerSide || pieceKind(v) !== MAN) continue;
-    const central = __aiCentralWeightIdx(idx);
-    if (!central) continue;
-    const nearVictims = __aiNearbyFriendCount(idx, victimSide, 1);
-    if (nearVictims > 0) score += central * Math.min(3, nearVictims) * 3;
-  }
+    function buildChainsFrom(state, from, limitPerPiece) {
+      const out = [];
+      const startPiece = state.board[from] | 0;
+      if (!startPiece) return out;
+      const path = [];
+      const jumps = [];
+      let capValue = 0;
+      let capKings = 0;
 
-  return score;
-}
-
-function __aiStrategicStructureAnalysis(perspectiveSide) {
-  const myThreat = __aiRawThreatSet(perspectiveSide);
-  const opThreat = __aiRawThreatSet(-perspectiveSide);
-  const myCrown = __aiCrownPressureRaw(perspectiveSide, opThreat);
-  const opCrown = __aiCrownPressureRaw(-perspectiveSide, myThreat);
-  const myPressure = __aiKingPressure(perspectiveSide, myCrown);
-  const opPressure = __aiKingPressure(-perspectiveSide, opCrown);
-
-  const myCentral = __aiCentralClusterScore(perspectiveSide);
-  const opCentral = __aiCentralClusterScore(-perspectiveSide);
-  const myFortress = __aiEdgeFortressScore(perspectiveSide, opPressure);
-  const opFortress = __aiEdgeFortressScore(-perspectiveSide, myPressure);
-
-  const enemyRayExposure = __aiKingRayExposure(-perspectiveSide, perspectiveSide);
-  const ownRayExposure = __aiKingRayExposure(perspectiveSide, -perspectiveSide);
-  const enemyOneHole = __aiOneHoleCollapseRisk(-perspectiveSide, perspectiveSide);
-  const ownOneHole = __aiOneHoleCollapseRisk(perspectiveSide, -perspectiveSide);
-  const enemyForcedOpeners = __aiForcedOpenerRisk(-perspectiveSide, perspectiveSide);
-  const ownForcedOpeners = __aiForcedOpenerRisk(perspectiveSide, -perspectiveSide);
-
-  const latentKingAvalancheRisk =
-    opPressure * (myCentral * 0.75 + enemyRayExposure * 1.05 + enemyOneHole * 1.1);
-  const ownKingAvalancheOpportunity =
-    myPressure * (opCentral * 0.45 + ownRayExposure * 0.95 + ownOneHole * 0.9);
-  const forcedOpenerRisk = opPressure * enemyForcedOpeners;
-  const forcedOpenerOpportunity = myPressure * ownForcedOpeners;
-
-  const score =
-    myCrown.score * __AI_STRATEGY_WEIGHTS.ownCrownRoute -
-    opCrown.score * __AI_STRATEGY_WEIGHTS.enemyCrownThreat +
-    (myFortress - opFortress) * __AI_STRATEGY_WEIGHTS.edgeFortress -
-    latentKingAvalancheRisk * __AI_STRATEGY_WEIGHTS.latentAvalancheRisk -
-    forcedOpenerRisk * __AI_STRATEGY_WEIGHTS.forcedOpenerRisk +
-    ownKingAvalancheOpportunity * __AI_STRATEGY_WEIGHTS.ownKingAvalanche +
-    forcedOpenerOpportunity * 0.42;
-
-  return {
-    score,
-    myCrownScore: myCrown.score,
-    opCrownScore: opCrown.score,
-    myEdgeCrownThreats: myCrown.edgeClose,
-    opEdgeCrownThreats: opCrown.edgeClose,
-    myKingPressure: myPressure,
-    opKingPressure: opPressure,
-    latentKingAvalancheRisk,
-    forcedOpenerRisk,
-    ownKingAvalancheOpportunity,
-    forcedOpenerOpportunity,
-    edgeFortressDelta: myFortress - opFortress,
-  };
-}
-
-function __aiGetStrategicStructureAnalysis(perspectiveSide) {
-  const key = __aiHash().toString() + "|S|" + (perspectiveSide === TOP ? "T" : "B");
-  const hit = __AI_STRATEGY_ANALYSIS_CACHE.get(key);
-  if (hit != null) return hit;
-  const value = __aiStrategicStructureAnalysis(perspectiveSide);
-  if (__AI_STRATEGY_ANALYSIS_CACHE.size > __AI_STRATEGY_ANALYSIS_CACHE_MAX) {
-    __AI_STRATEGY_ANALYSIS_CACHE.clear();
-  }
-  __AI_STRATEGY_ANALYSIS_CACHE.set(key, value);
-  return value;
-}
-
-function __aiStrategicPriority(side) {
-  const st = __aiGetStrategicStructureAnalysis(side);
-  let p = 0;
-  if (st.opCrownScore >= 170 || st.opEdgeCrownThreats >= 2) p = 2;
-  else if (st.opCrownScore >= 95 || st.opEdgeCrownThreats >= 1) p = 1;
-  if (st.latentKingAvalancheRisk >= 180 || st.forcedOpenerRisk >= 120) p = Math.max(p, 2);
-  else if (st.latentKingAvalancheRisk >= 90 || st.forcedOpenerRisk >= 60) p = Math.max(p, 1);
-  if (st.myCrownScore >= 180 || st.ownKingAvalancheOpportunity >= 180) p = Math.max(p, 1);
-  return p;
-}
-
-function __aiStrategicOffenseBoost(side) {
-  const st = __aiGetStrategicStructureAnalysis(side);
-  let b = 0;
-  if (st.myCrownScore >= 160 || st.myEdgeCrownThreats >= 2) b = 1;
-  if (st.myCrownScore >= 240 || st.ownKingAvalancheOpportunity >= 230) b = 2;
-  if (st.opCrownScore >= 150 || st.latentKingAvalancheRisk >= 160) b = Math.max(0, b - 1);
-  return b;
-}
-
-
-function aiHeuristicEval(perspectiveSide) {
-  const term = simTerminalScore(perspectiveSide);
-  if (term != null) return term;
-
-  let _cacheKey = null;
-  try {
-    _cacheKey = __aiHash().toString() + "|" + (perspectiveSide === TOP ? "T" : "B");
-    const hit = __AI_EVAL_CACHE.get(_cacheKey);
-    if (hit != null) return hit;
-  } catch {
-    _cacheKey = null;
-  }
-
-  const f = __aiCountAndFeatures(perspectiveSide);
-  const totalPieces = f.myMen + f.myKings + f.opMen + f.opKings;
-  const denom = Math.max(1, __AI_TOTAL_PIECES_REFERENCE);
-  const gameProgress = Math.max(0, Math.min(1, totalPieces / denom));
-  const endgame = 1 - gameProgress;
-
-  const manV = __AI_EVAL_PARAMS.man;
-  const kingV = __AI_EVAL_PARAMS.king + endgame * 90;
-
-  let s = 0;
-  s += (f.myMen - f.opMen) * manV;
-  s += (f.myKings - f.opKings) * kingV;
-
-  s += (f.myBack - f.opBack) * (__AI_EVAL_PARAMS.backRow + endgame * 4);
-
-  const advScale = 1 / Math.max(1, (BOARD_N - 1) * 6);
-  s += (f.myAdv - f.opAdv) * (__AI_EVAL_PARAMS.advance + (1 - endgame) * 2) * advScale * 100;
-
-  s += (f.myProm - f.opProm) * (6 + endgame * 3);
-  s += (f.myNearProm - f.opNearProm) * (10 + endgame * 4);
-
-  const pstW = (__AI_EVAL_PARAMS.center + endgame * 2) * (0.25 + 0.75 * gameProgress);
-  s += (f.myPst - f.opPst) * pstW;
-
-  s += (f.myEdge - f.opEdge) * (__AI_EVAL_PARAMS.edge * gameProgress);
-
-  const mobW = __AI_EVAL_PARAMS.mobility + endgame * 2;
-  s += (f.myMoves - f.opMoves) * mobW;
-
-  if ((f.myKings + f.opKings) > 0) {
-    s += (f.myKingMoves - f.opKingMoves) * (1 + endgame * 2);
-  }
-
-  s += (f.myCaps - f.opCaps) * (__AI_EVAL_PARAMS.capture + endgame * 2);
-  s += ((f.myLegalCaptureValue || 0) - (f.opLegalCaptureValue || 0)) * (0.04 + endgame * 0.03);
-
-  if ((f.myKings + f.opKings) > 0) {
-    s += (f.myKingCaps - f.opKingCaps) * (6 + endgame * 10);
-  }
-
-  const threat = Math.max(0, f.myCaps - f.opCaps);
-  s += threat * (__AI_EVAL_PARAMS.threat + endgame * 2);
-
-  if (Object.prototype.hasOwnProperty.call(f, "myVulnMen")) {
-    s += (f.opVulnMen - f.myVulnMen) * (8 + endgame * 2);
-      const kingThreatW = 140 + endgame * 220;
-    s += (f.opVulnKings - f.myVulnKings) * kingThreatW;
-  } else {
-    s += (f.opVuln - f.myVuln) * (8 + endgame * 2);
-  }
-
-  let myL = 0,
-    opL = 0;
-  try {
-    myL = longestCaptureLenLimitedCached(perspectiveSide, 2) | 0;
-  } catch {}
-  try {
-    opL = longestCaptureLenLimitedCached(-perspectiveSide, 2) | 0;
-  } catch {}
-  s += (myL - opL) * (12 + endgame * 4);
-
-  if ((f.myNearProm + f.opNearProm) > 0 || endgame >= 0.35) {
-    let c1My = 0,
-      c1Op = 0;
-    try {
-      c1My = crownInOneCount(perspectiveSide) | 0;
-    } catch {
-      c1My = 0;
-    }
-    try {
-      c1Op = crownInOneCount(-perspectiveSide) | 0;
-    } catch {
-      c1Op = 0;
-    }
-    s += (c1My - c1Op) * (70 + endgame * 60);
-  }
-
-  const lc = __aiLaneCrownScanNoFeatures(perspectiveSide);
-
-  const myD = lc.myMinSafe < 99 ? lc.myMinSafe : 12;
-  const opD = lc.opMinSafe < 99 ? lc.opMinSafe : 12;
-
-  s += (opD - myD) * (6 + endgame * 10);
-
-  if (lc.myLane0ClearMinSafe < 99) {
-    const d = Math.max(0, 9 - lc.myLane0ClearMinSafe);
-    s += d * d * (6 + endgame * 12);
-    s += (8 - lc.myLane0ClearMinSafe) * (14 + endgame * 22);
-  }
-
-  if (lc.opLane8ClearMinSafe < 99) {
-    const d = Math.max(0, 9 - lc.opLane8ClearMinSafe);
-    s -= d * d * (7 + endgame * 14);
-    s -= (8 - lc.opLane8ClearMinSafe) * (16 + endgame * 26);
-  }
-
-  s += (lc.myLane0Men - lc.opLane0Men) * (6 + endgame * 10);
-  s += (lc.myReinfNearSafe | 0) * (3 + endgame * 6);
-
-  s += (lc.myLane0Sup | 0) * (10 + endgame * 14);
-  s -= (lc.myLane0Lone | 0) * (9 + endgame * 12);
-  s -= (lc.myLane0Suicidal | 0) * (15 + endgame * 20);
-
-  const strategic = __aiGetStrategicStructureAnalysis(perspectiveSide);
-  s += strategic.score * (0.65 + endgame * 0.35);
-
-  if (endgame >= 0.55 && f.opKings > 0 && totalPieces <= 22) {
-    let Lop = 0;
-    try {
-      Lop = longestCaptureLenCached(-perspectiveSide) | 0;
-    } catch {
-      Lop = 0;
-    }
-    if (Lop >= 3) s -= (Lop - 2) * (22 + endgame * 24);
-  }
-  if (endgame >= 0.55 && f.myKings > 0 && totalPieces <= 22) {
-    let Lmy = 0;
-    try {
-      Lmy = longestCaptureLenCached(perspectiveSide) | 0;
-    } catch {
-      Lmy = 0;
-    }
-    if (Lmy >= 3) s += (Lmy - 2) * (18 + endgame * 20);
-  }
-
-  if (Game.player === perspectiveSide) s += __AI_EVAL_PARAMS.tempo;
-  else s -= __AI_EVAL_PARAMS.tempo;
-
-  try {
-    if (_cacheKey != null) {
-      if (__AI_EVAL_CACHE.size > __AI_EVAL_CACHE_MAX) __AI_EVAL_CACHE.clear();
-      __AI_EVAL_CACHE.set(_cacheKey, s);
-    }
-  } catch {}
-  return s;
-}
-
-
-function staticEval(perspectiveSide) {
-  return aiHeuristicEval(perspectiveSide);
-}
-
-function __aiActionOrderScore(perspectiveSide, a) {
-  if (a === ACTION_ENDCHAIN) return -1e9;
-  const from = Math.floor(a / N_CELLS);
-  const to = a % N_CELLS;
-  const v0 = valueAt(from);
-  if (!v0) return 0;
-  const owner = pieceOwner(v0);
-  const kind = pieceKind(v0);
-  const [isCap, jumped] = classifyCapture(from, to);
-  let s = 0;
-  if (isCap) s += 8000;
-  if (kind === MAN && isBackRank(to, owner)) s += 5000;
-  s += kind === KING ? __AI_PST_KING[to] : __AI_PST_MAN[to];
-
-  const [tr, tc] = idxToRC(to);
-  const isOwn = owner === perspectiveSide;
-  let enemyKingPressure = 0;
-  if (isOwn) {
-    enemyKingPressure = __aiApproxKingPressure(-perspectiveSide);
-  }
-
-  if (!isCap && kind === MAN && isOwn) {
-    const progress = perspectiveSide === TOP ? tr : BOARD_N - 1 - tr;
-    const sideLane = tc === 0 || tc === BOARD_N - 1;
-    const nearSideLane = tc === 1 || tc === BOARD_N - 2;
-    if (sideLane) s += 32 + progress * 3;
-    else if (nearSideLane) s += 14 + progress * 2;
-    if (__aiColumnPathClearToCrown(to, perspectiveSide)) s += sideLane ? 24 : 8;
-    if (enemyKingPressure > 0.35) {
-      const fromCentral = __aiCentralWeightIdx(from);
-      if (fromCentral > 0 && __aiEdgeDistanceIdx(to) <= 1) s += 20 + fromCentral * 7;
-      if (__aiEdgeDistanceIdx(from) <= 1 && __aiCentralWeightIdx(to) >= 2) {
-        s -= 26 * Math.min(2.2, enemyKingPressure);
+      function dfs(cur, depth) {
+        if (out.length >= limitPerPiece || depth >= MAX_CAPTURE_CHAIN_PLY) {
+          if (depth > 0) pushCurrent(cur);
+          return;
+        }
+        const opts = captureOptionsFrom(state, cur);
+        if (!opts.length) {
+          if (depth > 0) pushCurrent(cur);
+          return;
+        }
+        orderCaptureOptions(state, opts);
+        for (let i = 0; i < opts.length && out.length < limitPerPiece; i++) {
+          const opt = opts[i];
+          const undo = makeCaptureSegment(state, cur, opt.to, opt.jumped);
+          path.push(opt.to);
+          jumps.push(opt.jumped);
+          capValue += opt.capturedValue;
+          capKings += opt.capturedKing;
+          dfs(opt.to, depth + 1);
+          capKings -= opt.capturedKing;
+          capValue -= opt.capturedValue;
+          jumps.pop();
+          path.pop();
+          undoCaptureSegment(state, undo);
+        }
       }
+
+      function pushCurrent(cur) {
+        const side = sideOf(startPiece);
+        out.push({
+          type: MOVE_CAPTURE,
+          from,
+          to: cur,
+          path: path.slice(),
+          jumps: jumps.slice(),
+          captures: jumps.length,
+          promotes: kindOf(startPiece) === MAN_KIND && isBackRankIdx(cur, side),
+          capturedValue: capValue,
+          capturedKings: capKings,
+        });
+      }
+
+      dfs(from, 0);
+      return out;
     }
-  }
 
-  if (isOwn && isCap && jumped != null) {
-    const jv = valueAt(jumped);
-    if (jv && pieceOwner(jv) === -perspectiveSide) {
-      const jdist = pieceKind(jv) === MAN ? __aiForwardDistanceToCrown(jumped, -perspectiveSide) : 99;
-      const [, jc] = idxToRC(jumped);
-      if (jdist <= 3) s += 220 + (4 - jdist) * 90;
-      if (jdist <= 4 && (jc === 0 || jc === BOARD_N - 1)) s += 110;
+    function makeCaptureSegment(state, from, to, jumped) {
+      const undo = { from, to, jumped, fromVal: state.board[from] | 0, toVal: state.board[to] | 0, jumpVal: state.board[jumped] | 0 };
+      state.board[from] = 0;
+      state.board[jumped] = 0;
+      state.board[to] = undo.fromVal;
+      return undo;
     }
-    if (enemyKingPressure > 0.55 && __aiCentralWeightIdx(from) >= 2 && __aiEdgeDistanceIdx(to) > 1) {
-      s -= 80 * Math.min(2.4, enemyKingPressure);
+
+    function undoCaptureSegment(state, undo) {
+      state.board[undo.from] = undo.fromVal;
+      state.board[undo.to] = undo.toVal;
+      state.board[undo.jumped] = undo.jumpVal;
     }
-  }
 
-  if (isOwn && kind === KING) {
-    const landingCentral = __aiCentralWeightIdx(to);
-    if (landingCentral >= 2) s += landingCentral * 12;
-    if (isCap) s += 250;
-  }
-
-  if (!isOwn && kind === MAN) {
-    const enemyDist = __aiForwardDistanceToCrown(to, owner);
-    if (enemyDist <= 3) s = -Math.abs(s) - (4 - enemyDist) * 120;
-  }
-
-  if (owner !== perspectiveSide) s = -s;
-  return s;
-}
-
-function __aiIsCaptureAction(a) {
-  if (a === ACTION_ENDCHAIN) return false;
-  const from = Math.floor(a / N_CELLS);
-  const to = a % N_CELLS;
-  const [isCap] = classifyCapture(from, to);
-  return !!isCap;
-}
-
-function __aiCaptureSEE(perspectiveSide, a) {
-  if (a === ACTION_ENDCHAIN) return 0;
-  const from = Math.floor(a / N_CELLS);
-  const to = a % N_CELLS;
-  const [isCap, jumped] = classifyCapture(from, to);
-  if (!isCap || jumped == null) return 0;
-
-  const snap = snapshotState();
-
-  const capV = valueAt(jumped);
-  let gain = 0;
-  if (capV) gain = pieceKind(capV) === KING ? __AI_EVAL_PARAMS.king : __AI_EVAL_PARAMS.man;
-
-  applyActionSim(a);
-
-  let pen = 0;
-  if (!Game.inChain && Game.player === -perspectiveSide) {
-    const movedV = valueAt(to);
-    if (movedV) {
-      const { mask } = legalActions();
-      const { actions } = listLegalActionsFromMask(mask, {
-        pruneEarlyEndChain: true,
-        enforceMandatory: true,
-        enforceLongest: true,
+    function orderCaptureOptions(state, opts) {
+      opts.sort((a, b) => {
+        const av = a.capturedValue + a.capturedKing * 500 + (isBackRankIdx(a.to, sideOf(state.board[a.from] | 0)) ? 25 : 0);
+        const bv = b.capturedValue + b.capturedKing * 500 + (isBackRankIdx(b.to, sideOf(state.board[b.from] | 0)) ? 25 : 0);
+        return bv - av;
       });
-      for (let i = 0; i < actions.length; i++) {
-        const oa = actions[i];
-        if (oa === ACTION_ENDCHAIN) continue;
-        const of = Math.floor(oa / N_CELLS);
-        const ot = oa % N_CELLS;
-        const [ocap, oj] = classifyCapture(of, ot);
-        if (ocap && oj === to) {
-          pen = pieceKind(movedV) === KING ? __AI_EVAL_PARAMS.king : __AI_EVAL_PARAMS.man;
-          break;
-        }
-      }
-    }
-  }
-
-  restoreSnapshotSilent(snap);
-
-  return gain - pen;
-}
-
-function __aiRootTieBreakScore(perspectiveSide, a) {
-  if (a === ACTION_ENDCHAIN) return -1e12;
-  let s = __aiActionOrderScore(perspectiveSide, a);
-  if (__aiIsCaptureAction(a)) s += __aiCaptureSEE(perspectiveSide, a) * 20;
-  return s;
-}
-
-function __aiPieceSummary() {
-  let myMen = 0,
-    myKings = 0,
-    opMen = 0,
-    opKings = 0;
-  const side = Game.player;
-
-  for (let i = 0; i < N_CELLS; i++) {
-    const v = valueAt(i);
-    if (!v) continue;
-    const owner = pieceOwner(v);
-    const kind = pieceKind(v);
-    if (owner === side) {
-      if (kind === KING) myKings++;
-      else myMen++;
-    } else {
-      if (kind === KING) opKings++;
-      else opMen++;
-    }
-  }
-
-  return {
-    side,
-    myMen,
-    myKings,
-    opMen,
-    opKings,
-    total: myMen + myKings + opMen + opKings,
-    kings: myKings + opKings,
-    men: myMen + opMen,
-  };
-}
-
-function __aiEndgameProofConfig(summary) {
-  const total = summary && summary.total ? summary.total | 0 : 0;
-  const kings = summary && summary.kings ? summary.kings | 0 : 0;
-  if (total <= 0) return null;
-  const cases = __AI_SEARCH_LIMITS.endgameProof.cases;
-  for (let i = 0; i < cases.length; i++) {
-    const cfg = cases[i];
-    if (total <= cfg.maxPieces && (cfg.minKings == null || kings >= cfg.minKings)) return cfg;
-  }
-  return null;
-}
-
-function __aiPromotionAction(a) {
-  if (a === ACTION_ENDCHAIN) return false;
-  const from = Math.floor(a / N_CELLS);
-  const to = a % N_CELLS;
-  const v = valueAt(from);
-  if (!v || pieceKind(v) !== MAN) return false;
-  return isBackRank(to, pieceOwner(v));
-}
-
-function __aiNoisyAction(a) {
-  return a === ACTION_ENDCHAIN || __aiIsCaptureAction(a) || __aiPromotionAction(a);
-}
-
-function __aiProvenTerminalSearch(
-  proofTurnDepthRemaining,
-  proofActionPlyCap,
-  rootSide,
-  deadline,
-  budget,
-  memo,
-  searchActionPly,
-  proofActionPly = 0,
-) {
-  if (budget) {
-    budget.n--;
-    if (budget.n < 0) return null;
-  }
-  if (deadline != null && performance.now() >= deadline) return null;
-
-  const term = simTerminalScore(rootSide, searchActionPly);
-  if (term != null) return term;
-  if (proofTurnDepthRemaining <= 0 || proofActionPly >= proofActionPlyCap) return null;
-
-  let key = null;
-  try {
-    key =
-      __aiHash().toString() +
-      "|td=" +
-      proofTurnDepthRemaining +
-      "|ap=" +
-      proofActionPly +
-      "|cap=" +
-      proofActionPlyCap +
-      "|root=" +
-      rootSide +
-      "|ply=" +
-      searchActionPly;
-    if (memo.has(key)) return memo.get(key);
-  } catch {
-    key = null;
-  }
-
-  const { mask } = legalActions();
-  const acts = __aiPickMovesForSearch(Game.player, mask, __AI_MOVE_FILTER_ALL);
-  if (!acts.length) return null;
-
-  const isMax = Game.player === rootSide;
-  let best = isMax ? -Infinity : Infinity;
-  let known = false;
-  let unknown = false;
-
-  for (let i = 0; i < acts.length; i++) {
-    if (deadline != null && performance.now() >= deadline) return null;
-    if (budget && budget.n < 0) return null;
-
-    const a = acts[i];
-    const beforePlayer = Game.player;
-    const snap = snapshotStateSim();
-    applyActionSim(a);
-    const afterPlayer = Game.player;
-    const childTurnDepthRemaining = proofTurnDepthRemaining - (afterPlayer !== beforePlayer ? 1 : 0);
-    const v = __aiProvenTerminalSearch(
-      childTurnDepthRemaining,
-      proofActionPlyCap,
-      rootSide,
-      deadline,
-      budget,
-      memo,
-      searchActionPly + 1,
-      proofActionPly + 1,
-    );
-    restoreSnapshotSim(snap);
-
-    if (v == null) {
-      unknown = true;
-      continue;
     }
 
-    known = true;
-    if (isMax) {
-      if (v > best) best = v;
-      if (v > 0) {
-        if (key != null) memo.set(key, best);
-        return best;
-      }
-    } else {
-      if (v < best) best = v;
-      if (v < 0) {
-        if (key != null) memo.set(key, best);
-        return best;
-      }
-    }
-  }
-
-  if (!known) return null;
-
-  if (unknown) {
-    if (isMax && best >= 0) {
-      if (key != null) memo.set(key, best);
-      return best;
-    }
-    if (!isMax && best <= 0) {
-      if (key != null) memo.set(key, best);
-      return best;
-    }
-    return null;
-  }
-
-  if (key != null) memo.set(key, best);
-  return best;
-}
-
-function __aiTryEndgameProof(rootSide, deadline, searchActionPly = 0) {
-  const summary = __aiPieceSummary();
-  const cfg = __aiEndgameProofConfig(summary);
-  if (!cfg || cfg.turnDepth <= 0 || cfg.actionPlyCap <= 0) return null;
-
-  let cacheKey = null;
-  try {
-    cacheKey =
-      __aiHash().toString() +
-      "|EGP|" +
-      rootSide +
-      "|td=" +
-      cfg.turnDepth +
-      "|cap=" +
-      cfg.actionPlyCap +
-      "|ply=" +
-      searchActionPly;
-    const hit = __AI_ENDGAME_PROOF_CACHE.get(cacheKey);
-    if (hit != null) return hit;
-  } catch {
-    cacheKey = null;
-  }
-
-  const budget = { n: cfg.budget | 0 };
-  const memo = new Map();
-  const v = __aiProvenTerminalSearch(
-    cfg.turnDepth,
-    cfg.actionPlyCap,
-    rootSide,
-    deadline,
-    budget,
-    memo,
-    searchActionPly,
-    0,
-  );
-
-  if (v != null && cacheKey != null) {
-    if (__AI_ENDGAME_PROOF_CACHE.size > __AI_SEARCH_LIMITS.endgameProof.maxCacheEntries) {
-      __AI_ENDGAME_PROOF_CACHE.clear();
-    }
-    __AI_ENDGAME_PROOF_CACHE.set(cacheKey, v);
-  }
-  return v;
-}
-
-function __aiPickMovesForSearch(perspectiveSide, mask, moveFilterMode = __AI_MOVE_FILTER_ALL) {
-  const { actions } = listLegalActionsFromMask(mask, {
-    pruneEarlyEndChain: true,
-    enforceMandatory: true,
-    enforceLongest: true,
-  });
-  if (!actions.length) return [];
-
-  const filterMode = moveFilterMode || __AI_MOVE_FILTER_ALL;
-  const noisyOnly = filterMode === __AI_MOVE_FILTER_NOISY;
-  let acts = actions;
-
-  if (noisyOnly) {
-    acts = actions.filter((a) => __aiNoisyAction(a));
-    if (!acts.length) return [];
-  }
-
-  const scored = new Array(acts.length);
-  for (let i = 0; i < acts.length; i++) {
-    scored[i] = [acts[i], __aiActionOrderScore(perspectiveSide, acts[i])];
-  }
-  scored.sort((x, y) => y[1] - x[1]);
-
-  const refineN = Math.min(scored.length, 12);
-  for (let i = 0; i < refineN; i++) {
-    const a = scored[i][0];
-    if (__aiIsCaptureAction(a)) scored[i][1] += __aiCaptureSEE(perspectiveSide, a) * 25;
-  }
-  scored.sort((x, y) => y[1] - x[1]);
-
-  const out = new Array(scored.length);
-  for (let i = 0; i < scored.length; i++) out[i] = scored[i][0];
-  return out;
-}
-
-function makeDeadline(capMs) {
-  return DhametAISearch.makeDeadline(capMs);
-}
-
-function __aiNormalizeMask(m) {
-  return DhametAISearch.normalizeMask(m, N_ACTIONS, () => {
-    const { mask } = legalActions();
-    return mask;
-  });
-}
-
-function __aiNormalizeEvalFn(fn) {
-  return DhametAISearch.normalizeEvalFn(fn);
-}
-
-function __aiNormalizeCapMs(capMs, fallback) {
-  return DhametAISearch.normalizeCapMs(capMs, fallback);
-}
-
-function __aiNormalizeTurnDepth(turnDepth, fallback, maxTurnDepth = __AI_SEARCH_LIMITS.minimax.maxTurnDepth) {
-  return DhametAISearch.normalizeTurnDepth(turnDepth, fallback, maxTurnDepth);
-}
-
-function __aiResolveMinimaxTurnDepth(advanced, ctx = {}) {
-  return DhametAISearch.resolveMinimaxTurnDepth(advanced, ctx, __AI_SEARCH_LIMITS);
-}
-
-function __aiNormalizeInt(v, min, max, fallback, name) {
-  return DhametAISearch.normalizeInt(v, min, max, fallback, name);
-}
-
-
-function __aiQuiescence(
-  alpha,
-  beta,
-  deadline,
-  budget,
-  rootSide,
-  evalFn,
-  qActionPly = 0,
-  searchActionPly = 0,
-) {
-  if (budget) {
-    budget.n--;
-    if (budget.n < 0) return __AI_SEARCH_TIMEOUT;
-  }
-
-  const term = simTerminalScore(rootSide, searchActionPly);
-  if (term != null) return term;
-  if (__aiDeadlineReached(deadline)) return __AI_SEARCH_TIMEOUT;
-
-  const proven = __aiTryEndgameProof(rootSide, deadline, searchActionPly);
-  if (proven != null) return proven;
-  if (__aiDeadlineReached(deadline)) return __AI_SEARCH_TIMEOUT;
-
-  if (qActionPly >= __AI_SEARCH_LIMITS.quiescence.maxActionPly) return __aiSafeEvalScore(rootSide, evalFn);
-
-  const { mask } = legalActions();
-  const acts = __aiPickMovesForSearch(Game.player, mask, __AI_MOVE_FILTER_NOISY);
-
-  const mustResolve = Game.inChain || acts.some((a) => __aiIsCaptureAction(a));
-  let stand = __aiSafeEvalScore(rootSide, evalFn);
-  if (!mustResolve) {
-    if (Game.player === rootSide) {
-      if (stand >= beta) return stand;
-      if (stand > alpha) alpha = stand;
-    } else {
-      if (stand <= alpha) return stand;
-      if (stand < beta) beta = stand;
-    }
-  } else {
-    stand = Game.player === rootSide ? -Infinity : Infinity;
-  }
-
-  if (!acts.length) {
-    if (Game.inChain && mask[ACTION_ENDCHAIN]) {
-      if (__aiDeadlineReached(deadline)) return __AI_SEARCH_TIMEOUT;
-      const snap = snapshotStateSim();
-      applyActionSim(ACTION_ENDCHAIN);
-      const v = __aiQuiescence(
-        alpha,
-        beta,
-        deadline,
-        budget,
-        rootSide,
-        evalFn,
-        qActionPly + 1,
-        searchActionPly + 1,
-      );
-      restoreSnapshotSim(snap);
-      return v;
-    }
-    return __aiIsFiniteSearchScore(stand) ? stand : __aiSafeEvalScore(rootSide, evalFn);
-  }
-
-  const isMax = Game.player === rootSide;
-  let best = stand;
-  for (let i = 0; i < acts.length; i++) {
-    if (__aiDeadlineReached(deadline)) return __AI_SEARCH_TIMEOUT;
-    if (budget && budget.n < 0) return __AI_SEARCH_TIMEOUT;
-    const a = acts[i];
-    const snap = snapshotStateSim();
-    applyActionSim(a);
-    const v = __aiQuiescence(
-      alpha,
-      beta,
-      deadline,
-      budget,
-      rootSide,
-      evalFn,
-      qActionPly + 1,
-      searchActionPly + 1,
-    );
-    restoreSnapshotSim(snap);
-    if (__aiIsSearchTimeout(v)) return __AI_SEARCH_TIMEOUT;
-
-    if (isMax) {
-      if (v > best) best = v;
-      if (v > alpha) alpha = v;
-    } else {
-      if (v < best) best = v;
-      if (v < beta) beta = v;
-    }
-    if (alpha >= beta) break;
-  }
-
-  return __aiIsFiniteSearchScore(best) ? best : __aiSafeEvalScore(rootSide, evalFn);
-}
-
-function __aiAlphaBeta(
-  turnDepthRemaining,
-  alpha,
-  beta,
-  deadline,
-  budget,
-  rootSide,
-  evalFn,
-  tt,
-  searchActionPly,
-  killers,
-  history,
-) {
-  if (budget) {
-    budget.n--;
-    if (budget.n < 0) return __AI_SEARCH_TIMEOUT;
-  }
-
-  const term = simTerminalScore(rootSide, searchActionPly);
-  if (term != null) return term;
-  if (__aiDeadlineReached(deadline)) return __AI_SEARCH_TIMEOUT;
-  if (turnDepthRemaining <= 0) {
-    return __aiQuiescence(alpha, beta, deadline, budget, rootSide, evalFn, 0, searchActionPly);
-  }
-
-  const key = __aiHash();
-  const ent = tt && typeof tt.get === "function" ? tt.get(key) : null;
-  if (ent && ent.d >= turnDepthRemaining && __aiIsFiniteSearchScore(ent.v)) {
-    if (ent.f === 0) return ent.v;
-    if (ent.f === -1 && ent.v <= alpha) return ent.v;
-    if (ent.f === 1 && ent.v >= beta) return ent.v;
-  }
-
-  const { mask } = legalActions();
-  const acts = __aiPickMovesForSearch(Game.player, mask, __AI_MOVE_FILTER_ALL);
-  if (!acts.length) return __aiSafeEvalScore(rootSide, evalFn);
-
-  const a0 = alpha;
-  const b0 = beta;
-  let best = Game.player === rootSide ? -Infinity : Infinity;
-  let bestMove = acts[0];
-
-  const ttMove = ent && ent.m != null ? ent.m : null;
-  const killerLimit = __AI_SEARCH_LIMITS.killers.maxSearchActionPly;
-  DhametAISearch.bumpPreferredMoves(acts, { killers, killerLimit }, ttMove, searchActionPly);
-
-  const isMax = Game.player === rootSide;
-
-  for (let i = 0; i < acts.length; i++) {
-    if (__aiDeadlineReached(deadline)) return __AI_SEARCH_TIMEOUT;
-    if (budget && budget.n < 0) return __AI_SEARCH_TIMEOUT;
-    const a = acts[i];
-
-    const beforePlayer = Game.player;
-    const snap = snapshotStateSim();
-    applyActionSim(a);
-    const afterPlayer = Game.player;
-
-    const childTurnDepthRemaining = turnDepthRemaining - (afterPlayer !== beforePlayer ? 1 : 0);
-
-    // Full-depth search is intentionally preserved for quiet moves.
-    // Late-move reductions can hide quiet forcing moves in mandatory-capture positions.
-    const v = __aiAlphaBeta(
-      childTurnDepthRemaining,
-      alpha,
-      beta,
-      deadline,
-      budget,
-      rootSide,
-      evalFn,
-      tt,
-      searchActionPly + 1,
-      killers,
-      history,
-    );
-
-    restoreSnapshotSim(snap);
-    if (__aiIsSearchTimeout(v)) return __AI_SEARCH_TIMEOUT;
-
-    if (isMax) {
-      if (v > best) {
-        best = v;
-        bestMove = a;
-      }
-      if (v > alpha) alpha = v;
-    } else {
-      if (v < best) {
-        best = v;
-        bestMove = a;
-      }
-      if (v < beta) beta = v;
-    }
-
-    if (alpha >= beta) {
-      DhametAISearch.rememberKiller(
-        { killers, killerLimit },
-        searchActionPly,
-        a,
-        a !== ACTION_ENDCHAIN && !__aiIsCaptureAction(a),
-      );
-      DhametAISearch.rememberHistory({ history }, a, turnDepthRemaining);
-      break;
-    }
-  }
-
-  if (!__aiIsFiniteSearchScore(best)) return __AI_SEARCH_TIMEOUT;
-
-  let flag = 0;
-  if (best <= a0) flag = -1;
-  else if (best >= b0) flag = 1;
-  if (tt && typeof tt.set === "function") {
-    tt.set(key, { d: turnDepthRemaining, v: best, f: flag, m: bestMove });
-  }
-
-  return best;
-}
-
-async function minimaxScoreActions(side, opts) {
-  if (opts != null && (typeof opts !== "object" || Array.isArray(opts)))
-    throw new TypeError("options");
-  const mask = __aiNormalizeMask(opts && opts.mask);
-  const k = __aiNormalizeInt(opts && opts.k, 0, 64, 10, "k");
-  const turnDepth = __aiNormalizeTurnDepth(opts && opts.depth, __AI_SEARCH_LIMITS.minimax.defaultTurnDepth, __AI_SEARCH_LIMITS.minimax.maxTurnDepth);
-  const capMs = __aiNormalizeCapMs(opts && opts.capMs, 250);
-  const evalFn = __aiNormalizeEvalFn(opts && opts.evalFn);
-  const levelName = opts && opts.aiLevel != null ? String(opts.aiLevel) : "medium";
-
-  const pruneEarlyEndChain =
-    opts && Object.prototype.hasOwnProperty.call(opts, "pruneEarlyEndChain")
-      ? !!opts.pruneEarlyEndChain
-      : true;
-  const enforceMandatory =
-    opts && Object.prototype.hasOwnProperty.call(opts, "enforceMandatory")
-      ? !!opts.enforceMandatory
-      : true;
-  const enforceLongest =
-    opts && Object.prototype.hasOwnProperty.call(opts, "enforceLongest")
-      ? !!opts.enforceLongest
-      : true;
-  const useMask = mask;
-  const acts0 = listLegalActionsFromMask(useMask, {
-    pruneEarlyEndChain,
-    enforceMandatory,
-    enforceLongest,
-  }).actions;
-  const acts = acts0.slice();
-  acts.sort((a, b) => __aiActionOrderScore(side, b) - __aiActionOrderScore(side, a));
-  if (!acts.length) return new Map();
-
-  const deadline = makeDeadline(capMs);
-  const budget = null;
-
-  const committedScores = new Map();
-  for (let i = 0; i < acts.length; i++) {
-    __aiStoreScore(committedScores, acts[i], __aiRootStaticScore(side, acts[i], evalFn));
-  }
-
-  let scores = new Map(committedScores);
-  let previousCommittedScores = null;
-  let lastOrder = acts.slice();
-  let lastFullDepth = 0;
-  let lastDepthMs = 0;
-  const tables = DhametAISearch.createSearchTables(__AI_SEARCH_LIMITS);
-  const maxTurnDepth = Math.max(1, Math.trunc(turnDepth));
-
-  for (let turnDepthIter = 1; turnDepthIter <= maxTurnDepth; turnDepthIter++) {
-    if (__aiDeadlineReached(deadline)) break;
-
-    const remaining = __aiRemainingMs(deadline);
-    if (
-      lastFullDepth > 0 &&
-      capMs !== Infinity &&
-      Number.isFinite(remaining) &&
-      lastDepthMs > 0
-    ) {
-      const growth = turnDepthIter <= 2 ? 1.35 : 1.55;
-      const estimatedMs = lastDepthMs * growth + 8;
-      if (remaining < estimatedMs * 1.15) break;
-    }
-
-    __aiSortRootActions(side, lastOrder, scores, tables.history);
-
-    const workingScores = new Map(scores);
-    const depthStart = __aiSearchNow();
-    let completed = true;
-
-    for (let i = 0; i < lastOrder.length; i++) {
-      if (__aiDeadlineReached(deadline)) {
-        completed = false;
-        break;
-      }
-      const a = lastOrder[i];
-      const v = __aiRootSearchScore(side, a, turnDepthIter, deadline, budget, evalFn, tables);
-      if (__aiIsSearchTimeout(v) || !__aiIsFiniteSearchScore(v)) {
-        completed = false;
-        break;
-      }
-      workingScores.set(a, v);
-    }
-
-    if (!completed) break;
-
-    previousCommittedScores = scores;
-    scores = workingScores;
-    lastFullDepth = turnDepthIter;
-    lastDepthMs = Math.max(0, __aiSearchNow() - depthStart);
-  }
-
-  const remainingAfterFullWidth = __aiRemainingMs(deadline);
-  const canSelective =
-    maxTurnDepth > lastFullDepth &&
-    remainingAfterFullWidth > 35 &&
-    (capMs === Infinity || remainingAfterFullWidth > Math.min(900, Math.max(80, capMs * 0.05)));
-
-  if (canSelective) {
-    const selectiveCandidates = __aiBuildSelectiveRootCandidates(
-      side,
-      acts,
-      scores,
-      previousCommittedScores,
-      remainingAfterFullWidth,
-      capMs,
-      levelName,
-    );
-    const targetDepth = Math.min(maxTurnDepth, Math.max(lastFullDepth + 1, 1));
-    const focus = Math.max(1, Math.min(selectiveCandidates.length, k | 0 || selectiveCandidates.length));
-    for (let i = 0; i < focus; i++) {
-      if (__aiDeadlineReached(deadline)) break;
-      const a = selectiveCandidates[i];
-      const v = __aiRootSearchScore(side, a, targetDepth, deadline, budget, evalFn, tables);
-      if (__aiIsSearchTimeout(v) || !__aiIsFiniteSearchScore(v)) break;
-      scores.set(a, v);
-    }
-  }
-
-  __aiApplyRootSafetyGuard(side, scores, acts, deadline);
-
-  for (let i = 0; i < acts.length; i++) {
-    const a = acts[i];
-    if (!__aiIsFiniteSearchScore(scores.get(a))) {
-      scores.set(a, __aiRootStaticScore(side, a, evalFn));
-    }
-  }
-
-  return scores;
-}
-
-function quickMinimaxValue(side, opts) {
-  if (opts != null && (typeof opts !== "object" || Array.isArray(opts)))
-    throw new TypeError("options");
-  const mask = __aiNormalizeMask(opts && opts.mask);
-  const turnDepth = __aiNormalizeTurnDepth(opts && opts.depth, 3, __AI_SEARCH_LIMITS.minimax.maxTurnDepth);
-  const capMs = __aiNormalizeCapMs(opts && opts.capMs, 120);
-  const evalFn = __aiNormalizeEvalFn(opts && opts.evalFn);
-
-  const acts0 = listLegalActionsFromMask(mask, {
-    pruneEarlyEndChain: true,
-    enforceMandatory: true,
-    enforceLongest: true,
-  }).actions;
-  if (!acts0.length) return __aiSafeEvalScore(side, evalFn);
-  const acts = acts0.slice();
-  acts.sort((a, b) => __aiActionOrderScore(side, b) - __aiActionOrderScore(side, a));
-
-  const deadline = capMs === Infinity ? null : makeDeadline(capMs);
-  const budget = null;
-
-  const tables = DhametAISearch.createSearchTables(__AI_SEARCH_LIMITS);
-
-  let best = -Infinity;
-  for (let i = 0; i < acts.length; i++) {
-    if (__aiDeadlineReached(deadline)) break;
-    const a = acts[i];
-    const v = __aiRootSearchScore(side, a, Math.trunc(turnDepth), deadline, budget, evalFn, tables);
-    if (__aiIsSearchTimeout(v) || !__aiIsFiniteSearchScore(v)) break;
-    if (v > best) best = v;
-  }
-  if (!Number.isFinite(best)) best = __aiSafeEvalScore(side, evalFn);
-  return best;
-}
-
-function simTerminalScore(perspectiveSide, actionPly = 0) {
-  let topMen = 0,
-    topKings = 0,
-    botMen = 0,
-    botKings = 0;
-
-  for (let r = 0; r < BOARD_N; r++) {
-    for (let c = 0; c < BOARD_N; c++) {
-      const v = Game.board[r][c];
-      if (!v) continue;
-      const owner = pieceOwner(v);
-      const kind = pieceKind(v);
-      if (owner === TOP) {
-        if (kind === KING) topKings++;
-        else topMen++;
-      } else {
-        if (kind === KING) botKings++;
-        else botMen++;
-      }
-    }
-  }
-
-  const top = topMen + topKings;
-  const bot = botMen + botKings;
-
-  if (top === 0) return __aiTerminalScore(BOT, perspectiveSide, actionPly);
-  if (bot === 0) return __aiTerminalScore(TOP, perspectiveSide, actionPly);
-
-  if (topMen === 0 && botMen === 0 && topKings === 1 && botKings === 1) return 0;
-
-  const { mask } = legalActions();
-  const { actions } = listLegalActionsFromMask(mask, {
-    pruneEarlyEndChain: true,
-    enforceMandatory: true,
-    enforceLongest: true,
-  });
-  if (!actions.length) return __aiTerminalScore(-Game.player, perspectiveSide, actionPly);
-
-  return null;
-}
-
-function maxCaptureLenFromLimited(fromIdx, depthLeft) {
-  if (depthLeft <= 0) return 0;
-  const v = valueAt(fromIdx);
-  if (!v) return 0;
-  const moves = generateCapturesFrom(fromIdx, v);
-  if (!moves.length) return 0;
-
-  let best = 0;
-  for (let i = 0; i < moves.length; i++) {
-    const toIdx = moves[i][0];
-    const snap = snapshotStateSim();
-    applyMoveSim(fromIdx, toIdx);
-
-    best = Math.max(best, 1 + maxCaptureLenFromLimited(toIdx, depthLeft - 1));
-    restoreSnapshotSim(snap);
-  }
-  return best;
-}
-
-function longestCaptureLenLimitedCached(side, depthLimit = 3) {
-  const key = String(zobristKey()) + "|Llim|" + side + "|" + depthLimit;
-  const hit = __cacheGet(__AI_LONGEST_LIM_CACHE, key);
-  if (hit != null) return hit;
-
-  let Lmax = 0;
-  for (let idx = 0; idx < N_CELLS; idx++) {
-    const v = valueAt(idx);
-    if (!v || pieceOwner(v) !== side) continue;
-    const L = maxCaptureLenFromLimited(idx, depthLimit);
-    if (L > Lmax) Lmax = L;
-    if (Lmax >= depthLimit) break;
-  }
-  __cachePut(__AI_LONGEST_LIM_CACHE, key, Lmax, 15000);
-  return Lmax;
-}
-
-function mobilityInfo(side) {
-  let steps = 0,
-    caps = 0;
-  for (let idx = 0; idx < N_CELLS; idx++) {
-    const v = valueAt(idx);
-    if (!v || pieceOwner(v) !== side) continue;
-    try {
-      steps += generateStepsFrom(idx, v).length;
-    } catch {}
-    try {
-      caps += generateCapturesFrom(idx, v).length;
-    } catch {}
-  }
-  return { steps, caps };
-}
-
-function crownInOneCount(side) {
-  const hasCap = longestCaptureLenCached(side) > 0;
-  let cnt = 0;
-
-  for (let idx = 0; idx < N_CELLS; idx++) {
-    const v = valueAt(idx);
-    if (!v || pieceOwner(v) !== side) continue;
-    if (pieceKind(v) !== MAN) continue;
-
-    if (!hasCap) {
-      try {
-        const steps = generateStepsFrom(idx, v);
-        for (let i = 0; i < steps.length; i++) {
-          if (isBackRank(steps[i], side)) {
-            cnt++;
-            break;
+    function generateTurnMoves(state, options) {
+      const opts = options || {};
+      const side = state.side;
+      const limit = Number(opts.limit || MAX_ROOT_CAPTURE_PATHS) || MAX_ROOT_CAPTURE_PATHS;
+      let best = 0;
+      const caps = [];
+      for (let from = 0; from < CELLS; from++) {
+        const v = state.board[from] | 0;
+        if (!v || sideOf(v) !== side) continue;
+        const chains = buildChainsFrom(state, from, MAX_CAPTURE_PATHS_PER_PIECE);
+        for (let i = 0; i < chains.length; i++) {
+          const m = chains[i];
+          if (m.captures > best) {
+            best = m.captures;
+            caps.length = 0;
+            caps.push(m);
+          } else if (m.captures === best && best > 0) {
+            caps.push(m);
           }
+          if (caps.length >= limit && best > 0) break;
         }
-      } catch {}
-    }
-
-    try {
-      const caps = generateCapturesFrom(idx, v);
-      for (let i = 0; i < caps.length; i++) {
-        if (isBackRank(caps[i][0], side)) {
-          cnt++;
-          break;
-        }
+        if (caps.length >= limit && best > 0) break;
       }
-    } catch {}
-  }
-
-  return cnt;
-}
-
-const AI_ZOBRIST = (() => {
-  const MASK = (1n << 64n) - 1n;
-  let seed = 0x243f6a8885a308d3n;
-
-  function next64() {
-    seed = (seed + 0x9e3779b97f4a7c15n) & MASK;
-    let z = seed;
-    z = ((z ^ (z >> 30n)) * 0xbf58476d1ce4e5b9n) & MASK;
-    z = ((z ^ (z >> 27n)) * 0x94d049bb133111ebn) & MASK;
-    return (z ^ (z >> 31n)) & MASK;
-  }
-
-  const piece = Array.from({ length: 5 }, () => new Array(N_CELLS));
-  for (let pi = 0; pi < 5; pi++) {
-    for (let i = 0; i < N_CELLS; i++) piece[pi][i] = next64();
-  }
-
-  const sideToMoveTop = next64();
-  const inChain = next64();
-  const chainPos = new Array(N_CELLS + 1);
-  for (let i = 0; i < chainPos.length; i++) chainPos[i] = next64();
-
-  return { MASK, piece, sideToMoveTop, inChain, chainPos };
-})();
-
-function zobristKey() {
-  let h = 0n;
-  for (let i = 0; i < N_CELLS; i++) {
-    const v = valueAt(i);
-    if (!v) continue;
-    const pi = (v + 2) | 0;
-    h ^= AI_ZOBRIST.piece[pi][i];
-  }
-
-  if (Game.player === TOP) h ^= AI_ZOBRIST.sideToMoveTop;
-  if (Game.inChain) h ^= AI_ZOBRIST.inChain;
-  const cp = Game.chainPos == null ? -1 : Game.chainPos | 0;
-  h ^= AI_ZOBRIST.chainPos[(cp + 1) | 0];
-  return h & AI_ZOBRIST.MASK;
-}
-
-function dedupeDecisionCandidates(candidates) {
-  const out = [];
-  const seen = new Set();
-  for (const c of Array.isArray(candidates) ? candidates : []) {
-    if (!c) continue;
-    let key = "";
-    if (c.kind === "chain") {
-      const fromIdx = c.fromIdx | 0;
-      const path = Array.isArray(c.path) ? c.path.map((x) => x | 0) : [];
-      const jumps = Array.isArray(c.jumps) ? c.jumps.map((x) => x | 0) : [];
-      const endIdx = path.length ? path[path.length - 1] : fromIdx;
-      key = `C:${fromIdx}|${path.join(",")}|${jumps.join(",")}|${endIdx}`;
-    } else {
-      const action = c.action | 0;
-      key = `A:${action}`;
-    }
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push(c);
-  }
-  return out;
-}
-
-function actionCandidatesFromActions(actions) {
-  return (Array.isArray(actions) ? actions : []).map((action) => ({
-    kind: "action",
-    action: action | 0,
-  }));
-}
-
-function chainCandidatesFromLongestPaths(fromList, maxLen, mask) {
-  const L = maxLen | 0;
-  if (!Array.isArray(fromList) || !fromList.length || L <= 0) return [];
-
-  const out = [];
-  for (const from0 of fromList) {
-    const fromIdx = from0 | 0;
-    const v = valueAt(fromIdx);
-    if (!v || pieceOwner(v) !== Game.player) continue;
-
-    let paths = [];
-    try {
-      paths = longestPathsWithJumpsFrom(fromIdx, L) || [];
-    } catch (_) {
-      paths = [];
+      if (best > 0) return caps.filter((m) => m.captures === best).slice(0, limit);
+      if (opts.capturesOnly) return [];
+      const out = [];
+      stepMoves(state, side, out);
+      return out;
     }
 
-    for (const o of paths) {
-      const path = o && Array.isArray(o.path) ? o.path.map((x) => x | 0) : [];
-      const jumps = o && Array.isArray(o.jumps) ? o.jumps.map((x) => x | 0) : [];
-      if (!path.length) continue;
-      const firstTo = path[0] | 0;
-      const firstAction = encodeAction(fromIdx, firstTo);
-      if (mask && !mask[firstAction]) continue;
-      out.push({ kind: "chain", fromIdx, path, jumps, action: firstAction });
-    }
-  }
-
-  return dedupeDecisionCandidates(out);
-}
-
-function legalDecisionCandidatesFromMask(
-  mask,
-  { pruneEarlyEndChain = true, enforceMandatory = true, enforceLongest = true } = {},
-) {
-  let anyCapture = false;
-
-  const isCapAct = (a) => {
-    if (a === ACTION_ENDCHAIN) return false;
-    const from = Math.floor(a / N_CELLS);
-    const to = a % N_CELLS;
-    const [isCap] = classifyCapture(from, to);
-    return !!isCap;
-  };
-
-  if (Game.inChain && Game.chainPos != null) {
-    const caps = [];
-    for (let a = 0; a < N_ACTIONS; a++) {
-      if (!mask[a] || a === ACTION_ENDCHAIN) continue;
-      caps.push(a);
-    }
-    anyCapture = caps.length > 0;
-
-    let outCaps = caps;
-    let candidates = [];
-
-    if (enforceMandatory && anyCapture && enforceLongest) {
-      let L = 0;
-      try {
-        L = maxCaptureLenFrom(Game.chainPos) | 0;
-      } catch {
-        L = 0;
-      }
-      if (L > 0) {
-        const chains = chainCandidatesFromLongestPaths([Game.chainPos], L, mask);
-        const allowed = new Set(chains.map((c) => c.action | 0));
-        if (allowed.size) {
-          outCaps = outCaps.filter((a) => allowed.has(a));
-          candidates = chains;
+    function countState(state) {
+      let top = 0, bot = 0, topMen = 0, botMen = 0, topKings = 0, botKings = 0;
+      const b = state.board;
+      for (let i = 0; i < CELLS; i++) {
+        const v = b[i] | 0;
+        if (!v) continue;
+        if (v > 0) {
+          top++;
+          if (kindOf(v) === KING_KIND) topKings++; else topMen++;
+        } else {
+          bot++;
+          if (kindOf(v) === KING_KIND) botKings++; else botMen++;
         }
       }
+      return { top, bot, topMen, botMen, topKings, botKings, total: top + bot };
     }
 
-    const actions = outCaps.slice();
-    if (!candidates.length) candidates = actionCandidatesFromActions(actions);
-
-    if (mask[ACTION_ENDCHAIN]) {
-      if (!pruneEarlyEndChain || !anyCapture || !enforceMandatory) {
-        actions.push(ACTION_ENDCHAIN);
-        candidates.push({ kind: "action", action: ACTION_ENDCHAIN });
-      }
-    }
-
-    return {
-      actions,
-      anyCapture,
-      candidates: dedupeDecisionCandidates(candidates),
-    };
-  }
-
-  const caps = [];
-  const non = [];
-  for (let a = 0; a < N_ACTIONS; a++) {
-    if (!mask[a]) continue;
-    if (a === ACTION_ENDCHAIN) continue;
-    if (isCapAct(a)) {
-      caps.push(a);
-      anyCapture = true;
-    } else {
-      non.push(a);
-    }
-  }
-
-  let actions = [];
-  let candidates = [];
-
-  if (enforceMandatory && anyCapture) {
-    actions = caps.slice();
-
-    if (enforceLongest) {
-      try {
-        const longest = computeLongestForPlayer(Game.player);
-        const Lmax = longest && typeof longest.Lmax === "number" ? longest.Lmax | 0 : 0;
-        if (Lmax > 0) {
-          const chains = chainCandidatesFromLongestPaths(longest.candidates || [], Lmax, mask);
-          const allowedFirst = new Set(chains.map((c) => c.action | 0));
-          if (allowedFirst.size) {
-            actions = actions.filter((a) => allowedFirst.has(a));
-            candidates = chains;
-          }
-        }
-      } catch (_) {}
-    }
-
-    if (!candidates.length) candidates = actionCandidatesFromActions(actions);
-  } else {
-    actions = caps.concat(non);
-    candidates = actionCandidatesFromActions(actions);
-  }
-
-  if (mask[ACTION_ENDCHAIN]) {
-    actions.push(ACTION_ENDCHAIN);
-    candidates.push({ kind: "action", action: ACTION_ENDCHAIN });
-  }
-
-  return {
-    actions,
-    anyCapture,
-    candidates: dedupeDecisionCandidates(candidates),
-  };
-}
-
-function listLegalActionsFromMask(
-  mask,
-  { pruneEarlyEndChain = true, enforceMandatory = true, enforceLongest = true } = {},
-) {
-  const { actions, anyCapture } = legalDecisionCandidatesFromMask(mask, {
-    pruneEarlyEndChain,
-    enforceMandatory,
-    enforceLongest,
-  });
-  return { actions, anyCapture };
-}
-
-const AI = (() => {
-  function _firstActionFromSelection(selection, fallbackMask) {
-    try {
-      const candidates = selection && Array.isArray(selection.candidates) ? selection.candidates : [];
-      for (let i = 0; i < candidates.length; i++) {
-        const c = candidates[i];
-        if (!c || typeof c !== "object") continue;
-        if (c.kind === "chain" && typeof c.fromIdx === "number" && Array.isArray(c.path) && c.path.length) {
-          return encodeAction(c.fromIdx | 0, c.path[0] | 0);
-        }
-        if (typeof c.action === "number") return c.action | 0;
-      }
-    } catch (_) {}
-    try {
-      const mask = fallbackMask || [];
-      for (let a = 0; a < N_ACTIONS; a++) {
-        if (mask[a]) return a | 0;
-      }
-    } catch (_) {}
-    return ACTION_ENDCHAIN;
-  }
-
-  function _decideActionFastFallback() {
-    simEnter();
-    try {
-      if (isForcedOpeningActive()) {
-        const expected = getForcedOpeningExpectedAction();
-        if (expected && expected.endChain) return ACTION_ENDCHAIN;
-        if (expected) return encodeAction(expected.from, expected.to);
-      }
-
-      Game.normalizeAdvancedSettings();
-      const adv = Game.settings?.advanced || {};
-      const { mask } = legalActions();
-      const allMask = new Array(N_ACTIONS);
-      for (let i = 0; i < N_ACTIONS; i++) allMask[i] = !!mask[i];
-
-      const selection = legalDecisionCandidatesFromMask(allMask, {
-        pruneEarlyEndChain: true,
-        enforceMandatory: true,
-        enforceLongest: true,
-      });
-
-      const plan = DhametAIPlayer.planFromSingleDecisionSelection(selection, {
-        gameOver: !!Game.gameOver,
-        awaitingPenalty: !!Game.awaitingPenalty,
-        forcedOpeningActive: !!(Game.forcedEnabled && Game.forcedPly < 10),
-        aiCaptureMode: adv.aiCaptureMode || Game.settings?.aiCaptureMode || "mandatory",
-      });
-      if (plan && plan.kind === "action" && typeof plan.action === "number") return plan.action | 0;
-      if (plan && plan.kind === "chain" && typeof plan.fromIdx === "number" && Array.isArray(plan.path) && plan.path.length) {
-        return encodeAction(plan.fromIdx | 0, plan.path[0] | 0);
-      }
-      return _firstActionFromSelection(selection, allMask);
-    } catch (_) {
-      return ACTION_ENDCHAIN;
-    } finally {
-      simExit();
-    }
-  }
-
-  function _pickSouflaDecisionFastFallback(pending) {
-    try {
-      const opts = pending && Array.isArray(pending.options) ? pending.options : [];
-      return opts.find((o) => o && o.kind === "remove") || opts[0] || null;
-    } catch (_) {
+    function terminalScore(state, ply) {
+      const c = countState(state);
+      if (c.top === 0) return state.side === TOP_SIDE ? -WIN_SCORE + ply : WIN_SCORE - ply;
+      if (c.bot === 0) return state.side === BOT_SIDE ? -WIN_SCORE + ply : WIN_SCORE - ply;
+      if (c.top === 1 && c.bot === 1 && c.topKings === 1 && c.botKings === 1) return 0;
       return null;
     }
-  }
 
-  async function _decideActionLocal() {
-    simEnter();
-    try {
-      if (isForcedOpeningActive()) {
-        const expected = getForcedOpeningExpectedAction();
-        if (expected && expected.endChain) return ACTION_ENDCHAIN;
-        if (expected) return encodeAction(expected.from, expected.to);
-      }
-
-      Game.normalizeAdvancedSettings();
-      const adv = Game.settings?.advanced || {};
-      const levelCfg = getAILevelConfig(adv.aiLevel);
-
-      const { mask } = legalActions();
-      const allMask = new Array(N_ACTIONS);
-      for (let i = 0; i < N_ACTIONS; i++) allMask[i] = !!mask[i];
-
-      let hasCaptures = false;
-      for (let a = 0; a < N_ACTIONS; a++) {
-        if (!allMask[a]) continue;
-        if (a === ACTION_ENDCHAIN) continue;
-        const from = Math.floor(a / N_CELLS);
-        const to = a % N_CELLS;
-        const [ic] = classifyCapture(from, to);
-        if (ic) {
-          hasCaptures = true;
-          break;
+    function evaluate(state, side) {
+      const b = state.board;
+      const c = countState(state);
+      const phase = c.total > 48 ? 0 : c.total > 18 ? 1 : 2;
+      const kingVal = phase === 0 ? 320 : phase === 1 ? 380 : 460;
+      let score = 0;
+      for (let i = 0; i < CELLS; i++) {
+        const v = b[i] | 0;
+        if (!v) continue;
+        const s = sideOf(v);
+        const sign = s === side ? 1 : -1;
+        const k = kindOf(v);
+        if (k === MAN_KIND) {
+          const promo = s === TOP_SIDE ? CELL_PROMO_TOP[i] : CELL_PROMO_BOT[i];
+          const advancement = promo * (phase === 2 ? 12 : 7);
+          const backRankSafety = promo <= 1 ? 8 : 0;
+          score += sign * (100 + advancement + backRankSafety + CELL_CENTER[i] * 2 + CELL_WIDE[i] * 4);
+        } else if (k === KING_KIND) {
+          const ray = kingRayMobility(b, i);
+          score += sign * (kingVal + CELL_CENTER[i] * 4 + CELL_WIDE[i] * 8 + ray * (phase === 2 ? 8 : 5));
         }
       }
 
-      const capMode = String(Game.settings?.aiCaptureMode || "mandatory");
-      const ignorePct = clampInt(Game.settings?.aiRandomIgnoreCaptureRatePct, 0, 100, 12);
+      const myThreat = quickThreatScore(state, side);
+      const oppThreat = quickThreatScore(state, opponent(side));
+      score += myThreat * 12 - oppThreat * 14;
 
-      let enforceMandatory = true;
-      let enforceLongest = true;
-      let baseMask = allMask;
+      const myPromo = promotionPressure(state, side);
+      const oppPromo = promotionPressure(state, opponent(side));
+      score += myPromo - oppPromo;
 
-      if (capMode === "random" && ignorePct > 0) {
-        const roll = Math.random() * 100;
-        if (roll < ignorePct) {
-          if (Game.inChain) {
-            enforceMandatory = false;
-            enforceLongest = false;
-          } else if (hasCaptures) {
-            const nonCap = allMask.slice();
-            for (let a = 0; a < N_ACTIONS; a++) {
-              if (!nonCap[a]) continue;
-              if (a === ACTION_ENDCHAIN) continue;
-              const from = Math.floor(a / N_CELLS);
-              const to = a % N_CELLS;
-              const [ic] = classifyCapture(from, to);
-              if (ic) nonCap[a] = false;
-            }
-            let anyNon = false;
-            for (let a = 0; a < N_ACTIONS; a++) {
-              if (nonCap[a]) {
-                anyNon = true;
-                break;
-              }
-            }
-            if (anyNon) {
-              baseMask = nonCap;
-              enforceMandatory = false;
-              enforceLongest = false;
-            } else {
-              enforceMandatory = true;
-              enforceLongest = false;
-            }
-          }
-        }
-      }
+      const mob = quickMobility(state, side) - quickMobility(state, opponent(side));
+      score += mob * (phase === 0 ? 2 : 4);
 
-      const selection = legalDecisionCandidatesFromMask(baseMask, {
-        pruneEarlyEndChain: true,
-        enforceMandatory,
-        enforceLongest,
-      });
-      const sel = selection.actions;
-
-      const selectMask = new Array(N_ACTIONS).fill(false);
-      for (let i = 0; i < sel.length; i++) selectMask[sel[i]] = true;
-
-      let anySel = false;
-      for (let a = 0; a < N_ACTIONS; a++) {
-        if (selectMask[a]) {
-          anySel = true;
-          break;
-        }
-      }
-      if (!anySel) {
-        for (let a = 0; a < N_ACTIONS; a++) {
-          if (allMask[a]) {
-            selectMask[a] = true;
-            break;
-          }
-        }
-      }
-
-      const decisionCandidates = Array.isArray(selection.candidates) ? selection.candidates : [];
-      if (decisionCandidates.length === 1) return decisionCandidates[0].action | 0;
-
-      const critical = detectCriticalState(Game.player);
-      let crownP = 0;
-      try {
-        crownP = __aiCrownPriority(Game.player) | 0;
-      } catch {
-        crownP = 0;
-      }
-      const unlimited =
-        Number(adv.thinkTimeMs) === 0 || (critical && Number(adv.timeBoostCriticalMs) === 0);
-      const baseThink = unlimited ? 0 : clampInt(adv.thinkTimeMs, 50, 20000, 4000);
-      const boostThink = unlimited ? 0 : clampInt(adv.timeBoostCriticalMs, 0, 20000, 2000);
-      let capMs = unlimited
-        ? Infinity
-        : Math.max(30, baseThink + (critical ? boostThink : 0));
-
-      if (capMs !== Infinity && crownP > 0) {
-        const extra =
-          crownP >= 2 ? Math.max(600, Math.floor(capMs * 0.8)) : Math.max(350, Math.floor(capMs * 0.5));
-        capMs = Math.min(20000, capMs + extra);
-      }
-
-      let crownOff = 0;
-      try {
-        crownOff = __aiCrownOffenseBoost(Game.player) | 0;
-      } catch {
-        crownOff = 0;
-      }
-      if (capMs !== Infinity && crownOff > 0) {
-        const extra =
-          crownOff >= 2 ? Math.max(700, Math.floor(capMs * 0.6)) : Math.max(400, Math.floor(capMs * 0.35));
-        capMs = Math.min(20000, capMs + extra);
-      }
-
-      let kingP = 0;
-      try {
-        const kv = immediateCapturableInfo(-Game.player);
-        if ((kv && (kv.kingVictims | 0) > 0)) kingP = 2;
-      } catch {
-        kingP = 0;
-      }
-      if (capMs !== Infinity && kingP > 0) {
-        const extra = Math.max(900, Math.floor(capMs * 0.9));
-        capMs = Math.min(20000, capMs + extra);
-      }
-
-      const moveDeadline = performance.now() + capMs;
-
-      const minimaxDepthCtx = {
-        defensivePromotionThreat: crownP,
-        offensivePromotionThreat: crownOff,
-        kingCaptureThreat: kingP,
-      };
-      const turnDepth = __aiResolveMinimaxTurnDepth(adv, minimaxDepthCtx);
-
-      const pickFromScoresForLevel = (scores, useMask) =>
-        DhametAIPlayer.pickActionFromScores(scores, useMask, {
-          evalNoise: levelCfg.evalNoise,
-          moveChoiceTopN: levelCfg.moveChoiceTopN,
-          moveMistakeRatePct: levelCfg.moveMistakeRatePct,
-          fallbackAction: ACTION_ENDCHAIN,
-          tieBreak: (a) => __aiRootTieBreakScore(Game.player, a),
-        });
-
-      const decideWithSelection = async (useMask) => {
-        const remMs =
-          moveDeadline == null ? Infinity : Math.max(0, Math.floor(moveDeadline - performance.now()));
-        const mmScores = await minimaxScoreActions(Game.player, {
-          mask: useMask,
-          k: 0,
-          depth: turnDepth,
-          capMs: remMs === Infinity ? capMs : Math.min(capMs, remMs),
-          evalFn: staticEval,
-          aiLevel: adv.aiLevel,
-          enforceMandatory: false,
-          enforceLongest: false,
-        });
-        return pickFromScoresForLevel(mmScores, useMask);
-      };
-
-      return await decideWithSelection(selectMask);
-    } finally {
-      simExit();
+      if (lastPlan && state.side === side) score += planStaticBias(state, side);
+      return Math.trunc(score);
     }
-  }
 
-  function serializeAIWorkerState() {
-    return {
-      board: Game.board,
-      player: Game.player,
-      inChain: !!Game.inChain,
-      chainPos: Game.chainPos == null ? null : Game.chainPos,
-      forcedEnabled: !!Game.forcedEnabled,
-      forcedPly: Game.forcedPly | 0,
-      forcedSeq: Game.forcedSeq,
-      gameOver: !!Game.gameOver,
-      awaitingPenalty: !!Game.awaitingPenalty,
-      turnCtx: (() => {
-        try {
-          if (typeof Turn !== "undefined" && Turn && Turn.ctx) {
-            const tc = Turn.ctx;
-            return {
-              startedFrom: tc.startedFrom == null ? null : tc.startedFrom | 0,
-              capturesDone: typeof tc.capturesDone === "number" ? tc.capturesDone | 0 : 0,
-              Lmax: typeof tc.Lmax === "number" ? tc.Lmax | 0 : 0,
-              candidates: Array.isArray(tc.candidates) ? tc.candidates : null,
-            };
+    function kingRayMobility(board, from) {
+      let n = 0;
+      for (let d = 0; d < DIRS.length; d++) {
+        let p = NEXT[from][d];
+        while (p >= 0 && !board[p]) {
+          n++;
+          p = NEXT[p][d];
+        }
+      }
+      return n;
+    }
+
+    function quickMobility(state, side) {
+      const b = state.board;
+      let n = 0;
+      const fwd = forward(side);
+      for (let from = 0; from < CELLS; from++) {
+        const v = b[from] | 0;
+        if (!v || sideOf(v) !== side) continue;
+        if (kindOf(v) === MAN_KIND) {
+          for (let d = 0; d < DIRS.length; d++) {
+            if (DIRS[d][0] !== fwd) continue;
+            const to = NEXT[from][d];
+            if (to >= 0 && !b[to]) n++;
           }
-        } catch {}
-        return null;
-      })(),
-      settings: Game.settings,
-    };
-  }
+        } else {
+          for (let d = 0; d < DIRS.length; d++) {
+            let to = NEXT[from][d];
+            let ray = 0;
+            while (to >= 0 && !b[to] && ray < 4) {
+              n++;
+              ray++;
+              to = NEXT[to][d];
+            }
+          }
+        }
+        n += captureOptionsFrom(state, from).length * 2;
+      }
+      return n;
+    }
 
-  const __aiWorkerBridge = DhametAIRuntime.createWorkerBridge({
-    canUse: () => !__IN_WORKER && typeof Worker !== "undefined",
-    workerUrl: () => assetUrl("js/ai.worker.js"),
-    serializeState: serializeAIWorkerState,
-    planTimeoutMs: 120,
-    maxTimeoutMs: 2000,
-  });
+    function quickThreatScore(state, side) {
+      let score = 0;
+      const b = state.board;
+      for (let from = 0; from < CELLS; from++) {
+        const v = b[from] | 0;
+        if (!v || sideOf(v) !== side) continue;
+        const opts = captureOptionsFrom(state, from);
+        for (let i = 0; i < opts.length; i++) {
+          const jv = b[opts[i].jumped] | 0;
+          score += kindOf(jv) === KING_KIND ? 45 : 10;
+        }
+      }
+      return score;
+    }
 
-  async function decideAction() {
-    return await DhametAIRuntime.callWorkerWithRetry(
-      __aiWorkerBridge,
-      "decideAction",
-      [],
-      _decideActionLocal,
-      { accept: (a) => typeof a === "number" },
-    );
-  }
+    function promotionPressure(state, side) {
+      const b = state.board;
+      let score = 0;
+      for (let i = 0; i < CELLS; i++) {
+        const v = b[i] | 0;
+        if (!v || sideOf(v) !== side || kindOf(v) !== MAN_KIND) continue;
+        const dist = side === TOP_SIDE ? (8 - CELL_ROW[i]) : CELL_ROW[i];
+        if (dist <= 3) {
+          score += (4 - dist) * 35;
+          if (isPromotionLaneOpen(state, i, side)) score += (4 - dist) * 18;
+        }
+      }
+      return score;
+    }
 
-  const PVC_DELAY_MS = 120;
+    function isPromotionLaneOpen(state, from, side) {
+      const b = state.board;
+      const fwd = forward(side);
+      for (let d = 0; d < DIRS.length; d++) {
+        if (DIRS[d][0] !== fwd) continue;
+        const to = NEXT[from][d];
+        if (to >= 0 && !b[to]) return true;
+      }
+      return false;
+    }
 
-  function pvcSig() {
-    try {
-      return (
-        String(zobristKey()) +
-        "|" +
-        String(Game.player) +
-        "|" +
-        String(Game.inChain ? Game.chainPos : "") +
-        "|" +
-        String(Game.forcedEnabled ? Game.forcedPly : "")
+    function planStaticBias(state, side) {
+      const plan = lastPlan;
+      if (!plan || plan.side !== side || plan.expiresAt <= (Game.moveCount || 0)) return 0;
+      const target = plan.target;
+      if (target == null) return 0;
+      const b = state.board;
+      const v = b[target] | 0;
+      if (v && sideOf(v) === side) return 18;
+      return 0;
+    }
+
+    function shouldStop(ctx) {
+      if ((ctx.nodes & 1023) === 0) {
+        if (ctx.deadline != null && nowMs() >= ctx.deadline) return true;
+        if (ctx.maxNodes && ctx.nodes >= ctx.maxNodes) return true;
+      }
+      return false;
+    }
+
+    function quiesce(state, alpha, beta, qDepth, ctx, ply) {
+      if (shouldStop(ctx)) throw TIMEOUT;
+      ctx.nodes++;
+      const term = terminalScore(state, ply);
+      if (term != null) return term;
+      const moves = generateTurnMoves(state, { capturesOnly: true, limit: 1024 });
+      if (!moves.length || qDepth <= 0) return evaluate(state, state.side);
+      orderMoves(state, moves, null, ctx, ply);
+      let best = -INF;
+      for (let i = 0; i < moves.length; i++) {
+        const undo = state.makeMove(moves[i]);
+        const score = -quiesce(state, -beta, -alpha, qDepth - 1, ctx, ply + 1);
+        state.undoMove(undo);
+        if (score > best) best = score;
+        if (score > alpha) alpha = score;
+        if (alpha >= beta) break;
+      }
+      return best;
+    }
+
+    function negamax(state, depth, alpha, beta, ctx, ply) {
+      if (shouldStop(ctx)) throw TIMEOUT;
+      ctx.nodes++;
+      const term = terminalScore(state, ply);
+      if (term != null) return term;
+      const key = state.key();
+      const oldAlpha = alpha;
+      const ent = TT.get(key);
+      let ttMove = null;
+      if (ent && ent.depth >= depth) {
+        ttMove = ent.move;
+        if (ent.flag === 'exact') return ent.score;
+        if (ent.flag === 'lower') alpha = Math.max(alpha, ent.score);
+        else if (ent.flag === 'upper') beta = Math.min(beta, ent.score);
+        if (alpha >= beta) return ent.score;
+      } else if (ent) {
+        ttMove = ent.move;
+      }
+      if (depth <= 0) return quiesce(state, alpha, beta, ctx.qDepth, ctx, ply);
+      const moves = generateTurnMoves(state, { capturesOnly: false, limit: 2048 });
+      if (!moves.length) return -WIN_SCORE + ply;
+      orderMoves(state, moves, ttMove, ctx, ply);
+      let bestScore = -INF;
+      let bestMove = null;
+      for (let i = 0; i < moves.length; i++) {
+        const m = moves[i];
+        const undo = state.makeMove(m);
+        const score = -negamax(state, depth - 1, -beta, -alpha, ctx, ply + 1);
+        state.undoMove(undo);
+        if (score > bestScore) {
+          bestScore = score;
+          bestMove = m;
+        }
+        if (score > alpha) alpha = score;
+        if (alpha >= beta) break;
+      }
+      const flag = bestScore <= oldAlpha ? 'upper' : bestScore >= beta ? 'lower' : 'exact';
+      TT.set(key, { depth, score: bestScore, flag, move: cloneMove(bestMove), age: ttAge });
+      return bestScore;
+    }
+
+    function orderMoves(state, moves, ttMove, ctx, ply) {
+      for (let i = 0; i < moves.length; i++) moves[i]._ord = moveOrderScore(state, moves[i], ttMove, ctx, ply);
+      moves.sort((a, b) => b._ord - a._ord);
+    }
+
+    function moveOrderScore(state, m, ttMove, ctx, ply) {
+      let s = 0;
+      if (ttMove && movesEqual(m, ttMove)) s += 100000000;
+      if (m.captures > 0) s += 1000000 + m.captures * 50000 + m.capturedValue * 80 + m.capturedKings * 300000;
+      if (m.promotes) s += 600000;
+      const moving = state.board[m.from] | 0;
+      if (kindOf(moving) === KING_KIND) s += 2000 + kingRayMobility(state.board, m.to) * 25;
+      s += CELL_CENTER[m.to] * 35 + CELL_WIDE[m.to] * 30;
+      if (lastPlan && lastPlan.side === state.side && m.from === lastPlan.from) s += 850;
+      if (lastPlan && lastPlan.side === state.side && lastPlan.target != null && m.to === lastPlan.target) s += 650;
+      if (ctx && ctx.history) s += ctx.history.get(moveKey(m)) || 0;
+      if (ply <= 1 && moveLeavesMajorThreat(state, m)) s -= 120000;
+      return s;
+    }
+
+    function moveLeavesMajorThreat(state, move) {
+      const undo = state.makeMove(move);
+      const oppMoves = generateTurnMoves(state, { capturesOnly: false, limit: 256 });
+      let bad = false;
+      for (let i = 0; i < oppMoves.length; i++) {
+        if (oppMoves[i].capturedKings > 0 || oppMoves[i].captures >= 3) { bad = true; break; }
+      }
+      state.undoMove(undo);
+      return bad;
+    }
+
+    function searchRoot(state, settings) {
+      ttAge = (ttAge + 1) & 0xffff;
+      const started = nowMs();
+      const deadline = settings.timeMs > 0 ? started + settings.timeMs : null;
+      const ctx = { nodes: 0, deadline, maxNodes: settings.maxNodes, qDepth: settings.qDepth, history: new Map(), rootSide: state.side };
+      const rootMoves = generateTurnMoves(state, { capturesOnly: false, limit: MAX_ROOT_CAPTURE_PATHS });
+      if (!rootMoves.length) return { move: null, score: -WIN_SCORE, depth: 0, nodes: 0, timeMs: nowMs() - started, pv: [] };
+      if (rootMoves.length === 1) {
+        const undo = state.makeMove(rootMoves[0]);
+        const score = -quiesce(state, -INF, INF, Math.min(4, settings.qDepth), ctx, 1);
+        state.undoMove(undo);
+        return { move: cloneMove(rootMoves[0]), score, depth: 1, nodes: ctx.nodes, timeMs: nowMs() - started, pv: [cloneMove(rootMoves[0])] };
+      }
+
+      let completedDepth = 0;
+      let bestMove = cloneMove(rootMoves[0]);
+      let bestScore = -INF;
+      let rootScores = [];
+      let ttMove = null;
+      const rootEnt = TT.get(state.key());
+      if (rootEnt && rootEnt.move) ttMove = rootEnt.move;
+
+      try {
+        for (let depth = 1; depth <= settings.maxDepth; depth++) {
+          if (deadline != null && nowMs() >= deadline) break;
+          const moves = rootMoves.map(cloneMove);
+          orderMoves(state, moves, ttMove || bestMove, ctx, 0);
+          let alpha = -INF;
+          let localBest = null;
+          let localBestScore = -INF;
+          const scores = [];
+          for (let i = 0; i < moves.length; i++) {
+            if (shouldStop(ctx)) throw TIMEOUT;
+            const m = moves[i];
+            const undo = state.makeMove(m);
+            const score = -negamax(state, depth - 1, -INF, -alpha, ctx, 1);
+            state.undoMove(undo);
+            scores.push({ move: cloneMove(m), score });
+            if (score > localBestScore || (score === localBestScore && preferMove(m, localBest))) {
+              localBestScore = score;
+              localBest = cloneMove(m);
+            }
+            if (score > alpha) alpha = score;
+          }
+          completedDepth = depth;
+          bestMove = cloneMove(localBest);
+          bestScore = localBestScore;
+          rootScores = scores;
+          ttMove = bestMove;
+          TT.set(state.key(), { depth, score: bestScore, flag: 'exact', move: cloneMove(bestMove), age: ttAge });
+          if (Math.abs(bestScore) > WIN_SCORE - 1000) break;
+        }
+      } catch (e) {
+        if (!(e && e.timeout)) throw e;
+      }
+
+      trimTT();
+      if (!bestMove) bestMove = cloneMove(rootMoves[0]);
+      if (completedDepth === 0) {
+        orderMoves(state, rootMoves, ttMove, ctx, 0);
+        bestMove = cloneMove(rootMoves[0]);
+        bestScore = evaluateAfterMove(state, bestMove);
+        rootScores = rootMoves.slice(0, 8).map((m) => ({ move: cloneMove(m), score: evaluateAfterMove(state, m) }));
+      }
+
+      bestMove = chooseByLevel(bestMove, rootScores, settings);
+      return { move: cloneMove(bestMove), score: bestScore, depth: completedDepth, nodes: ctx.nodes, timeMs: nowMs() - started, pv: bestMove ? [cloneMove(bestMove)] : [] };
+    }
+
+    function evaluateAfterMove(state, move) {
+      const undo = state.makeMove(move);
+      const score = -evaluate(state, state.side);
+      state.undoMove(undo);
+      return score;
+    }
+
+    function preferMove(a, b) {
+      if (!b) return true;
+      if ((a.captures | 0) !== (b.captures | 0)) return (a.captures | 0) > (b.captures | 0);
+      if (!!a.promotes !== !!b.promotes) return !!a.promotes;
+      return moveKey(a) < moveKey(b);
+    }
+
+    function chooseByLevel(best, rootScores, settings) {
+      if (!best || !rootScores || !rootScores.length) return best;
+      if (settings.topN <= 1 && settings.noise <= 0 && settings.mistakePct <= 0) return best;
+      const sorted = rootScores.slice().sort((a, b) => b.score - a.score);
+      const allowed = sorted.filter((x) => x.score >= sorted[0].score - Math.max(90, settings.noise * 3)).slice(0, settings.topN);
+      if (!allowed.length) return best;
+      if (settings.mistakePct > 0 && Math.random() * 100 < settings.mistakePct && allowed.length > 1) {
+        return cloneMove(allowed[Math.min(allowed.length - 1, 1 + ((Math.random() * (allowed.length - 1)) | 0))].move);
+      }
+      if (settings.noise > 0 && allowed.length > 1) {
+        let chosen = allowed[0];
+        let bestNoisy = -INF;
+        for (const ent of allowed) {
+          const noisy = ent.score + (Math.random() * 2 - 1) * settings.noise;
+          if (noisy > bestNoisy) { bestNoisy = noisy; chosen = ent; }
+        }
+        return cloneMove(chosen.move);
+      }
+      return best;
+    }
+
+
+    function sharedLegalMoves(board, side) {
+      try {
+        const res = R.generateLegalMoves(board, side, { policy: 'strict' });
+        return res && Array.isArray(res.moves) ? res.moves : [];
+      } catch (_) {
+        return [];
+      }
+    }
+
+    function normalizeSharedMove(m) {
+      if (!m || m.from == null) return null;
+      const path = Array.isArray(m.path) ? m.path.slice() : (m.to != null ? [m.to | 0] : []);
+      const jumps = Array.isArray(m.jumps) ? m.jumps.slice() : [];
+      if (!path.length) return null;
+      const captures = Number(m.captures || jumps.length || 0) | 0;
+      return {
+        type: captures > 0 ? MOVE_CAPTURE : MOVE_STEP,
+        from: m.from | 0,
+        to: path[path.length - 1] | 0,
+        path,
+        jumps,
+        captures,
+        promotes: !!m.promotes,
+        capturedValue: Number(m.capturedValue || 0) || 0,
+        capturedKings: Number(m.capturedKings || 0) || 0,
+      };
+    }
+
+    function alignWithSharedLegalMove(move, board, side) {
+      const legal = sharedLegalMoves(board, side);
+      if (!legal.length) return null;
+      const wanted = moveKey(move);
+      for (let i = 0; i < legal.length; i++) {
+        const m = normalizeSharedMove(legal[i]);
+        if (m && moveKey(m) === wanted) return enrichMoveMetadata(m, board);
+      }
+      return enrichMoveMetadata(normalizeSharedMove(legal[0]), board);
+    }
+
+    function enrichMoveMetadata(move, board) {
+      if (!move) return null;
+      let capturedValue = 0;
+      let capturedKings = 0;
+      try {
+        for (let i = 0; i < (move.jumps || []).length; i++) {
+          const j = move.jumps[i] | 0;
+          const rc = R.rc(j);
+          const v = Number(board[rc[0]] && board[rc[0]][rc[1]] || 0) | 0;
+          capturedValue += captureValue(v);
+          if (kindOf(v) === KING_KIND) capturedKings += 1;
+        }
+        const start = R.rc(move.from);
+        const end = R.rc(move.to);
+        const v0 = Number(board[start[0]] && board[start[0]][start[1]] || 0) | 0;
+        move.promotes = kindOf(v0) === MAN_KIND && isBackRankIdx(move.to, sideOf(v0));
+      } catch (_) {}
+      move.capturedValue = capturedValue;
+      move.capturedKings = capturedKings;
+      return move;
+    }
+
+    function forcedOpeningMove() {
+      if (!(Game.forcedEnabled && (Game.forcedPly | 0) < 10)) return null;
+      const exp = typeof getForcedOpeningExpectedAction === 'function' ? getForcedOpeningExpectedAction() : null;
+      if (!exp || exp.endChain || exp.from == null || exp.to == null) return null;
+      const path = [exp.to];
+      try {
+        if (exp.info && Array.isArray(exp.info.path)) {
+          const pos = exp.info.path.indexOf(exp.from);
+          if (pos >= 0) return { type: MOVE_STEP, from: exp.from, to: exp.info.path[exp.info.path.length - 1], path: exp.info.path.slice(pos + 1), jumps: [], captures: 0, promotes: false };
+        }
+      } catch (_) {}
+      return { type: MOVE_STEP, from: exp.from, to: exp.to, path, jumps: [], captures: 0, promotes: false };
+    }
+
+    function analyzeTurnLocal() {
+      if (Game.gameOver || Game.awaitingPenalty) return null;
+      if (Game.forcedEnabled && (Game.forcedPly | 0) < 10) {
+        const fm = forcedOpeningMove();
+        return fm ? { move: fm, action: moveToAction(fm), score: 0, depth: 0, nodes: 0, timeMs: 0, engine: ENGINE_VERSION } : null;
+      }
+      const side = Game.player === BOT_SIDE ? BOT_SIDE : TOP_SIDE;
+      const settings = runtimeSettings(Game.settings || {}, side, Game.board);
+      const state = new EngineState(Game.board, side);
+      const result = searchRoot(state, settings);
+      const move = alignWithSharedLegalMove(result.move, Game.board, side);
+      if (!move) return null;
+      updatePlan(move, result, side);
+      return {
+        move,
+        action: moveToAction(move),
+        score: result.score,
+        depth: result.depth,
+        nodes: result.nodes,
+        timeMs: Math.round(result.timeMs || 0),
+        pv: result.pv || [],
+        plan: lastPlan,
+        engine: ENGINE_VERSION,
+      };
+    }
+
+    function updatePlan(move, result, side) {
+      if (!move) { lastPlan = null; return; }
+      const goal = move.captures > 0 ? 'WIN_MATERIAL' : move.promotes ? 'PROMOTE_MAN' : inferPlanGoal(move, side);
+      lastPlan = {
+        engine: ENGINE_VERSION,
+        side,
+        goal,
+        from: move.from,
+        target: move.to,
+        mainLine: result && result.pv ? result.pv.map(cloneMove).slice(0, 4) : [cloneMove(move)],
+        score: result ? result.score : 0,
+        depth: result ? result.depth : 0,
+        confidence: Math.max(0, Math.min(100, Math.abs(result && result.score || 0) / 10)),
+        expiresAt: (Game.moveCount || 0) + 6,
+      };
+    }
+
+    function inferPlanGoal(move, side) {
+      const v = Game && Game.board ? Game.board[CELL_ROW[move.from]][CELL_COL[move.from]] : 0;
+      if (kindOf(v) === KING_KIND) return 'ACTIVATE_KING';
+      const dist = side === TOP_SIDE ? 8 - CELL_ROW[move.to] : CELL_ROW[move.to];
+      if (dist <= 2) return 'PROMOTE_MAN';
+      return 'IMPROVE_POSITION';
+    }
+
+    const __aiWorkerBridge = DhametAIRuntime.createWorkerBridge({
+      canUse: () => !__IN_WORKER && typeof Worker !== 'undefined',
+      workerUrl: () => (typeof assetUrl === 'function' ? assetUrl('js/ai.worker.js') : 'js/ai.worker.js'),
+      serializeState: serializeAIWorkerState,
+      planTimeoutMs: 0,
+      maxTimeoutMs: 10000,
+    });
+
+    function serializeAIWorkerState() {
+      return {
+        board: Game.board,
+        player: Game.player,
+        inChain: !!Game.inChain,
+        chainPos: Game.chainPos == null ? null : Game.chainPos,
+        forcedEnabled: !!Game.forcedEnabled,
+        forcedPly: Game.forcedPly | 0,
+        forcedSeq: Game.forcedSeq,
+        gameOver: !!Game.gameOver,
+        awaitingPenalty: !!Game.awaitingPenalty,
+        settings: Game.settings,
+        moveCount: Game.moveCount | 0,
+        turnCtx: (() => {
+          try {
+            if (Turn && Turn.ctx) return { startedFrom: Turn.ctx.startedFrom, capturesDone: Turn.ctx.capturesDone | 0 };
+          } catch (_) {}
+          return null;
+        })(),
+      };
+    }
+
+    async function analyzeTurn() {
+      return await DhametAIRuntime.callWorkerWithRetry(
+        __aiWorkerBridge,
+        'analyzeTurn',
+        [],
+        async function () { return analyzeTurnLocal(); },
+        { accept: (r) => !!(r && r.move && Array.isArray(r.move.path)) },
       );
-    } catch {
-      return "";
     }
-  }
-
-  const __aiPlanCache = DhametAIPlayer.createPlanCache(pvcSig);
-
-  function pvcConsumePlan() {
-    return __aiPlanCache.consume();
-  }
-
-  function pvcCachePlan(p) {
-    return __aiPlanCache.cache(p);
-  }
-
-  function pvcComputePlan() {
-    if (Game.forcedEnabled && Game.forcedPly < 10) return null;
-    if (Game.gameOver || Game.awaitingPenalty) return null;
-
-    const { mask } = legalActions();
-    const selection = legalDecisionCandidatesFromMask(mask, {
-      pruneEarlyEndChain: true,
-      enforceMandatory: true,
-      enforceLongest: true,
-    });
-
-    return DhametAIPlayer.planFromSingleDecisionSelection(selection, {
-      gameOver: !!Game.gameOver,
-      awaitingPenalty: !!Game.awaitingPenalty,
-      forcedOpeningActive: !!(Game.forcedEnabled && Game.forcedPly < 10),
-      aiCaptureMode: Game.settings?.aiCaptureMode || "mandatory",
-    });
-  }
 
 
-  function _bestChainPathLocal(toIdx, aiS) {
-    const to = toIdx | 0;
-    const side = aiS | 0;
 
-    const Lrem = maxCaptureLenFrom(to) | 0;
-    if (Lrem <= 0) return [];
-
-    const paths = longestPathsWithJumpsFrom(to, Lrem);
-    let bestPath = paths[0] && paths[0].path ? paths[0].path.slice() : [];
-
-    if (paths.length > 1) {
-      const keepSim0 = snapshotStateSim();
-      let bestV = -1e30;
-
-      for (let pi = 0; pi < paths.length; pi++) {
-        const pth = paths[pi] && paths[pi].path;
-        if (!pth || !pth.length) continue;
-
-        const snap = snapshotStateSim();
-        try {
-          let cur = to;
-          Game.inChain = true;
-          Game.chainPos = cur;
-
-          for (let k = 0; k < pth.length; k++) {
-            const nxt = pth[k];
-            const [ic, jp] = classifyCapture(cur, nxt);
-            if (!ic || jp == null) {
-              cur = null;
-              break;
-            }
-            applyMoveSim(cur, nxt);
-            cur = nxt;
-            Game.chainPos = cur;
-          }
-
-          Game.inChain = false;
-          Game.chainPos = null;
-          Game.player = -side;
-
-          const v = quickMinimaxValue(side, { depth: 3, capMs: 70, evalFn: staticEval });
-          if (v > bestV) {
-            bestV = v;
-            bestPath = pth.slice();
-          }
-        } finally {
-          restoreSnapshotSim(snap);
-        }
+    function executeMove(move) {
+      if (!move || !Array.isArray(move.path) || !move.path.length) return false;
+      if (!(Game.forcedEnabled && (Game.forcedPly | 0) < 10)) {
+        const side = Game.player === BOT_SIDE ? BOT_SIDE : TOP_SIDE;
+        move = alignWithSharedLegalMove(move, Game.board, side);
+        if (!move) return false;
       }
-
-      restoreSnapshotSim(keepSim0);
-    }
-
-    return bestPath || [];
-  }
-
-  let _thinking = false;
-  let _scheduled = false;
-  let _scheduledTimer = null;
-
-  async function play() {
-    if (Game.gameOver || Game.awaitingPenalty) return;
-    if (Game.player !== aiSide()) return;
-    try {
-      if (_scheduledTimer != null) clearTimeout(_scheduledTimer);
-    } catch {}
-    _scheduledTimer = null;
-    _scheduled = false;
-
-    try {
-      if (window.UI && typeof UI.updateStatus === "function") UI.updateStatus();
-    } catch {}
-
-    _thinking = true;
-    try {
-      const plan = pvcConsumePlan();
-      if (plan && plan.kind === "chain") {
-        const from = plan.fromIdx;
+      if (move.captures > 0 || move.type === MOVE_CAPTURE || (move.jumps && move.jumps.length)) {
         if (!Turn.ctx) Turn.start();
-        Turn.beginCapture(from);
-
-        consumeTurnClearForMove();let cur = from;
-        for (let k = 0; k < plan.path.length; k++) {
-          const nxt = plan.path[k];
-          const [ic, jp] = classifyCapture(cur, nxt);
-          if (!ic || jp == null) break;
-          applyMove(cur, nxt, true, jp);
+        Turn.beginCapture(move.from);
+        if (typeof consumeTurnClearForMove === 'function') consumeTurnClearForMove();
+        let cur = move.from;
+        for (let i = 0; i < move.path.length; i++) {
+          const nxt = move.path[i] | 0;
+          let isCap = true;
+          let jumped = move.jumps && move.jumps[i] != null ? move.jumps[i] | 0 : null;
+          try {
+            const cc = typeof classifyCapture === 'function' ? classifyCapture(cur, nxt) : [false, null];
+            isCap = !!cc[0];
+            if (jumped == null) jumped = cc[1];
+          } catch (_) {}
+          if (!isCap || jumped == null) break;
+          applyMove(cur, nxt, true, jumped);
           Turn.recordCapture();
           Game.inChain = true;
           Game.chainPos = nxt;
           Game.lastMovedTo = nxt;
-          Visual.setLastMovePath(Game.lastMoveFrom, Game.lastMovePath);
+          try { Visual && Visual.setLastMovePath && Visual.setLastMovePath(Game.lastMoveFrom, Game.lastMovePath); } catch (_) {}
           cur = nxt;
         }
-
         finishAIChainEndTurn();
-        Visual.draw();
-        return;
+        try { Visual && Visual.draw && Visual.draw(); } catch (_) {}
+        return true;
       }
 
-      const sig0 = pvcSig();
-
-      const a = plan && plan.kind === "action" ? plan.action : await decideAction();
-
-      if (!(plan && plan.kind === "action")) {
-        try {
-          if (sig0 !== pvcSig()) return;
-        } catch {}
-      }
-      if (a === ACTION_ENDCHAIN) {
-        finishAIChainEndTurn();
-        return;
-      }
-      const from = Math.floor(a / N_CELLS),
-        to = a % N_CELLS;
-      const [isCap, jumped] = classifyCapture(from, to);
-      if (isCap) {
-        consumeTurnClearForMove();applyMove(from, to, true, jumped);
-        if (!Turn.ctx) Turn.start();
-        Turn.beginCapture(from);
-        Turn.recordCapture();
-        Game.inChain = true;
-        Game.chainPos = to;
-        Game.lastMovedTo = to;
-        Visual.setLastMovePath(Game.lastMoveFrom, Game.lastMovePath);
-
-        const sigCap = pvcSig();
-        let hasMore = null;
-
-        if (__aiWorkerBridge.canUse()) {
-          try {
-            hasMore = await __aiWorkerBridge.hasCaptureFrom(to);
-          } catch (_) {
-            hasMore = null;
-          }
-        }
-
-        try {
-          if (sigCap !== pvcSig()) return;
-        } catch {}
-
-        if (hasMore == null) {
-          try {
-            const vcur = valueAt(to);
-            const caps = generateCapturesFrom(to, vcur);
-            hasMore = !!(caps && caps.length);
-          } catch {
-            hasMore = false;
-          }
-        }
-
-        if (hasMore) {
-          try {
-            Visual.draw();
-          } catch {}
-          scheduleComputerChainContinuationIfNeeded();
-          return;
-        }
-
-        finishAIChainEndTurn();
-      } else {
-        consumeTurnClearForMove();applyMove(from, to, false, null);
-        Visual.setLastMovePath(Game.lastMoveFrom, Game.lastMovePath);
-
-        Turn.finishTurnAndSoufla();
-      }
-      Visual.draw();
-    } finally {
-      _thinking = false;
-    }
-  }
-  function finishAIChainEndTurn() {
-    maybeQueueDeferredPromotion(Game.chainPos ?? Game.lastMovedTo);
-
-    Game.inChain = false;
-    Game.chainPos = null;
-    Turn.finishTurnAndSoufla();
-    scheduleComputerMoveIfNeeded();
-  }
-
-  async function _pickSouflaDecisionLocal(pending) {
-    const keepOuter = snapshotState();
-
-    function removeIdx(decision) {
-      let idx = decision.offenderIdx;
-      if (pending.startedFrom === decision.offenderIdx && pending.lastPieceIdx != null) {
-        idx = pending.lastPieceIdx;
-      }
-      return idx;
+      const to = move.path[0] | 0;
+      if (typeof consumeTurnClearForMove === 'function') consumeTurnClearForMove();
+      applyMove(move.from, to, false, null);
+      try { Visual && Visual.setLastMovePath && Visual.setLastMovePath(Game.lastMoveFrom, Game.lastMovePath); } catch (_) {}
+      Turn.finishTurnAndSoufla();
+      try { Visual && Visual.draw && Visual.draw(); } catch (_) {}
+      return true;
     }
 
-    function removePieceAt(idx) {
-      const [r, c] = idxToRC(idx);
-      Game.board[r][c] = 0;
+    function finishAIChainEndTurn() {
+      try { maybeQueueDeferredPromotion && maybeQueueDeferredPromotion(Game.chainPos != null ? Game.chainPos : Game.lastMovedTo); } catch (_) {}
+      Game.inChain = false;
+      Game.chainPos = null;
+      Turn.finishTurnAndSoufla();
+      try { scheduleComputerMoveIfNeeded && scheduleComputerMoveIfNeeded(); } catch (_) {}
     }
 
-    async function scoreAfterSetup() {
+    let _thinking = false;
+    let _scheduled = false;
+    let _scheduledTimer = null;
+    let _lastAnalysis = null;
+
+    async function play() {
+      if (Game.gameOver || Game.awaitingPenalty) return;
       try {
-        Game.normalizeAdvancedSettings();
-        const adv = Game.settings?.advanced || {};
-        const turnDepth = __aiResolveMinimaxTurnDepth(adv);
-        const capMs = Number(adv.thinkTimeMs) === 0 ? Infinity : clampInt(adv.thinkTimeMs, 0, 20000, 2000);
-        return quickMinimaxValue(Game.player, { depth: turnDepth, capMs, evalFn: aiHeuristicEval });
-      } catch {
-        return aiHeuristicEval(Game.player);
-      }
-    }
-
-    let best = pending.options[0];
-    let bestScore = -1e30;
-
-    for (let i = 0; i < pending.options.length; i++) {
-      const decision = pending.options[i];
-      simEnter();
-      const keep = snapshotState();
+        const side = typeof aiSide === 'function' ? aiSide() : Game.player;
+        if (Game.player !== side) return;
+      } catch (_) {}
+      try { if (_scheduledTimer != null) clearTimeout(_scheduledTimer); } catch (_) {}
+      _scheduledTimer = null;
+      _scheduled = false;
+      try { if (root.UI && typeof root.UI.updateStatus === 'function') root.UI.updateStatus(); } catch (_) {}
+      _thinking = true;
       try {
-        restoreSnapshotSilent(pending.turnStartSnapshot);
-
-        if (decision.kind === "remove") {
-          removePieceAt(removeIdx(decision));
-          Game.inChain = false;
-          Game.chainPos = null;
-          Game.player = pending.penalizer;
-          const sc = await scoreAfterSetup();
-          if (sc > bestScore) {
-            bestScore = sc;
-            best = decision;
-          }
-        } else if (decision.kind === "force") {
-          let cur = decision.offenderIdx;
-          for (const to of decision.path || []) {
-            const [isCap, jumped] = classifyCapture(cur, to);
-            if (!isCap || jumped == null) break;
-            applyMoveSim(cur, to);
-            cur = to;
-          }
-          Game.inChain = false;
-          Game.chainPos = null;
-          Game.player = pending.penalizer;
-          const sc = await scoreAfterSetup();
-          if (sc > bestScore) {
-            bestScore = sc;
-            best = decision;
-          }
-        }
+        const sig = signature();
+        const analysis = await analyzeTurn();
+        if (!analysis || !analysis.move) return;
+        try { if (sig !== signature()) return; } catch (_) {}
+        _lastAnalysis = analysis;
+        executeMove(analysis.move);
       } finally {
-        restoreSnapshotSilent(keep);
-        simExit();
+        _thinking = false;
+        try { if (root.UI && typeof root.UI.updateStatus === 'function') root.UI.updateStatus(); } catch (_) {}
       }
     }
 
-    restoreSnapshotSilent(keepOuter);
-    return best;
-  }
-
-  async function pickSouflaDecision(pending) {
-    return await DhametAIRuntime.callWorkerWithRetry(
-      __aiWorkerBridge,
-      "pickSouflaDecision",
-      [pending],
-      _pickSouflaDecisionLocal,
-      { accept: (d) => !!d },
-    );
-  }
-  function applyPendingAILevelForNextMove() {
-    try {
-      if (!Game.pendingAILevel) return;
-      const pending = normalizeAILevel(Game.pendingAILevel);
-      const current = normalizeAILevel(Game.settings?.advanced?.aiLevel || "medium");
-      Game.pendingAILevel = null;
-      if (pending === current) return;
-      Game.settings.advanced = { aiLevel: pending };
-      Game.normalizeAdvancedSettings();
-      try { if (typeof saveSessionSettings === "function") saveSessionSettings(); } catch (_) {}
-      try { if (window.UI && typeof UI.updateAll === "function") UI.updateAll(); } catch (_) {}
-      try { if (window.ZGamePlayers && typeof window.ZGamePlayers.refresh === "function") window.ZGamePlayers.refresh(); } catch (_) {}
-    } catch (_) {}
-  }
-
-  function scheduleMove() {
-    applyPendingAILevelForNextMove();
-    try {
-      __aiWorkerBridge.cancel();
-    } catch {}
-
-    try {
-      if (_scheduledTimer != null) clearTimeout(_scheduledTimer);
-    } catch {}
-    _scheduledTimer = null;
-    _scheduled = false;
-
-    try {
-      if (window.UI && typeof UI.updateStatus === "function") UI.updateStatus();
-    } catch {}
-
-    Game.normalizeAdvancedSettings();
-    const adv = Game.settings?.advanced || {};
-    const baseCfg = adv.thinkTimeMs;
-    const boostCfg = adv.timeBoostCriticalMs;
-
-    const critical = detectCriticalState(Game.player);
-    const unlimited = Number(baseCfg) === 0 || (critical && Number(boostCfg) === 0);
-
-    const fallbackTotal = unlimited ? 0 : PVC_DELAY_MS;
-
-    const scheduleWithPlan = (plan) => {
+    function signature() {
+      let h = 0;
       try {
-        pvcCachePlan(plan || null);
-      } catch {
-        try {
-          pvcCachePlan(null);
-        } catch {}
-      }
-      const total = DhametAIPlayer.scheduleDelay({
-        hasPlan: !!plan,
-        unlimited,
-        fallbackMs: plan ? PVC_DELAY_MS : fallbackTotal,
-      });
-      if (total <= 0) {
-        _scheduled = true;
-        _scheduledTimer = setTimeout(play, 0);
-      } else {
-        _scheduled = true;
-        _scheduledTimer = setTimeout(play, total);
-      }
-    };
-
-    if (__aiWorkerBridge.canUse()) {
-      __aiWorkerBridge
-        .computePVCPlan()
-        .then((plan) => scheduleWithPlan(plan))
-        .catch(() => scheduleWithPlan(null));
-      return;
+        const b = Game.board || [];
+        for (let r = 0; r < BOARD_SIZE; r++) for (let c = 0; c < BOARD_SIZE; c++) h = ((h * 31) ^ (Number(b[r][c] || 0) + 7)) | 0;
+      } catch (_) {}
+      return String(h) + '|' + Game.player + '|' + (Game.moveCount || 0) + '|' + (Game.inChain ? Game.chainPos : '') + '|' + (Game.forcedEnabled ? Game.forcedPly : '');
     }
 
-    scheduleWithPlan(null);
-  }
-  function isThinking() {
-    return DhametAIRuntime.isThinking({
-      localThinking: _thinking,
-      scheduled: _scheduled,
-      bridge: __aiWorkerBridge,
+    function scheduleMove() {
+      applyPendingAILevelForNextMove();
+      try { __aiWorkerBridge.cancel(); } catch (_) {}
+      try { if (_scheduledTimer != null) clearTimeout(_scheduledTimer); } catch (_) {}
+      _scheduledTimer = null;
+      _scheduled = false;
+      try { if (root.UI && typeof root.UI.updateStatus === 'function') root.UI.updateStatus(); } catch (_) {}
+      const delay = 80;
+      _scheduled = true;
+      _scheduledTimer = setTimeout(play, delay);
+    }
+
+    function applyPendingAILevelForNextMove() {
+      try {
+        if (!Game.pendingAILevel) return;
+        const pending = typeof normalizeAILevel === 'function' ? normalizeAILevel(Game.pendingAILevel) : String(Game.pendingAILevel || 'medium');
+        const current = typeof normalizeAILevel === 'function' ? normalizeAILevel(Game.settings?.advanced?.aiLevel || 'medium') : String(Game.settings?.advanced?.aiLevel || 'medium');
+        Game.pendingAILevel = null;
+        if (pending === current) return;
+        Game.settings.advanced = { aiLevel: pending };
+        Game.normalizeAdvancedSettings && Game.normalizeAdvancedSettings();
+        try { saveSessionSettings && saveSessionSettings(); } catch (_) {}
+        try { root.UI && root.UI.updateAll && root.UI.updateAll(); } catch (_) {}
+        try { root.ZGamePlayers && root.ZGamePlayers.refresh && root.ZGamePlayers.refresh(); } catch (_) {}
+      } catch (_) {}
+    }
+
+    function isThinking() {
+      return DhametAIRuntime.isThinking({ localThinking: _thinking, scheduled: _scheduled, bridge: __aiWorkerBridge });
+    }
+
+    function removeOffenderBoard(board, pending, offenderIdx) {
+      const next = R.cloneBoard(board);
+      const target = R.resolveOffenderCurrentCell ? R.resolveOffenderCurrentCell(pending, offenderIdx) : offenderIdx;
+      if (target != null && R.validIdx(target)) R.setCell(next, target, 0);
+      return next;
+    }
+
+    function _pickSouflaDecisionLocal(pending) {
+      if (!pending || !Array.isArray(pending.options) || !pending.options.length) return null;
+      const penalizer = pending.penalizer === BOT_SIDE ? BOT_SIDE : TOP_SIDE;
+      let best = pending.options[0];
+      let bestScore = -INF;
+      for (let i = 0; i < pending.options.length; i++) {
+        const opt = pending.options[i];
+        let board = null;
+        try {
+          if (opt.kind === 'remove') board = removeOffenderBoard(Game.board, pending, opt.offenderIdx);
+          else if (opt.kind === 'force' && R.applySouflaForce) {
+            const res = R.applySouflaForce(pending, opt);
+            if (res && res.ok) board = res.board;
+          }
+        } catch (_) {}
+        if (!board) continue;
+        const st = new EngineState(board, penalizer);
+        const score = evaluate(st, penalizer);
+        if (score > bestScore) { bestScore = score; best = opt; }
+      }
+      return best;
+    }
+
+    async function pickSouflaDecision(pending) {
+      return await DhametAIRuntime.callWorkerWithRetry(
+        __aiWorkerBridge,
+        'pickSouflaDecision',
+        [pending],
+        async function () { return _pickSouflaDecisionLocal(pending); },
+        { accept: (d) => !!d },
+      );
+    }
+
+
+    function _analyzeTurnInternal() { return analyzeTurnLocal(); }
+
+    return Object.freeze({
+      version: ENGINE_VERSION,
+      isThinking,
+      scheduleMove,
+      pickSouflaDecision,
+      _pickSouflaDecisionInternal: _pickSouflaDecisionLocal,
+      _analyzeTurnInternal,
+      _lastAnalysis: function () { return _lastAnalysis; },
+      _debug: function () { return { ttSize: TT.size, lastPlan, version: ENGINE_VERSION }; },
     });
-  }
-
-  return {
-    isThinking,
-    scheduleMove,
-    pickSouflaDecision,
-    _pvcComputePlanInternal: pvcComputePlan,
-    _pickSouflaDecisionInternal: _pickSouflaDecisionLocal,
-    _bestChainPathInternal: _bestChainPathLocal,
-    _decideActionInternal: _decideActionLocal,
-  };
-})();
-
-    return AI;
   }
 
   root.DhametAIEngine = Object.freeze({ create });
