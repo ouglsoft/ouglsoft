@@ -65,7 +65,7 @@
     const MAX_ROOT_CAPTURE_PATHS = 8192;
     const TT_MAX = 140000;
     const PLAN_MARGIN = 35;
-    const ENGINE_VERSION = 'ai2-rebuild-v3-soufla-trap-memory';
+    const ENGINE_VERSION = 'ai2-rebuild-v4-optional-ignore-capture';
     const TIMEOUT = { timeout: true };
 
     const LEVEL_DEFAULTS = Object.freeze({
@@ -186,6 +186,8 @@
         promotes: !!m.promotes,
         capturedValue: Number(m.capturedValue || 0) || 0,
         capturedKings: Number(m.capturedKings || 0) || 0,
+        ai2EducationalIgnoreCapture: !!m.ai2EducationalIgnoreCapture,
+        ai2IgnoreCapture: m.ai2IgnoreCapture ? Object.assign({}, m.ai2IgnoreCapture) : null,
       };
     }
 
@@ -1069,6 +1071,81 @@
       };
     }
 
+
+    function clampInt(v, min, max, fallback) {
+      const n = Number(v);
+      if (!Number.isFinite(n)) return fallback;
+      return Math.max(min, Math.min(max, Math.trunc(n)));
+    }
+
+    function ignoreCapturePct(settings) {
+      try {
+        const mode = String(settings && settings.aiCaptureMode || 'mandatory');
+        if (mode !== 'random') return 0;
+        return clampInt(settings && settings.aiRandomIgnoreCaptureRatePct, 0, 100, 0);
+      } catch (_) { return 0; }
+    }
+
+    function shouldEducationallyIgnoreCapture(settings) {
+      const pct = ignoreCapturePct(settings);
+      return pct > 0 && Math.random() * 100 < pct;
+    }
+
+    function generateQuietMovesIgnoringMandatory(state, limit) {
+      const out = [];
+      stepMoves(state, state.side, out);
+      const max = Number(limit || 512) || 512;
+      if (out.length > max) return out.slice(0, max);
+      return out;
+    }
+
+    function chooseEducationalIgnoreCaptureMove(state, settings) {
+      try {
+        const pct = ignoreCapturePct(Game.settings || settings || {});
+        if (pct <= 0) return null;
+        const captures = generateTurnMoves(state, { capturesOnly: true, limit: 8 });
+        if (!captures.length) return null;
+        if (!shouldEducationallyIgnoreCapture(Game.settings || settings || {})) return null;
+        const quiet = generateQuietMovesIgnoringMandatory(state, 1024);
+        if (!quiet.length) return null;
+        const scored = [];
+        for (let i = 0; i < quiet.length; i++) scored.push({ move: cloneMove(quiet[i]), score: evaluateAfterMove(state, quiet[i]) });
+        scored.sort((a, b) => b.score - a.score || moveKey(a.move).localeCompare(moveKey(b.move)));
+        const chosen = chooseByLevel(scored[0].move, scored, settings || runtimeSettings(Game.settings || {}, state.side, arrayToBoard(state.board)));
+        if (!chosen) return null;
+        chosen.ai2EducationalIgnoreCapture = true;
+        chosen.ai2IgnoreCapture = {
+          engine: ENGINE_VERSION,
+          kind: 'optional-educational-ignore-capture',
+          percent: pct,
+          availableCaptureCount: captures.length,
+          selectedFromQuietCount: quiet.length,
+          level: settings && settings.level || levelName(Game.settings || {}),
+        };
+        return chosen;
+      } catch (_) { return null; }
+    }
+
+    function alignEducationalIgnoreMove(move, board, side) {
+      try {
+        if (!move || !move.ai2EducationalIgnoreCapture) return null;
+        const state = new EngineState(board, side);
+        const captures = generateTurnMoves(state, { capturesOnly: true, limit: 8 });
+        if (!captures.length) return null;
+        const quiet = generateQuietMovesIgnoringMandatory(state, 2048);
+        const wanted = moveKey(move);
+        for (let i = 0; i < quiet.length; i++) {
+          if (moveKey(quiet[i]) === wanted) {
+            const out = cloneMove(quiet[i]);
+            out.ai2EducationalIgnoreCapture = true;
+            out.ai2IgnoreCapture = move.ai2IgnoreCapture ? Object.assign({}, move.ai2IgnoreCapture) : { engine: ENGINE_VERSION, kind: 'optional-educational-ignore-capture' };
+            return enrichMoveMetadata(out, board);
+          }
+        }
+      } catch (_) {}
+      return null;
+    }
+
     function forcedOpeningMove() {
       if (!(Game.forcedEnabled && (Game.forcedPly | 0) < 10)) return null;
       const exp = typeof getForcedOpeningExpectedAction === 'function' ? getForcedOpeningExpectedAction() : null;
@@ -1092,6 +1169,22 @@
       const side = Game.player === BOT_SIDE ? BOT_SIDE : TOP_SIDE;
       const settings = runtimeSettings(Game.settings || {}, side, Game.board);
       const state = new EngineState(Game.board, side);
+      const ignoredMove = chooseEducationalIgnoreCaptureMove(state, settings);
+      if (ignoredMove) {
+        setSouflaTrapMemory(null);
+        return {
+          move: ignoredMove,
+          action: moveToAction(ignoredMove),
+          score: evaluateAfterMove(state, ignoredMove),
+          depth: 0,
+          nodes: 0,
+          timeMs: 0,
+          pv: [cloneMove(ignoredMove)],
+          souflaTrapMemory: null,
+          ai2IgnoreCapture: ignoredMove.ai2IgnoreCapture,
+          engine: ENGINE_VERSION,
+        };
+      }
       const result = searchRoot(state, settings);
       const move = alignWithSharedLegalMove(result.move, Game.board, side);
       if (!move) return null;
@@ -1159,7 +1252,11 @@
       if (!move || !Array.isArray(move.path) || !move.path.length) return false;
       if (!(Game.forcedEnabled && (Game.forcedPly | 0) < 10)) {
         const side = Game.player === BOT_SIDE ? BOT_SIDE : TOP_SIDE;
-        move = alignWithSharedLegalMove(move, Game.board, side);
+        if (move && move.ai2EducationalIgnoreCapture) {
+          move = alignEducationalIgnoreMove(move, Game.board, side);
+        } else {
+          move = alignWithSharedLegalMove(move, Game.board, side);
+        }
         if (!move) return false;
       }
       if (move.captures > 0 || move.type === MOVE_CAPTURE || (move.jumps && move.jumps.length)) {
