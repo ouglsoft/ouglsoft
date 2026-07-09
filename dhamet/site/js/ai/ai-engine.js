@@ -65,7 +65,7 @@
     const MAX_ROOT_CAPTURE_PATHS = 8192;
     const TT_MAX = 140000;
     const PLAN_MARGIN = 35;
-    const ENGINE_VERSION = 'ai2-rebuild-v4-optional-ignore-capture';
+    const ENGINE_VERSION = 'ai2-rebuild-v4.3-local-strategy-lite';
     const TIMEOUT = { timeout: true };
 
     const LEVEL_DEFAULTS = Object.freeze({
@@ -95,6 +95,7 @@
     const CELL_COL = new Int8Array(CELLS);
     const CELL_WIDE = new Int8Array(CELLS);
     const CELL_CENTER = new Int16Array(CELLS);
+    const CELL_DEGREE = new Int8Array(CELLS);
     const CELL_PROMO_TOP = new Int8Array(CELLS);
     const CELL_PROMO_BOT = new Int8Array(CELLS);
 
@@ -116,6 +117,9 @@
         const cc = c + dc;
         if (R.inside(rr, cc) && R.canStepFrom(null, r, c, dr, dc)) NEXT[idx][d] = R.idx(rr, cc);
       }
+      let deg = 0;
+      for (let d = 0; d < DIRS.length; d++) if (NEXT[idx][d] >= 0) deg++;
+      CELL_DEGREE[idx] = deg;
     }
 
     function nowMs() {
@@ -496,10 +500,22 @@
       state.board[undo.jumped] = undo.jumpVal;
     }
 
+    function localCaptureLandingOrder(state, to, side) {
+      if (!side || to == null || to < 0) return 0;
+      let s = 0;
+      if (CELL_COL[to] === attackLaneCol(side)) s += 18;
+      if (CELL_COL[to] === defenseLaneCol(side)) s += 8;
+      if (CELL_WIDE[to] && isLocalCenter(to)) s -= 10;
+      if (backEyeSensitivity(to, side)) s += 6;
+      return s;
+    }
+
     function orderCaptureOptions(state, opts) {
       opts.sort((a, b) => {
-        const av = a.capturedValue + a.capturedKing * 500 + (isBackRankIdx(a.to, sideOf(state.board[a.from] | 0)) ? 25 : 0);
-        const bv = b.capturedValue + b.capturedKing * 500 + (isBackRankIdx(b.to, sideOf(state.board[b.from] | 0)) ? 25 : 0);
+        const aside = sideOf(state.board[a.from] | 0);
+        const bside = sideOf(state.board[b.from] | 0);
+        const av = a.capturedValue + a.capturedKing * 500 + (isBackRankIdx(a.to, aside) ? 25 : 0) + localCaptureLandingOrder(state, a.to, aside);
+        const bv = b.capturedValue + b.capturedKing * 500 + (isBackRankIdx(b.to, bside) ? 25 : 0) + localCaptureLandingOrder(state, b.to, bside);
         return bv - av;
       });
     }
@@ -575,7 +591,7 @@
           const promo = s === TOP_SIDE ? CELL_PROMO_TOP[i] : CELL_PROMO_BOT[i];
           const advancement = promo * (phase === 2 ? 12 : 7);
           const backRankSafety = promo <= 1 ? 8 : 0;
-          score += sign * (100 + advancement + backRankSafety + CELL_CENTER[i] * 2 + CELL_WIDE[i] * 4);
+          score += sign * (100 + advancement + backRankSafety + CELL_CENTER[i] + CELL_WIDE[i] * 2);
         } else if (k === KING_KIND) {
           const ray = kingRayMobility(b, i);
           score += sign * (kingVal + CELL_CENTER[i] * 4 + CELL_WIDE[i] * 8 + ray * (phase === 2 ? 8 : 5));
@@ -593,7 +609,206 @@
       const mob = quickMobility(state, side) - quickMobility(state, opponent(side));
       score += mob * (phase === 0 ? 2 : 4);
 
+      // Lightweight Mauritanian-style guidance.  These features do not create
+      // a parallel strategy layer; they only tune the existing evaluator toward
+      // Dhamet-specific geometry: top-side attack/defense lanes, wide/narrow
+      // intersections, exposed central pieces, back-eye preservation, and the
+      // company-trap pattern.  The weights are deliberately small/medium so the
+      // search result, material, promotion, and tactics remain dominant.
+      score += localStrategyScore(state, side, phase) - localStrategyScore(state, opponent(side), phase);
+
       return Math.trunc(score);
+    }
+
+
+    function attackLaneCol(side) { return side === TOP_SIDE ? 0 : BOARD_SIZE - 1; }
+    function defenseLaneCol(side) { return side === TOP_SIDE ? BOARD_SIZE - 1 : 0; }
+    function homeRowOf(side) { return side === TOP_SIDE ? 0 : BOARD_SIZE - 1; }
+    function advancementFor(idx, side) { return side === TOP_SIDE ? CELL_ROW[idx] : (BOARD_SIZE - 1 - CELL_ROW[idx]); }
+    function mirroredColForSide(idx, side) { return side === TOP_SIDE ? CELL_COL[idx] : (BOARD_SIZE - 1 - CELL_COL[idx]); }
+    function isLocalCenter(idx) { return CELL_CENTER[idx] >= 5; }
+
+    function backEyeSensitivity(idx, side) {
+      if (CELL_ROW[idx] !== homeRowOf(side)) return 0;
+      const c = mirroredColForSide(idx, side);
+      if (c === 0 || c === 2) return 3;
+      if (c === 4) return 2;
+      if (c === 6 || c === 8) return 1;
+      return 0;
+    }
+
+    function adjacentOwnSupport(board, idx, side) {
+      let n = 0;
+      for (let d = 0; d < DIRS.length; d++) {
+        const p = NEXT[idx][d];
+        if (p >= 0 && sideOf(board[p] | 0) === side) n++;
+      }
+      return n;
+    }
+
+    function supportAtDestination(board, from, to, side) {
+      let n = adjacentOwnSupport(board, to, side);
+      for (let d = 0; d < DIRS.length; d++) {
+        if (NEXT[to][d] === from && sideOf(board[from] | 0) === side) { n--; break; }
+      }
+      return Math.max(0, n);
+    }
+
+    function immediateCaptureThreatMap(state, victimSide) {
+      const marks = new Uint8Array(CELLS);
+      const b = state.board;
+      const attacker = opponent(victimSide);
+      for (let from = 0; from < CELLS; from++) {
+        const v = b[from] | 0;
+        if (!v || sideOf(v) !== attacker) continue;
+        const opts = captureOptionsFrom(state, from);
+        for (let i = 0; i < opts.length; i++) {
+          const j = opts[i].jumped | 0;
+          if (j >= 0 && sideOf(b[j] | 0) === victimSide) marks[j] = 1;
+        }
+      }
+      return marks;
+    }
+
+    function defenseLaneScore(state, side, phase) {
+      const b = state.board;
+      const dc = defenseLaneCol(side);
+      let ownHold = 0;
+      let enemyPressure = 0;
+      for (let i = 0; i < CELLS; i++) {
+        const v = b[i] | 0;
+        if (!v) continue;
+        const col = CELL_COL[i];
+        if (Math.abs(col - dc) > 1) continue;
+        const s = sideOf(v);
+        if (s === side) {
+          if (col === dc) ownHold += 2;
+          else ownHold += 1;
+          if (adjacentOwnSupport(b, i, side) > 0) ownHold += 1;
+        } else if (s === opponent(side)) {
+          const enemyAdv = advancementFor(i, s);
+          if (col === dc) enemyPressure += 2 + Math.max(0, enemyAdv - 2);
+          else if (enemyAdv >= 3) enemyPressure += 1;
+        }
+      }
+      const holdWeight = phase === 2 ? 2 : 5;
+      const pressureWeight = phase === 2 ? 5 : 8;
+      return ownHold * holdWeight - enemyPressure * pressureWeight - (enemyPressure > ownHold + 2 ? 18 : 0);
+    }
+
+    function enemyPromotionNearHome(state, side) {
+      const b = state.board;
+      const enemy = opponent(side);
+      let n = 0;
+      for (let i = 0; i < CELLS; i++) {
+        const v = b[i] | 0;
+        if (!v || sideOf(v) !== enemy || kindOf(v) !== MAN_KIND) continue;
+        const distToPromote = enemy === TOP_SIDE ? (BOARD_SIZE - 1 - CELL_ROW[i]) : CELL_ROW[i];
+        if (distToPromote <= 2) n += 1 + (2 - distToPromote);
+      }
+      return n;
+    }
+
+    function companyTrapScore(state, side, phase) {
+      const b = state.board;
+      const r = homeRowOf(side);
+      const corner = side === TOP_SIDE ? R.idx(r, 0) : R.idx(r, BOARD_SIZE - 1);
+      const bait = side === TOP_SIDE ? R.idx(r, 2) : R.idx(r, BOARD_SIZE - 3);
+      const land = side === TOP_SIDE ? R.idx(r, 1) : R.idx(r, BOARD_SIZE - 2);
+      const near = enemyPromotionNearHome(state, side);
+      if (!near) return 0;
+      const hasCorner = sideOf(b[corner] | 0) === side;
+      const hasBait = sideOf(b[bait] | 0) === side;
+      const landFree = !(b[land] | 0);
+      if (hasCorner && hasBait && landFree) return (phase === 2 ? 45 : 32) + Math.min(40, near * 8);
+      let penalty = 0;
+      if (!hasCorner) penalty += 14;
+      if (!hasBait) penalty += 14;
+      if (!landFree) penalty += 6;
+      return -Math.min(45, penalty + near * 3);
+    }
+
+    function localStrategyScore(state, side, phase) {
+      const b = state.board;
+      const threat = immediateCaptureThreatMap(state, side);
+      const attackCol = attackLaneCol(side);
+      const defenseCol = defenseLaneCol(side);
+      let score = 0;
+      for (let i = 0; i < CELLS; i++) {
+        const v = b[i] | 0;
+        if (!v || sideOf(v) !== side) continue;
+        const k = kindOf(v);
+        const col = CELL_COL[i];
+        const support = adjacentOwnSupport(b, i, side);
+        const adv = advancementFor(i, side);
+        const wide = CELL_WIDE[i] ? 1 : 0;
+        const threatened = threat[i] ? 1 : 0;
+
+        const eye = backEyeSensitivity(i, side);
+        if (eye) {
+          score += eye * (phase === 0 ? 14 : phase === 1 ? 8 : 2);
+          if (threatened) score -= eye * 18;
+        }
+
+        if (k === MAN_KIND) {
+          if (col === attackCol) {
+            score += (phase === 2 ? 2 : 5) + adv * (support > 0 ? 3 : 1);
+            if (adv >= 3 && support === 0) score -= 10;
+          } else if (Math.abs(col - attackCol) === 1 && support > 0 && adv >= 2) {
+            score += 3;
+          }
+
+          if (col === defenseCol) {
+            score += support > 0 ? 8 : 3;
+            if (threatened) score -= 24;
+          }
+
+          if (wide) {
+            if (support === 0) score -= (isLocalCenter(i) ? 16 : 9);
+            else if (phase === 2 || support >= 2) score += 4;
+          }
+          if (isLocalCenter(i)) {
+            if (support === 0) score -= 12;
+            else if (support >= 2 && !threatened) score += 3;
+          }
+          if (threatened) {
+            score -= 12;
+            if (wide || isLocalCenter(i)) score -= 10;
+          }
+        } else if (k === KING_KIND) {
+          const ray = kingRayMobility(b, i);
+          if (ray <= 2) score -= 35;
+          if (threatened) score -= 90;
+          if (wide && ray >= 5) score += 8;
+        }
+      }
+      score += defenseLaneScore(state, side, phase);
+      score += companyTrapScore(state, side, phase);
+      return score;
+    }
+
+    function localMoveOrderScore(state, m) {
+      const b = state.board;
+      const moving = b[m.from] | 0;
+      const side = sideOf(moving);
+      if (!side) return 0;
+      const to = m.to | 0;
+      const from = m.from | 0;
+      const col = CELL_COL[to];
+      const support = supportAtDestination(b, from, to, side);
+      let s = 0;
+      if (col === attackLaneCol(side)) s += 450 + advancementFor(to, side) * 55 + support * 80;
+      if (col === defenseLaneCol(side)) s += 280 + support * 70;
+      if (CELL_WIDE[to] && isLocalCenter(to) && support === 0 && kindOf(moving) === MAN_KIND) s -= 900;
+      if (CELL_WIDE[to] && support > 0) s += 90;
+      const eye = backEyeSensitivity(from, side);
+      if (eye && (m.captures | 0) === 0 && !m.promotes) s -= eye * 260;
+      if (CELL_COL[from] === defenseLaneCol(side) && CELL_COL[to] !== defenseLaneCol(side) && (m.captures | 0) === 0 && !m.promotes) s -= 420;
+      if ((m.captures | 0) > 0) {
+        if (CELL_WIDE[to] && support === 0) s -= 550;
+        if (m.promotes) s += 900;
+      }
+      return s;
     }
 
     function kingRayMobility(board, from) {
@@ -761,7 +976,7 @@
       if (m.promotes) s += 600000;
       const moving = state.board[m.from] | 0;
       if (kindOf(moving) === KING_KIND) s += 2000 + kingRayMobility(state.board, m.to) * 25;
-      s += CELL_CENTER[m.to] * 35 + CELL_WIDE[m.to] * 30;
+      s += CELL_CENTER[m.to] * 12 + localMoveOrderScore(state, m);
       if (ctx && ctx.history) s += ctx.history.get(moveKey(m)) || 0;
       if (ply <= 1 && moveLeavesMajorThreat(state, m)) s -= 120000;
       return s;

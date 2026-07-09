@@ -1,5 +1,26 @@
 ;(function(){
 
+// Build-level browser storage migration.
+// Normal browser windows may retain old PvC session data or cached JS between AI engine rebuilds,
+// while incognito starts clean.  Keep account/language/theme data, but clear volatile local game
+// state once per application build to avoid mixing old runtime snapshots with the new AI2 runtime.
+(function () {
+  var BUILD = "ai2-v4.3-local-strategy-lite";
+  try {
+    if (typeof window !== "undefined") window.DHAMET_APP_BUILD = BUILD;
+    var key = "zamat.app.build.applied";
+    var prev = null;
+    try { prev = localStorage.getItem(key); } catch (_) { prev = null; }
+    if (prev !== BUILD) {
+      try { sessionStorage.removeItem("zamat.session.game.pvc.v1"); } catch (_) {}
+      try { sessionStorage.removeItem("zamat.session.settings.v2"); } catch (_) {}
+      // Keep manual saves and user account records; they are not auto-restored at page load.
+      try { localStorage.setItem(key, BUILD); } catch (_) {}
+    }
+  } catch (_) {}
+})();
+
+
 function readStoredTheme() {
   var theme = null;
   try {
