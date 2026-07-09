@@ -65,8 +65,10 @@
     const MAX_ROOT_CAPTURE_PATHS = 8192;
     const TT_MAX = 140000;
     const PLAN_MARGIN = 35;
-    const ROOT_STRATEGY_RAW_MARGIN = 210;
-    const ENGINE_VERSION = 'ai2-rebuild-v4.5-root-strategy-verifier';
+    const PLAN_BANK_MAX = 3;
+    const PLAN_MAX_PLIES = 8;
+    const PLAN_TTL_MOVES = 8;
+    const ENGINE_VERSION = 'ai2-rebuild-v4.6-plan-bank';
     const TIMEOUT = { timeout: true };
 
     const LEVEL_DEFAULTS = Object.freeze({
@@ -132,11 +134,6 @@
     function opponent(side) { return side === TOP_SIDE ? BOT_SIDE : TOP_SIDE; }
     function forward(side) { return side === TOP_SIDE ? 1 : -1; }
     function isBackRankIdx(idx, side) { return side === TOP_SIDE ? CELL_ROW[idx] === BOARD_SIZE - 1 : CELL_ROW[idx] === 0; }
-    function homeRowOf(side) { return side === TOP_SIDE ? 0 : BOARD_SIZE - 1; }
-    function mirroredColForSide(idx, side) { return side === TOP_SIDE ? CELL_COL[idx] : (BOARD_SIZE - 1 - CELL_COL[idx]); }
-    function attackLaneCol(side) { return side === TOP_SIDE ? 0 : BOARD_SIZE - 1; }
-    function defenseLaneCol(side) { return side === TOP_SIDE ? BOARD_SIZE - 1 : 0; }
-    function promotionDistance(idx, side) { return side === TOP_SIDE ? (BOARD_SIZE - 1 - CELL_ROW[idx]) : CELL_ROW[idx]; }
     function encode(from, to) { return typeof encodeAction === 'function' ? encodeAction(from, to) : ((from | 0) * CELLS + (to | 0)); }
 
     function hashSeed(i) {
@@ -203,6 +200,53 @@
     }
 
     function movesEqual(a, b) { return !!a && !!b && moveKey(a) === moveKey(b); }
+
+    function boardArraySignature(arr, side) {
+      try {
+        let h = side === BOT_SIDE ? 'b|' : 't|';
+        for (let i = 0; i < CELLS; i++) {
+          const v = arr[i] | 0;
+          if (v) h += i + ':' + v + ';';
+        }
+        return h;
+      } catch (_) { return ''; }
+    }
+
+    function clonePlan(plan) {
+      if (!plan || typeof plan !== 'object') return null;
+      try {
+        return JSON.parse(JSON.stringify(plan));
+      } catch (_) { return null; }
+    }
+
+    function normalizePlanBank(src) {
+      const arr = Array.isArray(src) ? src : [];
+      const out = [];
+      for (let i = 0; i < arr.length && out.length < PLAN_BANK_MAX; i++) {
+        const p = clonePlan(arr[i]);
+        if (!p || p.kind !== 'plan-intent') continue;
+        if (p.side !== TOP_SIDE && p.side !== BOT_SIDE) continue;
+        if (!p.nextOwnKey || typeof p.nextOwnKey !== 'string') continue;
+        p.priority = Math.max(0, Math.min(300, Number(p.priority || 0) | 0));
+        out.push(p);
+      }
+      return out;
+    }
+
+    function getPlanBank() {
+      try {
+        if (Game && Array.isArray(Game.ai2PlanBank)) planBankMemory = normalizePlanBank(Game.ai2PlanBank);
+      } catch (_) {}
+      return planBankMemory || [];
+    }
+
+    function setPlanBank(bank) {
+      planBankMemory = normalizePlanBank(bank).slice(0, PLAN_BANK_MAX);
+      try { Game.ai2PlanBank = planBankMemory.map(clonePlan).filter(Boolean); } catch (_) {}
+      return planBankMemory;
+    }
+
+    function clearPlanBank() { return setPlanBank([]); }
 
     function moveToAction(move) {
       if (!move || !move.path || !move.path.length) return ENDCHAIN;
@@ -284,6 +328,7 @@
     const TT = new Map();
     let ttAge = 0;
     let souflaTrapMemory = null;
+    let planBankMemory = [];
 
     function trimTT() {
       if (TT.size <= TT_MAX) return;
@@ -599,49 +644,7 @@
       const mob = quickMobility(state, side) - quickMobility(state, opponent(side));
       score += mob * (phase === 0 ? 2 : 4);
 
-      // Lightweight Mauritanian-local positional guidance.  This deliberately
-      // stays cheap: fixed lane/back-eye geometry only.  Contextual questions
-      // such as “was moving 0.0 necessary?” are handled at the root, not inside
-      // every searched node.
-      score += localStaticScore(state, side, phase) - localStaticScore(state, opponent(side), phase);
-
       return Math.trunc(score);
-    }
-
-    function backEyeSensitivity(idx, side) {
-      if (CELL_ROW[idx] !== homeRowOf(side)) return 0;
-      const c = mirroredColForSide(idx, side);
-      if (c === 0 || c === 2) return 3;
-      if (c === 4) return 2;
-      if (c === 6 || c === 8) return 1;
-      return 0;
-    }
-
-    function isLocalCenter(idx) {
-      return CELL_ROW[idx] >= 3 && CELL_ROW[idx] <= 5 && CELL_COL[idx] >= 3 && CELL_COL[idx] <= 5;
-    }
-
-    function localStaticScore(state, side, phase) {
-      const b = state.board;
-      const early = phase === 0 ? 1.15 : phase === 1 ? 0.75 : 0.18;
-      let score = 0;
-      for (let i = 0; i < CELLS; i++) {
-        const v = b[i] | 0;
-        if (!v || sideOf(v) !== side) continue;
-        const k = kindOf(v);
-        if (k === MAN_KIND) {
-          const eye = backEyeSensitivity(i, side);
-          if (eye) score += eye * 5 * early;
-          const col = CELL_COL[i];
-          if (col === attackLaneCol(side)) score += phase === 2 ? 1 : 4;
-          if (col === defenseLaneCol(side) && promotionDistance(i, opponent(side)) > 2) score += phase === 2 ? 1 : 3;
-        } else if (k === KING_KIND) {
-          // A king on a wide/open point is useful only while mobile; the main
-          // king activity score already handles ray mobility, so keep this tiny.
-          if (CELL_WIDE[i]) score += 3;
-        }
-      }
-      return score;
     }
 
     function kingRayMobility(board, from) {
@@ -728,315 +731,208 @@
 
 
 
-    function supportCountOnBoard(board, idx, side) {
-      let n = 0;
-      for (let d = 0; d < DIRS.length; d++) {
-        const p = NEXT[idx][d];
-        if (p >= 0 && sideOf(board[p] | 0) === side) n++;
-      }
-      return n;
+    function legalMoveByKey(moves) {
+      const map = new Map();
+      for (let i = 0; i < (moves || []).length; i++) map.set(moveKey(moves[i]), moves[i]);
+      return map;
     }
 
-    function countNearPromotionMen(state, side) {
-      const b = state.board;
-      let n = 0;
-      for (let i = 0; i < CELLS; i++) {
-        const v = b[i] | 0;
-        if (!v || sideOf(v) !== side || kindOf(v) !== MAN_KIND) continue;
-        if (promotionDistance(i, side) <= 2) n++;
+    function activePlanContinuations(state, rootMoves) {
+      const bank = getPlanBank();
+      if (!bank.length || !rootMoves || !rootMoves.length) return new Map();
+      const nowMove = Game && typeof Game.moveCount === 'number' ? (Game.moveCount | 0) : 0;
+      const legal = legalMoveByKey(rootMoves);
+      const active = new Map();
+      const keep = [];
+      for (let i = 0; i < bank.length; i++) {
+        const plan = bank[i];
+        if (!plan || plan.side !== state.side) continue;
+        if (plan.expiresAtMoveCount != null && nowMove > (plan.expiresAtMoveCount | 0)) continue;
+        const m = legal.get(plan.nextOwnKey);
+        if (!m) continue;
+        const from = m.from | 0;
+        const v = state.board[from] | 0;
+        if (!v || sideOf(v) !== state.side) continue;
+        const age = Math.max(0, nowMove - (plan.createdAtMoveCount | 0));
+        const decay = Math.max(0, age * 12);
+        const boost = Math.max(15, Math.min(120, (plan.priority | 0) - decay));
+        if (boost <= 0) continue;
+        const entry = { plan, move: m, boost, key: plan.nextOwnKey };
+        const old = active.get(plan.nextOwnKey);
+        if (!old || old.boost < boost) active.set(plan.nextOwnKey, entry);
+        keep.push(plan);
       }
-      return n;
+      setPlanBank(keep);
+      return active;
     }
 
-    function defenseLaneIntegrity(state, side) {
+    function planOrderingBoost(ctx, move) {
+      try {
+        if (!ctx || !ctx.planMatches || !move) return 0;
+        const ent = ctx.planMatches.get(moveKey(move));
+        return ent ? Math.max(0, ent.boost | 0) : 0;
+      } catch (_) { return 0; }
+    }
+
+    function materialScoreForSide(state, side) {
+      let s = 0;
       const b = state.board;
-      const col = defenseLaneCol(side);
-      let score = 0;
       for (let i = 0; i < CELLS; i++) {
-        if (CELL_COL[i] !== col) continue;
         const v = b[i] | 0;
         if (!v) continue;
-        const distFromHome = Math.abs(CELL_ROW[i] - homeRowOf(side));
-        if (sideOf(v) === side) score += Math.max(1, 9 - distFromHome);
-        else score -= Math.max(4, 12 - promotionDistance(i, opponent(side)) * 2);
+        const val = kindOf(v) === KING_KIND ? 360 : 100;
+        s += sideOf(v) === side ? val : -val;
       }
-      return score;
+      return s;
     }
 
-    function backEyeIntegrity(state, side) {
-      const b = state.board;
-      let score = 0;
-      for (let i = 0; i < CELLS; i++) {
-        const v = b[i] | 0;
-        if (!v || sideOf(v) !== side) continue;
-        const eye = backEyeSensitivity(i, side);
-        if (!eye) continue;
-        // The two company eyes are not just material guards; keep their value
-        // noticeably higher in the opening/root verifier, but never as a hard ban.
-        score += eye === 3 ? 36 : eye === 2 ? 20 : 9;
-      }
-      return score;
-    }
-
-    function attackLaneSupportScore(state, side) {
-      const b = state.board;
-      const col = attackLaneCol(side);
-      let score = 0;
-      for (let i = 0; i < CELLS; i++) {
-        const v = b[i] | 0;
-        if (!v || sideOf(v) !== side || CELL_COL[i] !== col) continue;
-        const dist = promotionDistance(i, side);
-        const support = supportCountOnBoard(b, i, side);
-        score += Math.max(1, 9 - dist) * 2 + Math.min(3, support) * 5;
-        if (kindOf(v) === KING_KIND) score += 18;
-      }
-      return score;
-    }
-
-    function looseWideCenterPenalty(state, side) {
-      const b = state.board;
-      let penalty = 0;
-      for (let i = 0; i < CELLS; i++) {
-        const v = b[i] | 0;
-        if (!v || sideOf(v) !== side) continue;
-        const support = supportCountOnBoard(b, i, side);
-        if (support > 0) continue;
-        if (CELL_WIDE[i]) penalty += 8;
-        if (isLocalCenter(i)) penalty += 7;
-      }
-      return penalty;
-    }
-
-    function backEyeCapturePressure(state, side) {
-      const b = state.board;
-      const opp = opponent(side);
-      let pressure = 0;
-      for (let from = 0; from < CELLS; from++) {
-        const v = b[from] | 0;
-        if (!v || sideOf(v) !== side) continue;
-        const opts = captureOptionsFrom(state, from);
-        for (let i = 0; i < opts.length; i++) {
-          const eye = backEyeSensitivity(opts[i].jumped, opp);
-          if (eye) pressure += eye === 3 ? 52 : eye === 2 ? 30 : 14;
-        }
-      }
-      return Math.min(140, pressure);
-    }
-
-    function forcedOpponentBackEyeMoveScore(stateAfterMove, ourSide) {
-      const opp = opponent(ourSide);
-      let score = 0;
-      // If our move creates a mandatory capture from a sensitive opponent back eye,
-      // it can force the opponent to ruin his back trap.  This is evaluated only
-      // at root, never inside the deep static evaluator.
-      const savedSide = stateAfterMove.side;
-      stateAfterMove.side = opp;
+    function extractPVLine(state, firstMove, maxPlies) {
+      const line = [];
+      const undos = [];
       try {
-        const replies = generateTurnMoves(stateAfterMove, { capturesOnly: false, limit: 256 });
-        if (replies.length && replies[0].captures > 0) {
-          for (let i = 0; i < replies.length; i++) {
-            const eye = backEyeSensitivity(replies[i].from, opp);
-            if (eye) score = Math.max(score, eye === 3 ? 115 : eye === 2 ? 72 : 35);
+        let m = cloneMove(firstMove);
+        for (let ply = 0; m && ply < maxPlies; ply++) {
+          const legal = generateTurnMoves(state, { capturesOnly: false, limit: 2048 });
+          let real = null;
+          const wanted = moveKey(m);
+          for (let i = 0; i < legal.length; i++) {
+            if (moveKey(legal[i]) === wanted) { real = legal[i]; break; }
           }
+          if (!real) break;
+          line.push(cloneMove(real));
+          undos.push(state.makeMove(real));
+          const ent = TT.get(state.key());
+          m = ent && ent.move ? cloneMove(ent.move) : null;
         }
+      } catch (_) {
       } finally {
-        stateAfterMove.side = savedSide;
+        for (let i = undos.length - 1; i >= 0; i--) state.undoMove(undos[i]);
       }
-      return score;
+      return line;
     }
 
-    function rootStrategicSnapshot(state, side) {
-      return {
-        back: backEyeIntegrity(state, side),
-        defense: defenseLaneIntegrity(state, side),
-        attack: attackLaneSupportScore(state, side),
-        promo: promotionPressure(state, side),
-        nearPromo: countNearPromotionMen(state, side),
-        loose: looseWideCenterPenalty(state, side),
-        oppBackPressure: backEyeCapturePressure(state, side),
-      };
+    function classifyPlanGoal(state, line, score, depth, side) {
+      if (!line || line.length < 3) return null;
+      const startMaterial = materialScoreForSide(state, side);
+      const undos = [];
+      let promotes = false;
+      let ourCaptures = 0;
+      let oppCaptures = 0;
+      let ourKingCapture = false;
+      try {
+        for (let i = 0; i < line.length; i++) {
+          const sideBefore = state.side;
+          const m = line[i];
+          if (sideBefore === side) {
+            if (m.promotes) promotes = true;
+            ourCaptures += m.captures | 0;
+            if ((m.capturedKings | 0) > 0) ourKingCapture = true;
+          } else {
+            oppCaptures += m.captures | 0;
+          }
+          undos.push(state.makeMove(m));
+        }
+        const endMaterial = materialScoreForSide(state, side);
+        const materialGain = endMaterial - startMaterial;
+        let goal = null;
+        let base = 0;
+        if (Math.abs(score) > WIN_SCORE - 5000) { goal = score > 0 ? 'forced-win' : 'avoid-loss'; base = 220; }
+        else if (promotes) { goal = 'promotion'; base = 135; }
+        else if (materialGain >= 180 || ourKingCapture) { goal = 'material-gain'; base = 125; }
+        else if (materialGain >= 80 || ourCaptures > oppCaptures) { goal = 'tactical-gain'; base = 85; }
+        else if (score >= 120) { goal = 'positional-pressure'; base = 65; }
+        if (!goal) return null;
+        const forcing = Math.max(0, Math.min(45, ourCaptures * 12 + (line[1] && (line[1].captures | 0) ? 10 : 0)));
+        const closeness = Math.max(0, 35 - Math.max(0, line.length - 3) * 6);
+        const depthBonus = Math.max(0, Math.min(25, (depth | 0) * 3));
+        const priority = Math.max(35, Math.min(240, base + forcing + closeness + depthBonus));
+        return { goal, priority, materialGain, promotes, ourCaptures, oppCaptures };
+      } catch (_) {
+        return null;
+      } finally {
+        for (let i = undos.length - 1; i >= 0; i--) state.undoMove(undos[i]);
+      }
     }
 
-    function eyeMoveCost(from, side) {
-      const eye = backEyeSensitivity(from, side);
-      if (eye >= 3) return 98;
-      if (eye === 2) return 54;
-      if (eye === 1) return 23;
-      return 0;
+    function buildPlanFromLine(state, chosenMove, score, depth) {
+      try {
+        const line = extractPVLine(state, chosenMove, PLAN_MAX_PLIES);
+        if (!line || line.length < 3) return null;
+        const side = state.side;
+        const goal = classifyPlanGoal(state, line, score, depth, side);
+        if (!goal || goal.priority < 45) return null;
+        const nextOwnMove = line[2];
+        if (!nextOwnMove) return null;
+        const nowMove = Game && typeof Game.moveCount === 'number' ? (Game.moveCount | 0) : 0;
+        return {
+          engine: ENGINE_VERSION,
+          kind: 'plan-intent',
+          id: 'p' + nowMove + '-' + Math.abs((state.hash || 0) | 0).toString(36) + '-' + Math.random().toString(36).slice(2, 6),
+          side,
+          createdAtMoveCount: nowMove,
+          expiresAtMoveCount: nowMove + PLAN_TTL_MOVES,
+          score: Math.trunc(score || 0),
+          depth: depth | 0,
+          goal: goal.goal,
+          priority: goal.priority | 0,
+          materialGain: goal.materialGain | 0,
+          rootMoveKey: moveKey(line[0]),
+          expectedOpponentKey: line[1] ? moveKey(line[1]) : '',
+          nextOwnKey: moveKey(nextOwnMove),
+          line: line.map(cloneMove),
+          lineKeys: line.map(moveKey),
+          startSig: boardArraySignature(state.board, side),
+        };
+      } catch (_) { return null; }
     }
 
-    function rootMoveMetric(state, move, rootMoves, ctx) {
-      const key = 'm:' + moveKey(move);
-      if (ctx && ctx.rootMetricCache && ctx.rootMetricCache.has(key)) return ctx.rootMetricCache.get(key);
-      const moving = state.board[move.from] | 0;
-      const side = sideOf(moving);
-      const opp = opponent(side);
-      const before = rootStrategicSnapshot(state, side);
-      const beforeOpp = rootStrategicSnapshot(state, opp);
-      const undo = state.makeMove(move);
-      const after = rootStrategicSnapshot(state, side);
-      const afterOpp = rootStrategicSnapshot(state, opp);
-      const supportAfter = supportCountOnBoard(state.board, move.to, side);
-      const forcedBackEye = forcedOpponentBackEyeMoveScore(state, side);
-      state.undoMove(undo);
-
-      const capturePurpose = (move.capturedValue || 0) * 0.32 + (move.capturedKings || 0) * 65;
-      const promotePurpose = move.promotes ? 110 : 0;
-      const defenseGain = Math.max(0, after.defense - before.defense);
-      const defenseLoss = Math.max(0, before.defense - after.defense);
-      const attackGain = Math.max(0, after.attack - before.attack);
-      const attackLoss = Math.max(0, before.attack - after.attack);
-      const promoGain = Math.max(0, after.promo - before.promo);
-      const oppPromoReduction = Math.max(0, beforeOpp.promo - afterOpp.promo);
-      const looseReduced = Math.max(0, before.loose - after.loose);
-      const looseAdded = Math.max(0, after.loose - before.loose);
-      const backLoss = Math.max(0, before.back - after.back);
-      const oppBackDamage = Math.max(0, beforeOpp.back - afterOpp.back);
-      const oppBackPressureGain = Math.max(0, after.oppBackPressure - before.oppBackPressure);
-      const eyeCost = eyeMoveCost(move.from, side);
-
-      let purpose = 0;
-      let mask = 0;
-      if (capturePurpose > 0) { purpose += Math.min(160, capturePurpose); mask |= 1; }
-      if (promotePurpose > 0) { purpose += promotePurpose; mask |= 2; }
-      if (defenseGain > 0) { purpose += Math.min(70, defenseGain * 6); mask |= 4; }
-      if (attackGain > 0) { purpose += Math.min(55, attackGain * 5); mask |= 8; }
-      if (promoGain > 0 || oppPromoReduction > 0) { purpose += Math.min(90, promoGain * 0.35 + oppPromoReduction * 0.45); mask |= 16; }
-      if (oppBackDamage > 0 || oppBackPressureGain > 0 || forcedBackEye > 0) {
-        purpose += Math.min(135, oppBackDamage * 2.0 + oppBackPressureGain * 0.75 + forcedBackEye);
-        mask |= 32;
+    function applyPlanPreference(state, rootScores, currentBest, currentScore, ctx) {
+      if (!rootScores || !rootScores.length || !ctx || !ctx.planMatches || !ctx.planMatches.size) {
+        return { move: currentBest, score: currentScore, plan: null };
       }
-      if (looseReduced > 0 || supportAfter > 0) { purpose += Math.min(35, looseReduced * 4 + supportAfter * 8); mask |= 64; }
-
-      let cost = 0;
-      cost += eyeCost;
-      cost += defenseLoss * 7;
-      cost += attackLoss * 2;
-      cost += looseAdded * 5;
-      if (supportAfter === 0) {
-        if (CELL_WIDE[move.to]) cost += (move.captures ? 22 : 38);
-        if (isLocalCenter(move.to)) cost += (move.captures ? 18 : 34);
+      const bestRaw = Math.max.apply(null, rootScores.map((x) => x.score));
+      let chosen = currentBest;
+      let chosenScore = currentScore;
+      let chosenPlan = null;
+      for (let i = 0; i < rootScores.length; i++) {
+        const ent = rootScores[i];
+        const key = moveKey(ent.move);
+        const match = ctx.planMatches.get(key);
+        if (!match) continue;
+        const rawGap = bestRaw - ent.score;
+        const allowedGap = Math.max(PLAN_MARGIN, Math.min(140, 55 + match.boost));
+        if (rawGap > allowedGap) continue;
+        const adjusted = ent.score + Math.min(120, match.boost);
+        const currentAdjusted = chosenScore + (chosenPlan ? Math.min(120, chosenPlan.boost) : 0);
+        if (!chosenPlan || adjusted > currentAdjusted || (adjusted === currentAdjusted && rawGap < (bestRaw - chosenScore))) {
+          chosen = cloneMove(ent.move);
+          chosenScore = ent.score;
+          chosenPlan = match;
+        }
       }
-
-      const metric = {
-        side,
-        quiet: (move.captures | 0) === 0,
-        purpose,
-        mask,
-        cost,
-        eyeCost,
-        backLoss,
-        defenseGain,
-        defenseLoss,
-        attackGain,
-        promoGain,
-        oppPromoReduction,
-        oppBackDamage,
-        oppBackPressureGain,
-        forcedBackEye,
-        looseAdded,
-        supportAfter,
-        directPurpose: purpose >= 42 || move.captures > 0 || move.promotes,
-        noPurpose: purpose < 24,
-      };
-      if (ctx && ctx.rootMetricCache) ctx.rootMetricCache.set(key, metric);
-      return metric;
+      return { move: chosen, score: chosenScore, plan: chosenPlan };
     }
 
-    function hasLowerCostAlternative(state, move, rootMoves, ctx, metric) {
-      if (!metric || !metric.quiet) return false;
-      if (metric.eyeCost <= 0 && metric.cost < 70) return false;
-      const currentMask = metric.mask | 0;
-      for (let i = 0; i < rootMoves.length; i++) {
-        const m = rootMoves[i];
-        if (!m || m === move) continue;
-        if ((m.captures | 0) > 0 || m.promotes) continue;
-        const alt = rootMoveMetric(state, m, rootMoves, ctx);
-        if (!alt || alt.side !== metric.side) continue;
-        if (currentMask && alt.mask && !(currentMask & alt.mask)) continue;
-        if (alt.purpose + 12 < metric.purpose) continue;
-        if (alt.cost > metric.cost - 34) continue;
-        if (alt.eyeCost >= metric.eyeCost && metric.eyeCost > 0) continue;
-        return true;
-      }
-      return false;
+    function updatePlanBankAfterSearch(state, chosenMove, score, depth, continuedPlan) {
+      try {
+        const newPlan = buildPlanFromLine(state, chosenMove, score, depth);
+        const out = [];
+        if (newPlan) out.push(newPlan);
+        // Keep still-valid plans only when they are not tied to a broken immediate continuation.
+        const old = getPlanBank();
+        for (let i = 0; i < old.length && out.length < PLAN_BANK_MAX; i++) {
+          const p = clonePlan(old[i]);
+          if (!p) continue;
+          if (continuedPlan && p.id === continuedPlan.plan.id) continue;
+          // Old plans that did not guide the selected move are usually stale after our move.
+          // Keep only high-priority defensive or forced plans briefly if their next move was not contradicted.
+          if ((p.priority | 0) >= 150 && p.goal && p.expiresAtMoveCount != null) out.push(p);
+        }
+        out.sort((a, b) => (b.priority | 0) - (a.priority | 0));
+        setPlanBank(out.slice(0, PLAN_BANK_MAX));
+        return getPlanBank();
+      } catch (_) { return getPlanBank(); }
     }
-
-    function rootMoveContextAdjustment(state, move, rootMoves, ctx) {
-      if (!move) return 0;
-      const cache = ctx && ctx.rootAdjustCache;
-      const key = moveKey(move);
-      if (cache && cache.has(key)) return cache.get(key);
-      const score = rootMoveContextAdjustmentUncached(state, move, rootMoves, ctx);
-      if (cache) cache.set(key, score);
-      return score;
-    }
-
-    function rootMoveContextAdjustmentUncached(state, move, rootMoves, ctx) {
-      const moving = state.board[move.from] | 0;
-      const side = sideOf(moving);
-      if (!side) return 0;
-      const counts = countState(state);
-      const total = counts.total | 0;
-      const openingScale = total >= 32 ? 1.25 : total >= 20 ? 0.95 : 0.32;
-      const metric = rootMoveMetric(state, move, rootMoves, ctx);
-      const altLowerCost = hasLowerCostAlternative(state, move, rootMoves, ctx, metric);
-      let adj = 0;
-
-      // The verifier is primarily a cost-vs-purpose test.  It is intentionally
-      // root-only: expensive contextual comparisons never run in deep nodes.
-      if (metric.quiet && metric.eyeCost > 0 && openingScale > 0.4) {
-        if (metric.noPurpose) adj -= Math.round(metric.eyeCost * (altLowerCost ? 1.18 : 0.82) * openingScale);
-        else if (altLowerCost && metric.purpose < metric.cost + 45) adj -= Math.round(metric.eyeCost * 0.78 * openingScale);
-        else adj -= Math.round(metric.eyeCost * 0.22 * openingScale);
-      }
-
-      if (metric.quiet && metric.noPurpose && metric.cost > 42 && openingScale > 0.4) {
-        adj -= Math.round(Math.min(90, metric.cost * 0.52) * openingScale);
-      }
-
-      if (metric.defenseLoss > 0 && metric.purpose < metric.defenseLoss * 7 + 35) {
-        adj -= Math.round(Math.min(115, metric.defenseLoss * 9 + 18) * openingScale);
-      }
-
-      if (metric.supportAfter === 0) {
-        if (CELL_WIDE[move.to]) adj -= metric.quiet ? 34 : 18;
-        if (isLocalCenter(move.to)) adj -= metric.quiet ? 28 : 14;
-      }
-
-      // Reward useful local pressure, but never enough to overturn a large
-      // tactical search result.
-      if (metric.attackGain > 0 && metric.supportAfter > 0) adj += Math.min(42, metric.attackGain * 4 + metric.supportAfter * 6);
-      if (metric.defenseGain > 0 && metric.supportAfter > 0) adj += Math.min(35, metric.defenseGain * 4);
-      if (metric.forcedBackEye > 0) adj += Math.min(120, metric.forcedBackEye);
-      else if (metric.oppBackPressureGain > 0) adj += Math.min(70, metric.oppBackPressureGain);
-      if (metric.oppBackDamage > 0) adj += Math.min(80, metric.oppBackDamage * 2);
-      if (metric.promoGain > 0 || metric.oppPromoReduction > 0) adj += Math.min(55, metric.promoGain * 0.20 + metric.oppPromoReduction * 0.25);
-
-      // Keep this as a strong root verifier, not a parallel evaluator.
-      if (adj > 155) return 155;
-      if (adj < -155) return -155;
-      return Math.trunc(adj);
-    }
-
-    function selectRootBestFromScores(scores) {
-      if (!scores || !scores.length) return null;
-      let rawMax = -INF;
-      for (let i = 0; i < scores.length; i++) if (scores[i].rawScore > rawMax) rawMax = scores[i].rawScore;
-      let best = null;
-      for (let i = 0; i < scores.length; i++) {
-        const item = scores[i];
-        if (item.rawScore < rawMax - ROOT_STRATEGY_RAW_MARGIN) continue;
-        if (!best || item.score > best.score || (item.score === best.score && preferMove(item.move, best.move))) best = item;
-      }
-      if (best) return best;
-      for (let i = 0; i < scores.length; i++) {
-        const item = scores[i];
-        if (!best || item.rawScore > best.rawScore || (item.rawScore === best.rawScore && preferMove(item.move, best.move))) best = item;
-      }
-      return best;
-    }
-
     function shouldStop(ctx) {
       if ((ctx.nodes & 1023) === 0) {
         if (ctx.deadline != null && nowMs() >= ctx.deadline) return true;
@@ -1120,6 +1016,7 @@
       const moving = state.board[m.from] | 0;
       if (kindOf(moving) === KING_KIND) s += 2000 + kingRayMobility(state.board, m.to) * 25;
       s += CELL_CENTER[m.to] * 35 + CELL_WIDE[m.to] * 30;
+      if (ply === 0) s += planOrderingBoost(ctx, m) * 5000;
       if (ctx && ctx.history) s += ctx.history.get(moveKey(m)) || 0;
       if (ply <= 1 && moveLeavesMajorThreat(state, m)) s -= 120000;
       return s;
@@ -1140,8 +1037,9 @@
       ttAge = (ttAge + 1) & 0xffff;
       const started = nowMs();
       const deadline = settings.timeMs > 0 ? started + settings.timeMs : null;
-      const ctx = { nodes: 0, deadline, maxNodes: settings.maxNodes, qDepth: settings.qDepth, history: new Map(), rootSide: state.side, rootAdjustCache: new Map(), rootMetricCache: new Map() };
+      const ctx = { nodes: 0, deadline, maxNodes: settings.maxNodes, qDepth: settings.qDepth, history: new Map(), rootSide: state.side, planMatches: null };
       const rootMoves = generateTurnMoves(state, { capturesOnly: false, limit: MAX_ROOT_CAPTURE_PATHS });
+      ctx.planMatches = activePlanContinuations(state, rootMoves);
       if (!rootMoves.length) return { move: null, score: -WIN_SCORE, depth: 0, nodes: 0, timeMs: nowMs() - started, pv: [] };
       if (rootMoves.length === 1) {
         const undo = state.makeMove(rootMoves[0]);
@@ -1164,25 +1062,28 @@
           const moves = rootMoves.map(cloneMove);
           orderMoves(state, moves, ttMove || bestMove, ctx, 0);
           let alpha = -INF;
+          let localBest = null;
+          let localBestScore = -INF;
           const scores = [];
           for (let i = 0; i < moves.length; i++) {
             if (shouldStop(ctx)) throw TIMEOUT;
             const m = moves[i];
             const undo = state.makeMove(m);
-            const rawScore = -negamax(state, depth - 1, -INF, -alpha, ctx, 1);
+            const score = -negamax(state, depth - 1, -INF, -alpha, ctx, 1);
             state.undoMove(undo);
-            const rootAdjustment = rootMoveContextAdjustment(state, m, rootMoves, ctx);
-            const score = rawScore + rootAdjustment;
-            scores.push({ move: cloneMove(m), score, rawScore, rootAdjustment });
-            if (rawScore > alpha) alpha = rawScore;
+            scores.push({ move: cloneMove(m), score });
+            if (score > localBestScore || (score === localBestScore && preferMove(m, localBest))) {
+              localBestScore = score;
+              localBest = cloneMove(m);
+            }
+            if (score > alpha) alpha = score;
           }
-          const selected = selectRootBestFromScores(scores);
           completedDepth = depth;
-          bestMove = cloneMove(selected ? selected.move : moves[0]);
-          bestScore = selected ? selected.score : -INF;
+          bestMove = cloneMove(localBest);
+          bestScore = localBestScore;
           rootScores = scores;
           ttMove = bestMove;
-          TT.set(state.key(), { depth: -1, score: selected ? selected.rawScore : bestScore, flag: 'exact', move: cloneMove(bestMove), age: ttAge });
+          TT.set(state.key(), { depth, score: bestScore, flag: 'exact', move: cloneMove(bestMove), age: ttAge });
           if (Math.abs(bestScore) > WIN_SCORE - 1000) break;
         }
       } catch (e) {
@@ -1193,18 +1094,26 @@
       if (!bestMove) bestMove = cloneMove(rootMoves[0]);
       if (completedDepth === 0) {
         orderMoves(state, rootMoves, ttMove, ctx, 0);
-        rootScores = rootMoves.slice(0, 12).map((m) => {
-          const rawScore = evaluateAfterMove(state, m);
-          const rootAdjustment = rootMoveContextAdjustment(state, m, rootMoves, ctx);
-          return { move: cloneMove(m), score: rawScore + rootAdjustment, rawScore, rootAdjustment };
-        });
-        const selected = selectRootBestFromScores(rootScores);
-        bestMove = cloneMove(selected ? selected.move : rootMoves[0]);
-        bestScore = selected ? selected.score : evaluateAfterMove(state, bestMove);
+        bestMove = cloneMove(rootMoves[0]);
+        bestScore = evaluateAfterMove(state, bestMove);
+        rootScores = rootMoves.slice(0, 8).map((m) => ({ move: cloneMove(m), score: evaluateAfterMove(state, m) }));
       }
 
+      const planChoice = applyPlanPreference(state, rootScores, bestMove, bestScore, ctx);
+      bestMove = planChoice.move;
+      bestScore = planChoice.score;
       bestMove = chooseByLevel(bestMove, rootScores, settings);
-      return { move: cloneMove(bestMove), score: bestScore, depth: completedDepth, nodes: ctx.nodes, timeMs: nowMs() - started, pv: bestMove ? [cloneMove(bestMove)] : [] };
+      const line = bestMove ? extractPVLine(state, bestMove, PLAN_MAX_PLIES) : [];
+      return {
+        move: cloneMove(bestMove),
+        score: bestScore,
+        depth: completedDepth,
+        nodes: ctx.nodes,
+        timeMs: nowMs() - started,
+        pv: line && line.length ? line.map(cloneMove) : (bestMove ? [cloneMove(bestMove)] : []),
+        continuedPlan: planChoice.plan ? clonePlan(planChoice.plan) : null,
+        rootScores: rootScores.slice(0, 8).map((x) => ({ move: cloneMove(x.move), score: x.score })),
+      };
     }
 
     function evaluateAfterMove(state, move) {
@@ -1523,8 +1432,9 @@
     function analyzeTurnLocal() {
       if (Game.gameOver || Game.awaitingPenalty) return null;
       if (Game.forcedEnabled && (Game.forcedPly | 0) < 10) {
+        clearPlanBank();
         const fm = forcedOpeningMove();
-        return fm ? { move: fm, action: moveToAction(fm), score: 0, depth: 0, nodes: 0, timeMs: 0, engine: ENGINE_VERSION } : null;
+        return fm ? { move: fm, action: moveToAction(fm), score: 0, depth: 0, nodes: 0, timeMs: 0, ai2PlanBank: [], engine: ENGINE_VERSION } : null;
       }
       const side = Game.player === BOT_SIDE ? BOT_SIDE : TOP_SIDE;
       const settings = runtimeSettings(Game.settings || {}, side, Game.board);
@@ -1532,6 +1442,7 @@
       const ignoredMove = chooseEducationalIgnoreCaptureMove(state, settings);
       if (ignoredMove) {
         setSouflaTrapMemory(null);
+        clearPlanBank();
         return {
           move: ignoredMove,
           action: moveToAction(ignoredMove),
@@ -1550,6 +1461,7 @@
       if (!move) return null;
       const trapMemory = buildSouflaTrapMemory(move, result, side);
       setSouflaTrapMemory(trapMemory);
+      const updatedPlans = updatePlanBankAfterSearch(state, move, result.score, result.depth, result.continuedPlan);
       return {
         move,
         action: moveToAction(move),
@@ -1559,6 +1471,8 @@
         timeMs: Math.round(result.timeMs || 0),
         pv: result.pv || [],
         souflaTrapMemory: trapMemory,
+        ai2PlanBank: updatedPlans.map(clonePlan).filter(Boolean),
+        continuedPlan: result.continuedPlan || null,
         engine: ENGINE_VERSION,
       };
     }
@@ -1584,6 +1498,9 @@
         awaitingPenalty: !!Game.awaitingPenalty,
         settings: Game.settings,
         moveCount: Game.moveCount | 0,
+        ai2PlanBank: (() => {
+          try { return Game.ai2PlanBank || planBankMemory || []; } catch (_) { return []; }
+        })(),
         ai2SouflaTrapMemory: (() => {
           try { return Game.ai2SouflaTrapMemory || souflaTrapMemory || null; } catch (_) { return null; }
         })(),
@@ -1597,13 +1514,17 @@
     }
 
     async function analyzeTurn() {
-      return await DhametAIRuntime.callWorkerWithRetry(
+      const analysis = await DhametAIRuntime.callWorkerWithRetry(
         __aiWorkerBridge,
         'analyzeTurn',
         [],
         async function () { return analyzeTurnLocal(); },
         { accept: (r) => !!(r && r.move && Array.isArray(r.move.path)) },
       );
+      try {
+        if (analysis && Object.prototype.hasOwnProperty.call(analysis, 'ai2PlanBank')) setPlanBank(analysis.ai2PlanBank || []);
+      } catch (_) {}
+      return analysis;
     }
 
 
@@ -1913,7 +1834,7 @@
       _pickSouflaDecisionInternal: _pickSouflaDecisionLocal,
       _analyzeTurnInternal,
       _lastAnalysis: function () { return _lastAnalysis; },
-      _debug: function () { return { ttSize: TT.size, souflaTrapMemory, version: ENGINE_VERSION }; },
+      _debug: function () { return { ttSize: TT.size, souflaTrapMemory, planBank: getPlanBank(), version: ENGINE_VERSION }; },
     });
   }
 

@@ -27,6 +27,7 @@
     if (typeof st.awaitingPenalty === "boolean") Game.awaitingPenalty = st.awaitingPenalty;
     if (st.settings) Game.settings = st.settings;
     if (typeof st.moveCount === "number") Game.moveCount = st.moveCount | 0;
+    if (Object.prototype.hasOwnProperty.call(st, "ai2PlanBank")) Game.ai2PlanBank = Array.isArray(st.ai2PlanBank) ? st.ai2PlanBank : [];
     if (Object.prototype.hasOwnProperty.call(st, "ai2SouflaTrapMemory")) Game.ai2SouflaTrapMemory = st.ai2SouflaTrapMemory || null;
     try {
       if (typeof Turn !== "undefined" && Turn) {
