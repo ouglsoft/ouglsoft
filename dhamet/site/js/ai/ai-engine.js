@@ -65,7 +65,8 @@
     const MAX_ROOT_CAPTURE_PATHS = 8192;
     const TT_MAX = 140000;
     const PLAN_MARGIN = 35;
-    const ENGINE_VERSION = 'ai2-rebuild-v4.4-local-strategy-root-safe';
+    const ROOT_STRATEGY_RAW_MARGIN = 210;
+    const ENGINE_VERSION = 'ai2-rebuild-v4.5-root-strategy-verifier';
     const TIMEOUT = { timeout: true };
 
     const LEVEL_DEFAULTS = Object.freeze({
@@ -762,15 +763,201 @@
       return score;
     }
 
-    function hasLowerEyeAlternative(rootMoves, move, side) {
-      const movingEye = backEyeSensitivity(move.from, side);
-      if (!movingEye) return false;
+    function backEyeIntegrity(state, side) {
+      const b = state.board;
+      let score = 0;
+      for (let i = 0; i < CELLS; i++) {
+        const v = b[i] | 0;
+        if (!v || sideOf(v) !== side) continue;
+        const eye = backEyeSensitivity(i, side);
+        if (!eye) continue;
+        // The two company eyes are not just material guards; keep their value
+        // noticeably higher in the opening/root verifier, but never as a hard ban.
+        score += eye === 3 ? 36 : eye === 2 ? 20 : 9;
+      }
+      return score;
+    }
+
+    function attackLaneSupportScore(state, side) {
+      const b = state.board;
+      const col = attackLaneCol(side);
+      let score = 0;
+      for (let i = 0; i < CELLS; i++) {
+        const v = b[i] | 0;
+        if (!v || sideOf(v) !== side || CELL_COL[i] !== col) continue;
+        const dist = promotionDistance(i, side);
+        const support = supportCountOnBoard(b, i, side);
+        score += Math.max(1, 9 - dist) * 2 + Math.min(3, support) * 5;
+        if (kindOf(v) === KING_KIND) score += 18;
+      }
+      return score;
+    }
+
+    function looseWideCenterPenalty(state, side) {
+      const b = state.board;
+      let penalty = 0;
+      for (let i = 0; i < CELLS; i++) {
+        const v = b[i] | 0;
+        if (!v || sideOf(v) !== side) continue;
+        const support = supportCountOnBoard(b, i, side);
+        if (support > 0) continue;
+        if (CELL_WIDE[i]) penalty += 8;
+        if (isLocalCenter(i)) penalty += 7;
+      }
+      return penalty;
+    }
+
+    function backEyeCapturePressure(state, side) {
+      const b = state.board;
+      const opp = opponent(side);
+      let pressure = 0;
+      for (let from = 0; from < CELLS; from++) {
+        const v = b[from] | 0;
+        if (!v || sideOf(v) !== side) continue;
+        const opts = captureOptionsFrom(state, from);
+        for (let i = 0; i < opts.length; i++) {
+          const eye = backEyeSensitivity(opts[i].jumped, opp);
+          if (eye) pressure += eye === 3 ? 52 : eye === 2 ? 30 : 14;
+        }
+      }
+      return Math.min(140, pressure);
+    }
+
+    function forcedOpponentBackEyeMoveScore(stateAfterMove, ourSide) {
+      const opp = opponent(ourSide);
+      let score = 0;
+      // If our move creates a mandatory capture from a sensitive opponent back eye,
+      // it can force the opponent to ruin his back trap.  This is evaluated only
+      // at root, never inside the deep static evaluator.
+      const savedSide = stateAfterMove.side;
+      stateAfterMove.side = opp;
+      try {
+        const replies = generateTurnMoves(stateAfterMove, { capturesOnly: false, limit: 256 });
+        if (replies.length && replies[0].captures > 0) {
+          for (let i = 0; i < replies.length; i++) {
+            const eye = backEyeSensitivity(replies[i].from, opp);
+            if (eye) score = Math.max(score, eye === 3 ? 115 : eye === 2 ? 72 : 35);
+          }
+        }
+      } finally {
+        stateAfterMove.side = savedSide;
+      }
+      return score;
+    }
+
+    function rootStrategicSnapshot(state, side) {
+      return {
+        back: backEyeIntegrity(state, side),
+        defense: defenseLaneIntegrity(state, side),
+        attack: attackLaneSupportScore(state, side),
+        promo: promotionPressure(state, side),
+        nearPromo: countNearPromotionMen(state, side),
+        loose: looseWideCenterPenalty(state, side),
+        oppBackPressure: backEyeCapturePressure(state, side),
+      };
+    }
+
+    function eyeMoveCost(from, side) {
+      const eye = backEyeSensitivity(from, side);
+      if (eye >= 3) return 98;
+      if (eye === 2) return 54;
+      if (eye === 1) return 23;
+      return 0;
+    }
+
+    function rootMoveMetric(state, move, rootMoves, ctx) {
+      const key = 'm:' + moveKey(move);
+      if (ctx && ctx.rootMetricCache && ctx.rootMetricCache.has(key)) return ctx.rootMetricCache.get(key);
+      const moving = state.board[move.from] | 0;
+      const side = sideOf(moving);
+      const opp = opponent(side);
+      const before = rootStrategicSnapshot(state, side);
+      const beforeOpp = rootStrategicSnapshot(state, opp);
+      const undo = state.makeMove(move);
+      const after = rootStrategicSnapshot(state, side);
+      const afterOpp = rootStrategicSnapshot(state, opp);
+      const supportAfter = supportCountOnBoard(state.board, move.to, side);
+      const forcedBackEye = forcedOpponentBackEyeMoveScore(state, side);
+      state.undoMove(undo);
+
+      const capturePurpose = (move.capturedValue || 0) * 0.32 + (move.capturedKings || 0) * 65;
+      const promotePurpose = move.promotes ? 110 : 0;
+      const defenseGain = Math.max(0, after.defense - before.defense);
+      const defenseLoss = Math.max(0, before.defense - after.defense);
+      const attackGain = Math.max(0, after.attack - before.attack);
+      const attackLoss = Math.max(0, before.attack - after.attack);
+      const promoGain = Math.max(0, after.promo - before.promo);
+      const oppPromoReduction = Math.max(0, beforeOpp.promo - afterOpp.promo);
+      const looseReduced = Math.max(0, before.loose - after.loose);
+      const looseAdded = Math.max(0, after.loose - before.loose);
+      const backLoss = Math.max(0, before.back - after.back);
+      const oppBackDamage = Math.max(0, beforeOpp.back - afterOpp.back);
+      const oppBackPressureGain = Math.max(0, after.oppBackPressure - before.oppBackPressure);
+      const eyeCost = eyeMoveCost(move.from, side);
+
+      let purpose = 0;
+      let mask = 0;
+      if (capturePurpose > 0) { purpose += Math.min(160, capturePurpose); mask |= 1; }
+      if (promotePurpose > 0) { purpose += promotePurpose; mask |= 2; }
+      if (defenseGain > 0) { purpose += Math.min(70, defenseGain * 6); mask |= 4; }
+      if (attackGain > 0) { purpose += Math.min(55, attackGain * 5); mask |= 8; }
+      if (promoGain > 0 || oppPromoReduction > 0) { purpose += Math.min(90, promoGain * 0.35 + oppPromoReduction * 0.45); mask |= 16; }
+      if (oppBackDamage > 0 || oppBackPressureGain > 0 || forcedBackEye > 0) {
+        purpose += Math.min(135, oppBackDamage * 2.0 + oppBackPressureGain * 0.75 + forcedBackEye);
+        mask |= 32;
+      }
+      if (looseReduced > 0 || supportAfter > 0) { purpose += Math.min(35, looseReduced * 4 + supportAfter * 8); mask |= 64; }
+
+      let cost = 0;
+      cost += eyeCost;
+      cost += defenseLoss * 7;
+      cost += attackLoss * 2;
+      cost += looseAdded * 5;
+      if (supportAfter === 0) {
+        if (CELL_WIDE[move.to]) cost += (move.captures ? 22 : 38);
+        if (isLocalCenter(move.to)) cost += (move.captures ? 18 : 34);
+      }
+
+      const metric = {
+        side,
+        quiet: (move.captures | 0) === 0,
+        purpose,
+        mask,
+        cost,
+        eyeCost,
+        backLoss,
+        defenseGain,
+        defenseLoss,
+        attackGain,
+        promoGain,
+        oppPromoReduction,
+        oppBackDamage,
+        oppBackPressureGain,
+        forcedBackEye,
+        looseAdded,
+        supportAfter,
+        directPurpose: purpose >= 42 || move.captures > 0 || move.promotes,
+        noPurpose: purpose < 24,
+      };
+      if (ctx && ctx.rootMetricCache) ctx.rootMetricCache.set(key, metric);
+      return metric;
+    }
+
+    function hasLowerCostAlternative(state, move, rootMoves, ctx, metric) {
+      if (!metric || !metric.quiet) return false;
+      if (metric.eyeCost <= 0 && metric.cost < 70) return false;
+      const currentMask = metric.mask | 0;
       for (let i = 0; i < rootMoves.length; i++) {
         const m = rootMoves[i];
         if (!m || m === move) continue;
-        if ((m.captures | 0) !== (move.captures | 0)) continue;
-        if (!!m.promotes !== !!move.promotes) continue;
-        if (backEyeSensitivity(m.from, side) < movingEye) return true;
+        if ((m.captures | 0) > 0 || m.promotes) continue;
+        const alt = rootMoveMetric(state, m, rootMoves, ctx);
+        if (!alt || alt.side !== metric.side) continue;
+        if (currentMask && alt.mask && !(currentMask & alt.mask)) continue;
+        if (alt.purpose + 12 < metric.purpose) continue;
+        if (alt.cost > metric.cost - 34) continue;
+        if (alt.eyeCost >= metric.eyeCost && metric.eyeCost > 0) continue;
+        return true;
       }
       return false;
     }
@@ -780,68 +967,74 @@
       const cache = ctx && ctx.rootAdjustCache;
       const key = moveKey(move);
       if (cache && cache.has(key)) return cache.get(key);
-      const score = rootMoveContextAdjustmentUncached(state, move, rootMoves);
+      const score = rootMoveContextAdjustmentUncached(state, move, rootMoves, ctx);
       if (cache) cache.set(key, score);
       return score;
     }
 
-    function rootMoveContextAdjustmentUncached(state, move, rootMoves) {
+    function rootMoveContextAdjustmentUncached(state, move, rootMoves, ctx) {
       const moving = state.board[move.from] | 0;
       const side = sideOf(moving);
       if (!side) return 0;
       const counts = countState(state);
       const total = counts.total | 0;
-      const openingScale = total >= 32 ? 1.2 : total >= 20 ? 1.0 : 0.35;
-      const quiet = (move.captures | 0) === 0;
+      const openingScale = total >= 32 ? 1.25 : total >= 20 ? 0.95 : 0.32;
+      const metric = rootMoveMetric(state, move, rootMoves, ctx);
+      const altLowerCost = hasLowerCostAlternative(state, move, rootMoves, ctx, metric);
       let adj = 0;
 
-      const beforeOppNearPromo = countNearPromotionMen(state, opponent(side));
-      const beforeMyNearPromo = countNearPromotionMen(state, side);
-      const beforeDefense = defenseLaneIntegrity(state, side);
-
-      const undo = state.makeMove(move);
-      const supportAfter = supportCountOnBoard(state.board, move.to, side);
-      const afterOppNearPromo = countNearPromotionMen(state, opponent(side));
-      const afterMyNearPromo = countNearPromotionMen(state, side);
-      const afterDefense = defenseLaneIntegrity(state, side);
-      state.undoMove(undo);
-
-      const improvesPromotionRace = afterMyNearPromo > beforeMyNearPromo || afterOppNearPromo < beforeOppNearPromo;
-      const improvesDefense = afterDefense > beforeDefense + 1;
-      const attacksNaturally = CELL_COL[move.to] === attackLaneCol(side) && (supportAfter > 0 || promotionDistance(move.to, side) <= 3);
-      const directPurpose = !quiet || !!move.promotes || improvesPromotionRace || improvesDefense || attacksNaturally;
-
-      const eye = backEyeSensitivity(move.from, side);
-      if (quiet && eye && openingScale > 0.4 && hasLowerEyeAlternative(rootMoves, move, side) && !directPurpose) {
-        const base = eye >= 3 ? 56 : eye === 2 ? 32 : 16;
-        adj -= Math.round(base * openingScale);
-        if (eye >= 3 && beforeOppNearPromo > 0) adj -= Math.round(18 * openingScale);
+      // The verifier is primarily a cost-vs-purpose test.  It is intentionally
+      // root-only: expensive contextual comparisons never run in deep nodes.
+      if (metric.quiet && metric.eyeCost > 0 && openingScale > 0.4) {
+        if (metric.noPurpose) adj -= Math.round(metric.eyeCost * (altLowerCost ? 1.18 : 0.82) * openingScale);
+        else if (altLowerCost && metric.purpose < metric.cost + 45) adj -= Math.round(metric.eyeCost * 0.78 * openingScale);
+        else adj -= Math.round(metric.eyeCost * 0.22 * openingScale);
       }
 
-      const fromCol = CELL_COL[move.from];
-      const toCol = CELL_COL[move.to];
-      if (quiet && fromCol === defenseLaneCol(side) && afterDefense < beforeDefense - 1 && !directPurpose) {
-        adj -= Math.round(Math.min(58, (beforeDefense - afterDefense) * 8 + 14) * openingScale);
-      }
-      if (toCol === attackLaneCol(side) && supportAfter > 0) {
-        adj += promotionDistance(move.to, side) <= 3 ? 26 : 14;
-      }
-      if (toCol === defenseLaneCol(side) && supportAfter > 0 && afterDefense >= beforeDefense) {
-        adj += 12;
+      if (metric.quiet && metric.noPurpose && metric.cost > 42 && openingScale > 0.4) {
+        adj -= Math.round(Math.min(90, metric.cost * 0.52) * openingScale);
       }
 
-      if (supportAfter === 0) {
-        if (CELL_WIDE[move.to]) adj -= quiet ? 22 : 14;
-        if (isLocalCenter(move.to)) adj -= quiet ? 18 : 10;
-      } else if (CELL_WIDE[move.to] && isLocalCenter(move.to)) {
-        adj += Math.min(14, supportAfter * 5);
+      if (metric.defenseLoss > 0 && metric.purpose < metric.defenseLoss * 7 + 35) {
+        adj -= Math.round(Math.min(115, metric.defenseLoss * 9 + 18) * openingScale);
       }
 
-      // Do not let local style override concrete search.  It is a contextual
-      // tie-breaker and safety corrector, not a parallel evaluation layer.
-      if (adj > 120) return 120;
-      if (adj < -120) return -120;
+      if (metric.supportAfter === 0) {
+        if (CELL_WIDE[move.to]) adj -= metric.quiet ? 34 : 18;
+        if (isLocalCenter(move.to)) adj -= metric.quiet ? 28 : 14;
+      }
+
+      // Reward useful local pressure, but never enough to overturn a large
+      // tactical search result.
+      if (metric.attackGain > 0 && metric.supportAfter > 0) adj += Math.min(42, metric.attackGain * 4 + metric.supportAfter * 6);
+      if (metric.defenseGain > 0 && metric.supportAfter > 0) adj += Math.min(35, metric.defenseGain * 4);
+      if (metric.forcedBackEye > 0) adj += Math.min(120, metric.forcedBackEye);
+      else if (metric.oppBackPressureGain > 0) adj += Math.min(70, metric.oppBackPressureGain);
+      if (metric.oppBackDamage > 0) adj += Math.min(80, metric.oppBackDamage * 2);
+      if (metric.promoGain > 0 || metric.oppPromoReduction > 0) adj += Math.min(55, metric.promoGain * 0.20 + metric.oppPromoReduction * 0.25);
+
+      // Keep this as a strong root verifier, not a parallel evaluator.
+      if (adj > 155) return 155;
+      if (adj < -155) return -155;
       return Math.trunc(adj);
+    }
+
+    function selectRootBestFromScores(scores) {
+      if (!scores || !scores.length) return null;
+      let rawMax = -INF;
+      for (let i = 0; i < scores.length; i++) if (scores[i].rawScore > rawMax) rawMax = scores[i].rawScore;
+      let best = null;
+      for (let i = 0; i < scores.length; i++) {
+        const item = scores[i];
+        if (item.rawScore < rawMax - ROOT_STRATEGY_RAW_MARGIN) continue;
+        if (!best || item.score > best.score || (item.score === best.score && preferMove(item.move, best.move))) best = item;
+      }
+      if (best) return best;
+      for (let i = 0; i < scores.length; i++) {
+        const item = scores[i];
+        if (!best || item.rawScore > best.rawScore || (item.rawScore === best.rawScore && preferMove(item.move, best.move))) best = item;
+      }
+      return best;
     }
 
     function shouldStop(ctx) {
@@ -947,7 +1140,7 @@
       ttAge = (ttAge + 1) & 0xffff;
       const started = nowMs();
       const deadline = settings.timeMs > 0 ? started + settings.timeMs : null;
-      const ctx = { nodes: 0, deadline, maxNodes: settings.maxNodes, qDepth: settings.qDepth, history: new Map(), rootSide: state.side, rootAdjustCache: new Map() };
+      const ctx = { nodes: 0, deadline, maxNodes: settings.maxNodes, qDepth: settings.qDepth, history: new Map(), rootSide: state.side, rootAdjustCache: new Map(), rootMetricCache: new Map() };
       const rootMoves = generateTurnMoves(state, { capturesOnly: false, limit: MAX_ROOT_CAPTURE_PATHS });
       if (!rootMoves.length) return { move: null, score: -WIN_SCORE, depth: 0, nodes: 0, timeMs: nowMs() - started, pv: [] };
       if (rootMoves.length === 1) {
@@ -971,9 +1164,6 @@
           const moves = rootMoves.map(cloneMove);
           orderMoves(state, moves, ttMove || bestMove, ctx, 0);
           let alpha = -INF;
-          let localBest = null;
-          let localBestScore = -INF;
-          let localBestRawScore = -INF;
           const scores = [];
           for (let i = 0; i < moves.length; i++) {
             if (shouldStop(ctx)) throw TIMEOUT;
@@ -984,19 +1174,15 @@
             const rootAdjustment = rootMoveContextAdjustment(state, m, rootMoves, ctx);
             const score = rawScore + rootAdjustment;
             scores.push({ move: cloneMove(m), score, rawScore, rootAdjustment });
-            if (score > localBestScore || (score === localBestScore && preferMove(m, localBest))) {
-              localBestScore = score;
-              localBestRawScore = rawScore;
-              localBest = cloneMove(m);
-            }
             if (rawScore > alpha) alpha = rawScore;
           }
+          const selected = selectRootBestFromScores(scores);
           completedDepth = depth;
-          bestMove = cloneMove(localBest);
-          bestScore = localBestScore;
+          bestMove = cloneMove(selected ? selected.move : moves[0]);
+          bestScore = selected ? selected.score : -INF;
           rootScores = scores;
           ttMove = bestMove;
-          TT.set(state.key(), { depth: -1, score: localBestRawScore, flag: 'exact', move: cloneMove(bestMove), age: ttAge });
+          TT.set(state.key(), { depth: -1, score: selected ? selected.rawScore : bestScore, flag: 'exact', move: cloneMove(bestMove), age: ttAge });
           if (Math.abs(bestScore) > WIN_SCORE - 1000) break;
         }
       } catch (e) {
@@ -1007,13 +1193,14 @@
       if (!bestMove) bestMove = cloneMove(rootMoves[0]);
       if (completedDepth === 0) {
         orderMoves(state, rootMoves, ttMove, ctx, 0);
-        bestMove = cloneMove(rootMoves[0]);
-        bestScore = evaluateAfterMove(state, bestMove) + rootMoveContextAdjustment(state, bestMove, rootMoves, ctx);
-        rootScores = rootMoves.slice(0, 8).map((m) => {
+        rootScores = rootMoves.slice(0, 12).map((m) => {
           const rawScore = evaluateAfterMove(state, m);
           const rootAdjustment = rootMoveContextAdjustment(state, m, rootMoves, ctx);
           return { move: cloneMove(m), score: rawScore + rootAdjustment, rawScore, rootAdjustment };
         });
+        const selected = selectRootBestFromScores(rootScores);
+        bestMove = cloneMove(selected ? selected.move : rootMoves[0]);
+        bestScore = selected ? selected.score : evaluateAfterMove(state, bestMove);
       }
 
       bestMove = chooseByLevel(bestMove, rootScores, settings);

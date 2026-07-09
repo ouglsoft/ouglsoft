@@ -5,7 +5,7 @@
 // while incognito starts clean.  Keep account/language/theme data, but clear volatile local game
 // state once per application build to avoid mixing old runtime snapshots with the new AI2 runtime.
 (function () {
-  var BUILD = "ai2-v4.2-storage-migration";
+  var BUILD = "ai2-v4.5-root-strategy-verifier";
   try {
     if (typeof window !== "undefined") window.DHAMET_APP_BUILD = BUILD;
     var key = "zamat.app.build.applied";
