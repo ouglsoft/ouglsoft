@@ -25,11 +25,12 @@
   const WIN = 10000000;
   const INF = 1000000000;
   const MATE_WINDOW = 100000;
-  const ENGINE_VERSION = 'dhamet-computer-pvs-1.5.0';
+  const ENGINE_VERSION = 'dhamet-computer-pvs-1.6.0';
   // Root-only tie preference for a remembered, uniquely forced soufla plan.
-  // One man is worth 100 evaluation points; five points are deliberately too
-  // small to override a materially better removal decision.
-  const SOUFLA_PLAN_ROOT_BONUS = 5;
+  // One man is worth 100 evaluation points. The bonus is deliberately small:
+  // it preserves a previously proven plan when results are close, but cannot
+  // override a clearly stronger removal decision.
+  const SOUFLA_PLAN_ROOT_BONUS = 12;
   const TIMEOUT = Object.freeze({ searchTimeout: true });
   const MASK64 = (1n << 64n) - 1n;
 
@@ -738,31 +739,42 @@
     });
   }
 
-  function tacticalMoveValue(pos, move) {
-    let value = 0;
-    for (const jumped of Array.isArray(move && move.jumps) ? move.jumps : []) {
-      const piece = pos.board[Number(jumped)] | 0;
-      if (!piece) continue;
-      value += Math.abs(piece) === KING ? 350 : 100;
-    }
-    if (move && move.promotes) value += 250;
-    return value;
-  }
 
-  function exactTTMove(pos, minDepth) {
+  function exactTTRecord(pos, minDepth) {
     const entry = TT.get(hashPosition(pos), verificationKey(pos));
     if (!entry || entry.bound !== 'exact' || entry.depth < Math.max(0, minDepth | 0) || !entry.move) return null;
     const legal = generateMoves(pos);
-    return legal.find((candidate) => sameMove(candidate, entry.move)) || null;
+    const move = legal.find((candidate) => sameMove(candidate, entry.move)) || null;
+    if (!move) return null;
+    return Object.freeze({
+      score: ttLoadScore(entry.score, 0),
+      depth: Math.max(0, entry.depth | 0),
+      move,
+    });
   }
 
-  // This is a one-turn memory, not another evaluator or search. It only reads
-  // the already completed principal variation. A plan exists only when the
-  // human has exactly one legal longest capture and the searched line produces
-  // a concrete material/promotion gain or a forced win for the computer.
-  function deriveSouflaPlan(pos, chosenMove, chosenScore, completedDepth) {
-    const depth = Math.max(0, Number(completedDepth || 0) | 0);
-    if (!chosenMove || depth < 3 || !Number.isFinite(Number(chosenScore))) return null;
+  function rememberedLineFromTT(startPos, maxPlies) {
+    const hints = [];
+    let cur = startPos;
+    const limit = Math.max(1, Math.min(8, maxPlies | 0));
+    for (let ply = 0; ply < limit; ply++) {
+      const entry = TT.get(hashPosition(cur), verificationKey(cur));
+      if (!entry || !entry.move) break;
+      const legal = generateMoves(cur);
+      const move = legal.find((candidate) => sameMove(candidate, entry.move)) || null;
+      if (!move) break;
+      hints.push(Object.freeze({ identity: positionIdentity(cur), move: clonePlanMove(move) }));
+      try { cur = applyMove(cur, move); }
+      catch (_) { break; }
+    }
+    return Object.freeze({ hints: Object.freeze(hints) });
+  }
+
+  // One-turn memory only. No new search or secondary evaluator is run here:
+  // the plan is copied from the exact transposition record and PV produced by
+  // the already completed search that selected the computer's move.
+  function deriveSouflaPlan(pos, chosenMove) {
+    if (!chosenMove) return null;
     if (pos.forcedEnabled && pos.forcedPly < 10) return null;
 
     let humanTurn;
@@ -776,31 +788,29 @@
     let computerTurn;
     try { computerTurn = applyMove(humanTurn, expectedCapture); }
     catch (_) { return null; }
-    const plannedReply = exactTTMove(computerTurn, 1);
-    if (!plannedReply) return null;
 
+    // This exact record is the previous search's evaluation of the position
+    // that force will recreate: turn-start board + the unique forced capture.
+    // Loading it at ply zero also normalizes mate distance for its new root.
+    const previous = exactTTRecord(computerTurn, 1);
+    if (!previous) return null;
     const aiSide = pos.side;
-    let afterReply;
-    try { afterReply = applyMove(computerTurn, plannedReply); }
-    catch (_) { return null; }
-
-    const outcome = countAndTerminal(afterReply);
-    const wins = outcome.terminal && !outcome.draw && outcome.winner === aiSide;
-    const materialGain = tacticalMoveValue(computerTurn, plannedReply) - tacticalMoveValue(humanTurn, expectedCapture);
-    const forcedWinScore = Number(chosenScore) >= WIN - MATE_WINDOW;
-    if (!wins && !forcedWinScore && materialGain <= 0) return null;
+    const line = rememberedLineFromTT(computerTurn, previous.depth);
+    if (!line.hints.length) return null;
 
     return Object.freeze({
-      version: 1,
+      version: 2,
       engine: ENGINE_VERSION,
       aiSide,
       humanSide: humanTurn.side,
       turnStartIdentity: positionIdentity(humanTurn),
       turnStartMoveCount: humanTurn.moveCount | 0,
+      afterForceIdentity: positionIdentity(computerTurn),
       expectedCapture: clonePlanMove(expectedCapture),
-      plannedReply: clonePlanMove(plannedReply),
-      materialGain: Math.trunc(materialGain),
-      depth,
+      plannedReply: line.hints[0].move,
+      pvHints: line.hints,
+      previousScore: Math.trunc(previous.score),
+      previousDepth: previous.depth,
     });
   }
 
@@ -809,7 +819,7 @@
   }
 
   function matchSouflaPlan(input, pending, plan) {
-    if (!plan || Number(plan.version) !== 1 || plan.engine !== ENGINE_VERSION || !pending || !pending.turnStartSnapshot) return null;
+    if (!plan || Number(plan.version) !== 2 || plan.engine !== ENGINE_VERSION || !pending || !pending.turnStartSnapshot) return null;
     const penalizer = Number(pending.penalizer);
     const offenderSide = Number(pending.offenderSide);
     if (penalizer !== Number(plan.aiSide) || offenderSide !== Number(plan.humanSide)) return null;
@@ -829,11 +839,16 @@
     if (positionIdentity(turnStart) !== String(plan.turnStartIdentity || '')) return null;
     if ((turnStart.moveCount | 0) !== (Number(plan.turnStartMoveCount) | 0)) return null;
 
-    // Reconfirm uniqueness from the authoritative shared generator. This keeps
-    // stale or malformed memory from affecting a penalty decision.
+    // Reconfirm uniqueness from the authoritative shared generator. A plan is
+    // never used when the human originally had more than one legal capture.
     const legal = generateMoves(turnStart);
     if (legal.length !== 1 || !(legal[0].captures > 0 || (legal[0].jumps && legal[0].jumps.length))) return null;
     if (!sameMove(legal[0], plan.expectedCapture)) return null;
+
+    let afterForce;
+    try { afterForce = applyMove(turnStart, legal[0]); }
+    catch (_) { return null; }
+    if (positionIdentity(afterForce) !== String(plan.afterForceIdentity || '')) return null;
 
     const expected = plan.expectedCapture;
     const option = Array.isArray(pending.options)
@@ -844,7 +859,16 @@
           (!Array.isArray(expected.jumps) || !expected.jumps.length || R.samePath(candidate.jumps || [], expected.jumps))
         )
       : null;
-    return option ? { plan, option } : null;
+    return option ? { plan, option, afterForce } : null;
+  }
+
+  function preferredMovesFromPlan(plan) {
+    const preferred = new Map();
+    for (const hint of Array.isArray(plan && plan.pvHints) ? plan.pvHints : []) {
+      if (!hint || !hint.identity || !hint.move) continue;
+      preferred.set(String(hint.identity), hint.move);
+    }
+    return preferred;
   }
 
   function principalVariation(pos, firstMove, depth) {
@@ -986,8 +1010,9 @@
     }
 
     const chosen = chooseByLevel(completed.scoredMoves, settings, rootHash, pos.moveCount, completed.move) || completed.move;
-    const chosenScore = completed.scoredMoves.find((entry) => sameMove(entry.move, chosen))?.score ?? completed.score;
-    const souflaPlan = deriveSouflaPlan(pos, chosen, chosenScore, completed.depth);
+    const chosenEntry = completed.scoredMoves.find((entry) => sameMove(entry.move, chosen)) || null;
+    const chosenScore = chosenEntry ? chosenEntry.score : completed.score;
+    const souflaPlan = deriveSouflaPlan(pos, chosen);
     return {
       move: chosen,
       score: chosenScore,
@@ -1059,6 +1084,10 @@
     const candidates = [];
     for (const option of options) {
       try {
+        // Removal is built from the current post-violation board. Force is
+        // built by penaltyPosition from the original turn-start snapshot and
+        // the imposed capture. The two penalties therefore enter evaluation
+        // from their own legally correct positions.
         const pos = penaltyPosition(input, pending, option);
         if (!pos) continue;
         const terminal = terminalScore(pos, 0, null);
@@ -1067,38 +1096,55 @@
       } catch (_) {}
     }
     if (!candidates.length) return null;
+
     const matchedPlan = matchSouflaPlan(input, pending, rememberedPlan);
     const plannedCandidate = matchedPlan
       ? candidates.find((candidate) =>
           candidate.option.kind === 'force' &&
           Number(candidate.option.offenderIdx) === Number(matchedPlan.option.offenderIdx) &&
-          R.samePath(candidate.option.path || [], matchedPlan.option.path || [])
+          R.samePath(candidate.option.path || [], matchedPlan.option.path || []) &&
+          positionIdentity(candidate.pos) === String(matchedPlan.plan.afterForceIdentity || '')
         ) || null
       : null;
+    const rememberedScore = plannedCandidate && Number.isFinite(Number(matchedPlan.plan.previousScore))
+      ? Number(matchedPlan.plan.previousScore)
+      : null;
+    const rememberedDepth = rememberedScore == null ? 0 : Math.max(0, Number(matchedPlan.plan.previousDepth || 0) | 0);
+    const candidateInitialScore = (candidate) => candidate === plannedCandidate && rememberedScore != null
+      ? rememberedScore
+      : candidate.staticScore;
     const selectionScore = (candidate, rawScore) => souflaPenaltySelectionScore(rawScore, candidate === plannedCandidate);
+
     candidates.sort((a, b) =>
-      selectionScore(b, b.staticScore) - selectionScore(a, a.staticScore) ||
+      selectionScore(b, candidateInitialScore(b)) - selectionScore(a, candidateInitialScore(a)) ||
       (a === plannedCandidate ? -1 : b === plannedCandidate ? 1 : 0) ||
       JSON.stringify(a.option).localeCompare(JSON.stringify(b.option))
     );
 
     if (candidates.length === 1) {
+      const rawScore = candidateInitialScore(candidates[0]);
       return {
         ...candidates[0].option,
         computerAnalysis: {
           engine: ENGINE_VERSION,
-          score: Math.trunc(candidates[0].staticScore),
-          depth: 0,
+          score: Math.trunc(rawScore),
+          depth: candidates[0] === plannedCandidate ? rememberedDepth : 0,
           nodes: 0,
           timeMs: Math.round(nowMs() - analysisStarted),
           optionsEvaluated: 1,
+          selectionScore: Math.trunc(selectionScore(candidates[0], rawScore)),
           souflaPlanMatched: !!plannedCandidate,
           souflaPlanChosen: !!plannedCandidate,
           souflaPlanBonus: plannedCandidate ? SOUFLA_PLAN_ROOT_BONUS : 0,
+          souflaPlanPreviousScore: plannedCandidate ? Math.trunc(rememberedScore) : null,
+          souflaPlanPreviousDepth: plannedCandidate ? rememberedDepth : 0,
+          souflaPlanScoreReused: !!plannedCandidate,
         },
       };
     }
 
+    // Keep the original soufla-search budget. Remembering a plan adds neither
+    // time nor depth; it only reuses work already completed on the prior turn.
     const totalSoft = Math.max(settings.thinkTimeMs, Math.min(settings.hardTimeMs, settings.thinkTimeMs + settings.timeBoostCriticalMs));
     const penaltySettings = {
       ...settings,
@@ -1108,27 +1154,53 @@
       temperature: 0,
     };
     const ctx = createContext(penaltySettings, analysisStarted);
-    if (plannedCandidate && rememberedPlan && rememberedPlan.plannedReply) {
-      ctx.preferredMoves = new Map([[positionIdentity(plannedCandidate.pos), rememberedPlan.plannedReply]]);
+    if (plannedCandidate) {
+      const preferred = preferredMovesFromPlan(matchedPlan.plan);
+      if (preferred.size) ctx.preferredMoves = preferred;
     }
     const maxDepth = Math.max(1, penaltySettings.minimaxDepth | 0);
     let ordered = plannedCandidate
       ? [plannedCandidate, ...candidates.filter((candidate) => candidate !== plannedCandidate)]
       : candidates.slice();
-    let completed = null;
+
+    // The remembered exact score is a completed prior-search result for the
+    // same force position. It is the fallback and is reused at all shallower
+    // penalty iterations instead of rediscovering the plan from depth one.
+    const initialScored = candidates.map((candidate) => {
+      const score = candidateInitialScore(candidate);
+      return {
+        candidate,
+        score,
+        selectionScore: selectionScore(candidate, score),
+        reusedPlanScore: candidate === plannedCandidate && rememberedScore != null,
+      };
+    }).sort((a, b) =>
+      b.selectionScore - a.selectionScore ||
+      (a.candidate === plannedCandidate ? -1 : b.candidate === plannedCandidate ? 1 : 0) ||
+      JSON.stringify(a.candidate.option).localeCompare(JSON.stringify(b.candidate.option))
+    );
+    let completed = { depth: 0, scored: initialScored };
     let stableKey = '';
     let stableCount = 0;
+    let reusedPlanScore = !!plannedCandidate;
 
-    // A penalty choice is a real root choice. Every option participates in each
-    // completed iteration; no option is discarded merely because the static
-    // evaluator ranked it outside an arbitrary top-N subset.
+    // Every removal and force option remains in every completed iteration. The
+    // planned force stays first, but a better removal still wins after search.
     for (let depth = 1; depth <= maxDepth; depth++) {
       const scored = [];
       try {
         for (const candidate of ordered) {
           if (nowMs() >= ctx.hardDeadline || ctx.nodes >= ctx.maxNodes) throw TIMEOUT;
-          const score = search(candidate.pos, depth, -INF, INF, ctx, 0, 0);
-          scored.push({ candidate, score, selectionScore: selectionScore(candidate, score) });
+          let score;
+          let reused = false;
+          if (candidate === plannedCandidate && rememberedScore != null && depth <= rememberedDepth) {
+            score = rememberedScore;
+            reused = true;
+            reusedPlanScore = true;
+          } else {
+            score = search(candidate.pos, depth, -INF, INF, ctx, 0, 0);
+          }
+          scored.push({ candidate, score, selectionScore: selectionScore(candidate, score), reusedPlanScore: reused });
         }
       } catch (error) {
         if (error !== TIMEOUT && !(error && error.searchTimeout)) throw error;
@@ -1140,7 +1212,10 @@
         JSON.stringify(a.candidate.option).localeCompare(JSON.stringify(b.candidate.option))
       );
       completed = { depth, scored };
-      ordered = scored.map((entry) => entry.candidate);
+      const ranked = scored.map((entry) => entry.candidate);
+      ordered = plannedCandidate
+        ? [plannedCandidate, ...ranked.filter((candidate) => candidate !== plannedCandidate)]
+        : ranked;
       const bestKey = JSON.stringify(scored[0].candidate.option);
       if (bestKey === stableKey) stableCount++;
       else {
@@ -1151,23 +1226,24 @@
       if (nowMs() >= ctx.softDeadline && stableCount >= 2 && depth >= 2) break;
     }
 
-    const bestEntry = completed ? completed.scored[0] : null;
-    const best = bestEntry ? bestEntry.candidate : candidates[0];
-    const bestScore = bestEntry ? bestEntry.score : best.staticScore;
-    const bestSelectionScore = bestEntry ? bestEntry.selectionScore : selectionScore(best, best.staticScore);
+    const bestEntry = completed.scored[0];
+    const best = bestEntry.candidate;
     return {
       ...best.option,
       computerAnalysis: {
         engine: ENGINE_VERSION,
-        score: Math.trunc(bestScore),
-        depth: completed ? completed.depth : 0,
+        score: Math.trunc(bestEntry.score),
+        depth: completed.depth,
         nodes: ctx.nodes | 0,
         timeMs: Math.round(nowMs() - analysisStarted),
         optionsEvaluated: candidates.length,
-        selectionScore: Math.trunc(bestSelectionScore),
+        selectionScore: Math.trunc(bestEntry.selectionScore),
         souflaPlanMatched: !!plannedCandidate,
         souflaPlanChosen: !!(plannedCandidate && best === plannedCandidate),
         souflaPlanBonus: plannedCandidate ? SOUFLA_PLAN_ROOT_BONUS : 0,
+        souflaPlanPreviousScore: plannedCandidate ? Math.trunc(rememberedScore) : null,
+        souflaPlanPreviousDepth: plannedCandidate ? rememberedDepth : 0,
+        souflaPlanScoreReused: !!(plannedCandidate && reusedPlanScore),
       },
     };
   }
@@ -1401,6 +1477,6 @@
     create,
     analyzePosition,
     analyzePenalty,
-    _internals: Object.freeze({ normalizePosition, generateMoves, applyMove, evaluate, hashPosition, verificationKey, validateCanonicalMove, penaltyPosition, deriveSouflaPlan, matchSouflaPlan, positionIdentity, tacticalMoveValue, souflaPenaltySelectionScore, souflaPlanRootBonus: SOUFLA_PLAN_ROOT_BONUS }),
+    _internals: Object.freeze({ normalizePosition, generateMoves, applyMove, evaluate, hashPosition, verificationKey, validateCanonicalMove, penaltyPosition, deriveSouflaPlan, matchSouflaPlan, positionIdentity, exactTTRecord, rememberedLineFromTT, preferredMovesFromPlan, souflaPenaltySelectionScore, souflaPlanRootBonus: SOUFLA_PLAN_ROOT_BONUS }),
   });
 })(typeof globalThis !== 'undefined' ? globalThis : this);
