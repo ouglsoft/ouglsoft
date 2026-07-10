@@ -25,7 +25,7 @@
   const WIN = 10000000;
   const INF = 1000000000;
   const MATE_WINDOW = 100000;
-  const ENGINE_VERSION = 'dhamet-computer-pvs-1.6.0';
+  const ENGINE_VERSION = 'dhamet-computer-pvs-1.7.0';
   // Root-only tie preference for a remembered, uniquely forced soufla plan.
   // One man is worth 100 evaluation points. The bonus is deliberately small:
   // it preserves a previously proven plan when results are close, but cannot
@@ -242,6 +242,22 @@
     return generated.moves || [];
   }
 
+  function generationShouldAbort(ctx) {
+    if (!ctx) return false;
+    if (nowMs() >= ctx.hardDeadline) return true;
+    return false;
+  }
+
+  function generateSearchMoves(pos, ctx) {
+    const forced = forcedOpeningMove(pos);
+    if (pos.forcedEnabled && pos.forcedPly < 10) return forced ? [forced] : [];
+    const generated = R.compact.generateSearchMoves(pos.board, pos.side, {
+      dedupeEquivalent: true,
+      shouldAbort: ctx ? () => generationShouldAbort(ctx) : null,
+    });
+    return generated.moves || [];
+  }
+
   function applyMove(pos, move) {
     const applied = R.compact.applyMove(pos.board, move, pos.side);
     if (!applied || !applied.ok) throw new Error(applied && applied.error ? applied.error : 'computer/illegal-generated-move');
@@ -306,21 +322,36 @@
   }
 
   function pieceValue(v, totalPieces) {
-    if (Math.abs(v) === KING) return totalPieces <= 10 ? 390 : totalPieces <= 24 ? 350 : 325;
-    return 100;
+    if (Math.abs(v) !== KING) return 100;
+    // A smooth phase curve avoids changing the value of every king abruptly
+    // when one unrelated piece disappears from the board.
+    const phaseTotal = Math.max(6, Math.min(36, Number(totalPieces) || 36));
+    const phase = (36 - phaseTotal) / 30;
+    return 325 + Math.round(65 * phase);
   }
 
-  function evaluate(pos) {
+  function captureThreatSummary(pos, side, ctx) {
+    const key = positionIdentity(pos) + ':threat:' + side;
+    if (ctx && ctx.threatCache.has(key)) return ctx.threatCache.get(key);
+    const summary = R.compact.captureThreatSummary(pos.board, side, {
+      shouldAbort: ctx ? () => generationShouldAbort(ctx) : null,
+    });
+    if (ctx && ctx.threatCache.size < 2048) ctx.threatCache.set(key, summary);
+    return summary;
+  }
+
+  function evaluate(pos, ctx) {
+    const evalKey = positionIdentity(pos);
+    if (ctx && ctx.evalCache.has(evalKey)) return ctx.evalCache.get(evalKey);
+
     const board = pos.board;
     const counts = R.compact.countPieces(board);
     const total = counts.total;
     let absolute = 0;
-    let topMobility = 0;
-    let botMobility = 0;
-    let topCapturePressure = 0;
-    let botCapturePressure = 0;
-    const threatenedTop = new Set();
-    const threatenedBot = new Set();
+    let topSteps = 0;
+    let botSteps = 0;
+    let topSupportPairs = 0;
+    let botSupportPairs = 0;
 
     for (let i = 0; i < CELLS; i++) {
       const v = board[i] | 0;
@@ -329,59 +360,77 @@
       const sign = side === TOP ? 1 : -1;
       const kind = R.kind(v);
       let score = pieceValue(v, total);
-      score += GRAPH.centrality[i] * (kind === KING ? 3 : 1);
-      score += GRAPH.wide[i] * (kind === KING ? 10 : 5);
-      score += GRAPH.degree[i] * (kind === KING ? 4 : 2);
+      score += GRAPH.centrality[i] * (kind === KING ? 2 : 1);
+      score += GRAPH.wide[i] * (kind === KING ? 8 : 4);
+      score += GRAPH.degree[i] * (kind === KING ? 3 : 2);
+
+      const steps = R.compact.stepDestinations(board, i).length;
+      if (side === TOP) topSteps += steps;
+      else botSteps += steps;
 
       if (kind === MAN) {
         const progress = side === TOP ? GRAPH.row[i] : 8 - GRAPH.row[i];
         score += progress * (total <= 20 ? 9 : 5);
         if (progress >= 7) score += 24;
-        const steps = R.compact.stepDestinations(board, i).length;
-        if (side === TOP) topMobility += steps;
-        else botMobility += steps;
-        if (steps === 0) score -= 18;
+        if (steps === 0) score -= 14;
       } else {
-        const steps = R.compact.stepDestinations(board, i).length;
-        score += steps * 4;
-        score += GRAPH.rayReach[i];
-        if (side === TOP) topMobility += steps;
-        else botMobility += steps;
+        // Dynamic mobility is counted once below. This term describes only the
+        // point's permanent line potential and is intentionally modest.
+        score += Math.round(GRAPH.rayReach[i] * 0.5);
       }
 
+      absolute += sign * score;
+
+      // Count each friendly adjacency once, not once from each endpoint.
       const rc = R.rc(i);
-      let support = 0;
       for (const dir of R.dirsFrom(rc[0], rc[1])) {
         const rr = rc[0] + dir[0];
         const cc = rc[1] + dir[1];
         if (!R.inside(rr, cc)) continue;
-        const near = board[R.idx(rr, cc)] | 0;
-        if (near && R.owner(near) === side) support++;
-      }
-      score += support * 5;
-      absolute += sign * score;
-
-      const caps = R.compact.captureOptions(board, i);
-      if (caps.length) {
-        if (side === TOP) topCapturePressure += caps.length;
-        else botCapturePressure += caps.length;
-        for (const cap of caps) {
-          if (side === TOP) threatenedBot.add(cap.jumped);
-          else threatenedTop.add(cap.jumped);
+        const nearIdx = R.idx(rr, cc);
+        if (nearIdx <= i) continue;
+        const near = board[nearIdx] | 0;
+        if (near && R.owner(near) === side) {
+          if (side === TOP) topSupportPairs++;
+          else botSupportPairs++;
         }
       }
     }
 
-    absolute += (topMobility - botMobility) * 4;
-    absolute += (topCapturePressure - botCapturePressure) * 12;
-    for (const i of threatenedTop) absolute -= Math.round(pieceValue(board[i] | 0, total) * 0.32);
-    for (const i of threatenedBot) absolute += Math.round(pieceValue(board[i] | 0, total) * 0.32);
+    const topThreat = captureThreatSummary(pos, TOP, ctx);
+    const botThreat = captureThreatSummary(pos, BOT, ctx);
+    const topThreatened = new Set(botThreat.threatened || []);
+    const botThreatened = new Set(topThreat.threatened || []);
+
+    // Ordinary movement is not legal when a capture is compulsory. Capture
+    // mobility is represented by legal longest-chain choices instead.
+    const topMobility = topThreat.hasCapture ? 0 : topSteps;
+    const botMobility = botThreat.hasCapture ? 0 : botSteps;
+    absolute += (topMobility - botMobility) * 3;
+    absolute += (topSupportPairs - botSupportPairs) * 6;
+
+    function pressure(summary) {
+      if (!summary || !summary.hasCapture) return 0;
+      return summary.longest * 18
+        + (summary.threatened || []).length * 14
+        + Math.max(0, summary.candidates - 1) * 4
+        + Math.min(8, Math.max(0, summary.landingChoices - 1)) * 2;
+    }
+    absolute += pressure(topThreat) - pressure(botThreat);
+
+    for (const i of topThreatened) absolute -= Math.round(pieceValue(board[i] | 0, total) * 0.30);
+    for (const i of botThreatened) absolute += Math.round(pieceValue(board[i] | 0, total) * 0.30);
 
     for (const dp of Array.isArray(pos.deferredPromotions) ? pos.deferredPromotions : []) {
-      absolute += dp.side === TOP ? 52 : -52;
+      const threatened = dp.side === TOP ? topThreatened.has(dp.idx) : botThreatened.has(dp.idx);
+      const bonus = threatened ? 55 : 160;
+      absolute += dp.side === TOP ? bonus : -bonus;
     }
+
     absolute += pos.side === TOP ? 8 : -8;
-    return pos.side === TOP ? Math.trunc(absolute) : -Math.trunc(absolute);
+    const result = pos.side === TOP ? Math.trunc(absolute) : -Math.trunc(absolute);
+    if (ctx && ctx.evalCache.size < 4096) ctx.evalCache.set(evalKey, result);
+    return result;
   }
 
   function moveCapturedValue(pos, move) {
@@ -496,6 +545,8 @@
       killers: Array.from({ length: 160 }, () => ['', '']),
       history: new Map(),
       moveCache: new Map(),
+      evalCache: new Map(),
+      threatCache: new Map(),
       preferredMoves: null,
       maxPly: 0,
     };
@@ -511,7 +562,7 @@
     const key = positionIdentity(pos);
     const cached = ctx.moveCache.get(key);
     if (cached) return cached;
-    const moves = generateMoves(pos);
+    const moves = generateSearchMoves(pos, ctx);
     if (moves.length <= 256 && ctx.moveCache.size < 4096) ctx.moveCache.set(key, moves);
     return moves;
   }
@@ -528,7 +579,7 @@
     const moves = cachedMoves(pos, ctx);
     if (!moves.length) return -WIN + ply;
     const tactical = moves[0] && (moves[0].captures > 0 || (moves[0].jumps && moves[0].jumps.length));
-    if (!tactical) return evaluate(pos);
+    if (!tactical) return evaluate(pos, ctx);
 
     // Captures are compulsory and every complete capture move removes at least
     // one piece. The continuation is therefore finite and must be searched to
@@ -640,7 +691,7 @@
       }
     }
 
-    if (!bestMove) return evaluate(pos);
+    if (!bestMove) return evaluate(pos, ctx);
     const bound = bestScore <= alphaOrig ? 'upper' : bestScore >= beta ? 'lower' : 'exact';
     TT.put(hash, { lock, depth, score: ttStoreScore(bestScore, ply), bound, move: bestMove });
     return bestScore;
@@ -658,31 +709,39 @@
 
     for (let i = 0; i < moves.length; i++) {
       const move = moves[i];
-      const child = applyMove(pos, move);
-      let score;
-      let exact = true;
-      if (exactAlternatives) {
-        // Low-strength levels intentionally choose among several alternatives.
-        // Every candidate score must therefore be exact; a PVS fail-low bound
-        // is not safe for ranking or for the forced-loss safety filter.
-        score = -search(child, depth - 1, -INF, INF, ctx, 1, 0);
-      } else if (i === 0) {
-        score = -search(child, depth - 1, -beta, -localAlpha, ctx, 1, 0);
-      } else {
-        score = -search(child, depth - 1, -localAlpha - 1, -localAlpha, ctx, 1, 0);
-        exact = false;
-        if (score > localAlpha && score < beta) {
+      try {
+        const child = applyMove(pos, move);
+        let score;
+        let exact = true;
+        if (exactAlternatives) {
+          score = -search(child, depth - 1, -INF, INF, ctx, 1, 0);
+        } else if (i === 0) {
           score = -search(child, depth - 1, -beta, -localAlpha, ctx, 1, 0);
-          exact = true;
+        } else {
+          score = -search(child, depth - 1, -localAlpha - 1, -localAlpha, ctx, 1, 0);
+          exact = false;
+          if (score > localAlpha && score < beta) {
+            score = -search(child, depth - 1, -beta, -localAlpha, ctx, 1, 0);
+            exact = true;
+          }
         }
+        scoredMoves.push({ move, score, exact });
+        if (score > bestScore) {
+          bestScore = score;
+          bestMove = move;
+        }
+        if (score > localAlpha) localAlpha = score;
+        if (!exactAlternatives && localAlpha >= beta) break;
+      } catch (error) {
+        if ((error === TIMEOUT || (error && error.searchTimeout)) && scoredMoves.length) {
+          scoredMoves.sort((a, b) => b.score - a.score || moveKey(a.move).localeCompare(moveKey(b.move)));
+          throw {
+            searchTimeout: true,
+            partialRoot: { score: scoredMoves[0].score, move: scoredMoves[0].move, scoredMoves: scoredMoves.slice() },
+          };
+        }
+        throw error;
       }
-      scoredMoves.push({ move, score, exact });
-      if (score > bestScore) {
-        bestScore = score;
-        bestMove = move;
-      }
-      if (score > localAlpha) localAlpha = score;
-      if (!exactAlternatives && localAlpha >= beta) break;
     }
     scoredMoves.sort((a, b) => b.score - a.score || moveKey(a.move).localeCompare(moveKey(b.move)));
     return { score: bestScore, move: bestMove, scoredMoves };
@@ -773,7 +832,7 @@
   // One-turn memory only. No new search or secondary evaluator is run here:
   // the plan is copied from the exact transposition record and PV produced by
   // the already completed search that selected the computer's move.
-  function deriveSouflaPlan(pos, chosenMove) {
+  function deriveSouflaPlan(pos, chosenMove, fallbackScore, fallbackDepth) {
     if (!chosenMove) return null;
     if (pos.forcedEnabled && pos.forcedPly < 10) return null;
 
@@ -792,8 +851,13 @@
     // This exact record is the previous search's evaluation of the position
     // that force will recreate: turn-start board + the unique forced capture.
     // Loading it at ply zero also normalizes mate distance for its new root.
-    const previous = exactTTRecord(computerTurn, 1);
-    if (!previous) return null;
+    const exact = exactTTRecord(computerTurn, 1);
+    const fallbackIsUsable = Number.isFinite(Number(fallbackScore)) && Math.max(0, Number(fallbackDepth || 0) | 0) >= 2;
+    if (!exact && !fallbackIsUsable) return null;
+    const previous = exact || {
+      score: Math.trunc(Number(fallbackScore)),
+      depth: Math.max(1, (Number(fallbackDepth) | 0) - 2),
+    };
     const aiSide = pos.side;
     const line = rememberedLineFromTT(computerTurn, previous.depth);
     if (!line.hints.length) return null;
@@ -892,7 +956,10 @@
     const analysisStarted = nowMs();
     const pos = normalizePosition(input);
     const settings = Config.normalizeAdvancedSettings((input && input.settings && input.settings.advanced) || input.settings || {});
-    const rootMoves = generateMoves(pos);
+
+    // Root generation is exhaustive but uses the shared memoized search and
+    // merges only paths that lead to an identical legal game state.
+    const rootMoves = generateSearchMoves(pos, null);
     const immediate = terminalScore(pos, 0, rootMoves);
     if (immediate != null || !rootMoves.length) {
       return {
@@ -907,57 +974,21 @@
       };
     }
 
-    // There is no decision to make when only one move is legal. Still return a
-    // meaningful score instead of the old constant zero, because callers such
-    // as soufla analysis compare resulting positions by score.
-    if (rootMoves.length === 1) {
-      const child = applyMove(pos, rootMoves[0]);
-      const childMoves = generateMoves(child);
-      const terminal = terminalScore(child, 1, childMoves);
-      const score = terminal == null ? -evaluate(child) : -terminal;
-      return {
-        move: rootMoves[0],
-        score,
-        depth: 1,
-        selectiveDepth: 1,
-        nodes: 1,
-        timeMs: Math.round(nowMs() - analysisStarted),
-        pv: [{ from: rootMoves[0].from, path: rootMoves[0].path.slice(), score: null }],
-        engine: ENGINE_VERSION,
-      };
-    }
-
     const critical = rootMoves.some((m) => m.captures > 0) || rootMoves.length >= 10;
     if (critical) {
       settings.hardTimeMs = Math.min(45000, Math.max(settings.hardTimeMs, settings.thinkTimeMs + settings.timeBoostCriticalMs));
     }
     const ctx = createContext(settings, analysisStarted);
+    if (rootMoves.length <= 256) ctx.moveCache.set(positionIdentity(pos), rootMoves);
     const maxDepth = Math.max(1, settings.minimaxDepth | 0);
     const rootHash = hashPosition(pos);
-
-    // Build a bounded emergency ranking before iterative deepening. This is not
-    // a parallel move selector: it uses the same position/evaluation functions
-    // and exists only when the hard deadline interrupts depth one.
-    const baselineScores = [];
-    const baselineMoves = orderMoves(pos, rootMoves, ctx, 0, null);
-    const baselineDeadline = Math.min(
-      ctx.hardDeadline,
-      nowMs() + Math.max(8, Math.min(60, Math.floor(settings.thinkTimeMs * 0.12))),
-    );
-    for (let i = 0; i < baselineMoves.length; i++) {
-      if (i > 0 && nowMs() >= baselineDeadline) break;
-      const move = baselineMoves[i];
-      const child = applyMove(pos, move);
-      const childMoves = generateMoves(child);
-      const terminal = terminalScore(child, 1, childMoves);
-      baselineScores.push({ move, score: terminal == null ? -evaluate(child) : -terminal });
-    }
-    baselineScores.sort((a, b) => b.score - a.score || moveKey(a.move).localeCompare(moveKey(b.move)));
-    if (!baselineScores.length) baselineScores.push({ move: baselineMoves[0], score: 0 });
+    const orderedRoot = orderMoves(pos, rootMoves, ctx, 0, null);
+    const emergencyMove = orderedRoot[0] || rootMoves[0];
 
     let completed = null;
-    let preferred = baselineScores[0].move;
-    let previousScore = baselineScores[0].score;
+    let partial = null;
+    let preferred = emergencyMove;
+    let previousScore = 0;
     let stableBest = '';
     let stableCount = 0;
 
@@ -976,6 +1007,7 @@
         if (result.score <= alpha || result.score >= beta) result = searchRoot(pos, depth, -INF, INF, ctx, preferred);
       } catch (error) {
         if (error !== TIMEOUT && !(error && error.searchTimeout)) throw error;
+        if (error && error.partialRoot) partial = error.partialRoot;
         break;
       }
       completed = { ...result, depth };
@@ -993,8 +1025,11 @@
     }
 
     if (!completed) {
-      const selected = chooseByLevel(baselineScores, settings, rootHash, pos.moveCount, baselineScores[0].move) || baselineScores[0].move;
-      const selectedScore = baselineScores.find((entry) => sameMove(entry.move, selected))?.score ?? baselineScores[0].score;
+      const available = partial && partial.scoredMoves && partial.scoredMoves.length
+        ? partial.scoredMoves
+        : [{ move: emergencyMove, score: 0, exact: false }];
+      const selected = chooseByLevel(available, settings, rootHash, pos.moveCount, available[0].move) || available[0].move;
+      const selectedScore = available.find((entry) => sameMove(entry.move, selected))?.score ?? available[0].score;
       return {
         move: selected,
         score: selectedScore,
@@ -1003,7 +1038,7 @@
         nodes: ctx.nodes,
         timeMs: Math.round(nowMs() - ctx.startedAt),
         pv: [{ from: selected.from, path: selected.path.slice(), score: null }],
-        rootAlternatives: baselineScores.slice(0, Math.min(5, baselineScores.length)),
+        rootAlternatives: available.slice(0, Math.min(5, available.length)),
         engine: ENGINE_VERSION,
         interruptedBeforeFirstIteration: true,
       };
@@ -1012,7 +1047,7 @@
     const chosen = chooseByLevel(completed.scoredMoves, settings, rootHash, pos.moveCount, completed.move) || completed.move;
     const chosenEntry = completed.scoredMoves.find((entry) => sameMove(entry.move, chosen)) || null;
     const chosenScore = chosenEntry ? chosenEntry.score : completed.score;
-    const souflaPlan = deriveSouflaPlan(pos, chosen);
+    const souflaPlan = deriveSouflaPlan(pos, chosen, chosenScore, completed.depth);
     return {
       move: chosen,
       score: chosenScore,

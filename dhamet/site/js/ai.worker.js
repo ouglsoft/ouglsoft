@@ -2,7 +2,7 @@
 (() => {
   'use strict';
 
-  const BUILD = '?v=computer-pvs-1.6.0';
+  const BUILD = '?v=computer-pvs-1.7.0';
   importScripts(
     '../shared/dhamet-utils.js' + BUILD,
     '../shared/dhamet-rules.js' + BUILD,
@@ -29,8 +29,10 @@
       }
       if (message.cmd === 'pickSouflaDecision') {
         const plan = rememberedSouflaPlan;
-        rememberedSouflaPlan = null;
         const decision = self.DhametAIEngine.analyzePenalty(message.state || {}, message.pending || null, plan);
+        // Consume the one-turn plan only after a successful decision. A worker
+        // exception or retry must not silently erase the remembered trap.
+        rememberedSouflaPlan = null;
         self.postMessage({ id, decision });
         return;
       }
