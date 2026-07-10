@@ -656,6 +656,22 @@ function applyMove(fromIdx, toIdx, isCapture, jumpedIdx) {
 }
 
 function normalizeDeferredPromotionQueue() {
+  // Online games remain server-authoritative and currently expose the legacy
+  // single deferred-promotion field. Do not preserve a local second entry that
+  // the server did not commit, otherwise the browser board can diverge from the
+  // authoritative online board. The queue is used only by the local PvC game.
+  if (window.Online && window.Online.isActive) {
+    const item = Game.deferredPromotion;
+    const idx = Number(item && item.idx);
+    const side = Number(item && item.side);
+    const queue = DhametRulesShared.validIdx(idx) && (side === TOP || side === BOT)
+      ? [{ idx, side }]
+      : [];
+    Game.deferredPromotions = queue;
+    Game.deferredPromotion = queue.length ? { ...queue[0] } : null;
+    return queue;
+  }
+
   const raw = [];
   if (Array.isArray(Game.deferredPromotions)) raw.push(...Game.deferredPromotions);
   if (Game.deferredPromotion && typeof Game.deferredPromotion === "object") raw.push(Game.deferredPromotion);
@@ -680,6 +696,11 @@ function maybeQueueDeferredPromotion(idx) {
   if (!v || pieceKind(v) !== MAN) return;
   const owner = pieceOwner(v);
   if (!isBackRank(idx, owner)) return;
+  if (window.Online && window.Online.isActive) {
+    Game.deferredPromotion = { idx, side: owner };
+    Game.deferredPromotions = [{ idx, side: owner }];
+    return;
+  }
   const queue = normalizeDeferredPromotionQueue();
   if (!queue.some((entry) => entry.idx === idx && entry.side === owner)) queue.push({ idx, side: owner });
   Game.deferredPromotions = queue;
@@ -1544,7 +1565,7 @@ try {
 function longestPathsWithJumpsFrom(fromIdx, maxLen) {
   const wanted = Math.max(0, Number(maxLen || 0) | 0);
   if (wanted <= 0) return [];
-  const res = DhametRulesShared.longestCaptureSearch(Game.board, fromIdx, 0, 128);
+  const res = DhametRulesShared.longestCaptureSearch(Game.board, fromIdx);
   if (!res || (res.max | 0) < wanted) return [];
   return (res.paths || [])
     .filter((p) => ((p && p.captures) || ((p && p.path && p.path.length) || 0)) === wanted)
@@ -2577,8 +2598,7 @@ const TrainRecorder = (() => {
 
   function _sideHasAnyMove(side) {
     try {
-      const generated = DhametRulesShared.generateLegalMoves(Game.board, side, { policy: "strict" });
-      return !!(generated && Array.isArray(generated.moves) && generated.moves.length);
+      return !!DhametRulesShared.hasAnyLegalMove(Game.board, side);
     } catch (_) {
       return true;
     }

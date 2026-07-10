@@ -23,7 +23,7 @@
   const WIN = 10000000;
   const INF = 1000000000;
   const MATE_WINDOW = 100000;
-  const ENGINE_VERSION = 'dhamet-computer-pvs-1.0.0';
+  const ENGINE_VERSION = 'dhamet-computer-pvs-1.1.0';
   const TIMEOUT = Object.freeze({ searchTimeout: true });
   const MASK64 = (1n << 64n) - 1n;
 
@@ -167,8 +167,11 @@
         remaining.push(dp);
         continue;
       }
-      const promoted = R.compact.promoteAt(board, dp.idx);
-      if (promoted && promoted.ok) board = promoted.position;
+      const value = R.compact.cell(board, dp.idx);
+      if (value && R.owner(value) === dp.side && R.kind(value) === MAN && R.isBackRank(dp.idx, dp.side)) {
+        const promoted = R.compact.promoteAt(board, dp.idx);
+        if (promoted && promoted.ok) board = promoted.position;
+      }
     }
     return { ...pos, board, deferredPromotions: remaining };
   }
@@ -331,7 +334,7 @@
       if (status.draw) return 0;
       return status.winner === pos.side ? WIN - ply : -WIN + ply;
     }
-    if (moves && moves.length === 0) return -WIN + ply;
+    if (moves ? moves.length === 0 : !R.compact.hasAnyLegalMove(pos.board, pos.side)) return -WIN + ply;
     return null;
   }
 
@@ -441,6 +444,7 @@
         if (ttMove && sameMove(move, ttMove)) score += 100000000;
         if (move.captures || (move.jumps && move.jumps.length)) {
           score += 1000000 + (move.captures || move.jumps.length) * 5000 + moveCapturedValue(pos, move);
+          if (move.promotes) score += 800000;
         } else {
           if (move.promotes) score += 800000;
           if (killer[0] === key) score += 500000;
@@ -466,21 +470,19 @@
     configure(maxEntries) {
       this.maxEntries = Math.max(8000, Number(maxEntries || 90000) | 0);
       this.generation = (this.generation + 1) & 0xffff;
-      if (this.map.size > this.maxEntries * 1.25) this.compact();
+      if (this.map.size > this.maxEntries) this.trimTo(Math.floor(this.maxEntries * 0.88));
     }
 
-    compact() {
-      const keep = Math.max(1, Math.floor(this.maxEntries * 0.72));
-      const entries = Array.from(this.map.entries());
-      entries.sort((a, b) => {
-        const ea = a[1];
-        const eb = b[1];
-        const ageA = ea.generation === this.generation ? 1 : 0;
-        const ageB = eb.generation === this.generation ? 1 : 0;
-        return ageB - ageA || eb.depth - ea.depth;
-      });
-      this.map.clear();
-      for (let i = 0; i < entries.length && i < keep; i++) this.map.set(entries[i][0], entries[i][1]);
+    trimTo(targetSize) {
+      let remove = Math.max(0, this.map.size - Math.max(1, targetSize | 0));
+      if (!remove) return;
+      // Map iteration follows insertion order. Updated/deeper entries are moved
+      // to the end in put(), so bounded FIFO trimming removes stale entries
+      // without the uninterruptible full-table sort used by the old engine.
+      for (const key of this.map.keys()) {
+        this.map.delete(key);
+        if (--remove <= 0) break;
+      }
     }
 
     get(hash, lock) {
@@ -491,9 +493,10 @@
     put(hash, entry) {
       const old = this.map.get(hash);
       if (!old || old.lock !== entry.lock || entry.depth >= old.depth || old.generation !== this.generation) {
+        if (old) this.map.delete(hash);
         this.map.set(hash, { ...entry, generation: this.generation });
       }
-      if (this.map.size > this.maxEntries * 1.15) this.compact();
+      if (this.map.size > this.maxEntries) this.trimTo(Math.floor(this.maxEntries * 0.96));
     }
   }
 
@@ -511,8 +514,8 @@
     return score;
   }
 
-  function createContext(settings) {
-    const start = nowMs();
+  function createContext(settings, startedAt) {
+    const start = Number.isFinite(startedAt) ? Number(startedAt) : nowMs();
     const soft = Math.max(30, settings.thinkTimeMs | 0);
     const hard = Math.max(soft, settings.hardTimeMs | 0);
     TT.configure(settings.ttEntries);
@@ -523,7 +526,6 @@
       hardDeadline: start + hard,
       nodes: 0,
       maxNodes: Math.max(1000, settings.maxNodes | 0),
-      qDepth: Math.max(4, settings.qDepth | 0),
       killers: Array.from({ length: 160 }, () => ['', '']),
       history: new Map(),
       moveCache: new Map(),
@@ -544,11 +546,11 @@
     const cached = ctx.moveCache.get(key);
     if (cached) return cached;
     const moves = generateMoves(pos);
-    if (ctx.moveCache.size < 12000) ctx.moveCache.set(key, moves);
+    if (moves.length <= 256 && ctx.moveCache.size < 4096) ctx.moveCache.set(key, moves);
     return moves;
   }
 
-  function quiescence(pos, alpha, beta, ctx, ply, remaining) {
+  function quiescence(pos, alpha, beta, ctx, ply) {
     checkAbort(ctx);
     ctx.maxPly = Math.max(ctx.maxPly, ply);
     const basic = countAndTerminal(pos);
@@ -560,13 +562,18 @@
     const moves = cachedMoves(pos, ctx);
     if (!moves.length) return -WIN + ply;
     const tactical = moves[0] && (moves[0].captures > 0 || (moves[0].jumps && moves[0].jumps.length));
-    if (!tactical || remaining <= 0) return evaluate(pos);
+    if (!tactical) return evaluate(pos);
+
+    // Captures are compulsory and every complete capture move removes at least
+    // one piece. The continuation is therefore finite and must be searched to
+    // a genuinely quiet position; no arbitrary depth cap may score a position
+    // that the rules do not allow a player to keep.
 
     const ordered = orderMoves(pos, moves, ctx, ply, null);
     let best = -INF;
     for (const move of ordered) {
       const child = applyMove(pos, move);
-      const score = -quiescence(child, -beta, -alpha, ctx, ply + 1, remaining - 1);
+      const score = -quiescence(child, -beta, -alpha, ctx, ply + 1);
       if (score > best) best = score;
       if (score > alpha) alpha = score;
       if (alpha >= beta) break;
@@ -597,7 +604,7 @@
       if (basic.draw) return 0;
       return basic.winner === pos.side ? WIN - ply : -WIN + ply;
     }
-    if (depth <= 0) return quiescence(pos, alpha, beta, ctx, ply, ctx.qDepth);
+    if (depth <= 0) return quiescence(pos, alpha, beta, ctx, ply);
 
     let moves = cachedMoves(pos, ctx);
     if (!moves.length) return -WIN + ply;
@@ -606,13 +613,10 @@
     let bestScore = -INF;
     let bestMove = null;
     let searched = 0;
-    const staticEval = depth <= 2 ? evaluate(pos) : 0;
 
     for (let i = 0; i < moves.length; i++) {
       const move = moves[i];
       const quiet = isQuiet(move);
-      if (depth === 1 && quiet && i >= 4 && staticEval + 135 <= alpha) continue;
-
       const child = applyMove(pos, move);
       let extension = 0;
       if (extensions < 2) {
@@ -742,6 +746,7 @@
   }
 
   function analyzePosition(input) {
+    const analysisStarted = nowMs();
     const pos = normalizePosition(input);
     const settings = Config.normalizeAdvancedSettings((input && input.settings && input.settings.advanced) || input.settings || {});
     const rootMoves = generateMoves(pos);
@@ -753,42 +758,63 @@
         depth: 0,
         selectiveDepth: 0,
         nodes: 0,
-        timeMs: 0,
+        timeMs: Math.round(nowMs() - analysisStarted),
         pv: [],
         engine: ENGINE_VERSION,
       };
     }
 
+    // There is no decision to make when only one move is legal. Still return a
+    // meaningful score instead of the old constant zero, because callers such
+    // as soufla analysis compare resulting positions by score.
     if (rootMoves.length === 1) {
+      const child = applyMove(pos, rootMoves[0]);
+      const childMoves = generateMoves(child);
+      const terminal = terminalScore(child, 1, childMoves);
+      const score = terminal == null ? -evaluate(child) : -terminal;
       return {
         move: rootMoves[0],
-        score: 0,
-        depth: 0,
-        selectiveDepth: 0,
+        score,
+        depth: 1,
+        selectiveDepth: 1,
         nodes: 1,
-        timeMs: 0,
+        timeMs: Math.round(nowMs() - analysisStarted),
         pv: [{ from: rootMoves[0].from, path: rootMoves[0].path.slice(), score: null }],
         engine: ENGINE_VERSION,
       };
     }
 
-    const baselineScores = rootMoves.map((move) => {
-      const child = applyMove(pos, move);
-      const childMoves = generateMoves(child);
-      const terminal = terminalScore(child, 1, childMoves);
-      return { move, score: terminal == null ? -evaluate(child) : -terminal };
-    }).sort((a, b) => b.score - a.score || moveKey(a.move).localeCompare(moveKey(b.move)));
-
     const critical = rootMoves.some((m) => m.captures > 0) || rootMoves.length >= 10;
     if (critical) {
       settings.hardTimeMs = Math.min(45000, Math.max(settings.hardTimeMs, settings.thinkTimeMs + settings.timeBoostCriticalMs));
     }
-    const ctx = createContext(settings);
+    const ctx = createContext(settings, analysisStarted);
     const maxDepth = Math.max(1, settings.minimaxDepth | 0);
     const rootHash = hashPosition(pos);
+
+    // Build a bounded emergency ranking before iterative deepening. This is not
+    // a parallel move selector: it uses the same position/evaluation functions
+    // and exists only when the hard deadline interrupts depth one.
+    const baselineScores = [];
+    const baselineMoves = orderMoves(pos, rootMoves, ctx, 0, null);
+    const baselineDeadline = Math.min(
+      ctx.hardDeadline,
+      nowMs() + Math.max(8, Math.min(60, Math.floor(settings.thinkTimeMs * 0.12))),
+    );
+    for (let i = 0; i < baselineMoves.length; i++) {
+      if (i > 0 && nowMs() >= baselineDeadline) break;
+      const move = baselineMoves[i];
+      const child = applyMove(pos, move);
+      const childMoves = generateMoves(child);
+      const terminal = terminalScore(child, 1, childMoves);
+      baselineScores.push({ move, score: terminal == null ? -evaluate(child) : -terminal });
+    }
+    baselineScores.sort((a, b) => b.score - a.score || moveKey(a.move).localeCompare(moveKey(b.move)));
+    if (!baselineScores.length) baselineScores.push({ move: baselineMoves[0], score: 0 });
+
     let completed = null;
-    let preferred = null;
-    let previousScore = 0;
+    let preferred = baselineScores[0].move;
+    let previousScore = baselineScores[0].score;
     let stableBest = '';
     let stableCount = 0;
 
@@ -871,19 +897,28 @@
     if (option.kind === 'force') {
       const forced = R.applySouflaForce(pending, option);
       if (!forced || !forced.ok) return null;
-      const pendingPromotions = (Array.isArray(source.deferredPromotions) ? source.deferredPromotions : []).map((item) => ({ ...item }));
+      // Force rewinds the violating turn. Deferred promotions created by the
+      // discarded move must therefore be discarded as well; only the queue at
+      // the original turn boundary and a promotion created by the forced path
+      // belong to the resulting position.
+      const turnStart = pending && pending.turnStartSnapshot && typeof pending.turnStartSnapshot === 'object'
+        ? pending.turnStartSnapshot
+        : {};
+      const pendingPromotions = normalizeDeferredList(turnStart).map((item) => ({ ...item }));
       if (forced.applied && forced.applied.promotionPending) pendingPromotions.push({ ...forced.applied.promotionPending });
       return attachHashes(activateStartOfTurnPromotion({
         ...source,
         board: R.compact.fromBoard(forced.board),
         side: penalizer,
         deferredPromotions: pendingPromotions,
+        moveCount: Math.max(0, Number(turnStart.moveCount != null ? turnStart.moveCount : source.moveCount) | 0) + 1,
       }));
     }
     return null;
   }
 
   function analyzePenalty(input, pending) {
+    const analysisStarted = nowMs();
     const options = pending && Array.isArray(pending.options) ? pending.options : [];
     if (!options.length) return null;
     const settings = Config.normalizeAdvancedSettings((input && input.settings && input.settings.advanced) || input.settings || {});
@@ -892,8 +927,7 @@
       try {
         const pos = penaltyPosition(input, pending, option);
         if (!pos) continue;
-        const moves = generateMoves(pos);
-        const terminal = terminalScore(pos, 0, moves);
+        const terminal = terminalScore(pos, 0, null);
         const staticScore = terminal == null ? evaluate(pos) : terminal;
         candidates.push({ option, pos, staticScore });
       } catch (_) {}
@@ -901,54 +935,74 @@
     if (!candidates.length) return null;
     candidates.sort((a, b) => b.staticScore - a.staticScore || JSON.stringify(a.option).localeCompare(JSON.stringify(b.option)));
 
-    const deepCount = Math.min(candidates.length, Math.max(4, Math.min(12, Math.ceil(Math.sqrt(candidates.length) * 2))));
-    const totalBudget = Math.max(250, Math.min(settings.hardTimeMs, settings.thinkTimeMs + settings.timeBoostCriticalMs));
-    const perOption = Math.max(80, Math.floor(totalBudget / deepCount));
-    let best = candidates[0];
-    let bestScore = best.staticScore;
-    let bestMeta = null;
-
-    for (let i = 0; i < deepCount; i++) {
-      const candidate = candidates[i];
-      const payload = {
-        board: candidate.pos.board,
-        player: candidate.pos.side,
-        deferredPromotions: candidate.pos.deferredPromotions,
-        forcedEnabled: candidate.pos.forcedEnabled,
-        forcedPly: candidate.pos.forcedPly,
-        openingStarter: candidate.pos.openingStarter,
-        moveCount: candidate.pos.moveCount,
-        settings: {
-          advanced: {
-            ...settings,
-            thinkTimeMs: Math.min(perOption, settings.thinkTimeMs),
-            hardTimeMs: perOption,
-            maxNodes: Math.max(5000, Math.floor(settings.maxNodes / deepCount)),
-            moveChoiceTopN: 1,
-            temperature: 0,
-          },
+    if (candidates.length === 1) {
+      return {
+        ...candidates[0].option,
+        computerAnalysis: {
+          engine: ENGINE_VERSION,
+          score: Math.trunc(candidates[0].staticScore),
+          depth: 0,
+          nodes: 0,
+          timeMs: Math.round(nowMs() - analysisStarted),
+          optionsEvaluated: 1,
         },
       };
-      let meta;
-      try { meta = analyzePosition(payload); } catch (_) { meta = null; }
-      const score = meta && Number.isFinite(meta.score) ? meta.score : candidate.staticScore;
-      if (score > bestScore || (score === bestScore && JSON.stringify(candidate.option) < JSON.stringify(best.option))) {
-        best = candidate;
-        bestScore = score;
-        bestMeta = meta;
-      }
     }
 
+    const totalSoft = Math.max(settings.thinkTimeMs, Math.min(settings.hardTimeMs, settings.thinkTimeMs + settings.timeBoostCriticalMs));
+    const penaltySettings = {
+      ...settings,
+      thinkTimeMs: totalSoft,
+      hardTimeMs: Math.max(totalSoft, settings.hardTimeMs),
+      moveChoiceTopN: 1,
+      temperature: 0,
+    };
+    const ctx = createContext(penaltySettings, analysisStarted);
+    const maxDepth = Math.max(1, penaltySettings.minimaxDepth | 0);
+    let ordered = candidates.slice();
+    let completed = null;
+    let stableKey = '';
+    let stableCount = 0;
+
+    // A penalty choice is a real root choice. Every option participates in each
+    // completed iteration; no option is discarded merely because the static
+    // evaluator ranked it outside an arbitrary top-N subset.
+    for (let depth = 1; depth <= maxDepth; depth++) {
+      const scored = [];
+      try {
+        for (const candidate of ordered) {
+          if (nowMs() >= ctx.hardDeadline || ctx.nodes >= ctx.maxNodes) throw TIMEOUT;
+          const score = search(candidate.pos, depth, -INF, INF, ctx, 0, 0);
+          scored.push({ candidate, score });
+        }
+      } catch (error) {
+        if (error !== TIMEOUT && !(error && error.searchTimeout)) throw error;
+        break;
+      }
+      scored.sort((a, b) => b.score - a.score || JSON.stringify(a.candidate.option).localeCompare(JSON.stringify(b.candidate.option)));
+      completed = { depth, scored };
+      ordered = scored.map((entry) => entry.candidate);
+      const bestKey = JSON.stringify(scored[0].candidate.option);
+      if (bestKey === stableKey) stableCount++;
+      else {
+        stableKey = bestKey;
+        stableCount = 1;
+      }
+      if (Math.abs(scored[0].score) >= WIN - MATE_WINDOW) break;
+      if (nowMs() >= ctx.softDeadline && stableCount >= 2 && depth >= 2) break;
+    }
+
+    const best = completed ? completed.scored[0].candidate : candidates[0];
+    const bestScore = completed ? completed.scored[0].score : best.staticScore;
     return {
       ...best.option,
       computerAnalysis: {
         engine: ENGINE_VERSION,
         score: Math.trunc(bestScore),
-        depth: bestMeta ? bestMeta.depth | 0 : 0,
-        nodes: bestMeta ? bestMeta.nodes | 0 : 0,
-        timeMs: bestMeta ? bestMeta.timeMs | 0 : 0,
+        depth: completed ? completed.depth : 0,
+        nodes: ctx.nodes | 0,
+        timeMs: Math.round(nowMs() - analysisStarted),
         optionsEvaluated: candidates.length,
-        optionsDeepSearched: deepCount,
       },
     };
   }
@@ -1043,7 +1097,6 @@
     }
 
     function finishCaptureTurn() {
-      try { if (maybeQueueDeferredPromotion) maybeQueueDeferredPromotion(Game.chainPos != null ? Game.chainPos : Game.lastMovedTo); } catch (_) {}
       Game.inChain = false;
       Game.chainPos = null;
       Turn.finishTurnAndSoufla();
@@ -1105,6 +1158,7 @@
         lastAnalysis = analysis;
         executeMove(analysis.move);
       } catch (error) {
+        if (error && error.message === 'ai_worker_cancelled') return;
         try { console.error('Dhamet computer engine failed', error); } catch (_) {}
         try {
           if (root.UI && typeof root.UI.log === 'function') {
@@ -1119,7 +1173,9 @@
 
     function scheduleMove() {
       applyPendingLevel();
-      try { bridge.cancel(); } catch (_) {}
+      try {
+        if (thinking || (bridge && typeof bridge.isBusy === 'function' && bridge.isBusy())) bridge.cancel();
+      } catch (_) {}
       if (timer != null) clearTimer(timer);
       scheduled = true;
       timer = setTimer(play, 80);
@@ -1155,6 +1211,6 @@
     create,
     analyzePosition,
     analyzePenalty,
-    _internals: Object.freeze({ normalizePosition, generateMoves, applyMove, evaluate, hashPosition, verificationKey, validateCanonicalMove }),
+    _internals: Object.freeze({ normalizePosition, generateMoves, applyMove, evaluate, hashPosition, verificationKey, validateCanonicalMove, penaltyPosition }),
   });
 })(typeof globalThis !== 'undefined' ? globalThis : this);

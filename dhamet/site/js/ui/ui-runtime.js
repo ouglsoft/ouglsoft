@@ -952,11 +952,6 @@ function getAiThinkingContext() {
     : String(adv.aiLevel || "medium");
   const levelLabel = aiText("settings.levels." + level) || level;
 
-  let isCritical = false;
-  try {
-    if (typeof detectCriticalState === "function") isCritical = !!detectCriticalState(Game.player);
-  } catch (_) {}
-
   let cfg = null;
   try {
     if (typeof getAILevelConfig === "function") cfg = getAILevelConfig(level);
@@ -973,7 +968,7 @@ function getAiThinkingContext() {
     max: maxSeconds,
   });
 
-  return { adv, level, levelLabel, isCritical, baseMs, boostMs, minSeconds, maxSeconds, durationLine };
+  return { adv, level, levelLabel, baseMs, boostMs, minSeconds, maxSeconds, durationLine };
 }
 
 function openAiBusyMoveModal(info) {

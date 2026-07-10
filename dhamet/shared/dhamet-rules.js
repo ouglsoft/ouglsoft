@@ -467,13 +467,36 @@
     return { hasCapture: longestGlobal > 0, longestGlobal, longestByPiece, candidates, byPiece };
   }
 
+  function compactHasAnyLegalMove(position, side) {
+    if (!(position instanceof Int8Array) || (side !== TOP && side !== BOT)) return false;
+    // A single legal capture segment guarantees at least one finite complete
+    // capture path because every jump removes an opposing piece.
+    for (let from = 0; from < N_CELLS; from++) {
+      const v = position[from] | 0;
+      if (v && owner(v) === side && compactCaptureOptions(position, from).length) return true;
+    }
+    for (let from = 0; from < N_CELLS; from++) {
+      const v = position[from] | 0;
+      if (v && owner(v) === side && compactStepDestinations(position, from).length) return true;
+    }
+    return false;
+  }
+
   function compactGenerateAllStepMoves(position, side) {
     const moves = [];
     for (let from = 0; from < N_CELLS; from++) {
       const v = position[from] | 0;
       if (!v || owner(v) !== side) continue;
       for (const to of compactStepDestinations(position, from)) {
-        moves.push({ type: MOVE_STEP, from, path: [to], to, captures: 0, jumps: [] });
+        moves.push({
+          type: MOVE_STEP,
+          from,
+          path: [to],
+          to,
+          captures: 0,
+          jumps: [],
+          promotes: kind(v) === MAN && isBackRank(to, side),
+        });
       }
     }
     return moves;
@@ -487,13 +510,15 @@
       if (onlyLongest && result.max !== info.longestGlobal) continue;
       for (const item of result.paths) {
         if (onlyLongest && item.captures !== info.longestGlobal) continue;
+        const to = item.path[item.path.length - 1];
         moves.push({
           type: MOVE_CAPTURE,
           from,
           path: item.path.slice(),
-          to: item.path[item.path.length - 1],
+          to,
           jumps: item.jumps.slice(),
           captures: item.captures,
+          promotes: kind(position[from] | 0) === MAN && isBackRank(to, side),
         });
       }
     }
@@ -615,6 +640,7 @@
     applyMove: compactApplyMove,
     promoteAt: compactPromoteAt,
     countPieces: compactCountPieces,
+    hasAnyLegalMove: compactHasAnyLegalMove,
   });
 
   function countPieces(board) {
@@ -625,8 +651,8 @@
   function normalizePath(move) {
     const from = Number(move && move.from);
     const raw = Array.isArray(move && move.path) && move.path.length ? move.path : [Number(move && move.to)];
-    const path = raw.map((x) => Number(x)).filter((x) => validIdx(x));
-    if (!validIdx(from) || !path.length) return null;
+    const path = raw.map((x) => Number(x));
+    if (!validIdx(from) || !path.length || path.some((x) => !validIdx(x))) return null;
     return { from, path };
   }
 
@@ -786,8 +812,15 @@
 
   function finalizeTurnBoard(board, applied) {
     if (!applied || !applied.ok) return { ok: false, error: 'turn/not-applied' };
-    if (applied.promotionPending) return promoteAt(board, applied.promotionPending.idx);
-    return { ok: true, board: cloneBoard(board), promoted: null };
+    // Reaching the back rank creates a deferred right to promotion. The piece
+    // remains a man until the opponent has completed a turn and this player's
+    // next turn starts.
+    return {
+      ok: true,
+      board: cloneBoard(board),
+      promoted: null,
+      promotionPending: applied.promotionPending ? clone(applied.promotionPending) : null,
+    };
   }
 
   function forcedOpeningSeqForStarterSide(side) {
@@ -918,7 +951,12 @@
     const target = resolveOffenderCurrentCell(pending, offenderIdx);
     if (!validIdx(target)) return { ok: false, error: 'soufla/invalid-offender' };
     const next = cloneBoard(boardAfterViolation);
-    if (!cell(next, target)) return { ok: false, error: 'soufla/offender-not-found', target };
+    const value = cell(next, target);
+    if (!value) return { ok: false, error: 'soufla/offender-not-found', target };
+    const offenderSide = Number(pending.offenderSide);
+    if ((offenderSide === TOP || offenderSide === BOT) && owner(value) !== offenderSide) {
+      return { ok: false, error: 'soufla/wrong-offender-side', target };
+    }
     setCell(next, target, 0);
     return { ok: true, board: next, removed: target, penalty: 'remove' };
   }
@@ -932,14 +970,18 @@
     if (!validIdx(from) || !path.length) return { ok: false, error: 'soufla/invalid-force-path' };
     const side = owner(cell(before, from));
     if (!side) return { ok: false, error: 'soufla/empty-offender' };
+    const offenderSide = Number(pending.offenderSide);
+    if ((offenderSide === TOP || offenderSide === BOT) && side !== offenderSide) {
+      return { ok: false, error: 'soufla/wrong-offender-side' };
+    }
     const applied = applyMovePath(before, { from, path }, side);
     if (!applied.ok || applied.captures <= 0) return { ok: false, error: applied.error || 'soufla/force-not-capture' };
     return { ok: true, board: applied.board, applied, penalty: 'force' };
   }
 
   function hasAnyLegalMove(board, side) {
-    const moves = generateLegalMoves(board, side, { policy: 'strict' }).moves;
-    return moves.length > 0;
+    const position = compactFromBoard(board);
+    return !!(position && compactHasAnyLegalMove(position, side));
   }
 
   function getGameOutcome(board, sideToMove) {
