@@ -2,7 +2,7 @@
  * Dhamet shared state helpers v2.
  *
  * Runtime-neutral helpers for the shape of a Dhamet match state. This module is
- * intentionally small and pure: no DOM, no storage, no no Cloudflare.
+ * intentionally small and pure: no DOM, no storage, no Cloudflare APIs.
  * It is loaded by the browser and by the Cloudflare Worker through globalThis.
  */
 (function (root) {
@@ -88,9 +88,13 @@
     const src = payload && typeof payload === 'object' ? payload : {};
     const snapshot = normalizeSnapshot(src.snapshot || src);
     if (!snapshot) return null;
+    const deferredPromotions = Array.isArray(src.deferredPromotions)
+      ? src.deferredPromotions.map((item) => clone(item)).filter(Boolean)
+      : src.deferredPromotion == null ? [] : [clone(src.deferredPromotion)];
     return {
       snapshot: snapshot,
-      deferredPromotion: src.deferredPromotion == null ? null : clone(src.deferredPromotion),
+      deferredPromotion: deferredPromotions.length ? clone(deferredPromotions[0]) : null,
+      deferredPromotions,
       capturedOrder: Array.isArray(src.capturedOrder) ? src.capturedOrder.map(Number).filter(Number.isFinite) : [],
     };
   }
@@ -99,6 +103,7 @@
     return normalizeStatePayload({
       snapshot: input && input.snapshot,
       deferredPromotion: input && input.deferredPromotion,
+      deferredPromotions: input && input.deferredPromotions,
       capturedOrder: input && input.capturedOrder,
     });
   }

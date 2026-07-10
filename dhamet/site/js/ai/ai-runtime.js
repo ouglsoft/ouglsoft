@@ -55,18 +55,9 @@
     }
 
     try { return await runWorkerOnce(); }
-    catch (error) {
-      const code = String(error && error.message || '');
-      // Explicit cancellation means the position changed. Retrying here would
-      // start an obsolete second search. A hard timeout likewise must not
-      // silently double the configured maximum thinking time.
-      if (code === 'ai_worker_cancelled' || code === 'ai_worker_timeout') throw error;
+    catch (_) {
       cancelWorker(bridge);
-      try { return await runWorkerOnce(); }
-      catch (retryError) {
-        const retryCode = String(retryError && retryError.message || '');
-        if (retryCode === 'ai_worker_cancelled' || retryCode === 'ai_worker_timeout') throw retryError;
-      }
+      try { return await runWorkerOnce(); } catch (__) {}
     }
     return await fallbackFn.apply(null, params);
   }

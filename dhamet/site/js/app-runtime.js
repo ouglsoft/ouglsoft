@@ -5,7 +5,7 @@
 // while incognito starts clean.  Keep account/language/theme data, but clear volatile local game
 // state once per application build to avoid mixing old runtime snapshots with the new computer-engine runtime.
 (function () {
-  var BUILD = "computer-pvs-1.1.0";
+  var BUILD = "computer-pvs-1.0.0";
   try {
     if (typeof window !== "undefined") window.DHAMET_APP_BUILD = BUILD;
     var key = "zamat.app.build.applied";

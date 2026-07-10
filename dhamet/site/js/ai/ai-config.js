@@ -8,7 +8,7 @@
 (function (root) {
   'use strict';
 
-  const ENGINE_CONFIG_VERSION = 2;
+  const ENGINE_CONFIG_VERSION = 1;
   const AI_LEVEL_ORDER = Object.freeze(['beginner', 'easy', 'medium', 'hard', 'strong', 'expert']);
 
   const AI_LEVEL_CONFIGS = Object.freeze({
@@ -19,6 +19,7 @@
       hardTimeMs: 420,
       moveChoiceTopN: 4,
       maxNodes: 30000,
+      qDepth: 8,
       temperature: 95,
       ttEntries: 18000,
     }),
@@ -29,6 +30,7 @@
       hardTimeMs: 1100,
       moveChoiceTopN: 3,
       maxNodes: 90000,
+      qDepth: 10,
       temperature: 55,
       ttEntries: 40000,
     }),
@@ -39,6 +41,7 @@
       hardTimeMs: 3000,
       moveChoiceTopN: 1,
       maxNodes: 280000,
+      qDepth: 14,
       temperature: 0,
       ttEntries: 90000,
     }),
@@ -49,6 +52,7 @@
       hardTimeMs: 7000,
       moveChoiceTopN: 1,
       maxNodes: 800000,
+      qDepth: 18,
       temperature: 0,
       ttEntries: 160000,
     }),
@@ -59,8 +63,9 @@
       hardTimeMs: 15000,
       moveChoiceTopN: 1,
       maxNodes: 2000000,
+      qDepth: 22,
       temperature: 0,
-      ttEntries: 220000,
+      ttEntries: 260000,
     }),
     expert: Object.freeze({
       minimaxDepth: 28,
@@ -69,8 +74,9 @@
       hardTimeMs: 26000,
       moveChoiceTopN: 1,
       maxNodes: 5000000,
+      qDepth: 28,
       temperature: 0,
-      ttEntries: 300000,
+      ttEntries: 420000,
     }),
   });
 
@@ -109,6 +115,7 @@
       minimaxDepth: clampInt(current.minimaxDepth, 1, 32, base.minimaxDepth),
       moveChoiceTopN: clampInt(current.moveChoiceTopN, 1, 8, base.moveChoiceTopN),
       maxNodes: clampInt(current.maxNodes, 5000, 8000000, base.maxNodes),
+      qDepth: clampInt(current.qDepth, 4, 40, base.qDepth),
       temperature: clampInt(current.temperature, 0, 200, base.temperature),
       ttEntries: clampInt(current.ttEntries, 8000, 600000, base.ttEntries),
     };
