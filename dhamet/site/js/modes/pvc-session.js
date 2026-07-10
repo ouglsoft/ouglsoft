@@ -59,10 +59,17 @@
     const snapshot = normalizeSnapshot(src.snapshot || (src.sharedState && src.sharedState.snapshot));
     if (!snapshot) return null;
 
+    const promotionSource = Object.prototype.hasOwnProperty.call(src, 'deferredPromotions') ||
+      Object.prototype.hasOwnProperty.call(src, 'deferredPromotion')
+      ? src
+      : (src.sharedState && typeof src.sharedState === 'object' ? src.sharedState : snapshot);
+    const deferredPromotions = State && typeof State.normalizeDeferredPromotions === 'function'
+      ? State.normalizeDeferredPromotions(promotionSource)
+      : [];
     const sharedState = normalizeStatePayload({
       snapshot,
-      deferredPromotion: src.deferredPromotion,
-      capturedOrder: src.capturedOrder,
+      deferredPromotions,
+      capturedOrder: src.capturedOrder || (src.sharedState && src.sharedState.capturedOrder),
     });
     if (!sharedState) return null;
 
@@ -71,6 +78,8 @@
     out.schema = 'dhamet-session-v2';
     out.sharedState = sharedState;
     out.snapshot = sharedState.snapshot;
+    out.deferredPromotions = sharedState.deferredPromotions.map((item) => clone(item));
+    out.deferredPromotion = sharedState.deferredPromotion ? clone(sharedState.deferredPromotion) : null;
     out.gameOver = !!src.gameOver;
     out.winner = src.winner == null ? null : Number(src.winner) || 0;
     out.terminationReason = src.terminationReason == null ? null : String(src.terminationReason).slice(0, 120);

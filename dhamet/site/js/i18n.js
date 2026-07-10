@@ -83,15 +83,15 @@
     },
     "advHelp": {
       "title": "شرح المستويات",
-      "levelsIntro": "يعتمد اللعب ضد الحاسوب في هذه النسخة على محرك داخلي واحد تضبطه المستويات تلقائيًا. يغيّر المستوى عمق البحث، وزمن التفكير، وزيادة الوقت في الحالات الحرجة، وطريقة اختيار النقلة في المستويات السهلة. المستويات الأعلى أقوى عادة لكنها أبطأ.",
-      "levelsOnly": "يعتمد اللعب ضد الحاسوب في هذه النسخة على محرك داخلي واحد تضبطه المستويات تلقائيًا. يغيّر المستوى عمق التفكير، وزمن التفكير، وطريقة اختيار النقلة في المستويات السهلة. المستويات الأعلى أقوى عادة لكنها أبطأ، والمستويات الأولى قد تختار أحيانًا نقلة قانونية أضعف دون مخالفة قواعد اللعبة.",
+      "levelsIntro": "يعتمد اللعب ضد الحاسوب على محرك PVS/Alpha-Beta واحد ببحث تكراري وإدارة زمن تلقائية. حدود العمق المذكورة حدود أمان قصوى، وقد يتوقف البحث قبلها حسب الزمن وتعقيد الوضع. المستويات الأعلى تمنح المحرك وقتًا وعقدًا وذاكرة أكثر.",
+      "levelsOnly": "تضبط المستويات زمن البحث وحدوده تلقائيًا. المستويات الأعلى أقوى عادة لكنها أبطأ، بينما قد تختار المستويات الأولى نقلة قانونية قريبة من الأفضل بعد استبعاد الخسائر التكتيكية الواضحة.",
       "levelDetails": {
-        "beginner": "عمق Minimax: 3؛ وقت التفكير الأساسي: 300–500 مللي ثانية؛ زيادة الحالات الحرجة: 0–300 مللي ثانية؛ اختيار النقلة: من أفضل 4–6 نقلات أحيانًا؛ ملاحظات: يخطئ بوضوح لكنه لا يكسر القواعد.",
-        "easy": "عمق Minimax: 4؛ وقت التفكير الأساسي: 700–1000 مللي ثانية؛ زيادة الحالات الحرجة: 500 مللي ثانية؛ اختيار النقلة: من أفضل 2–4 نقلات أحيانًا؛ ملاحظات: مناسب للمبتدئين.",
-        "medium": "عمق Minimax: 6؛ وقت التفكير الأساسي: 3500–4500 مللي ثانية؛ زيادة الحالات الحرجة: 2000 مللي ثانية؛ اختيار النقلة: أفضل نقلة؛ ملاحظات: هذا هو المستوى الافتراضي.",
-        "hard": "عمق Minimax: 8؛ وقت التفكير الأساسي: 4500–6000 مللي ثانية؛ زيادة الحالات الحرجة: 3000–4000 مللي ثانية؛ اختيار النقلة: أفضل نقلة؛ ملاحظات: قوي.",
-        "strong": "عمق Minimax: 10؛ وقت التفكير الأساسي: 6000–9000 مللي ثانية؛ زيادة الحالات الحرجة: 4000–6000 مللي ثانية؛ اختيار النقلة: أفضل نقلة.",
-        "expert": "عمق Minimax: 12؛ وقت التفكير الأساسي: 10000–15000 مللي ثانية؛ زيادة الحالات الحرجة: 5000–10000 مللي ثانية؛ اختيار النقلة: أفضل نقلة."
+        "beginner": "حد العمق: 7؛ زمن أساسي: 180 مللي ثانية؛ حد نهائي: 420 مللي ثانية؛ اختيار آمن من أفضل 4 نقلات متقاربة.",
+        "easy": "حد العمق: 10؛ زمن أساسي: 500 مللي ثانية؛ حد نهائي: 1.1 ثانية؛ اختيار آمن من أفضل 3 نقلات متقاربة.",
+        "medium": "حد العمق: 14؛ زمن أساسي: 1.4 ثانية؛ حد نهائي: 3 ثوانٍ؛ أفضل نقلة من آخر عمق مكتمل؛ المستوى الافتراضي.",
+        "hard": "حد العمق: 18؛ زمن أساسي: 3.5 ثوانٍ؛ حد نهائي: 7 ثوانٍ؛ أفضل نقلة من آخر عمق مكتمل.",
+        "strong": "حد العمق: 22؛ زمن أساسي: 7.5 ثوانٍ؛ حد نهائي: 15 ثانية؛ بحث كامل دون إضعاف اختياري.",
+        "expert": "حد العمق: 28؛ زمن أساسي: 14 ثانية؛ حد نهائي: 26 ثانية؛ أعلى حدود البحث والذاكرة المتاحة."
       }
     },
     "auth": {
@@ -650,15 +650,15 @@
     },
     "advHelp": {
       "title": "Level guide",
-      "levelsIntro": "Computer play in this version uses one internal engine controlled automatically by levels. Each level changes search depth, base thinking time, extra time in critical positions, and move-selection behavior on easier levels. Higher levels are usually stronger but slower.",
-      "levelsOnly": "Computer play in this version uses one internal engine controlled automatically by levels. The level changes search depth, thinking time, and move selection behavior on easier levels. Higher levels are usually stronger but slower; lower levels may sometimes choose a weaker legal move without breaking the rules.",
+      "levelsIntro": "Computer play uses one iterative-deepening PVS/Alpha-Beta engine with automatic time management. The listed depths are safety ceilings; search may stop earlier according to time and position complexity. Higher levels receive more time, nodes, and memory.",
+      "levelsOnly": "Levels automatically control search time and safety limits. Higher levels are usually stronger but slower; lower levels may choose a near-best legal move only after obvious tactical losses are filtered out.",
       "levelDetails": {
-        "beginner": "Minimax depth: 3; base thinking time: 300–500 ms; critical-position extra time: 0–300 ms; move choice: sometimes from the best 4–6 moves; notes: clearly makes mistakes but does not break the rules.",
-        "easy": "Minimax depth: 4; base thinking time: 700–1000 ms; critical-position extra time: 500 ms; move choice: sometimes from the best 2–4 moves; notes: suitable for beginners.",
-        "medium": "Minimax depth: 6; base thinking time: 3500–4500 ms; critical-position extra time: 2000 ms; move choice: best move; notes: this is the default level.",
-        "hard": "Minimax depth: 8; base thinking time: 4500–6000 ms; critical-position extra time: 3000–4000 ms; move choice: best move; notes: strong.",
-        "strong": "Minimax depth: 10; base thinking time: 6000–9000 ms; critical-position extra time: 4000–6000 ms; move choice: best move.",
-        "expert": "Minimax depth: 12; base thinking time: 10000–15000 ms; critical-position extra time: 5000–10000 ms; move choice: best move."
+        "beginner": "Depth ceiling: 7; base time: 180 ms; hard limit: 420 ms; safe choice among up to 4 close moves.",
+        "easy": "Depth ceiling: 10; base time: 500 ms; hard limit: 1.1 s; safe choice among up to 3 close moves.",
+        "medium": "Depth ceiling: 14; base time: 1.4 s; hard limit: 3 s; best move from the last completed iteration; default level.",
+        "hard": "Depth ceiling: 18; base time: 3.5 s; hard limit: 7 s; best move from the last completed iteration.",
+        "strong": "Depth ceiling: 22; base time: 7.5 s; hard limit: 15 s; full-strength move selection.",
+        "expert": "Depth ceiling: 28; base time: 14 s; hard limit: 26 s; highest search and memory limits."
       }
     },
     "auth": {
@@ -1217,15 +1217,15 @@
     },
     "advHelp": {
       "title": "Guide des niveaux",
-      "levelsIntro": "Dans cette version, le jeu contre l’ordinateur utilise un seul moteur interne contrôlé automatiquement par les niveaux. Chaque niveau modifie la profondeur de recherche, le temps de réflexion de base, le temps supplémentaire dans les positions critiques et le choix des coups dans les niveaux faciles. Les niveaux élevés sont généralement plus forts mais plus lents.",
-      "levelsOnly": "Dans cette version, le jeu contre l’ordinateur utilise un seul moteur interne contrôlé automatiquement par les niveaux. Le niveau modifie la profondeur de recherche, le temps de réflexion et le choix des coups dans les niveaux faciles. Les niveaux élevés sont généralement plus forts mais plus lents; les niveaux faibles peuvent parfois choisir un coup légal moins bon sans enfreindre les règles.",
+      "levelsIntro": "Le jeu contre l’ordinateur utilise un moteur unique PVS/Alpha-Beta à approfondissement itératif et gestion automatique du temps. Les profondeurs indiquées sont des plafonds de sécurité; la recherche peut s’arrêter plus tôt selon le temps et la complexité. Les niveaux élevés disposent de plus de temps, de nœuds et de mémoire.",
+      "levelsOnly": "Les niveaux contrôlent automatiquement le temps et les limites de recherche. Les niveaux élevés sont généralement plus forts mais plus lents; les niveaux faibles ne choisissent un coup légal proche du meilleur qu’après exclusion des pertes tactiques évidentes.",
       "levelDetails": {
-        "beginner": "Profondeur Minimax : 3 ; temps de réflexion de base : 300–500 ms ; temps supplémentaire en position critique : 0–300 ms ; choix du coup : parfois parmi les 4–6 meilleurs coups ; notes : commet des erreurs visibles sans enfreindre les règles.",
-        "easy": "Profondeur Minimax : 4 ; temps de réflexion de base : 700–1000 ms ; temps supplémentaire en position critique : 500 ms ; choix du coup : parfois parmi les 2–4 meilleurs coups ; notes : adapté aux débutants.",
-        "medium": "Profondeur Minimax : 6 ; temps de réflexion de base : 3500–4500 ms ; temps supplémentaire en position critique : 2000 ms ; choix du coup : meilleur coup ; notes : c’est le niveau par défaut.",
-        "hard": "Profondeur Minimax : 8 ; temps de réflexion de base : 4500–6000 ms ; temps supplémentaire en position critique : 3000–4000 ms ; choix du coup : meilleur coup ; notes : fort.",
-        "strong": "Profondeur Minimax : 10 ; temps de réflexion de base : 6000–9000 ms ; temps supplémentaire en position critique : 4000–6000 ms ; choix du coup : meilleur coup.",
-        "expert": "Profondeur Minimax : 12 ; temps de réflexion de base : 10000–15000 ms ; temps supplémentaire en position critique : 5000–10000 ms ; choix du coup : meilleur coup."
+        "beginner": "Plafond de profondeur : 7 ; temps de base : 180 ms ; limite stricte : 420 ms ; choix sûr parmi 4 coups proches au maximum.",
+        "easy": "Plafond de profondeur : 10 ; temps de base : 500 ms ; limite stricte : 1,1 s ; choix sûr parmi 3 coups proches au maximum.",
+        "medium": "Plafond de profondeur : 14 ; temps de base : 1,4 s ; limite stricte : 3 s ; meilleur coup de la dernière itération terminée ; niveau par défaut.",
+        "hard": "Plafond de profondeur : 18 ; temps de base : 3,5 s ; limite stricte : 7 s ; meilleur coup de la dernière itération terminée.",
+        "strong": "Plafond de profondeur : 22 ; temps de base : 7,5 s ; limite stricte : 15 s ; sélection à pleine puissance.",
+        "expert": "Plafond de profondeur : 28 ; temps de base : 14 s ; limite stricte : 26 s ; limites maximales de recherche et de mémoire."
       }
     },
     "auth": {

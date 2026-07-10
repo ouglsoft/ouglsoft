@@ -952,11 +952,6 @@ function getAiThinkingContext() {
     : String(adv.aiLevel || "medium");
   const levelLabel = aiText("settings.levels." + level) || level;
 
-  let isCritical = false;
-  try {
-    if (typeof detectCriticalState === "function") isCritical = !!detectCriticalState(Game.player);
-  } catch (_) {}
-
   let cfg = null;
   try {
     if (typeof getAILevelConfig === "function") cfg = getAILevelConfig(level);
@@ -973,7 +968,7 @@ function getAiThinkingContext() {
     max: maxSeconds,
   });
 
-  return { adv, level, levelLabel, isCritical, baseMs, boostMs, minSeconds, maxSeconds, durationLine };
+  return { adv, level, levelLabel, baseMs, boostMs, minSeconds, maxSeconds, durationLine };
 }
 
 function openAiBusyMoveModal(info) {
@@ -1948,21 +1943,6 @@ const UI = {
         t("settings.aiLevelHint"),
       )}
       ${row(
-        t("settings.aiCapture"),
-        `<select id="advAICap">
-          <option value="mandatory" ${Game.settings.aiCaptureMode === "mandatory" ? "selected" : ""}>${t("settings.mandatory")}</option>
-          <option value="random" ${Game.settings.aiCaptureMode === "random" ? "selected" : ""}>${t("settings.random")}</option>
-        </select>`,
-      )}
-      ${row(
-        t("settings.aiIgnoreRate"),
-        `<div class="range-control ai-ignore-range">
-          <input id="advAIIgnorePct" type="range" min="0" max="100" step="1" value="${Number(Game.settings.aiRandomIgnoreCaptureRatePct || 0)}" />
-          <span id="advAIIgnorePctVal" class="mono">${Number(Game.settings.aiRandomIgnoreCaptureRatePct || 0)}%</span>
-        </div>`,
-        t("settings.aiIgnoreHint"),
-      )}
-      ${row(
         t("settings.starter"),
         `<select id="setStarter">${starterChoices
           .map(([value, label]) => `<option value="${value}" ${Game.settings.starter === value ? "selected" : ""}>${label}</option>`)
@@ -2000,35 +1980,9 @@ const UI = {
       });
     } catch (_) {}
 
-    const syncIgnoreRateControl = () => {
-      try {
-        const capEl = qs("#advAICap", wrap);
-        const rangeEl = qs("#advAIIgnorePct", wrap);
-        const valEl = qs("#advAIIgnorePctVal", wrap);
-        if (!rangeEl || !valEl) return;
-        const pct = Math.max(0, Math.min(100, parseInt(rangeEl.value || "0", 10) || 0));
-        rangeEl.value = String(pct);
-        valEl.textContent = `${pct}%`;
-        const disabled = !!(capEl && capEl.value !== "random");
-        rangeEl.disabled = disabled;
-        valEl.classList.toggle("is-disabled", disabled);
-        const holder = rangeEl.closest(".range-control");
-        if (holder) holder.classList.toggle("is-disabled", disabled);
-      } catch (_) {}
-    };
-
-    try {
-      const capEl = qs("#advAICap", wrap);
-      const rangeEl = qs("#advAIIgnorePct", wrap);
-      if (capEl) capEl.addEventListener("change", syncIgnoreRateControl);
-      if (rangeEl) rangeEl.addEventListener("input", syncIgnoreRateControl);
-      syncIgnoreRateControl();
-    } catch (_) {}
-
     const onlineNow = () => !!(window.Online && window.Online.isActive);
     const levelLabel = (value) => t("settings.levels." + normalizeLevel(value));
     const starterLabel = (value) => value === "black" ? t("players.black") : t("players.white");
-    const captureLabel = (value) => value === "random" ? t("settings.random") : t("settings.mandatory");
     const themeLabel = (value) => value === "dark" ? t("settings.dark") : t("settings.light");
     const boardLabel = (value) => value === "3d" ? t("settings.board3d") : t("settings.board2d");
     const boolLabel = (value) => value ? t("settings.enabled") : t("settings.disabled");
@@ -2054,8 +2008,6 @@ const UI = {
       };
 
       const starterBefore = Game.settings.starter;
-      const captureBefore = Game.settings.aiCaptureMode === "random" ? "random" : "mandatory";
-      const ignoreBefore = Math.max(0, Math.min(100, parseInt(Game.settings.aiRandomIgnoreCaptureRatePct || "0", 10) || 0));
       const levelBefore = normalizeLevel(Game.pendingAILevel || adv.aiLevel || "medium");
       const themeBefore = Game.settings.theme === "dark" ? "dark" : "light";
       const boardBefore = (Game.settings.boardStyle || "2d") === "3d" ? "3d" : "2d";
@@ -2070,16 +2022,6 @@ const UI = {
           Game.pendingAILevel = level;
           addChange(t("settings.aiLevel"), levelLabel(levelBefore), levelLabel(level), t("settings.aiLevelNextMoveNote"));
         }
-
-        const cap = qs("#advAICap", wrap);
-        const nextCapture = cap && cap.value === "random" ? "random" : "mandatory";
-        if (nextCapture !== captureBefore) addChange(t("settings.aiCapture"), captureLabel(captureBefore), captureLabel(nextCapture));
-        Game.settings.aiCaptureMode = nextCapture;
-
-        const pct = parseInt(qs("#advAIIgnorePct", wrap)?.value || "0", 10);
-        const nextIgnore = Math.max(0, Math.min(100, Number.isFinite(pct) ? pct : 0));
-        if (nextIgnore !== ignoreBefore) addChange(t("settings.aiIgnoreRate"), `${ignoreBefore}%`, `${nextIgnore}%`);
-        Game.settings.aiRandomIgnoreCaptureRatePct = nextIgnore;
 
         const starterEl = qs("#setStarter", wrap);
         if (starterEl) {
@@ -2441,6 +2383,10 @@ function resumeGame() {
       Game.lastMovedTo = snap.lastMovedTo ?? null;
       Game.lastMovedFrom = snap.lastMovedFrom ?? null;
       Game.moveCount = snap.moveCount ?? 0;
+      Game.deferredPromotions = Array.isArray(snap.deferredPromotions)
+        ? snap.deferredPromotions.map((entry) => ({ idx: Number(entry.idx), side: Number(entry.side) }))
+        : snap.deferredPromotion ? [{ idx: Number(snap.deferredPromotion.idx), side: Number(snap.deferredPromotion.side) }] : [];
+      Game.deferredPromotion = Game.deferredPromotions.length ? { ...Game.deferredPromotions[0] } : null;
       Game.forcedEnabled = typeof snap.forcedEnabled === "boolean" ? snap.forcedEnabled : true;
       Game.forcedPly = typeof snap.forcedPly === "number" ? snap.forcedPly : 0;
 

@@ -17,6 +17,10 @@
     return new Error("ai_worker_error");
   }
 
+  function makeTimeoutError() {
+    return new Error("ai_worker_timeout");
+  }
+
   function create(options) {
     const opts = options || {};
     let worker = null;
@@ -46,6 +50,7 @@
     function rejectAll(err) {
       for (const [id, ent] of pending.entries()) {
         pending.delete(id);
+        try { if (ent.timer != null) clearTimeout(ent.timer); } catch (_) {}
         try { ent.reject(err); } catch (_) {}
       }
     }
@@ -60,6 +65,7 @@
         const ent = pending.get(id);
         if (!ent) return;
         pending.delete(id);
+        try { if (ent.timer != null) clearTimeout(ent.timer); } catch (_) {}
 
         if (msg && msg.cancelled) {
           try { ent.reject(makeCancelledError()); } catch (_) {}
@@ -85,8 +91,39 @@
       const id = ++reqSeq;
       const w = ensure();
       const body = payload && typeof payload === "object" ? payload : {};
-      const p = new Promise((resolve, reject) => pending.set(id, { resolve, reject }));
-      w.postMessage({ cmd, id, state: serializeState(), ...body });
+      const state = serializeState();
+      const advanced = state && state.settings && state.settings.advanced && typeof state.settings.advanced === "object"
+        ? state.settings.advanced
+        : {};
+      const hardTime = Number(advanced.hardTimeMs);
+      const thinkTime = Number(advanced.thinkTimeMs);
+      const criticalBoost = Number(advanced.timeBoostCriticalMs);
+      const effectiveHardTime = Math.max(
+        Number.isFinite(hardTime) && hardTime > 0 ? hardTime : 15000,
+        Number.isFinite(thinkTime) && thinkTime > 0 && Number.isFinite(criticalBoost)
+          ? thinkTime + Math.max(0, criticalBoost)
+          : 0,
+      );
+      const timeoutMs = Math.max(3000, Math.min(60000, effectiveHardTime + 3000));
+      const p = new Promise((resolve, reject) => {
+        const timer = setTimeout(() => {
+          if (!pending.has(id)) return;
+          const error = makeTimeoutError();
+          try { worker && worker.terminate && worker.terminate(); } catch (_) {}
+          worker = null;
+          rejectAll(error);
+        }, timeoutMs);
+        pending.set(id, { resolve, reject, timer });
+        try {
+          w.postMessage({ cmd, id, state, ...body });
+        } catch (error) {
+          pending.delete(id);
+          try { clearTimeout(timer); } catch (_) {}
+          try { worker && worker.terminate && worker.terminate(); } catch (_) {}
+          worker = null;
+          reject(error || makeWorkerError());
+        }
+      });
       return await p;
     }
 

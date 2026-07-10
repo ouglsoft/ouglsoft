@@ -7,6 +7,7 @@
  * before it.
  */
 const DhametRulesShared = globalThis.DhametRules;
+const DhametStateShared = globalThis.DhametState;
 const DhametAIConfig = globalThis.DhametAIConfig;
 const DhametAIRuntime = globalThis.DhametAIRuntime;
 const DhametAIEngine = globalThis.DhametAIEngine;
@@ -18,6 +19,9 @@ const DhametPvCSession = globalThis.DhametPvCSession || null;
 const DhametPvCLifecycle = globalThis.DhametPvCLifecycle || null;
 if (!DhametRulesShared) {
   throw new Error("DhametRules shared engine must be loaded before the game runtime");
+}
+if (!DhametStateShared || typeof DhametStateShared.normalizeDeferredPromotions !== "function") {
+  throw new Error("DhametState shared engine must be loaded before the game runtime");
 }
 if (!DhametAIConfig) {
   throw new Error("DhametAIConfig must be loaded before the game runtime");
@@ -118,13 +122,6 @@ function inside(r, c) {
   return DhametRulesShared.inside(r, c);
 }
 
-function clampInt(v, min, max, fallback) {
-  const n = Number(v);
-  if (!Number.isFinite(n)) return fallback;
-  const i = Math.trunc(n);
-  return Math.max(min, Math.min(max, i));
-}
-
 const AI_LEVEL_ORDER = DhametAIConfig.AI_LEVEL_ORDER;
 const AI_LEVEL_CONFIGS = DhametAIConfig.AI_LEVEL_CONFIGS;
 const normalizeAILevel = DhametAIConfig.normalizeLevel;
@@ -135,48 +132,6 @@ const FO_BOT = DhametRulesShared.FORCED_OPENING_BOT;
 
 const DIAG_A_SEGMENTS = DhametRulesShared.DIAG_A_SEGMENTS;
 const DIAG_B_SEGMENTS = DhametRulesShared.DIAG_B_SEGMENTS;
-const IS_IN_DIAG_A = DhametRulesShared.IN_DIAG_A;
-const IS_IN_DIAG_B = DhametRulesShared.IN_DIAG_B;
-const IS_WIDE = new Array(BOARD_N).fill(0).map((_, r) =>
-  new Array(BOARD_N).fill(0).map((__, c) => DhametRulesShared.pointType(rcToIdx(r, c)) === "wasaa"),
-);
-
-const MASK_BACK_TOP = new Array(BOARD_N).fill(0).map(() => new Array(BOARD_N).fill(false));
-const MASK_BACK_BOT = new Array(BOARD_N).fill(0).map(() => new Array(BOARD_N).fill(false));
-const MASK_CORNERS = new Array(BOARD_N).fill(0).map(() => new Array(BOARD_N).fill(false));
-const MASK_EYES = new Array(BOARD_N).fill(0).map(() => new Array(BOARD_N).fill(false));
-const MASK_MIDBACK = new Array(BOARD_N).fill(0).map(() => new Array(BOARD_N).fill(false));
-for (let c = 0; c < BOARD_N; c++) {
-  MASK_BACK_TOP[0][c] = true;
-  MASK_BACK_BOT[8][c] = true;
-}
-for (const [r, c] of [
-  [0, 0],
-  [0, 8],
-  [8, 0],
-  [8, 8],
-])
-  MASK_CORNERS[r][c] = true;
-for (const [r, c] of [
-  [0, 2],
-  [0, 6],
-  [8, 2],
-  [8, 6],
-])
-  MASK_EYES[r][c] = true;
-for (const [r, c] of [
-  [0, 4],
-  [8, 4],
-])
-  MASK_MIDBACK[r][c] = true;
-
-const DIRS_ORTHO = DhametRulesShared.DIRS_ORTHO;
-const DIRS_DIAG_A = DhametRulesShared.DIRS_DIAG_A;
-const DIRS_DIAG_B = DhametRulesShared.DIRS_DIAG_B;
-
-function isDirAllowedFrom(r, c, dr, dc) {
-  return DhametRulesShared.dirAllowedFrom(r, c, dr, dc);
-}
 
 const Game = {
   board: new Array(BOARD_N).fill(0).map(() => new Array(BOARD_N).fill(0)),
@@ -194,7 +149,6 @@ const Game = {
 
   awaitingPenalty: false,
   _souflaApplying: false,
-  _simDepth: 0,
   souflaPending: null,
   availableSouflaForHuman: null,
 
@@ -204,24 +158,16 @@ const Game = {
   lastMovePath: null,
   lastMoveSide: null,
   lastMoveWasCapture: false,
+  deferredPromotion: null,
+  deferredPromotions: [],
 
   settings: {
     starter: "white",
-    aiCaptureMode: "mandatory",
-    aiRandomIgnoreCaptureRatePct: 0,
     theme: "light",
     showCoords: false,
     boardStyle: "2d",
 
-    advanced: {
-      aiLevel: "medium",
-      thinkTimeMs: 900,
-      timeBoostCriticalMs: 250,
-      minimaxDepth: 5,
-      moveChoiceTopN: 1,
-      moveMistakeRatePct: 0,
-      evalNoise: 0,
-    },
+    advanced: DhametAIConfig.createDefaultAdvancedSettings("medium"),
   },
 
   pendingAILevel: null,
@@ -432,10 +378,6 @@ function finishForcedOpeningAppliedTurn(mover, info) {
   scheduleForcedOpeningAutoIfNeeded();
   Visual.draw();
 
-  if (Game.forcedPly >= 10 && Game.player === aiSide()) {
-    Turn.finishTurnAndSoufla();
-  }
-
   scheduleComputerMoveIfNeeded();
 }
 
@@ -486,6 +428,7 @@ function setupInitialBoard() {
     Game.availableSouflaForHuman = null;
     Game.terminationReason = null;
     Game.deferredPromotion = null;
+    Game.deferredPromotions = [];
     Game.forcedEnabled = true;
     Game.forcedPly = 0;
     Game.forcedSeq = forcedOpeningSeqForStarterSide(Game.player);
@@ -516,10 +459,6 @@ function pieceOwner(v) {
 function pieceKind(v) {
   return DhametRulesShared.kind(v);
 }
-function forwardDir(side) {
-  return DhametRulesShared.forward(side);
-}
-
 function isBackRank(idx, forSide) {
   return DhametRulesShared.isBackRank(idx, forSide);
 }
@@ -528,27 +467,12 @@ function encodeAction(frIdx, toIdx) {
   return frIdx * N_CELLS + toIdx;
 }
 
-function generateStepsFrom(fromIdx, v) {
+function generateStepsFrom(fromIdx) {
   return DhametRulesShared.generateStepDestinations(Game.board, fromIdx);
 }
 
-function generateCapturesFrom(fromIdx, v) {
+function generateCapturesFrom(fromIdx) {
   return DhametRulesShared.captureOptions(Game.board, fromIdx).map(function (x) { return [x.to, x.jumped]; });
-}
-
-function maxCaptureLenFrom(fromIdx) {
-  return DhametRulesShared.longestCaptureSearch(Game.board, fromIdx, 0, 64).max || 0;
-}
-
-function simEnter() {
-  try {
-    Game._simDepth = (Game._simDepth || 0) + 1;
-  } catch {}
-}
-function simExit() {
-  try {
-    Game._simDepth = Math.max(0, (Game._simDepth || 0) - 1);
-  } catch {}
 }
 
 function computeLongestForPlayer(side) {
@@ -586,7 +510,7 @@ function legalActions() {
 
   if (Game.inChain && Game.chainPos != null) {
     const v = Game.board[Math.floor(Game.chainPos / BOARD_N)][Game.chainPos % BOARD_N];
-    const caps = generateCapturesFrom(Game.chainPos, v);
+    const caps = generateCapturesFrom(Game.chainPos);
     for (const [toIdx, _jumped] of caps) {
       const a = encodeAction(Game.chainPos, toIdx);
       mask[a] = 1;
@@ -600,11 +524,11 @@ function legalActions() {
     const [r, c] = idxToRC(idx);
     const v = Game.board[r][c];
     if (!v || pieceOwner(v) !== Game.player) continue;
-    for (const toIdx of generateStepsFrom(idx, v)) {
+    for (const toIdx of generateStepsFrom(idx)) {
       mask[encodeAction(idx, toIdx)] = 1;
       meta[encodeAction(idx, toIdx)] = [idx, toIdx];
     }
-    for (const [toIdx, _] of generateCapturesFrom(idx, v)) {
+    for (const [toIdx, _] of generateCapturesFrom(idx)) {
       mask[encodeAction(idx, toIdx)] = 1;
       meta[encodeAction(idx, toIdx)] = [idx, toIdx];
     }
@@ -619,18 +543,16 @@ function classifyCapture(fromIdx, toIdx) {
 }
 
 function applyMove(fromIdx, toIdx, isCapture, jumpedIdx) {
-  pushHistoryBeforeMove(fromIdx, toIdx);
+  const applied = DhametRulesShared.applySegment(Game.board, fromIdx, toIdx);
+  if (!applied || !applied.ok) throw new Error(applied && applied.reason ? applied.reason : "move/illegal-segment");
+  const actualCapture = applied.type === DhametRulesShared.MOVE_CAPTURE;
+  if (!!isCapture !== actualCapture) throw new Error("move/type-mismatch");
+  if (actualCapture && Number(applied.jumped) !== Number(jumpedIdx)) throw new Error("move/captured-piece-mismatch");
+  if (!actualCapture && jumpedIdx != null) throw new Error("move/unexpected-captured-piece");
 
-  const [r1, c1] = idxToRC(fromIdx);
-  const [r2, c2] = idxToRC(toIdx);
-  const v = Game.board[r1][c1];
-  Game.board[r1][c1] = 0;
-  if (isCapture && jumpedIdx != null) {
-    const [jr, jc] = idxToRC(jumpedIdx);
-    Game.board[jr][jc] = 0;
-    Visual.capturedOrderPush(jumpedIdx);
-  }
-  Game.board[r2][c2] = v;
+  pushHistoryBeforeMove(fromIdx, toIdx);
+  Game.board = applied.board;
+  if (actualCapture) Visual.capturedOrderPush(applied.jumped);
   Game.lastMovedFrom = fromIdx;
   Game.lastMovedTo = toIdx;
 
@@ -670,26 +592,25 @@ function applyMove(fromIdx, toIdx, isCapture, jumpedIdx) {
   } catch {}
 }
 
-function promoteIfNeeded(idx) {
-  const v = valueAt(idx);
-  if (!v) return;
-  if (pieceKind(v) !== MAN) return;
-  const owner = pieceOwner(v);
-  if (isBackRank(idx, owner)) {
-    setValueAt(idx, owner === TOP ? KING : -KING);
-    Visual.queueCrown(idx);
-    UI.log({ kind: "promote", idx: idx, side: owner, ts: Date.now() });
-  }
+function normalizeDeferredPromotionQueue() {
+  const queue = DhametStateShared.sanitizeDeferredPromotions(Game.board, {
+    deferredPromotions: Array.isArray(Game.deferredPromotions) ? Game.deferredPromotions : undefined,
+    deferredPromotion: Game.deferredPromotion || null,
+  });
+  Game.deferredPromotions = queue;
+  Game.deferredPromotion = queue.length ? { ...queue[0] } : null;
+  return queue;
 }
 
 function maybeQueueDeferredPromotion(idx) {
   const v = valueAt(idx);
-  if (!v) return;
-  if (pieceKind(v) !== MAN) return;
+  if (!v || pieceKind(v) !== MAN) return;
   const owner = pieceOwner(v);
-  if (isBackRank(idx, owner)) {
-    Game.deferredPromotion = { idx, side: owner };
-  }
+  if (!isBackRank(idx, owner)) return;
+  const queue = normalizeDeferredPromotionQueue();
+  if (!queue.some((entry) => entry.idx === idx && entry.side === owner)) queue.push({ idx, side: owner });
+  Game.deferredPromotions = queue;
+  Game.deferredPromotion = queue.length ? { ...queue[0] } : null;
 }
 
 function valueAt(idx) {
@@ -705,12 +626,6 @@ function rcStr(idx) {
   return `${r}.${c}`;
 }
 
-const TurnFX = {
-  capturedOrder: [],
-  reset() {
-    this.capturedOrder.length = 0;
-  },
-};
 Game.souflaSticky = {
   armed: false,
   clearOnSide: null,
@@ -741,15 +656,23 @@ const Turn = {
   ctx: null,
 
   start() {
-    if (Game.deferredPromotion && Game.player === Game.deferredPromotion.side) {
-      const { idx, side } = Game.deferredPromotion;
-      const v = valueAt(idx);
-      if (v && pieceKind(v) === MAN && pieceOwner(v) === side) {
-        setValueAt(idx, side === TOP ? KING : -KING);
-        Visual.queueCrown(idx);
-        UI.log({ kind: "promote", idx: idx, side: side, ts: Date.now() });
-      }
-      Game.deferredPromotion = null;
+    const promotionQueue = normalizeDeferredPromotionQueue();
+    const activated = DhametStateShared.activateDeferredPromotions(Game.board, promotionQueue, Game.player);
+    if (!activated || !activated.ok) throw new Error(activated && activated.error || "game/promotion-failed");
+    Game.board = activated.board;
+    Game.deferredPromotions = activated.deferredPromotions;
+    Game.deferredPromotion = activated.deferredPromotion;
+    for (const promoted of activated.promoted) {
+      Visual.queueCrown(promoted.idx);
+      UI.log({ kind: "promote", idx: promoted.idx, side: promoted.side, ts: Date.now() });
+    }
+
+    // Promotion becomes active at the start of this turn, so terminal rules
+    // (including one king versus one king) must be reevaluated afterwards.
+    if (!Game.gameOver) checkEndConditions();
+    if (Game.gameOver) {
+      UI.updateStatus();
+      return;
     }
 
     const { longestByPiece, Lmax, candidates } = computeLongestForPlayer(Game.player);
@@ -829,12 +752,9 @@ const Turn = {
     const endedBy = Game.player;
 
     if (Game.lastMovedTo != null) {
-      if (Game.lastMovedTo != null) {
-        try {
-          promoteIfNeeded(Game.lastMovedTo);
-        } catch {}
-        Game.deferredPromotion = null;
-      }
+      try {
+        maybeQueueDeferredPromotion(Game.lastMovedTo);
+      } catch {}
     }
 
     try {
@@ -892,21 +812,35 @@ const Turn = {
             if (window.UI && typeof UI.updateStatus === "function") UI.updateStatus();
           } catch {}
 
-          AI.pickSouflaDecision(pending)
-            .then((decision) => {
-              applySouflaDecision(decision, pending);
-              try {
-                UI.showSouflaAgainstHuman(decision, pending);
-              } catch {}
-            })
-            .catch((e) => {
-              const fallback =
-                pending.options.find((o) => o.kind === "remove") || pending.options[0];
-              applySouflaDecision(fallback, pending);
-              try {
-                UI.showSouflaAgainstHuman(fallback, pending);
-              } catch {}
-            });
+          const resolveComputerPenalty = (attempt) => {
+            AI.pickSouflaDecision(pending)
+              .then((decision) => {
+                if (Game.souflaPending !== pending || !Game.awaitingPenalty) return;
+                if (!applySouflaDecision(decision, pending)) {
+                  throw new Error("computer/invalid-soufla-decision");
+                }
+                try {
+                  UI.showSouflaAgainstHuman(decision, pending);
+                } catch {}
+              })
+              .catch((error) => {
+                if (
+                  attempt < 1 &&
+                  Game.souflaPending === pending &&
+                  Game.awaitingPenalty &&
+                  !Game.gameOver
+                ) {
+                  setTimeout(() => resolveComputerPenalty(attempt + 1), 300);
+                  return;
+                }
+                try {
+                  console.error("Computer soufla analysis failed", error);
+                  UI.log({ kind: "error", message: "computer_soufla_analysis_failed", ts: Date.now() });
+                  UI.updateAll();
+                } catch {}
+              });
+          };
+          resolveComputerPenalty(0);
           return;
         }
       }
@@ -931,94 +865,36 @@ const Turn = {
   },
 
   computeSouflaPending() {
-    if (!this.ctx) return null;
-    const Lmax = this.ctx.Lmax;
-    const LB = this.ctx.longestByPiece;
-    if (Lmax <= 0) return null;
+    if (!this.ctx || !this.ctx.snapshot || !this.ctx.snapshot.board) return null;
+    if ((this.ctx.Lmax | 0) <= 0) return null;
 
-    const candidates = this.ctx.candidates.slice();
-    const sf = this.ctx.startedFrom ?? null;
-    const capturesDone = this.ctx.capturesDone | 0;
+    const from = Game.lastMoveFrom != null ? Number(Game.lastMoveFrom) : null;
+    const path = Array.isArray(Game.lastMovePath)
+      ? Game.lastMovePath.map(Number).filter(DhametRulesShared.validIdx)
+      : [];
+    const captures = Math.max(0, Number(this.ctx.capturesDone || 0) | 0);
+    if (!DhametRulesShared.validIdx(from) || !path.length) return null;
 
-    const movedFrom = Game.lastMovedFrom != null ? Game.lastMovedFrom : null;
+    const pending = DhametRulesShared.detectSoufla(
+      this.ctx.snapshot,
+      this.ctx.snapshot.board,
+      Game.player,
+      {
+        from,
+        to: Game.lastMovedTo != null ? Number(Game.lastMovedTo) : path[path.length - 1],
+        path,
+        captures,
+      },
+    );
+    if (!pending) return null;
 
-    let offenders = [];
-
-    if (sf == null) {
-      offenders = candidates.slice();
-    } else {
-      const Ls = LB.get(sf) || 0;
-      const offenderSelf = capturesDone < Ls && Ls > 0;
-      const offenderOthers = Lmax > 0 && Ls < Lmax;
-
-      if (offenderSelf) offenders.push(sf);
-      if (offenderOthers) {
-        for (const idx of candidates) {
-          if (idx !== sf) offenders.push(idx);
-        }
-      }
-    }
-
-    offenders = Array.from(new Set(offenders));
-    if (!offenders.length) return null;
-
-    const startedFromForPending =
-      sf != null ? sf : movedFrom != null && offenders.includes(movedFrom) ? movedFrom : null;
-
-    const options = [];
-    const keep = snapshotState();
-
-    simEnter();
-    try {
-      for (const idx of offenders) {
-        options.push({ kind: "remove", offenderIdx: idx });
-
-        const Ls = LB.get(idx) || 0;
-        if (Ls <= 0) continue;
-
-        restoreSnapshotSilent(this.ctx.snapshot);
-        const full = longestPathsWithJumpsFrom(idx, Ls);
-        restoreSnapshotSilent(keep);
-
-        if (!full || !full.length) continue;
-
-        for (const o of full) {
-          options.push({
-            kind: "force",
-            offenderIdx: idx,
-            path: o.path,
-            jumps: o.jumps,
-          });
-        }
-      }
-
-      if (!options.length) return null;
-
-      const penalizer = -Game.player;
-
-      return {
-        offenders,
-        longestByPiece: LB,
-        longestGlobal: Lmax,
-        options,
-        turnStartSnapshot: this.ctx.snapshot,
-        lastPieceIdx: Game.lastMovedTo,
-        startedFrom: startedFromForPending,
-        penalizer,
-
-        lastMoveFrom: Game.lastMoveFrom != null ? Game.lastMoveFrom : null,
-        lastMovePath: Array.isArray(Game.lastMovePath) ? Game.lastMovePath.slice() : null,
-
-        capturesDone,
-        ctxStartedFrom: sf,
-        ctxLs: sf != null ? LB.get(sf) || 0 : 0,
-      };
-    } finally {
-      try {
-        restoreSnapshotSilent(keep);
-      } catch {}
-      simExit();
-    }
+    // Browser and online integration expect a Map while the pure shared rules
+    // layer exposes a serializable [index, length][] list.
+    pending.longestByPiece = new Map(
+      Array.isArray(pending.longestByPiece) ? pending.longestByPiece : [],
+    );
+    pending.turnStartSnapshot = this.ctx.snapshot;
+    return pending;
   },
 };
 
@@ -1034,6 +910,8 @@ function snapshotState(options) {
     lastMoveFrom: Game.lastMoveFrom,
     lastMovePath: Array.isArray(Game.lastMovePath) ? Game.lastMovePath.slice() : null,
     moveCount: Game.moveCount,
+    deferredPromotion: Game.deferredPromotion ? { ...Game.deferredPromotion } : null,
+    deferredPromotions: normalizeDeferredPromotionQueue().map((entry) => ({ ...entry })),
 
     forcedEnabled: Game.forcedEnabled,
     forcedPly: Game.forcedPly,
@@ -1057,6 +935,10 @@ function snapshotState(options) {
           lastMoveFrom: ctx.snapshot.lastMoveFrom,
           lastMovePath: Array.isArray(ctx.snapshot.lastMovePath) ? ctx.snapshot.lastMovePath.slice() : null,
           moveCount: ctx.snapshot.moveCount,
+          deferredPromotion: ctx.snapshot.deferredPromotion ? { ...ctx.snapshot.deferredPromotion } : null,
+          deferredPromotions: Array.isArray(ctx.snapshot.deferredPromotions)
+            ? ctx.snapshot.deferredPromotions.map((entry) => ({ idx: Number(entry.idx), side: Number(entry.side) }))
+            : [],
           forcedEnabled: !!ctx.snapshot.forcedEnabled,
           forcedPly: Number(ctx.snapshot.forcedPly || 0) || 0,
         } : null,
@@ -1071,8 +953,6 @@ function snapshotState(options) {
 }
 
 function pushHistoryBeforeMove(fromIdx, toIdx) {
-  if ((Game._simDepth || 0) > 0) return;
-
   try {
     const onlineActive = !!(window.Online && window.Online.isActive);
     if (
@@ -1123,6 +1003,11 @@ function restoreSnapshot(snap, opts) {
       : null;
 
   Game.moveCount = snap.moveCount;
+  Game.deferredPromotions = Array.isArray(snap.deferredPromotions)
+    ? snap.deferredPromotions.map((entry) => ({ idx: Number(entry.idx), side: Number(entry.side) }))
+    : snap.deferredPromotion ? [{ idx: Number(snap.deferredPromotion.idx), side: Number(snap.deferredPromotion.side) }] : [];
+  Game.deferredPromotion = Game.deferredPromotions.length ? { ...Game.deferredPromotions[0] } : null;
+  normalizeDeferredPromotionQueue();
 
   if (typeof snap.forcedEnabled === "boolean") Game.forcedEnabled = snap.forcedEnabled;
   if (typeof snap.forcedPly === "number") Game.forcedPly = snap.forcedPly;
@@ -1146,6 +1031,10 @@ function restoreSnapshot(snap, opts) {
           lastMoveFrom: tc.snapshot.lastMoveFrom,
           lastMovePath: Array.isArray(tc.snapshot.lastMovePath) ? tc.snapshot.lastMovePath.slice() : null,
           moveCount: tc.snapshot.moveCount,
+          deferredPromotion: tc.snapshot.deferredPromotion ? { ...tc.snapshot.deferredPromotion } : null,
+          deferredPromotions: Array.isArray(tc.snapshot.deferredPromotions)
+            ? tc.snapshot.deferredPromotions.map((entry) => ({ idx: Number(entry.idx), side: Number(entry.side) }))
+            : tc.snapshot.deferredPromotion ? [{ idx: Number(tc.snapshot.deferredPromotion.idx), side: Number(tc.snapshot.deferredPromotion.side) }] : [],
           forcedEnabled: !!tc.snapshot.forcedEnabled,
           forcedPly: Number(tc.snapshot.forcedPly || 0) || 0,
         } : snapshotState({ includeTurnCtx: false }),
@@ -1365,7 +1254,7 @@ const SessionGame = (() => {
           capture: _capture,
           restore: _restoreData,
           context: { Online: window.Online, document },
-          shouldSkipSave: () => !_isPvCSession() || (Game._simDepth || 0) > 0,
+          shouldSkipSave: () => !_isPvCSession(),
           isGameOver: () => !!Game.gameOver,
         })
       : null;
@@ -1380,9 +1269,7 @@ const SessionGame = (() => {
   function saveNow() {
     if (!_isPvCSession()) return;
     if (_storageAdapter) return _storageAdapter.saveNow();
-    if ((Game._simDepth || 0) > 0) return;
-
-    if (Game.gameOver) {
+      if (Game.gameOver) {
       clear();
       return;
     }
@@ -1530,26 +1417,83 @@ try {
   window.SessionGame = SessionGame;
 } catch {}
 
-function longestPathsWithJumpsFrom(fromIdx, maxLen) {
-  const wanted = Math.max(0, Number(maxLen || 0) | 0);
-  if (wanted <= 0) return [];
-  const res = DhametRulesShared.longestCaptureSearch(Game.board, fromIdx, 0, 128);
-  if (!res || (res.max | 0) < wanted) return [];
-  return (res.paths || [])
-    .filter((p) => ((p && p.captures) || ((p && p.path && p.path.length) || 0)) === wanted)
-    .map((p) => ({
-      path: Array.isArray(p.path) ? p.path.slice() : [],
-      jumps: Array.isArray(p.jumps) ? p.jumps.slice() : [],
-    }));
+function canonicalSouflaDecision(decision, pending) {
+  if (!decision || !pending || !Array.isArray(pending.options)) return null;
+  const kind = decision.kind === "remove" || decision.kind === "force" ? decision.kind : null;
+  const offenderIdx = Number(decision.offenderIdx);
+  if (!kind || !DhametRulesShared.validIdx(offenderIdx)) return null;
+  const requestedPath = Array.isArray(decision.path) ? decision.path.map(Number) : [];
+  const option = pending.options.find((candidate) => {
+    if (!candidate || candidate.kind !== kind || Number(candidate.offenderIdx) !== offenderIdx) {
+      return false;
+    }
+    return kind === "remove" || DhametRulesShared.samePath(candidate.path, requestedPath);
+  });
+  if (!option) return null;
+  return {
+    kind: option.kind,
+    offenderIdx: Number(option.offenderIdx),
+    path: Array.isArray(option.path) ? option.path.map(Number) : [],
+    jumps: Array.isArray(option.jumps) ? option.jumps.map(Number) : [],
+    captures: Math.max(0, Number(option.captures || 0) | 0),
+  };
 }
 
-function applySouflaDecision(decision, pending) {
-  if (!decision || !pending) return;
+function souflaRedSegments(decision, pending) {
+  if (!decision || !pending || !Array.isArray(pending.options)) return [];
+  const options = pending.options
+    .filter(
+      (option) =>
+        option &&
+        option.kind === "force" &&
+        Number(option.offenderIdx) === Number(decision.offenderIdx) &&
+        Array.isArray(option.path) &&
+        option.path.length,
+    )
+    .slice()
+    .sort((a, b) => {
+      const sa = `${(a.path || []).join(",")}|${(a.jumps || []).join(",")}`;
+      const sb = `${(b.path || []).join(",")}|${(b.jumps || []).join(",")}`;
+      return sa < sb ? -1 : sa > sb ? 1 : 0;
+    });
+  const selected =
+    decision.kind === "force"
+      ? options.find((option) => DhametRulesShared.samePath(option.path, decision.path)) || options[0]
+      : options[0];
+  return selected
+    ? [
+        {
+          from: Number(selected.offenderIdx),
+          path: selected.path.map(Number),
+          jumps: Array.isArray(selected.jumps) ? selected.jumps.map(Number) : [],
+        },
+      ]
+    : [];
+}
 
-  let _fxRedSegments = null;
-  let _fxRemoveIdx = null;
-  let _fxForcePath = null;
-  let _fxUndoArrow = null;
+function applySouflaDecision(requestedDecision, pending) {
+  const decision = canonicalSouflaDecision(requestedDecision, pending);
+  if (!decision || !pending) {
+    console.error("Rejected invalid soufla decision", requestedDecision);
+    return false;
+  }
+
+  const prepared =
+    decision.kind === "remove"
+      ? DhametRulesShared.applySouflaRemoval(Game.board, pending, decision.offenderIdx)
+      : DhametRulesShared.applySouflaForce(pending, decision);
+  if (!prepared || !prepared.ok) {
+    console.error("Rejected non-applicable soufla decision", prepared && prepared.error);
+    return false;
+  }
+
+  const stateBeforePenalty = snapshotState();
+  const fxRedSegments = souflaRedSegments(decision, pending);
+  let fxRemoveIdx = null;
+  let fxForcePath = null;
+  let fxUndoArrow = null;
+  let previousOnlineApplying = null;
+  let hadOnline = false;
 
   try {
     Visual.clearSouflaFX(true);
@@ -1558,27 +1502,16 @@ function applySouflaDecision(decision, pending) {
   Game._souflaApplying = true;
   try {
     Visual.setSuspended(true);
-  } catch {}
-  try {
     Board3D.setSuspended(true);
   } catch {}
 
   try {
-    setTimeout(() => {
-      if (Game._souflaApplying) {
-        try {
-          Board3D.setSuspended(false);
-          Board3D.invalidate();
-        } catch {}
-        try {
-          Game._souflaApplying = false;
-          Visual.setSuspended(false);
-        } catch {}
-        try {
-          UI.updateAll();
-        } catch {}
-      }
-    }, 1500);
+    if (window.Online && window.Online.isActive) {
+      hadOnline = true;
+      previousOnlineApplying = window.Online._isApplyingRemote;
+      window.Online._isApplyingRemote = true;
+      window.Online.clearPendingLocalMove?.();
+    }
   } catch {}
 
   try {
@@ -1588,170 +1521,93 @@ function applySouflaDecision(decision, pending) {
     Game.lastMovedTo = null;
     Visual.setLastMovePath(null, null);
     Visual.setLastMove(null, null);
-  } catch {}
 
-  const redSegments = [];
-  try {
-    const offIdx = decision.offenderIdx;
-    const maxLen =
-      pending.longestByPiece && pending.longestByPiece.get
-        ? pending.longestByPiece.get(offIdx) || 0
-        : 0;
-    if (offIdx != null && maxLen > 0 && pending.turnStartSnapshot) {
-      const keep = snapshotState();
-      simEnter();
-      try {
-        restoreSnapshotSilent(pending.turnStartSnapshot);
-        const full = longestPathsWithJumpsFrom(offIdx, maxLen) || [];
-        full.sort((a, b) => {
-          const sa = (a.path || []).join(",") + "|" + (a.jumps || []).join(",");
-          const sb = (b.path || []).join(",") + "|" + (b.jumps || []).join(",");
-          return sa < sb ? -1 : sa > sb ? 1 : 0;
-        });
-        const chosen = full[0];
-        if (chosen && Array.isArray(chosen.path) && chosen.path.length) {
-          redSegments.push({
-            from: offIdx,
-            path: chosen.path.slice(),
-            jumps: Array.isArray(chosen.jumps) ? chosen.jumps.slice() : [],
-          });
-        }
-      } finally {
-        restoreSnapshotSilent(keep);
-        simExit();
-      }
-    }
-  } catch {}
-  _fxRedSegments = redSegments;
-
-  let __prevOnlineApplying = null;
-  let __hadOnline = false;
-  try {
-    if (window.Online && window.Online.isActive) {
-      __hadOnline = true;
-      __prevOnlineApplying = window.Online._isApplyingRemote;
-      window.Online._isApplyingRemote = true;
-      window.Online.clearPendingLocalMove?.();
-    }
-  } catch {}
-
-  try {
     if (decision.kind === "remove") {
-      const originalIdx = decision.offenderIdx;
+      Game.board = prepared.board;
+      normalizeDeferredPromotionQueue();
+      fxRemoveIdx = decision.offenderIdx;
 
-      const actualRemoveIdx =
-        pending.startedFrom === decision.offenderIdx && pending.lastPieceIdx != null
-          ? pending.lastPieceIdx
-          : decision.offenderIdx;
-
-      setValueAt(actualRemoveIdx, 0);
-      _fxRemoveIdx = originalIdx;
-
-      UI.log({ kind: "soufla_remove", idx: originalIdx, ts: Date.now() });
-
+      UI.log({ kind: "soufla_remove", idx: decision.offenderIdx, ts: Date.now() });
       armSouflaFXPersistence(-pending.penalizer);
-
       try {
         TrainRecorder.souflaApplied(decision, pending);
       } catch {}
-
-      if (Game.player !== pending.penalizer) {
-        switchPlayer();
-      }
-    } else if (decision.kind === "force") {
+      if (Game.player !== pending.penalizer) switchPlayer();
+    } else {
       try {
         TrainRecorder.souflaBeginForce(decision, pending);
       } catch {}
 
       restoreSnapshotSilent(pending.turnStartSnapshot);
-
-      try {
-        if (
-          pending.lastMoveFrom != null &&
-          Array.isArray(pending.lastMovePath) &&
-          pending.lastMovePath.length
-        ) {
-          const nodes = [pending.lastMoveFrom]
-            .concat(pending.lastMovePath)
-            .map((n) => Number(n))
-            .filter(Number.isFinite);
-          if (nodes.length >= 2) {
-            const rev = nodes.slice().reverse();
-            _fxUndoArrow = { from: rev[0], path: rev.slice(1) };
-          }
-        } else if (pending.startedFrom != null && pending.lastPieceIdx != null) {
-          _fxUndoArrow = {
-            from: pending.lastPieceIdx,
-            to: pending.startedFrom,
-          };
+      if (
+        pending.lastMoveFrom != null &&
+        Array.isArray(pending.lastMovePath) &&
+        pending.lastMovePath.length
+      ) {
+        const nodes = [pending.lastMoveFrom]
+          .concat(pending.lastMovePath)
+          .map(Number)
+          .filter(DhametRulesShared.validIdx);
+        if (nodes.length >= 2) {
+          const reversed = nodes.slice().reverse();
+          fxUndoArrow = { from: reversed[0], path: reversed.slice(1) };
         }
-      } catch {}
-
-      try {
-        Turn.start();
-      } catch {}
-      const from = decision.offenderIdx;
-
-      try {
-        Turn.beginCapture(from);
-      } catch {}
-
-      let cur = from;
-      const fullPath = [from];
-
-      for (const to of decision.path || []) {
-        const prev = cur;
-        const [isCap, jumped] = classifyCapture(prev, to);
-        if (!isCap || jumped == null) break;
-
-        applyMove(prev, to, true, jumped);
-        try {
-          Turn.recordCapture();
-        } catch {}
-        cur = to;
-        fullPath.push(to);
+      } else if (pending.startedFrom != null && pending.lastPieceIdx != null) {
+        fxUndoArrow = { from: pending.lastPieceIdx, to: pending.startedFrom };
       }
 
-      try {
-        promoteIfNeeded(cur);
-      } catch {}
-      Game.deferredPromotion = null;
+      Turn.start();
+      Turn.beginCapture(decision.offenderIdx);
+      let current = decision.offenderIdx;
+      const fullPath = [current];
+      for (let i = 0; i < decision.path.length; i++) {
+        const to = decision.path[i];
+        const [isCapture, jumped] = classifyCapture(current, to);
+        const expectedJump = decision.jumps[i];
+        if (!isCapture || jumped == null || (expectedJump != null && Number(jumped) !== Number(expectedJump))) {
+          throw new Error(`soufla/force-segment-mismatch:${i}`);
+        }
+        applyMove(current, to, true, jumped);
+        Turn.recordCapture();
+        current = to;
+        fullPath.push(to);
+      }
+      if (!DhametRulesShared.boardsEqual(Game.board, prepared.board)) {
+        throw new Error("soufla/force-board-mismatch");
+      }
 
+      maybeQueueDeferredPromotion(current);
       Game.inChain = false;
       Game.chainPos = null;
       try {
         if (typeof syncEndKillAvailability === "function") syncEndKillAvailability(false);
-        else {
-          const btn = qs("#btnEndKill");
-          if (btn) {
-            btn.disabled = false;
-            btn.setAttribute("data-chain-active", "false");
-            btn.setAttribute("aria-disabled", "true");
-          }
-        }
       } catch {}
+      fxForcePath = fullPath;
 
-      _fxForcePath = fullPath.slice();
-
-      UI.log({
-        kind: "soufla_force",
-        from: from,
-        path: decision.path || [],
-        ts: Date.now(),
-      });
-
+      UI.log({ kind: "soufla_force", from: decision.offenderIdx, path: decision.path, ts: Date.now() });
       armSouflaFXPersistence(-pending.penalizer);
-
       try {
         TrainRecorder.souflaEndForce(decision, pending);
       } catch {}
-
       switchPlayer();
     }
+  } catch (error) {
+    try {
+      restoreSnapshotSilent(stateBeforePenalty);
+    } catch {}
+    console.error("Soufla application failed atomically", error);
+    Game._souflaApplying = false;
+    try {
+      Board3D.setSuspended(false);
+      Board3D.invalidate();
+      Visual.setSuspended(false);
+      UI.updateAll();
+    } catch {}
+    return false;
   } finally {
     try {
-      if (__hadOnline && window.Online) {
-        window.Online._isApplyingRemote = __prevOnlineApplying === true;
+      if (hadOnline && window.Online) {
+        window.Online._isApplyingRemote = previousOnlineApplying === true;
       }
     } catch {}
   }
@@ -1761,51 +1617,38 @@ function applySouflaDecision(decision, pending) {
       try {
         Visual.applySouflaFXBatch(
           {
-            redSegments: _fxRedSegments,
-            removeIdx: _fxRemoveIdx,
-            forcePath: _fxForcePath,
-            undoArrow: _fxUndoArrow,
+            redSegments: fxRedSegments,
+            removeIdx: fxRemoveIdx,
+            forcePath: fxForcePath,
+            undoArrow: fxUndoArrow,
           },
           { noDraw: true },
         );
       } catch {}
 
-      try {
-        Game.awaitingPenalty = false;
-        Game.souflaPending = null;
-        Game.availableSouflaForHuman = null;
-      } catch {}
-
+      Game.awaitingPenalty = false;
+      Game.souflaPending = null;
+      Game.availableSouflaForHuman = null;
       try {
         Turn.start();
-      } catch {}
-      try {
         scheduleForcedOpeningAutoIfNeeded();
-      } catch {}
-      try {
         UI.updateAll();
-      } catch {}
-
-      try {
         Board3D.setSuspended(false);
         Board3D.invalidate();
-      } catch {}
-      try {
-        Game._souflaApplying = false;
         Visual.setSuspended(false);
       } catch {}
-
+      Game._souflaApplying = false;
       scheduleComputerMoveIfNeeded();
     });
   });
+
   if (window.Online && window.Online.isActive && !window.Online._isApplyingRemote) {
     try {
       window.Online.clearPendingLocalMove?.();
-    } catch {}
-    try {
       window.Online.sendSouflaDecisionToCloudflare(decision, pending, Game.player);
     } catch {}
   }
+  return true;
 }
 
 function switchPlayer() {
@@ -1918,178 +1761,6 @@ function scheduleForcedOpeningAutoIfNeeded() {
     finishForcedOpeningAppliedTurn(current.mover, current);
   }, 500);
 }
-function detectCriticalState(side) {
-  const { Lmax } = computeLongestForPlayer(side);
-  if (Lmax > 0) return true;
-
-  for (let idx = 0; idx < N_CELLS; idx++) {
-    const v = valueAt(idx);
-    if (!v || pieceOwner(v) !== side || pieceKind(v) !== MAN) continue;
-    const [r] = idxToRC(idx);
-    if ((side === TOP && r >= 7) || (side === BOT && r <= 1)) return true;
-  }
-
-  try {
-    if ((__aiCrownPriority(side) | 0) > 0) return true;
-  } catch {}
-
-  const opp = -side;
-  for (let from = 0; from < N_CELLS; from++) {
-    const v = valueAt(from);
-    if (!v || pieceOwner(v) !== opp) continue;
-    const caps = generateCapturesFrom(from, v);
-    for (const [toIdx, jIdx] of caps) {
-      const jv = valueAt(jIdx);
-      if (jv && pieceOwner(jv) === side && pieceKind(jv) === KING) {
-        return true;
-      }
-    }
-  }
-  return false;
-}
-
-const __AI_IMM_CAP_CACHE = new Map();
-const __AI_LONGEST_CACHE = new Map();
-const __AI_LONGEST_LIM_CACHE = new Map();
-
-function __cacheGet(map, key) {
-  return map.has(key) ? map.get(key) : null;
-}
-function __cachePut(map, key, val, maxSize = 20000) {
-  map.set(key, val);
-  if (map.size <= maxSize) return;
-
-  const drop = Math.max(50, Math.floor(maxSize * 0.08));
-  let i = 0;
-  for (const k of map.keys()) {
-    map.delete(k);
-    if (++i >= drop) break;
-  }
-}
-
-
-
-
-function immediateCapturableInfo(attackerSide) {
-  const key = String(zobristKey()) + "|immcap|" + attackerSide;
-  const hit = __cacheGet(__AI_IMM_CAP_CACHE, key);
-  if (hit) return hit;
-
-  const jumpedSet = new Set();
-  let kingVictims = 0;
-
-  for (let from = 0; from < N_CELLS; from++) {
-    const v = valueAt(from);
-    if (!v || pieceOwner(v) !== attackerSide) continue;
-    const caps = generateCapturesFrom(from, v);
-    for (let k = 0; k < caps.length; k++) {
-      const jumped = caps[k][1];
-      if (jumped == null) continue;
-      const jv = valueAt(jumped);
-      if (!jv) continue;
-      if (pieceOwner(jv) === -attackerSide) {
-        jumpedSet.add(jumped);
-        if (pieceKind(jv) === KING) kingVictims++;
-      }
-    }
-  }
-
-  const out = { count: jumpedSet.size, kingVictims, jumpedSet };
-  __cachePut(__AI_IMM_CAP_CACHE, key, out);
-  return out;
-}
-
-function longestCaptureLenCached(side) {
-  const key = String(zobristKey()) + "|L|" + side;
-  const hit = __cacheGet(__AI_LONGEST_CACHE, key);
-  if (hit != null) return hit;
-  const { Lmax } = computeLongestForPlayer(side);
-  __cachePut(__AI_LONGEST_CACHE, key, Lmax);
-  return Lmax;
-}
-
-function snapshotStateSim() {
-  return {
-    board: cloneBoard(Game.board),
-    player: Game.player,
-    inChain: !!Game.inChain,
-    chainPos: Game.chainPos == null ? null : Game.chainPos,
-  };
-}
-
-function restoreSnapshotSim(snap) {
-  Game.board = cloneBoard(snap.board);
-  Game.player = snap.player;
-  Game.inChain = snap.inChain;
-  Game.chainPos = snap.chainPos;
-}
-
-function applyMoveSim(fromIdx, toIdx) {
-  const [isCap, jumped] = classifyCapture(fromIdx, toIdx);
-
-  const [r1, c1] = idxToRC(fromIdx);
-  const [r2, c2] = idxToRC(toIdx);
-
-  const v = Game.board[r1][c1];
-  Game.board[r1][c1] = 0;
-
-  if (isCap && jumped != null) {
-    const [jr, jc] = idxToRC(jumped);
-    Game.board[jr][jc] = 0;
-  }
-
-  Game.board[r2][c2] = v;
-
-  const owner = pieceOwner(v);
-  if (!isCap && pieceKind(v) === MAN && isBackRank(toIdx, owner)) {
-    Game.board[r2][c2] = owner === TOP ? KING : -KING;
-  }
-
-  return { isCap, jumped };
-}
-
-function applyActionSim(a) {
-  if (a === ACTION_ENDCHAIN) {
-    const idx = Game.chainPos;
-    if (idx != null) {
-      const v = valueAt(idx);
-      const owner = pieceOwner(v);
-      if (v && pieceKind(v) === MAN && isBackRank(idx, owner)) {
-        setValueAt(idx, owner === TOP ? KING : -KING);
-      }
-    }
-    Game.inChain = false;
-    Game.chainPos = null;
-    Game.player = -Game.player;
-    return;
-  }
-
-  const from = Math.floor(a / N_CELLS);
-  const to = a % N_CELLS;
-
-  const { isCap } = applyMoveSim(from, to);
-
-  if (isCap) {
-    const vcur = valueAt(to);
-    const caps = generateCapturesFrom(to, vcur);
-    if (caps.length) {
-      Game.inChain = true;
-      Game.chainPos = to;
-      return;
-    }
-
-    const owner = pieceOwner(vcur);
-    if (vcur && pieceKind(vcur) === MAN && isBackRank(to, owner)) {
-      setValueAt(to, owner === TOP ? KING : -KING);
-    }
-  }
-
-  Game.inChain = false;
-  Game.chainPos = null;
-  Game.player = -Game.player;
-}
-
-// AI engine internals moved to js/ai/ai-engine.js.
 function humanSide() {
   const ctx = { Online: window.Online, document, fallbackHumanSide: BOT };
   try {
@@ -2173,22 +1844,8 @@ function scheduleComputerMoveIfNeeded() {
   return false;
 }
 
-function scheduleComputerChainContinuationIfNeeded() {
-  const ctx = { Online: window.Online, document, fallbackHumanSide: BOT };
-  try {
-    if (DhametPvCController && typeof DhametPvCController.scheduleChainContinuation === "function") {
-      return DhametPvCController.scheduleChainContinuation(Game, ctx);
-    }
-    if (DhametGameController && typeof DhametGameController.scheduleChainContinuation === "function") {
-      return DhametGameController.scheduleChainContinuation(Game, ctx);
-    }
-  } catch (_) {}
-  return scheduleComputerMoveIfNeeded();
-}
-
 
 const TrainRecorder = (() => {
-  const TRAIN_PATH = "trainGamesV3";
   const KEEP_MS = 48 * 60 * 60 * 1000;
 
   const MIN_SAMPLES = 12;
@@ -2330,7 +1987,7 @@ const TrainRecorder = (() => {
         if (!v) continue;
         if (pieceOwner(v) !== bySide) continue;
         const fromIdx = r * BOARD_N + c;
-        const caps = generateCapturesFrom(fromIdx, v);
+        const caps = generateCapturesFrom(fromIdx);
         for (const cap of caps) {
           const jumpedIdx = cap[1];
           if (jumpedIdx === targetIdx) return true;
@@ -2603,7 +2260,6 @@ const TrainRecorder = (() => {
     _ensureTurnBuffers(g);
 
     if (g._heldSoufla && !pending) {
-      const metaPrev = g._heldSouflaMeta || _buildSouflaMeta(g._heldSoufla, 1);
       _discardPendingTurn(g);
       g._heldSoufla = null;
       g._heldSouflaMeta = null;
@@ -2739,8 +2395,7 @@ const TrainRecorder = (() => {
 
   function _sideHasAnyMove(side) {
     try {
-      const m = mobilityInfo(side);
-      return (m.steps | 0) + (m.caps | 0) > 0;
+      return !!DhametRulesShared.hasAnyLegalMove(Game.board, side);
     } catch (_) {
       return true;
     }
@@ -2755,7 +2410,7 @@ const TrainRecorder = (() => {
           if (pieceOwner(v) !== side) continue;
           if (pieceKind(v) !== MAN) continue;
           const from = r * BOARD_N + c;
-          const steps = generateStepsFrom(from, v);
+          const steps = generateStepsFrom(from);
           for (const to of steps) {
             if (isBackRank(to, side)) return true;
           }
@@ -2773,7 +2428,7 @@ const TrainRecorder = (() => {
           if (!v) continue;
           if (pieceOwner(v) !== bySide) continue;
           const fromIdx = r * BOARD_N + c;
-          const caps = generateCapturesFrom(fromIdx, v);
+          const caps = generateCapturesFrom(fromIdx);
           for (const cap of caps) {
             if ((cap[1] | 0) === (targetIdx | 0)) return true;
           }
@@ -2784,48 +2439,26 @@ const TrainRecorder = (() => {
   }
 
   function _isFullyTrapped(side) {
-    let saved = null;
     try {
-      if (
-        typeof snapshotStateSim !== "function" ||
-        typeof restoreSnapshotSim !== "function" ||
-        typeof applyMoveSim !== "function"
-      )
-        return false;
-      saved = snapshotStateSim();
-
-      const moves = [];
-      const captures = [];
-      for (let r = 0; r < BOARD_N; r++) {
-        for (let c = 0; c < BOARD_N; c++) {
-          const v = Game.board[r][c];
-          if (!v) continue;
-          if (pieceOwner(v) !== side) continue;
-          const from = r * BOARD_N + c;
-          const caps = generateCapturesFrom(from, v);
-          for (const cap of caps) captures.push([from, cap[0]]);
-          const steps = generateStepsFrom(from, v);
-          for (const to of steps) moves.push([from, to]);
-        }
-      }
-      const legal = captures.length ? captures : moves;
+      const generated = DhametRulesShared.generateLegalMoves(Game.board, side, { policy: "strict" });
+      const legal = generated && Array.isArray(generated.moves) ? generated.moves : [];
       if (!legal.length) return true;
-
       const opp = -side;
-      for (const [from, to] of legal) {
-        restoreSnapshotSim(saved);
-        applyMoveSim(from, to);
-        if (!_isIdxCapturableBySide(to, opp)) {
-          restoreSnapshotSim(saved);
-          return false;
+      for (const move of legal) {
+        const applied = DhametRulesShared.applyMovePath(Game.board, move, side);
+        if (!applied || !applied.ok) continue;
+        const landing = Number(applied.to);
+        let capturable = false;
+        for (let from = 0; from < N_CELLS && !capturable; from++) {
+          const v = applied.board[Math.floor(from / BOARD_N)][from % BOARD_N];
+          if (!v || pieceOwner(v) !== opp) continue;
+          const caps = DhametRulesShared.captureOptions(applied.board, from);
+          capturable = caps.some((cap) => Number(cap.jumped) === landing);
         }
+        if (!capturable) return false;
       }
-      restoreSnapshotSim(saved);
       return true;
     } catch (_) {
-      try {
-        if (saved) restoreSnapshotSim(saved);
-      } catch (e) {}
       return false;
     }
   }
@@ -2888,12 +2521,9 @@ const TrainRecorder = (() => {
         if (myTotal < 8 && oppKings > 0) {
           let lmax = 0;
           try {
-            if (typeof longestCaptureLenLimitedCached === "function")
-              lmax = longestCaptureLenLimitedCached(opp, 3) | 0;
+            lmax = DhametRulesShared.mandatoryCaptureInfo(Game.board, opp).longestGlobal | 0;
           } catch (_) {}
-          if (lmax >= 3) {
-            return { confidence: "low", tag: "king_chain_threat" };
-          }
+          if (lmax >= 3) return { confidence: "low", tag: "king_chain_threat" };
         }
 
         return null;
@@ -2935,43 +2565,6 @@ const TrainRecorder = (() => {
     }
   }
 
-  function _readSessionAnyRegistered() {
-    try {
-      const s =
-        window.ZAuth && typeof ZAuth.readSession === "function" ? ZAuth.readSession() : null;
-      if (s && s.kind === "registered" && s.uid) return s;
-    } catch (_) {}
-
-    try {
-      const raw = localStorage.getItem("zamat_session_persist_v1");
-      if (raw) {
-        const s2 = JSON.parse(raw);
-        if (s2 && s2.kind === "registered" && s2.uid) return s2;
-      }
-    } catch (_) {}
-
-    return null;
-  }
-
-  function _getRegisteredSessionUid() {
-    try {
-      const s = _readSessionAnyRegistered();
-      return s && s.uid ? String(s.uid) : null;
-    } catch (_) {
-      return null;
-    }
-  }
-
-  function _getRegisteredAuthUid() {
-    try {
-      if (window.CloudflareAuth && typeof window.CloudflareAuth.currentUser === "function") {
-        const u = window.CloudflareAuth.currentUser();
-        if (u && !u.isAnonymous && u.uid) return String(u.uid);
-      }
-    } catch (_) {}
-    return null;
-  }
-
   function _dbErrorReason(e) {
     try {
       const _t = (key, vars) => {
@@ -2997,61 +2590,8 @@ const TrainRecorder = (() => {
     }
   }
 
-  async function _waitForRegisteredAuthUser(timeoutMs = 2500) {
-    try {
-      if (!window.CloudflareAuth || typeof window.CloudflareAuth.ready !== "function") return null;
-      const direct = window.CloudflareAuth.currentUser && window.CloudflareAuth.currentUser();
-      if (direct && !direct.isAnonymous) return direct;
-      const u = await Promise.race([
-        window.CloudflareAuth.ready(),
-        new Promise(function (resolve) { setTimeout(function () { resolve(null); }, Math.max(0, timeoutMs | 0)); }),
-      ]);
-      return u && !u.isAnonymous ? u : null;
-    } catch (_) {
-      return null;
-    }
-  }
 
 
-  async function _recordMatchLogAndStats(record) {
-    try {
-      const mode = record && record.mode ? record.mode : "unknown";
-      if (mode === "online_pvp") {
-        // PvP statistics are recorded officially by Cloudflare after the
-        // server-authoritative GameRecord becomes terminal.
-        return { ok: false, reason: "official_pvp_server" };
-      }
-
-      let regUid = _getRegisteredAuthUid();
-      if (!regUid) {
-        try {
-          const u = await _waitForRegisteredAuthUser(8000);
-          if (u && u.uid) regUid = String(u.uid);
-        } catch (_) {}
-      }
-      if (!regUid) return { ok: false, reason: "not_registered" };
-
-      const winner = record && (record.winner === TOP || record.winner === BOT) ? record.winner : null;
-      const res = await fetch("/dhamet/api/account/pvc-result", {
-        method: "POST",
-        credentials: "include",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          matchId: record && record.matchId ? String(record.matchId) : _makeLocalMatchId(),
-          winner,
-          endedAt: Number.isFinite(record && record.endedAt) ? record.endedAt : nowMs(),
-          endReason: record && record.endReason ? String(record.endReason) : null,
-        }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || (data && data.ok === false)) {
-        return { ok: false, reason: (data && data.error) || "account-pvc-result-failed" };
-      }
-      return { ok: true, official: true };
-    } catch (e) {
-      return { ok: false, reason: _dbErrorReason(e) || "unknown" };
-    }
-  }
 
   async function finalizeAndUpload({ winner = null, endReason = null } = {}) {
     const g = ensureGame();
@@ -3115,28 +2655,17 @@ const TrainRecorder = (() => {
       if (record.matchId) record.matchId = String(record.matchId).slice(0, 140);
     } catch (_) {}
 
-    let statsRes = null;
-    try {
-      const officialPvpStats = record && record.mode === "online_pvp";
-      const allowStats = record && record.terminalType === "strict" && !record.lateFinished;
-      if (officialPvpStats) {
-        // PvP results are recorded officially by the Cloudflare GameRoom route
-        // after the server-authoritative GameRecord becomes terminal. The
-        // browser must not duplicate profile/leaderboard writes for online PvP.
-        statsRes = { ok: false, reason: "skipped_official_pvp_server" };
-      } else if (
-        allowStats &&
-        record.endReason !== "disconnect" &&
-        record.endReason !== "abort" &&
-        record.endReason !== "cancel"
-      ) {
-        statsRes = await _recordMatchLogAndStats(record);
-      } else {
-        statsRes = { ok: false, reason: `skipped_${record.endReason}` };
-      }
-    } catch (e) {
-      statsRes = { ok: false, reason: _dbErrorReason(e) || "unknown" };
+    // Computer games are deliberately local-only. The engine, result handling,
+    // and learning path must not call Cloudflare APIs or consume dynamic quotas.
+    // Online PvP keeps its existing server-authoritative behavior unchanged.
+    if (record.mode === "vs_cpu") {
+      resetGame();
+      return { uploaded: false, skipped: true, reason: "local_computer_game" };
     }
+
+    // Only online PvP reaches this point; its official result/statistics are
+    // written by the server-authoritative GameRoom route.
+    const statsRes = { ok: false, reason: "skipped_official_pvp_server" };
 
     try {
       if (window.UI && typeof UI.log === "function") {
@@ -3294,16 +2823,8 @@ const TrainRecorder = (() => {
 })();
 
 const AI = DhametAIEngine.create({
-  ACTION_ENDCHAIN,
-  BOARD_N,
-  BOT,
   DhametAIRuntime,
-  DhametRulesShared,
   Game,
-  KING,
-  MAN,
-  N_CELLS,
-  TOP,
   Turn,
   Visual,
   Worker,
@@ -3314,13 +2835,8 @@ const AI = DhametAIEngine.create({
   classifyCapture,
   clearTimeout,
   consumeTurnClearForMove,
-  detectCriticalState,
-  encodeAction,
-  getForcedOpeningExpectedAction,
-  maybeQueueDeferredPromotion,
   normalizeAILevel: DhametAIConfig.normalizeLevel,
   saveSessionSettings,
-  scheduleComputerMoveIfNeeded,
   setTimeout,
 });
 globalThis.AI = AI;
@@ -3847,7 +3363,7 @@ if (typeof window !== "undefined") window.AI = AI;
           const data = JSON.parse(raw);
           if (!data || typeof data !== "object") return;
 
-          const allowed = ["starter","aiCaptureMode","aiRandomIgnoreCaptureRatePct","theme","showCoords","boardStyle"];
+          const allowed = ["starter","theme","showCoords","boardStyle"];
           const merged = {};
           for (const k of allowed) {
             merged[k] = (data && Object.prototype.hasOwnProperty.call(data, k)) ? data[k] : Game.settings[k];
@@ -4142,7 +3658,7 @@ if (typeof window !== "undefined") window.AI = AI;
         if (Game.inChain && Game.chainPos !== null) {
           const v = valueAt(Game.chainPos);
           if (v) {
-            const caps = generateCapturesFrom(Game.chainPos, v);
+            const caps = generateCapturesFrom(Game.chainPos);
             const isLegalCaptureDest = caps.some(
               ([toIdx, _jumped]) => toIdx === clickedIdx
             );

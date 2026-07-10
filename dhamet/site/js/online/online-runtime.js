@@ -109,6 +109,30 @@
     return {};
   }
 
+  function currentStateRecord(data) {
+    if (data && data.state && typeof data.state === "object") return data.state;
+    if (data && data.states && data.ply != null && data.states[data.ply] && typeof data.states[data.ply] === "object") {
+      return data.states[data.ply];
+    }
+    return null;
+  }
+
+  function deferredPromotionQueue(stateRecord) {
+    const State = window.DhametState;
+    if (!State || typeof State.normalizeDeferredPromotions !== "function") {
+      throw new Error("Dhamet online runtime requires DhametState.normalizeDeferredPromotions");
+    }
+    return State.normalizeDeferredPromotions(stateRecord || {});
+  }
+
+  function snapshotWithPromotionQueue(snapshot, stateRecord) {
+    const queue = deferredPromotionQueue(stateRecord);
+    return Object.assign({}, snapshot || {}, {
+      deferredPromotions: queue,
+      deferredPromotion: queue.length ? Object.assign({}, queue[0]) : null,
+    });
+  }
+
   Object.assign(Online, {
     _resolveSlotDisplayName: function (side, fallback) {
           try {
@@ -2271,18 +2295,13 @@ this._bindGameListeners();
                 null;
     
               if (stateSnap) {
-                const dp =
-                  (data.state && data.state.deferredPromotion) ||
-                  (data.states &&
-                    data.ply != null &&
-                    data.states[data.ply] &&
-                    data.states[data.ply].deferredPromotion) ||
-                  null;
-    
+                const stateRecord = currentStateRecord(data) || {};
+                const queue = deferredPromotionQueue(stateRecord);
                 const patched = Object.assign({}, data, {
-                  state: Object.assign({}, data.state || {}, {
-                    snapshot: stateSnap,
-                    deferredPromotion: dp,
+                  state: Object.assign({}, stateRecord, {
+                    snapshot: snapshotWithPromotionQueue(stateSnap, stateRecord),
+                    deferredPromotions: queue,
+                    deferredPromotion: queue.length ? Object.assign({}, queue[0]) : null,
                   }),
                 });
                 this._applyRemoteState(patched);
@@ -2450,7 +2469,9 @@ this._bindGameListeners();
             } catch (e) {}
     
             try {
-              Game.deferredPromotion = (data.state && data.state.deferredPromotion) || null;
+              const queue = deferredPromotionQueue(data && data.state);
+              Game.deferredPromotions = queue;
+              Game.deferredPromotion = queue.length ? Object.assign({}, queue[0]) : null;
             } catch (e) {}
     
             try {
@@ -2661,18 +2682,13 @@ this._bindGameListeners();
             }
     
             if (stateSnap) {
-              const dp =
-                (data.state && data.state.deferredPromotion) ||
-                (data.states &&
-                  data.ply != null &&
-                  data.states[data.ply] &&
-                  data.states[data.ply].deferredPromotion) ||
-                null;
-    
+              const stateRecord = currentStateRecord(data) || {};
+              const queue = deferredPromotionQueue(stateRecord);
               const patched = Object.assign({}, data, {
-                state: Object.assign({}, data.state || {}, {
-                  snapshot: stateSnap,
-                  deferredPromotion: dp,
+                state: Object.assign({}, stateRecord, {
+                  snapshot: snapshotWithPromotionQueue(stateSnap, stateRecord),
+                  deferredPromotions: queue,
+                  deferredPromotion: queue.length ? Object.assign({}, queue[0]) : null,
                 }),
               });
               this._applyRemoteState(patched);

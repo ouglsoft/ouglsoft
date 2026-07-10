@@ -57,6 +57,7 @@
       availableSouflaForHuman: null,
       _souflaApplying: false,
       deferredPromotion: null,
+      deferredPromotions: [],
       forcedEnabled: true,
       forcedPly: 0,
       forcedSeq: forcedSeqForStarter(player),
@@ -87,6 +88,7 @@
     game.availableSouflaForHuman = state.availableSouflaForHuman;
     game._souflaApplying = state._souflaApplying;
     game.deferredPromotion = state.deferredPromotion;
+    game.deferredPromotions = clone(state.deferredPromotions);
     game.forcedEnabled = state.forcedEnabled;
     game.forcedPly = state.forcedPly;
     game.forcedSeq = state.forcedSeq;

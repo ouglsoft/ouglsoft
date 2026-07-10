@@ -1,5 +1,5 @@
 /*
- * Dhamet shared authoritative match reducer v1.
+ * Dhamet shared authoritative match reducer v6.
  *
  * Pure GameRoom transition logic. This is the single shared place that turns a
  * player MoveIntent into an official match state. It deliberately contains no
@@ -52,24 +52,34 @@
     return Move.normalizeGameRoomMovePayload(payload);
   }
 
-  function pendingPromotionFromState(statePayload) {
-    const dp = statePayload && statePayload.deferredPromotion;
-    if (!dp || typeof dp !== 'object') return null;
-    const idx = State.normalizeIndex(dp.idx, true);
-    const s = side(dp.side);
-    return idx == null || s == null ? null : { idx, side: s };
+  function pendingPromotionsFromState(statePayload) {
+    return State.normalizeDeferredPromotions(statePayload || {});
   }
 
-  function applyStartOfTurnPromotion(snapshot, deferredPromotion, mover) {
+  const sanitizeDeferredPromotions = State.sanitizeDeferredPromotions;
+
+  function snapshotWithDeferredPromotions(snapshot, pending) {
+    const queue = State.normalizeDeferredPromotions(pending);
+    return Object.assign({}, snapshot, {
+      deferredPromotions: queue,
+      deferredPromotion: queue.length ? clone(queue[0]) : null,
+    });
+  }
+
+  function applyStartOfTurnPromotion(snapshot, deferredPromotions, mover) {
     const snap = State.normalizeSnapshot(snapshot);
     if (!snap) return { ok: false, error: 'authority/invalid-snapshot' };
-    const board = Rules.cloneBoard(snap.board);
-    const dp = deferredPromotion && side(deferredPromotion.side) === mover ? deferredPromotion : null;
-    if (!dp) return { ok: true, snapshot: Object.assign({}, snap, { board }), consumedPromotion: null, deferredPromotion: deferredPromotion || null };
-    const promoted = Rules.promoteAt(board, dp.idx);
-    if (!promoted.ok) return { ok: false, error: promoted.error || 'authority/promotion-failed' };
-    const outSnap = Object.assign({}, snap, { board: promoted.board });
-    return { ok: true, snapshot: outSnap, consumedPromotion: promoted.promoted || dp, deferredPromotion: null };
+    const activated = State.activateDeferredPromotions(snap.board, deferredPromotions, mover);
+    if (!activated || !activated.ok) return { ok: false, error: activated && activated.error || 'authority/promotion-failed' };
+    const outSnap = snapshotWithDeferredPromotions(Object.assign({}, snap, { board: activated.board }), activated.deferredPromotions);
+    return {
+      ok: true,
+      snapshot: outSnap,
+      consumedPromotions: activated.promoted.map(clone),
+      consumedPromotion: activated.promoted.length ? clone(activated.promoted[0]) : null,
+      deferredPromotions: activated.deferredPromotions.map(clone),
+      deferredPromotion: activated.deferredPromotion,
+    };
   }
 
   function validateForcedOpening(startSnapshot, move) {
@@ -85,9 +95,10 @@
 
   function validateJumps(move, applied) {
     if (!Array.isArray(move.jumps) || !move.jumps.length) return { ok: true };
-    const got = move.jumps.map((x) => Number(x)).filter(Number.isFinite).sort((a, b) => a - b);
-    const exp = (applied.jumps || []).slice().sort((a, b) => a - b);
-    return JSON.stringify(got) === JSON.stringify(exp) ? { ok: true } : { ok: false, error: 'game/jumps-mismatch', expected: exp, got };
+    const got = move.jumps.map((x) => Number(x));
+    const exp = (applied.jumps || []).map(Number);
+    const valid = got.length === exp.length && got.every((value, index) => Number.isInteger(value) && value === exp[index]);
+    return valid ? { ok: true } : { ok: false, error: 'game/jumps-mismatch', expected: exp, got };
   }
 
   function buildNextSnapshot(startSnapshot, applied, nextTurn, forcedMatched) {
@@ -111,15 +122,16 @@
     }), { defaultPlayer: nextTurn });
   }
 
-  function createOfficialState(startStatePayload, startSnapshot, applied, nextTurn, forcedMatched) {
-    const snap = buildNextSnapshot(startSnapshot, applied, nextTurn, forcedMatched);
+  function createOfficialState(startSnapshot, applied, nextTurn, forcedMatched, carriedPromotions) {
+    let snap = buildNextSnapshot(startSnapshot, applied, nextTurn, forcedMatched);
     if (!snap) return null;
-    const carried = pendingPromotionFromState(startStatePayload);
-    const newPromotion = applied.promotionPending ? clone(applied.promotionPending) : null;
-    const deferredPromotion = newPromotion || (carried && carried.side !== startSnapshot.player ? carried : null);
+    const pending = State.normalizeDeferredPromotions(carriedPromotions);
+    if (applied.promotionPending) pending.push(clone(applied.promotionPending));
+    const deferredPromotions = sanitizeDeferredPromotions(applied.board, pending);
+    snap = snapshotWithDeferredPromotions(snap, deferredPromotions);
     return State.createStatePayload({
       snapshot: snap,
-      deferredPromotion,
+      deferredPromotions,
       capturedOrder: Array.isArray(applied.jumps) ? applied.jumps.slice() : [],
     });
   }
@@ -145,8 +157,15 @@
     const base = State.normalizeSnapshot(baseSnapshot, { defaultPlayer: nextTurn });
     if (!base) return null;
     const currentSnap = record && record.state ? record.state.snapshot : base;
-    const prevMoveCount = Math.max(0, Number((currentSnap && currentSnap.moveCount) || (base && base.moveCount) || 0) || 0);
+    const currentMoveCount = Math.max(0, Number(currentSnap && currentSnap.moveCount || 0) || 0);
+    const baseMoveCount = Math.max(0, Number(base && base.moveCount || 0) || 0);
     const decision = applied && applied.decision ? applied.decision : null;
+    // A soufla resolution settles the already-recorded offending turn. Removal
+    // keeps the current post-violation position; force replays exactly one turn
+    // from the turn-start snapshot. Neither creates a second game turn.
+    const resolvedMoveCount = decision && decision.kind === 'force'
+      ? Math.max(currentMoveCount, baseMoveCount + 1)
+      : Math.max(currentMoveCount, baseMoveCount);
     const snap = State.normalizeSnapshot(Object.assign({}, base, {
       board,
       player: nextTurn,
@@ -156,17 +175,20 @@
       lastMovedTo: decision && decision.kind === 'force' && Array.isArray(decision.path) && decision.path.length ? decision.path[decision.path.length - 1] : null,
       lastMoveFrom: decision && decision.offenderIdx != null ? decision.offenderIdx : null,
       lastMovePath: decision && decision.kind === 'force' && Array.isArray(decision.path) ? decision.path.slice() : [],
-      moveCount: prevMoveCount + 1,
+      moveCount: resolvedMoveCount,
       forcedEnabled: currentSnap && currentSnap.forcedEnabled != null ? !!currentSnap.forcedEnabled : !!base.forcedEnabled,
       forcedPly: Math.max(0, Number((currentSnap && currentSnap.forcedPly) || (base && base.forcedPly) || 0) || 0),
       openingPly: Math.max(0, Number((currentSnap && (currentSnap.openingPly != null ? currentSnap.openingPly : currentSnap.forcedPly)) || (base && (base.openingPly != null ? base.openingPly : base.forcedPly)) || 0) || 0),
       soufla: null,
     }), { defaultPlayer: nextTurn });
     if (!snap) return null;
-    const newPromotion = applied && applied.promotionPending ? clone(applied.promotionPending) : null;
+    const pending = State.normalizeDeferredPromotions(applied && applied.deferredPromotions);
+    if (applied && applied.promotionPending) pending.push(clone(applied.promotionPending));
+    const deferredPromotions = sanitizeDeferredPromotions(board, pending);
+    const snapWithPromotions = snapshotWithDeferredPromotions(snap, deferredPromotions);
     return State.createStatePayload({
-      snapshot: snap,
-      deferredPromotion: newPromotion || null,
+      snapshot: snapWithPromotions,
+      deferredPromotions,
       capturedOrder: Array.isArray(applied && applied.jumps) ? applied.jumps.slice() : [],
     });
   }
@@ -202,7 +224,7 @@
     const option = matchSouflaOption(pending, decision);
     if (!decision || !option) return { ok: false, error: 'soufla/decision-not-allowed', game: record, pending };
 
-    const promotionStart = applyStartOfTurnPromotion(record.state.snapshot, pendingPromotionFromState(record.state), penalizer);
+    const promotionStart = applyStartOfTurnPromotion(record.state.snapshot, pendingPromotionsFromState(record.state), penalizer);
     if (!promotionStart.ok) return promotionStart;
     const currentSnapshot = promotionStart.snapshot;
     const currentBoard = Rules.normalizeBoard(currentSnapshot.board);
@@ -218,17 +240,26 @@
         jumps: [],
         captures: 0,
         promotionPending: null,
+        deferredPromotions: promotionStart.deferredPromotions,
         removed: penaltyResult && penaltyResult.removed,
       });
     } else if (decision.kind === 'force') {
       penaltyResult = Rules.applySouflaForce(pending, option);
       baseSnapshotForNext = pending.turnStartSnapshot || currentSnapshot;
       const applied = penaltyResult && penaltyResult.applied ? penaltyResult.applied : null;
+      let rollbackPromotions = State.normalizeDeferredPromotions(baseSnapshotForNext);
+      if (!rollbackPromotions.length) {
+        // Backward compatibility for pending records created before promotion queues
+        // were embedded in turn-start snapshots: only the penalizer's carried
+        // promotion can survive rollback of the offender's invalid move.
+        rollbackPromotions = pendingPromotionsFromState(record.state).filter((item) => item.side === penalizer);
+      }
       appliedMeta = Object.assign(appliedMeta, {
         board: penaltyResult && penaltyResult.board,
         jumps: applied && Array.isArray(applied.jumps) ? applied.jumps.slice() : [],
         captures: applied ? Number(applied.captures || 0) || 0 : 0,
         promotionPending: applied && applied.promotionPending ? clone(applied.promotionPending) : null,
+        deferredPromotions: rollbackPromotions,
         forced: applied ? clone(applied) : null,
       });
     } else {
@@ -791,7 +822,7 @@
       return { ok: true, committed: false, reason: 'stale-base', game: record };
     }
 
-    const promotionStart = applyStartOfTurnPromotion(record.state.snapshot, pendingPromotionFromState(record.state), mover);
+    const promotionStart = applyStartOfTurnPromotion(record.state.snapshot, pendingPromotionsFromState(record.state), mover);
     if (!promotionStart.ok) return promotionStart;
     const startSnapshot = promotionStart.snapshot;
     const startBoard = Rules.normalizeBoard(startSnapshot.board);
@@ -806,7 +837,7 @@
     if (!jumpCheck.ok) return jumpCheck;
 
     const nextTurn = Rules.opponent(mover);
-    const statePayload = createOfficialState(record.state, startSnapshot, applied, nextTurn, !!forcedCheck.forced);
+    const statePayload = createOfficialState(startSnapshot, applied, nextTurn, !!forcedCheck.forced, promotionStart.deferredPromotions);
     if (!statePayload) return { ok: false, error: 'authority/state-build-failed' };
 
     const mi = Number(record.moveIndex || 0) + 1;
@@ -823,6 +854,7 @@
       promotionPending: applied.promotionPending,
       mustContinue: applied.mustContinue,
       moveType: applied.type,
+      startPromotions: promotionStart.consumedPromotions.map(clone),
       startPromotion: promotionStart.consumedPromotion || null,
     };
 
@@ -907,7 +939,7 @@
   }
 
   root.DhametAuthority = Object.freeze({
-    version: 'shared-authority-v4',
+    version: 'shared-authority-v6',
     clone,
     normalizeGame,
     normalizeMovePayload,

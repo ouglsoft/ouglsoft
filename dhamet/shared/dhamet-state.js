@@ -1,8 +1,8 @@
 /*
- * Dhamet shared state helpers v2.
+ * Dhamet shared state helpers v4.
  *
  * Runtime-neutral helpers for the shape of a Dhamet match state. This module is
- * intentionally small and pure: no DOM, no storage, no no Cloudflare.
+ * intentionally small and pure: no DOM, no storage, no Cloudflare.
  * It is loaded by the browser and by the Cloudflare Worker through globalThis.
  */
 (function (root) {
@@ -34,6 +34,106 @@
     return allowNull ? null : undefined;
   }
 
+  function normalizeDeferredPromotions(value) {
+    const src = value && typeof value === 'object' && !Array.isArray(value)
+      ? value
+      : null;
+    const raw = [];
+    if (Array.isArray(value)) raw.push(...value);
+    else if (src) {
+      if (Array.isArray(src.deferredPromotions)) raw.push(...src.deferredPromotions);
+      else if (src.deferredPromotion && typeof src.deferredPromotion === 'object') raw.push(src.deferredPromotion);
+      else if (src.idx != null) raw.push(src);
+    }
+
+    const out = [];
+    const seen = new Set();
+    for (const item of raw) {
+      if (!item || typeof item !== 'object') continue;
+      const idx = normalizeIndex(item.idx, true);
+      const s = normalizeSide(item.side, null);
+      if (idx == null || s == null) continue;
+      const key = `${s}:${idx}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push({ idx, side: s });
+    }
+    return out;
+  }
+
+  function sanitizeDeferredPromotions(board, input) {
+    const pending = normalizeDeferredPromotions(input);
+    if (!Rules) return pending;
+
+    let valueAt = null;
+    const normalizedBoard = typeof Rules.normalizeBoard === 'function' ? Rules.normalizeBoard(board) : null;
+    if (normalizedBoard && typeof Rules.cell === 'function') {
+      valueAt = (idx) => Rules.cell(normalizedBoard, idx);
+    } else if (
+      Rules.compact &&
+      typeof Rules.compact.cell === 'function' &&
+      board &&
+      typeof board.length === 'number' &&
+      Number(board.length) === N_CELLS
+    ) {
+      valueAt = (idx) => Rules.compact.cell(board, idx);
+    }
+    if (!valueAt) return [];
+
+    const out = [];
+    for (const item of pending) {
+      const value = valueAt(item.idx);
+      if (
+        !value ||
+        typeof Rules.owner !== 'function' ||
+        Rules.owner(value) !== item.side ||
+        typeof Rules.kind !== 'function' ||
+        Rules.kind(value) !== Rules.MAN ||
+        typeof Rules.isBackRank !== 'function' ||
+        !Rules.isBackRank(item.idx, item.side)
+      ) continue;
+      out.push({ idx: item.idx, side: item.side });
+    }
+    return out;
+  }
+
+  function activateDeferredPromotions(board, input, mover) {
+    const side = normalizeSide(mover, null);
+    if (side == null || !Rules) return { ok: false, error: 'state/invalid-promotion-side' };
+    const pending = sanitizeDeferredPromotions(board, input);
+    const compactBoard = !Array.isArray(board) && board && typeof board.length === 'number' && Number(board.length) === N_CELLS;
+    let current;
+    if (compactBoard && Rules.compact && typeof Rules.compact.clone === 'function') {
+      current = Rules.compact.clone(board);
+    } else {
+      const normalized = normalizeBoard(board);
+      if (!normalized) return { ok: false, error: 'state/invalid-promotion-board' };
+      current = Rules.cloneBoard(normalized);
+    }
+
+    const promoted = [];
+    const remaining = [];
+    for (const item of pending) {
+      if (item.side !== side) {
+        remaining.push({ idx: item.idx, side: item.side });
+        continue;
+      }
+      const result = compactBoard
+        ? Rules.compact.promoteAt(current, item.idx)
+        : Rules.promoteAt(current, item.idx);
+      if (!result || !result.ok) return { ok: false, error: result && result.error || 'state/promotion-failed' };
+      current = compactBoard ? result.position : result.board;
+      promoted.push({ idx: item.idx, side: item.side });
+    }
+    return {
+      ok: true,
+      board: current,
+      promoted,
+      deferredPromotions: remaining,
+      deferredPromotion: remaining.length ? clone(remaining[0]) : null,
+    };
+  }
+
   function normalizeBoard(board) {
     if (Rules && typeof Rules.normalizeBoard === 'function') return Rules.normalizeBoard(board);
     if (!Array.isArray(board) || board.length !== BOARD_N) return null;
@@ -43,7 +143,7 @@
       out[r] = [];
       for (let c = 0; c < BOARD_N; c++) {
         const v = Number(board[r][c] || 0);
-        if (![0, 1, -1, 2, -2].indexOf(v) < 0) return null;
+        if ([0, 1, -1, 2, -2].indexOf(v) < 0) return null;
         out[r][c] = v;
       }
     }
@@ -81,6 +181,12 @@
     if (src.gameOver != null) out.gameOver = !!src.gameOver;
     if (src.winner != null) out.winner = Number(src.winner) || 0;
 
+    const deferredPromotions = normalizeDeferredPromotions(src);
+    if (deferredPromotions.length || src.deferredPromotions != null || src.deferredPromotion != null) {
+      out.deferredPromotions = deferredPromotions;
+      out.deferredPromotion = deferredPromotions.length ? clone(deferredPromotions[0]) : null;
+    }
+
     return out;
   }
 
@@ -88,19 +194,25 @@
     const src = payload && typeof payload === 'object' ? payload : {};
     const snapshot = normalizeSnapshot(src.snapshot || src);
     if (!snapshot) return null;
+    const hasTopLevelPromotion = Object.prototype.hasOwnProperty.call(src, 'deferredPromotions') ||
+      Object.prototype.hasOwnProperty.call(src, 'deferredPromotion');
+    const deferredPromotions = normalizeDeferredPromotions(hasTopLevelPromotion ? src : snapshot);
+    const deferredPromotion = deferredPromotions.length ? clone(deferredPromotions[0]) : null;
+    const synchronizedSnapshot = Object.assign({}, snapshot, {
+      deferredPromotions: deferredPromotions.map(clone),
+      deferredPromotion,
+    });
     return {
-      snapshot: snapshot,
-      deferredPromotion: src.deferredPromotion == null ? null : clone(src.deferredPromotion),
+      snapshot: synchronizedSnapshot,
+      deferredPromotions,
+      // Backward-compatible singular alias for older clients and stored games.
+      deferredPromotion,
       capturedOrder: Array.isArray(src.capturedOrder) ? src.capturedOrder.map(Number).filter(Number.isFinite) : [],
     };
   }
 
   function createStatePayload(input) {
-    return normalizeStatePayload({
-      snapshot: input && input.snapshot,
-      deferredPromotion: input && input.deferredPromotion,
-      capturedOrder: input && input.capturedOrder,
-    });
+    return normalizeStatePayload(input);
   }
 
   function normalizeSouflaRight(input) {
@@ -119,7 +231,7 @@
     const penalizer = normalizeSide(input.penalizer, null);
     const offenderSide = normalizeSide(input.offenderSide, null);
     return {
-      source: String(input.source || 'shared-state-v2').slice(0, 80),
+      source: String(input.source || 'shared-state-v4').slice(0, 80),
       reason: input.reason == null ? null : String(input.reason).slice(0, 120),
       penalizer,
       offenderSide,
@@ -215,7 +327,7 @@
   }
 
   root.DhametState = Object.freeze({
-    version: 'shared-state-v2',
+    version: 'shared-state-v4',
     BOARD_N,
     N_CELLS,
     TOP,
@@ -223,6 +335,9 @@
     clone,
     normalizeSide,
     normalizeIndex,
+    normalizeDeferredPromotions,
+    sanitizeDeferredPromotions,
+    activateDeferredPromotions,
     normalizeBoard,
     boardsEqual,
     normalizeSnapshot,

@@ -1,20 +1,22 @@
 ;(function(){
 
 // Build-level browser storage migration.
-// Normal browser windows may retain old PvC session data or cached JS between AI engine rebuilds,
-// while incognito starts clean.  Keep account/language/theme data, but clear volatile local game
-// state once per application build to avoid mixing old runtime snapshots with the new AI2 runtime.
+// Clear an incompatible pre-rebuild automatic PvC snapshot once, while preserving user settings,
+// manual saves, account data, language, theme, and compatible sessions from later engine builds.
 (function () {
-  var BUILD = "ai2-v4.6-plan-bank";
+  var BUILD = "computer-pvs-1.3.1";
   try {
     if (typeof window !== "undefined") window.DHAMET_APP_BUILD = BUILD;
     var key = "zamat.app.build.applied";
     var prev = null;
     try { prev = localStorage.getItem(key); } catch (_) { prev = null; }
     if (prev !== BUILD) {
-      try { sessionStorage.removeItem("zamat.session.game.pvc.v1"); } catch (_) {}
-      try { sessionStorage.removeItem("zamat.session.settings.v2"); } catch (_) {}
-      // Keep manual saves and user account records; they are not auto-restored at page load.
+      // A missing/legacy marker means the stored automatic game can contain the
+      // state from the removed computer engine. Sessions created by the clean PVS engine are schema-
+      // compatible across maintenance releases and must not be discarded.
+      if (!prev || String(prev).indexOf("computer-pvs-1.") !== 0) {
+        try { sessionStorage.removeItem("zamat.session.game.pvc.v1"); } catch (_) {}
+      }
       try { localStorage.setItem(key, BUILD); } catch (_) {}
     }
   } catch (_) {}
