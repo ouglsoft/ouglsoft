@@ -1,1842 +1,1216 @@
 /*
- * Dhamet AI2 engine layer.
+ * Dhamet computer engine — clean implementation.
  *
- * Full rebuild of the computer-player decision system.  The engine is built
- * around full-turn moves, strict shared rules, iterative deepening alpha-beta,
- * persistent transposition memory, a compact internal board, and a single time
- * budget.  It deliberately avoids the former action-level patched decision
- * pipeline.  General Dhamet rules remain in shared/dhamet-rules.js.
+ * The shared rules module is the only move generator and move applier.  This
+ * file contains computer-only concerns: graph-aware evaluation, iterative
+ * deepening PVS/alpha-beta, quiescence, move ordering, time management,
+ * transposition memory, level scaling, browser-worker orchestration, and
+ * execution of the chosen canonical move through the existing game runtime.
  */
 (function (root) {
   'use strict';
 
+  const R = root.DhametRules;
+  const Config = root.DhametAIConfig;
+  if (!R) throw new Error('DhametAIEngine requires DhametRules');
+  if (!Config) throw new Error('DhametAIEngine requires DhametAIConfig');
+
+  const TOP = R.TOP;
+  const BOT = R.BOT;
+  const MAN = R.MAN;
+  const KING = R.KING;
+  const CELLS = R.N_CELLS;
+  const WIN = 10000000;
+  const INF = 1000000000;
+  const MATE_WINDOW = 100000;
+  const ENGINE_VERSION = 'dhamet-computer-pvs-1.1.0';
+  const TIMEOUT = Object.freeze({ searchTimeout: true });
+  const MASK64 = (1n << 64n) - 1n;
+
+  function nowMs() {
+    try {
+      if (typeof performance !== 'undefined' && performance && typeof performance.now === 'function') return performance.now();
+    } catch (_) {}
+    return Date.now();
+  }
+
+  function cloneBoard(board) {
+    return R.cloneBoard(board);
+  }
+
+  function opponent(side) {
+    return side === TOP ? BOT : TOP;
+  }
+
+  function pieceIndex(value) {
+    switch (value | 0) {
+      case -2: return 0;
+      case -1: return 1;
+      case 1: return 2;
+      case 2: return 3;
+      default: return -1;
+    }
+  }
+
+  function splitMix64(seed) {
+    let z = (BigInt(seed) + 0x9e3779b97f4a7c15n) & MASK64;
+    z = ((z ^ (z >> 30n)) * 0xbf58476d1ce4e5b9n) & MASK64;
+    z = ((z ^ (z >> 27n)) * 0x94d049bb133111ebn) & MASK64;
+    return (z ^ (z >> 31n)) & MASK64;
+  }
+
+  const Z_PIECE = Array.from({ length: CELLS }, (_, cell) =>
+    Array.from({ length: 4 }, (_, kind) => splitMix64(1000 + cell * 8 + kind)),
+  );
+  const Z_SIDE = splitMix64(90001);
+  const Z_DEFERRED = Array.from({ length: CELLS }, (_, cell) => [splitMix64(100000 + cell * 2), splitMix64(100001 + cell * 2)]);
+  const Z_FORCED = Array.from({ length: 11 }, (_, ply) => splitMix64(200000 + ply));
+  const Z_STARTER = splitMix64(300001);
+
+  function lockRandom(seed) {
+    let x = (Number(seed) ^ 0x9e3779b9) >>> 0;
+    x ^= x << 13;
+    x ^= x >>> 17;
+    x ^= x << 5;
+    return x >>> 0;
+  }
+
+  const L_PIECE = Array.from({ length: CELLS }, (_, cell) =>
+    Array.from({ length: 4 }, (_, kind) => lockRandom(4000 + cell * 8 + kind)),
+  );
+  const L_SIDE = lockRandom(94001);
+  const L_DEFERRED = Array.from({ length: CELLS }, (_, cell) => [lockRandom(140000 + cell * 2), lockRandom(140001 + cell * 2)]);
+  const L_FORCED = Array.from({ length: 11 }, (_, ply) => lockRandom(240000 + ply));
+  const L_STARTER = lockRandom(340001);
+
+  const GRAPH = (() => {
+    const degree = new Int8Array(CELLS);
+    const centrality = new Int16Array(CELLS);
+    const rayReach = new Int16Array(CELLS);
+    const wide = new Int8Array(CELLS);
+    const row = new Int8Array(CELLS);
+    const col = new Int8Array(CELLS);
+    for (let i = 0; i < CELLS; i++) {
+      const rc = R.rc(i);
+      row[i] = rc[0];
+      col[i] = rc[1];
+      wide[i] = R.pointType(i) === 'wasaa' ? 1 : 0;
+      const dirs = R.dirsFrom(rc[0], rc[1]);
+      degree[i] = dirs.length;
+      centrality[i] = 16 - 2 * (Math.abs(rc[0] - 4) + Math.abs(rc[1] - 4)) + dirs.length;
+      let reach = 0;
+      for (const dir of dirs) {
+        let r = rc[0];
+        let c = rc[1];
+        while (R.canStepFrom(null, r, c, dir[0], dir[1])) {
+          r += dir[0];
+          c += dir[1];
+          if (!R.inside(r, c)) break;
+          reach++;
+        }
+      }
+      rayReach[i] = reach;
+    }
+    return Object.freeze({ degree, centrality, rayReach, wide, row, col });
+  })();
+
+  function normalizeDeferred(value) {
+    if (!value || typeof value !== 'object') return null;
+    const idx = Number(value.idx);
+    const side = Number(value.side);
+    if (!R.validIdx(idx) || (side !== TOP && side !== BOT)) return null;
+    return { idx, side };
+  }
+
+  function normalizeDeferredList(source) {
+    const raw = [];
+    if (source && Array.isArray(source.deferredPromotions)) raw.push(...source.deferredPromotions);
+    if (source && source.deferredPromotion) raw.push(source.deferredPromotion);
+    const out = [];
+    const seen = new Set();
+    for (const item of raw) {
+      const dp = normalizeDeferred(item);
+      if (!dp) continue;
+      const key = dp.side + ':' + dp.idx;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(dp);
+    }
+    return out;
+  }
+
+  function normalizePosition(input) {
+    const src = input && typeof input === 'object' ? input : {};
+    const board = R.compact.fromBoard(src.board);
+    if (!board) throw new Error('computer/invalid-board');
+    const side = Number(src.player != null ? src.player : src.side);
+    if (side !== TOP && side !== BOT) throw new Error('computer/invalid-side');
+    const pos = {
+      board,
+      side,
+      deferredPromotions: normalizeDeferredList(src),
+      forcedEnabled: !!src.forcedEnabled,
+      forcedPly: Math.max(0, Math.min(10, Number(src.forcedPly || 0) | 0)),
+      openingStarter: Number(src.openingStarter) === TOP ? TOP : Number(src.openingStarter) === BOT ? BOT : null,
+      moveCount: Math.max(0, Number(src.moveCount || 0) | 0),
+    };
+    return attachHashes(activateStartOfTurnPromotion(pos));
+  }
+
+  function activateStartOfTurnPromotion(pos) {
+    const pending = Array.isArray(pos.deferredPromotions) ? pos.deferredPromotions : [];
+    if (!pending.some((dp) => dp.side === pos.side)) return pos;
+    let board = R.compact.clone(pos.board);
+    const remaining = [];
+    for (const dp of pending) {
+      if (dp.side !== pos.side) {
+        remaining.push(dp);
+        continue;
+      }
+      const value = R.compact.cell(board, dp.idx);
+      if (value && R.owner(value) === dp.side && R.kind(value) === MAN && R.isBackRank(dp.idx, dp.side)) {
+        const promoted = R.compact.promoteAt(board, dp.idx);
+        if (promoted && promoted.ok) board = promoted.position;
+      }
+    }
+    return { ...pos, board, deferredPromotions: remaining };
+  }
+
+  function openingStarter(pos) {
+    if (pos.openingStarter === TOP || pos.openingStarter === BOT) return pos.openingStarter;
+    return R.openingStarterSide({ player: pos.side, forcedPly: pos.forcedPly });
+  }
+
+  function hashExtras(pos) {
+    let h = 0n;
+    if (pos.side === BOT) h ^= Z_SIDE;
+    for (const dp of Array.isArray(pos.deferredPromotions) ? pos.deferredPromotions : []) {
+      h ^= Z_DEFERRED[dp.idx][dp.side === TOP ? 0 : 1];
+    }
+    if (pos.forcedEnabled && pos.forcedPly < 10) {
+      h ^= Z_FORCED[pos.forcedPly];
+      if (openingStarter(pos) === BOT) h ^= Z_STARTER;
+    }
+    return h & MASK64;
+  }
+
+  function lockExtras(pos) {
+    let h = pos.side === BOT ? L_SIDE : 0;
+    for (const dp of Array.isArray(pos.deferredPromotions) ? pos.deferredPromotions : []) {
+      h ^= L_DEFERRED[dp.idx][dp.side === TOP ? 0 : 1];
+    }
+    if (pos.forcedEnabled && pos.forcedPly < 10) {
+      h ^= L_FORCED[pos.forcedPly];
+      if (openingStarter(pos) === BOT) h ^= L_STARTER;
+    }
+    return h >>> 0;
+  }
+
+  function computeHashes(pos) {
+    let hash = hashExtras(pos);
+    let lock = lockExtras(pos);
+    for (let i = 0; i < CELLS; i++) {
+      const pi = pieceIndex(pos.board[i] | 0);
+      if (pi < 0) continue;
+      hash ^= Z_PIECE[i][pi];
+      lock ^= L_PIECE[i][pi];
+    }
+    return { hash: hash & MASK64, lock: lock >>> 0 };
+  }
+
+  function attachHashes(pos) {
+    const keys = computeHashes(pos);
+    pos.hash = keys.hash;
+    pos.lock = keys.lock;
+    return pos;
+  }
+
+  function hashPosition(pos) {
+    if (pos && typeof pos.hash === 'bigint') return pos.hash;
+    return computeHashes(pos).hash;
+  }
+
+  function verificationKey(pos) {
+    if (pos && Number.isInteger(pos.lock)) return pos.lock >>> 0;
+    return computeHashes(pos).lock;
+  }
+
+
+  function moveKey(move) {
+    if (!move) return '';
+    return String(move.from | 0) + '>' + (move.path || []).map(Number).join('.') + '#' + (move.jumps || []).map(Number).join('.');
+  }
+
+  function sameMove(a, b) {
+    return !!a && !!b && Number(a.from) === Number(b.from) && R.samePath(a.path || [], b.path || []);
+  }
+
+  function canonicalMove(move, applied) {
+    return {
+      type: applied.captures > 0 ? R.MOVE_CAPTURE : R.MOVE_STEP,
+      from: applied.from,
+      to: applied.to,
+      path: applied.path.slice(),
+      jumps: applied.jumps.slice(),
+      captures: applied.captures,
+      promotes: !!applied.promotionPending,
+    };
+  }
+
+  function forcedOpeningMove(pos) {
+    if (!pos.forcedEnabled || pos.forcedPly >= 10) return null;
+    const expected = R.forcedOpeningExpected(openingStarter(pos), pos.forcedPly);
+    if (!expected || expected.mover !== pos.side) return null;
+    const applied = R.compact.applyMove(pos.board, { from: expected.from, path: expected.path }, pos.side);
+    return applied && applied.ok ? canonicalMove(expected, applied) : null;
+  }
+
+  function generateMoves(pos) {
+    const forced = forcedOpeningMove(pos);
+    if (pos.forcedEnabled && pos.forcedPly < 10) return forced ? [forced] : [];
+    const generated = R.compact.generateLegalMoves(pos.board, pos.side, {
+      policy: 'strict',
+      maxPathsPerPiece: Number.POSITIVE_INFINITY,
+    });
+    return generated.moves || [];
+  }
+
+  function applyMove(pos, move) {
+    const applied = R.compact.applyMove(pos.board, move, pos.side);
+    if (!applied || !applied.ok) throw new Error(applied && applied.error ? applied.error : 'computer/illegal-generated-move');
+    const forcedPly = pos.forcedEnabled && pos.forcedPly < 10 ? Math.min(10, pos.forcedPly + 1) : pos.forcedPly;
+    const pending = (Array.isArray(pos.deferredPromotions) ? pos.deferredPromotions : [])
+      .filter((dp) => dp.side !== pos.side)
+      .map((dp) => ({ ...dp }));
+    if (applied.promotionPending) pending.push({ ...applied.promotionPending });
+    const next = activateStartOfTurnPromotion({
+      board: applied.position,
+      side: opponent(pos.side),
+      deferredPromotions: pending,
+      forcedEnabled: pos.forcedEnabled,
+      forcedPly,
+      openingStarter: openingStarter(pos),
+      moveCount: pos.moveCount + 1,
+    });
+
+    let hash = hashPosition(pos) ^ hashExtras(pos) ^ hashExtras(next);
+    let lock = (verificationKey(pos) ^ lockExtras(pos) ^ lockExtras(next)) >>> 0;
+    const changed = new Set([Number(move.from)]);
+    for (const idx of move.path || []) changed.add(Number(idx));
+    for (const idx of applied.jumps || []) changed.add(Number(idx));
+    for (const dp of Array.isArray(pos.deferredPromotions) ? pos.deferredPromotions : []) changed.add(Number(dp.idx));
+    for (const dp of Array.isArray(next.deferredPromotions) ? next.deferredPromotions : []) changed.add(Number(dp.idx));
+    for (const idx of changed) {
+      if (!R.validIdx(idx)) continue;
+      const oldPiece = pieceIndex(pos.board[idx] | 0);
+      const newPiece = pieceIndex(next.board[idx] | 0);
+      if (oldPiece >= 0) {
+        hash ^= Z_PIECE[idx][oldPiece];
+        lock ^= L_PIECE[idx][oldPiece];
+      }
+      if (newPiece >= 0) {
+        hash ^= Z_PIECE[idx][newPiece];
+        lock ^= L_PIECE[idx][newPiece];
+      }
+    }
+    next.hash = hash & MASK64;
+    next.lock = lock >>> 0;
+    return next;
+  }
+
+  function countAndTerminal(pos) {
+    const counts = R.compact.countPieces(pos.board);
+    if (counts.top === 0) return { terminal: true, winner: BOT, draw: false };
+    if (counts.bot === 0) return { terminal: true, winner: TOP, draw: false };
+    if (counts.top === 1 && counts.bot === 1 && counts.topKings === 1 && counts.botKings === 1) {
+      return { terminal: true, winner: 0, draw: true };
+    }
+    return { terminal: false, counts };
+  }
+
+  function terminalScore(pos, ply, moves) {
+    const status = countAndTerminal(pos);
+    if (status.terminal) {
+      if (status.draw) return 0;
+      return status.winner === pos.side ? WIN - ply : -WIN + ply;
+    }
+    if (moves ? moves.length === 0 : !R.compact.hasAnyLegalMove(pos.board, pos.side)) return -WIN + ply;
+    return null;
+  }
+
+  function pieceValue(v, totalPieces) {
+    if (Math.abs(v) === KING) return totalPieces <= 10 ? 390 : totalPieces <= 24 ? 350 : 325;
+    return 100;
+  }
+
+  function evaluate(pos) {
+    const board = pos.board;
+    const counts = R.compact.countPieces(board);
+    const total = counts.total;
+    let absolute = 0;
+    let topMobility = 0;
+    let botMobility = 0;
+    let topCapturePressure = 0;
+    let botCapturePressure = 0;
+    const threatenedTop = new Set();
+    const threatenedBot = new Set();
+
+    for (let i = 0; i < CELLS; i++) {
+      const v = board[i] | 0;
+      if (!v) continue;
+      const side = R.owner(v);
+      const sign = side === TOP ? 1 : -1;
+      const kind = R.kind(v);
+      let score = pieceValue(v, total);
+      score += GRAPH.centrality[i] * (kind === KING ? 3 : 1);
+      score += GRAPH.wide[i] * (kind === KING ? 10 : 5);
+      score += GRAPH.degree[i] * (kind === KING ? 4 : 2);
+
+      if (kind === MAN) {
+        const progress = side === TOP ? GRAPH.row[i] : 8 - GRAPH.row[i];
+        score += progress * (total <= 20 ? 9 : 5);
+        if (progress >= 7) score += 24;
+        const steps = R.compact.stepDestinations(board, i).length;
+        if (side === TOP) topMobility += steps;
+        else botMobility += steps;
+        if (steps === 0) score -= 18;
+      } else {
+        const steps = R.compact.stepDestinations(board, i).length;
+        score += steps * 4;
+        score += GRAPH.rayReach[i];
+        if (side === TOP) topMobility += steps;
+        else botMobility += steps;
+      }
+
+      const rc = R.rc(i);
+      let support = 0;
+      for (const dir of R.dirsFrom(rc[0], rc[1])) {
+        const rr = rc[0] + dir[0];
+        const cc = rc[1] + dir[1];
+        if (!R.inside(rr, cc)) continue;
+        const near = board[R.idx(rr, cc)] | 0;
+        if (near && R.owner(near) === side) support++;
+      }
+      score += support * 5;
+      absolute += sign * score;
+
+      const caps = R.compact.captureOptions(board, i);
+      if (caps.length) {
+        if (side === TOP) topCapturePressure += caps.length;
+        else botCapturePressure += caps.length;
+        for (const cap of caps) {
+          if (side === TOP) threatenedBot.add(cap.jumped);
+          else threatenedTop.add(cap.jumped);
+        }
+      }
+    }
+
+    absolute += (topMobility - botMobility) * 4;
+    absolute += (topCapturePressure - botCapturePressure) * 12;
+    for (const i of threatenedTop) absolute -= Math.round(pieceValue(board[i] | 0, total) * 0.32);
+    for (const i of threatenedBot) absolute += Math.round(pieceValue(board[i] | 0, total) * 0.32);
+
+    for (const dp of Array.isArray(pos.deferredPromotions) ? pos.deferredPromotions : []) {
+      absolute += dp.side === TOP ? 52 : -52;
+    }
+    absolute += pos.side === TOP ? 8 : -8;
+    return pos.side === TOP ? Math.trunc(absolute) : -Math.trunc(absolute);
+  }
+
+  function moveCapturedValue(pos, move) {
+    let score = 0;
+    for (const jumped of move.jumps || []) {
+      const v = pos.board[jumped] | 0;
+      score += Math.abs(v) === KING ? 620 : 190;
+    }
+    return score;
+  }
+
+  function isQuiet(move) {
+    return !move || (!move.captures && !(move.jumps && move.jumps.length) && !move.promotes);
+  }
+
+  function historyKey(side, move) {
+    const to = move && move.path && move.path.length ? move.path[move.path.length - 1] : move && move.to;
+    return String(side) + ':' + String(move && move.from) + ':' + String(to);
+  }
+
+  function orderMoves(pos, moves, ctx, ply, ttMove) {
+    const killer = ctx.killers[ply] || [];
+    return moves
+      .map((move, index) => {
+        const key = moveKey(move);
+        let score = 0;
+        if (ttMove && sameMove(move, ttMove)) score += 100000000;
+        if (move.captures || (move.jumps && move.jumps.length)) {
+          score += 1000000 + (move.captures || move.jumps.length) * 5000 + moveCapturedValue(pos, move);
+          if (move.promotes) score += 800000;
+        } else {
+          if (move.promotes) score += 800000;
+          if (killer[0] === key) score += 500000;
+          else if (killer[1] === key) score += 350000;
+          score += ctx.history.get(historyKey(pos.side, move)) || 0;
+          const from = Number(move.from);
+          const to = Number(move.path && move.path[0]);
+          if (R.validIdx(from) && R.validIdx(to)) score += (GRAPH.centrality[to] - GRAPH.centrality[from]) * 8;
+        }
+        return { move, score, index };
+      })
+      .sort((a, b) => b.score - a.score || a.index - b.index)
+      .map((entry) => entry.move);
+  }
+
+  class TranspositionTable {
+    constructor() {
+      this.map = new Map();
+      this.maxEntries = 90000;
+      this.generation = 0;
+    }
+
+    configure(maxEntries) {
+      this.maxEntries = Math.max(8000, Number(maxEntries || 90000) | 0);
+      this.generation = (this.generation + 1) & 0xffff;
+      if (this.map.size > this.maxEntries) this.trimTo(Math.floor(this.maxEntries * 0.88));
+    }
+
+    trimTo(targetSize) {
+      let remove = Math.max(0, this.map.size - Math.max(1, targetSize | 0));
+      if (!remove) return;
+      // Map iteration follows insertion order. Updated/deeper entries are moved
+      // to the end in put(), so bounded FIFO trimming removes stale entries
+      // without the uninterruptible full-table sort used by the old engine.
+      for (const key of this.map.keys()) {
+        this.map.delete(key);
+        if (--remove <= 0) break;
+      }
+    }
+
+    get(hash, lock) {
+      const entry = this.map.get(hash) || null;
+      return entry && entry.lock === lock ? entry : null;
+    }
+
+    put(hash, entry) {
+      const old = this.map.get(hash);
+      if (!old || old.lock !== entry.lock || entry.depth >= old.depth || old.generation !== this.generation) {
+        if (old) this.map.delete(hash);
+        this.map.set(hash, { ...entry, generation: this.generation });
+      }
+      if (this.map.size > this.maxEntries) this.trimTo(Math.floor(this.maxEntries * 0.96));
+    }
+  }
+
+  const TT = new TranspositionTable();
+
+  function ttStoreScore(score, ply) {
+    if (score > WIN - MATE_WINDOW) return score + ply;
+    if (score < -WIN + MATE_WINDOW) return score - ply;
+    return score;
+  }
+
+  function ttLoadScore(score, ply) {
+    if (score > WIN - MATE_WINDOW) return score - ply;
+    if (score < -WIN + MATE_WINDOW) return score + ply;
+    return score;
+  }
+
+  function createContext(settings, startedAt) {
+    const start = Number.isFinite(startedAt) ? Number(startedAt) : nowMs();
+    const soft = Math.max(30, settings.thinkTimeMs | 0);
+    const hard = Math.max(soft, settings.hardTimeMs | 0);
+    TT.configure(settings.ttEntries);
+    return {
+      settings,
+      startedAt: start,
+      softDeadline: start + soft,
+      hardDeadline: start + hard,
+      nodes: 0,
+      maxNodes: Math.max(1000, settings.maxNodes | 0),
+      killers: Array.from({ length: 160 }, () => ['', '']),
+      history: new Map(),
+      moveCache: new Map(),
+      maxPly: 0,
+      abortChecks: 0,
+    };
+  }
+
+  function checkAbort(ctx) {
+    ctx.nodes++;
+    if (ctx.nodes >= ctx.maxNodes) throw TIMEOUT;
+    if ((ctx.nodes & 255) === 0 && nowMs() >= ctx.hardDeadline) throw TIMEOUT;
+  }
+
+  function cachedMoves(pos, ctx) {
+    const hash = hashPosition(pos);
+    const key = hash.toString(16) + ':' + verificationKey(pos).toString(16);
+    const cached = ctx.moveCache.get(key);
+    if (cached) return cached;
+    const moves = generateMoves(pos);
+    if (moves.length <= 256 && ctx.moveCache.size < 4096) ctx.moveCache.set(key, moves);
+    return moves;
+  }
+
+  function quiescence(pos, alpha, beta, ctx, ply) {
+    checkAbort(ctx);
+    ctx.maxPly = Math.max(ctx.maxPly, ply);
+    const basic = countAndTerminal(pos);
+    if (basic.terminal) {
+      if (basic.draw) return 0;
+      return basic.winner === pos.side ? WIN - ply : -WIN + ply;
+    }
+
+    const moves = cachedMoves(pos, ctx);
+    if (!moves.length) return -WIN + ply;
+    const tactical = moves[0] && (moves[0].captures > 0 || (moves[0].jumps && moves[0].jumps.length));
+    if (!tactical) return evaluate(pos);
+
+    // Captures are compulsory and every complete capture move removes at least
+    // one piece. The continuation is therefore finite and must be searched to
+    // a genuinely quiet position; no arbitrary depth cap may score a position
+    // that the rules do not allow a player to keep.
+
+    const ordered = orderMoves(pos, moves, ctx, ply, null);
+    let best = -INF;
+    for (const move of ordered) {
+      const child = applyMove(pos, move);
+      const score = -quiescence(child, -beta, -alpha, ctx, ply + 1);
+      if (score > best) best = score;
+      if (score > alpha) alpha = score;
+      if (alpha >= beta) break;
+    }
+    return best;
+  }
+
+  function search(pos, depth, alpha, beta, ctx, ply, extensions) {
+    checkAbort(ctx);
+    ctx.maxPly = Math.max(ctx.maxPly, ply);
+    const alphaOrig = alpha;
+    const hash = hashPosition(pos);
+    const lock = verificationKey(pos);
+    const entry = TT.get(hash, lock);
+    let ttMove = null;
+    if (entry) {
+      ttMove = entry.move;
+      if (entry.depth >= depth) {
+        const value = ttLoadScore(entry.score, ply);
+        if (entry.bound === 'exact') return value;
+        if (entry.bound === 'lower' && value >= beta) return value;
+        if (entry.bound === 'upper' && value <= alpha) return value;
+      }
+    }
+
+    const basic = countAndTerminal(pos);
+    if (basic.terminal) {
+      if (basic.draw) return 0;
+      return basic.winner === pos.side ? WIN - ply : -WIN + ply;
+    }
+    if (depth <= 0) return quiescence(pos, alpha, beta, ctx, ply);
+
+    let moves = cachedMoves(pos, ctx);
+    if (!moves.length) return -WIN + ply;
+    moves = orderMoves(pos, moves, ctx, ply, ttMove);
+
+    let bestScore = -INF;
+    let bestMove = null;
+    let searched = 0;
+
+    for (let i = 0; i < moves.length; i++) {
+      const move = moves[i];
+      const quiet = isQuiet(move);
+      const child = applyMove(pos, move);
+      let extension = 0;
+      if (extensions < 2) {
+        if (moves.length === 1 && depth >= 3) extension = 1;
+        else if (move.promotes && depth >= 2) extension = 1;
+      }
+      let nextDepth = depth - 1 + extension;
+      let reduction = 0;
+      if (quiet && extension === 0 && depth >= 4 && i >= 4) {
+        reduction = 1;
+        if (depth >= 7 && i >= 10) reduction = 2;
+        nextDepth = Math.max(0, nextDepth - reduction);
+      }
+
+      let score;
+      if (searched === 0) {
+        score = -search(child, nextDepth, -beta, -alpha, ctx, ply + 1, extensions + extension);
+      } else {
+        score = -search(child, nextDepth, -alpha - 1, -alpha, ctx, ply + 1, extensions + extension);
+        if (reduction && score > alpha) {
+          score = -search(child, depth - 1 + extension, -alpha - 1, -alpha, ctx, ply + 1, extensions + extension);
+        }
+        if (score > alpha && score < beta) {
+          score = -search(child, depth - 1 + extension, -beta, -alpha, ctx, ply + 1, extensions + extension);
+        }
+      }
+      searched++;
+
+      if (score > bestScore) {
+        bestScore = score;
+        bestMove = move;
+      }
+      if (score > alpha) alpha = score;
+      if (alpha >= beta) {
+        if (quiet) {
+          const key = moveKey(move);
+          const killers = ctx.killers[ply];
+          if (killers && killers[0] !== key) {
+            killers[1] = killers[0];
+            killers[0] = key;
+          }
+          const hKey = historyKey(pos.side, move);
+          const old = ctx.history.get(hKey) || 0;
+          ctx.history.set(hKey, Math.min(200000, old + depth * depth * 16));
+        }
+        break;
+      }
+    }
+
+    if (!bestMove) return evaluate(pos);
+    const bound = bestScore <= alphaOrig ? 'upper' : bestScore >= beta ? 'lower' : 'exact';
+    TT.put(hash, { lock, depth, score: ttStoreScore(bestScore, ply), bound, move: bestMove });
+    return bestScore;
+  }
+
+  function searchRoot(pos, depth, alpha, beta, ctx, preferredMove) {
+    let moves = cachedMoves(pos, ctx);
+    if (!moves.length) return { score: -WIN, move: null, scoredMoves: [] };
+    moves = orderMoves(pos, moves, ctx, 0, preferredMove);
+    const scoredMoves = [];
+    let bestScore = -INF;
+    let bestMove = null;
+    let localAlpha = alpha;
+
+    for (let i = 0; i < moves.length; i++) {
+      const move = moves[i];
+      const child = applyMove(pos, move);
+      let score;
+      if (i === 0) {
+        score = -search(child, depth - 1, -beta, -localAlpha, ctx, 1, 0);
+      } else {
+        score = -search(child, depth - 1, -localAlpha - 1, -localAlpha, ctx, 1, 0);
+        if (score > localAlpha && score < beta) score = -search(child, depth - 1, -beta, -localAlpha, ctx, 1, 0);
+      }
+      scoredMoves.push({ move, score });
+      if (score > bestScore) {
+        bestScore = score;
+        bestMove = move;
+      }
+      if (score > localAlpha) localAlpha = score;
+      if (localAlpha >= beta) break;
+    }
+    scoredMoves.sort((a, b) => b.score - a.score || moveKey(a.move).localeCompare(moveKey(b.move)));
+    return { score: bestScore, move: bestMove, scoredMoves };
+  }
+
+  function seededUnit(hash, salt) {
+    let x = (hash ^ splitMix64(salt || 1)) & MASK64;
+    x ^= x << 13n;
+    x ^= x >> 7n;
+    x ^= x << 17n;
+    return Number(x & 0xffffffffn) / 4294967296;
+  }
+
+  function chooseByLevel(scoredMoves, settings, hash, moveCount) {
+    if (!scoredMoves.length) return null;
+    const topN = Math.max(1, Math.min(settings.moveChoiceTopN | 0, scoredMoves.length));
+    const temperature = Number(settings.temperature || 0);
+    if (topN === 1 || temperature <= 0) return scoredMoves[0].move;
+    const candidates = scoredMoves.slice(0, topN);
+    const best = candidates[0].score;
+    const weights = candidates.map((entry) => Math.exp(Math.max(-12, Math.min(0, (entry.score - best) / temperature))));
+    const total = weights.reduce((a, b) => a + b, 0);
+    let target = seededUnit(hash, 7000 + (moveCount | 0)) * total;
+    for (let i = 0; i < candidates.length; i++) {
+      target -= weights[i];
+      if (target <= 0) return candidates[i].move;
+    }
+    return candidates[0].move;
+  }
+
+  function principalVariation(pos, firstMove, depth) {
+    const pv = [];
+    let cur = pos;
+    let move = firstMove;
+    for (let i = 0; move && i < depth; i++) {
+      pv.push({ from: move.from, path: (move.path || []).slice(), score: null });
+      try { cur = applyMove(cur, move); } catch (_) { break; }
+      const entry = TT.get(hashPosition(cur), verificationKey(cur));
+      move = entry && entry.move ? entry.move : null;
+      if (move) {
+        const legal = generateMoves(cur);
+        move = legal.find((candidate) => sameMove(candidate, move)) || null;
+      }
+    }
+    return pv;
+  }
+
+  function analyzePosition(input) {
+    const analysisStarted = nowMs();
+    const pos = normalizePosition(input);
+    const settings = Config.normalizeAdvancedSettings((input && input.settings && input.settings.advanced) || input.settings || {});
+    const rootMoves = generateMoves(pos);
+    const immediate = terminalScore(pos, 0, rootMoves);
+    if (immediate != null || !rootMoves.length) {
+      return {
+        move: null,
+        score: immediate == null ? -WIN : immediate,
+        depth: 0,
+        selectiveDepth: 0,
+        nodes: 0,
+        timeMs: Math.round(nowMs() - analysisStarted),
+        pv: [],
+        engine: ENGINE_VERSION,
+      };
+    }
+
+    // There is no decision to make when only one move is legal. Still return a
+    // meaningful score instead of the old constant zero, because callers such
+    // as soufla analysis compare resulting positions by score.
+    if (rootMoves.length === 1) {
+      const child = applyMove(pos, rootMoves[0]);
+      const childMoves = generateMoves(child);
+      const terminal = terminalScore(child, 1, childMoves);
+      const score = terminal == null ? -evaluate(child) : -terminal;
+      return {
+        move: rootMoves[0],
+        score,
+        depth: 1,
+        selectiveDepth: 1,
+        nodes: 1,
+        timeMs: Math.round(nowMs() - analysisStarted),
+        pv: [{ from: rootMoves[0].from, path: rootMoves[0].path.slice(), score: null }],
+        engine: ENGINE_VERSION,
+      };
+    }
+
+    const critical = rootMoves.some((m) => m.captures > 0) || rootMoves.length >= 10;
+    if (critical) {
+      settings.hardTimeMs = Math.min(45000, Math.max(settings.hardTimeMs, settings.thinkTimeMs + settings.timeBoostCriticalMs));
+    }
+    const ctx = createContext(settings, analysisStarted);
+    const maxDepth = Math.max(1, settings.minimaxDepth | 0);
+    const rootHash = hashPosition(pos);
+
+    // Build a bounded emergency ranking before iterative deepening. This is not
+    // a parallel move selector: it uses the same position/evaluation functions
+    // and exists only when the hard deadline interrupts depth one.
+    const baselineScores = [];
+    const baselineMoves = orderMoves(pos, rootMoves, ctx, 0, null);
+    const baselineDeadline = Math.min(
+      ctx.hardDeadline,
+      nowMs() + Math.max(8, Math.min(60, Math.floor(settings.thinkTimeMs * 0.12))),
+    );
+    for (let i = 0; i < baselineMoves.length; i++) {
+      if (i > 0 && nowMs() >= baselineDeadline) break;
+      const move = baselineMoves[i];
+      const child = applyMove(pos, move);
+      const childMoves = generateMoves(child);
+      const terminal = terminalScore(child, 1, childMoves);
+      baselineScores.push({ move, score: terminal == null ? -evaluate(child) : -terminal });
+    }
+    baselineScores.sort((a, b) => b.score - a.score || moveKey(a.move).localeCompare(moveKey(b.move)));
+    if (!baselineScores.length) baselineScores.push({ move: baselineMoves[0], score: 0 });
+
+    let completed = null;
+    let preferred = baselineScores[0].move;
+    let previousScore = baselineScores[0].score;
+    let stableBest = '';
+    let stableCount = 0;
+
+    for (let depth = 1; depth <= maxDepth; depth++) {
+      let alpha = -INF;
+      let beta = INF;
+      if (depth >= 3 && completed) {
+        const window = 65 + depth * 8;
+        alpha = previousScore - window;
+        beta = previousScore + window;
+      }
+      let result;
+      try {
+        result = searchRoot(pos, depth, alpha, beta, ctx, preferred);
+        if (result.score <= alpha || result.score >= beta) result = searchRoot(pos, depth, -INF, INF, ctx, preferred);
+      } catch (error) {
+        if (error !== TIMEOUT && !(error && error.searchTimeout)) throw error;
+        break;
+      }
+      completed = { ...result, depth };
+      preferred = result.move;
+      previousScore = result.score;
+      const key = moveKey(result.move);
+      if (key && key === stableBest) stableCount++;
+      else {
+        stableBest = key;
+        stableCount = 1;
+      }
+      if (Math.abs(result.score) >= WIN - MATE_WINDOW) break;
+      if (nowMs() >= ctx.softDeadline && stableCount >= 2 && depth >= 3) break;
+      if (nowMs() >= ctx.hardDeadline || ctx.nodes >= ctx.maxNodes) break;
+    }
+
+    if (!completed) {
+      const selected = chooseByLevel(baselineScores, settings, rootHash, pos.moveCount) || baselineScores[0].move;
+      const selectedScore = baselineScores.find((entry) => sameMove(entry.move, selected))?.score ?? baselineScores[0].score;
+      return {
+        move: selected,
+        score: selectedScore,
+        depth: 0,
+        selectiveDepth: ctx.maxPly,
+        nodes: ctx.nodes,
+        timeMs: Math.round(nowMs() - ctx.startedAt),
+        pv: [{ from: selected.from, path: selected.path.slice(), score: null }],
+        rootAlternatives: baselineScores.slice(0, Math.min(5, baselineScores.length)),
+        engine: ENGINE_VERSION,
+        interruptedBeforeFirstIteration: true,
+      };
+    }
+
+    const chosen = chooseByLevel(completed.scoredMoves, settings, rootHash, pos.moveCount) || completed.move;
+    return {
+      move: chosen,
+      score: completed.scoredMoves.find((entry) => sameMove(entry.move, chosen))?.score ?? completed.score,
+      depth: completed.depth,
+      selectiveDepth: ctx.maxPly,
+      nodes: ctx.nodes,
+      timeMs: Math.round(nowMs() - ctx.startedAt),
+      pv: principalVariation(pos, chosen, completed.depth),
+      rootAlternatives: completed.scoredMoves.slice(0, Math.min(5, completed.scoredMoves.length)).map((entry) => ({
+        move: entry.move,
+        score: entry.score,
+      })),
+      engine: ENGINE_VERSION,
+    };
+  }
+
+  function penaltyPosition(input, pending, option) {
+    const penalizer = Number(pending && pending.penalizer);
+    if (penalizer !== TOP && penalizer !== BOT) return null;
+    const source = normalizePosition({ ...(input || {}), player: penalizer });
+    if (option.kind === 'remove') {
+      const target = R.resolveOffenderCurrentCell(pending, option.offenderIdx);
+      if (!R.validIdx(Number(target))) return null;
+      const board = R.compact.clone(source.board);
+      if (!board[target]) return null;
+      board[target] = 0;
+      return attachHashes(activateStartOfTurnPromotion({ ...source, board, side: penalizer }));
+    }
+    if (option.kind === 'force') {
+      const forced = R.applySouflaForce(pending, option);
+      if (!forced || !forced.ok) return null;
+      // Force rewinds the violating turn. Deferred promotions created by the
+      // discarded move must therefore be discarded as well; only the queue at
+      // the original turn boundary and a promotion created by the forced path
+      // belong to the resulting position.
+      const turnStart = pending && pending.turnStartSnapshot && typeof pending.turnStartSnapshot === 'object'
+        ? pending.turnStartSnapshot
+        : {};
+      const pendingPromotions = normalizeDeferredList(turnStart).map((item) => ({ ...item }));
+      if (forced.applied && forced.applied.promotionPending) pendingPromotions.push({ ...forced.applied.promotionPending });
+      return attachHashes(activateStartOfTurnPromotion({
+        ...source,
+        board: R.compact.fromBoard(forced.board),
+        side: penalizer,
+        deferredPromotions: pendingPromotions,
+        moveCount: Math.max(0, Number(turnStart.moveCount != null ? turnStart.moveCount : source.moveCount) | 0) + 1,
+      }));
+    }
+    return null;
+  }
+
+  function analyzePenalty(input, pending) {
+    const analysisStarted = nowMs();
+    const options = pending && Array.isArray(pending.options) ? pending.options : [];
+    if (!options.length) return null;
+    const settings = Config.normalizeAdvancedSettings((input && input.settings && input.settings.advanced) || input.settings || {});
+    const candidates = [];
+    for (const option of options) {
+      try {
+        const pos = penaltyPosition(input, pending, option);
+        if (!pos) continue;
+        const terminal = terminalScore(pos, 0, null);
+        const staticScore = terminal == null ? evaluate(pos) : terminal;
+        candidates.push({ option, pos, staticScore });
+      } catch (_) {}
+    }
+    if (!candidates.length) return null;
+    candidates.sort((a, b) => b.staticScore - a.staticScore || JSON.stringify(a.option).localeCompare(JSON.stringify(b.option)));
+
+    if (candidates.length === 1) {
+      return {
+        ...candidates[0].option,
+        computerAnalysis: {
+          engine: ENGINE_VERSION,
+          score: Math.trunc(candidates[0].staticScore),
+          depth: 0,
+          nodes: 0,
+          timeMs: Math.round(nowMs() - analysisStarted),
+          optionsEvaluated: 1,
+        },
+      };
+    }
+
+    const totalSoft = Math.max(settings.thinkTimeMs, Math.min(settings.hardTimeMs, settings.thinkTimeMs + settings.timeBoostCriticalMs));
+    const penaltySettings = {
+      ...settings,
+      thinkTimeMs: totalSoft,
+      hardTimeMs: Math.max(totalSoft, settings.hardTimeMs),
+      moveChoiceTopN: 1,
+      temperature: 0,
+    };
+    const ctx = createContext(penaltySettings, analysisStarted);
+    const maxDepth = Math.max(1, penaltySettings.minimaxDepth | 0);
+    let ordered = candidates.slice();
+    let completed = null;
+    let stableKey = '';
+    let stableCount = 0;
+
+    // A penalty choice is a real root choice. Every option participates in each
+    // completed iteration; no option is discarded merely because the static
+    // evaluator ranked it outside an arbitrary top-N subset.
+    for (let depth = 1; depth <= maxDepth; depth++) {
+      const scored = [];
+      try {
+        for (const candidate of ordered) {
+          if (nowMs() >= ctx.hardDeadline || ctx.nodes >= ctx.maxNodes) throw TIMEOUT;
+          const score = search(candidate.pos, depth, -INF, INF, ctx, 0, 0);
+          scored.push({ candidate, score });
+        }
+      } catch (error) {
+        if (error !== TIMEOUT && !(error && error.searchTimeout)) throw error;
+        break;
+      }
+      scored.sort((a, b) => b.score - a.score || JSON.stringify(a.candidate.option).localeCompare(JSON.stringify(b.candidate.option)));
+      completed = { depth, scored };
+      ordered = scored.map((entry) => entry.candidate);
+      const bestKey = JSON.stringify(scored[0].candidate.option);
+      if (bestKey === stableKey) stableCount++;
+      else {
+        stableKey = bestKey;
+        stableCount = 1;
+      }
+      if (Math.abs(scored[0].score) >= WIN - MATE_WINDOW) break;
+      if (nowMs() >= ctx.softDeadline && stableCount >= 2 && depth >= 2) break;
+    }
+
+    const best = completed ? completed.scored[0].candidate : candidates[0];
+    const bestScore = completed ? completed.scored[0].score : best.staticScore;
+    return {
+      ...best.option,
+      computerAnalysis: {
+        engine: ENGINE_VERSION,
+        score: Math.trunc(bestScore),
+        depth: completed ? completed.depth : 0,
+        nodes: ctx.nodes | 0,
+        timeMs: Math.round(nowMs() - analysisStarted),
+        optionsEvaluated: candidates.length,
+      },
+    };
+  }
+
+  function validateCanonicalMove(board, side, state, candidate) {
+    const pos = normalizePosition({ ...state, board, player: side });
+    const legal = generateMoves(pos);
+    return legal.find((move) => sameMove(move, candidate)) || null;
+  }
+
   function create(deps) {
     deps = deps || {};
     const {
-      ACTION_ENDCHAIN,
-      BOARD_N,
-      BOT,
       DhametAIRuntime,
-      DhametRulesShared,
       Game,
-      KING,
-      MAN,
-      N_CELLS,
-      TOP,
       Turn,
       Visual,
       Worker,
       __IN_WORKER,
       aiSide,
-      applyMove,
+      applyMove: applyRuntimeMove,
       assetUrl,
       classifyCapture,
-      clearTimeout,
+      clearTimeout: clearTimer,
       consumeTurnClearForMove,
-      detectCriticalState,
-      encodeAction,
-      getForcedOpeningExpectedAction,
       maybeQueueDeferredPromotion,
       normalizeAILevel,
       saveSessionSettings,
-      scheduleComputerMoveIfNeeded,
-      setTimeout,
+      setTimeout: setTimer,
     } = deps;
 
-    if (!Game || !DhametRulesShared || !DhametAIRuntime) {
-      throw new Error('DhametAIEngine dependencies are incomplete');
-    }
+    if (!Game || !Turn || !DhametAIRuntime) throw new Error('DhametAIEngine browser dependencies are incomplete');
 
-    const R = DhametRulesShared;
-    const BOARD_SIZE = Number(BOARD_N || R.BOARD_N || 9) || 9;
-    const CELLS = Number(N_CELLS || R.N_CELLS || BOARD_SIZE * BOARD_SIZE) || 81;
-    const TOP_SIDE = Number(TOP || R.TOP || 1) || 1;
-    const BOT_SIDE = Number(BOT || R.BOT || -1) || -1;
-    const MAN_KIND = Number(MAN || R.MAN || 1) || 1;
-    const KING_KIND = Number(KING || R.KING || 2) || 2;
-    const ENDCHAIN = typeof ACTION_ENDCHAIN === 'number' ? ACTION_ENDCHAIN : CELLS * CELLS;
-
-    const MOVE_STEP = R.MOVE_STEP || 'step';
-    const MOVE_CAPTURE = R.MOVE_CAPTURE || 'capture';
-    const WIN_SCORE = 10000000;
-    const INF = 1000000000;
-    const MAX_CAPTURE_CHAIN_PLY = 64;
-    const MAX_CAPTURE_PATHS_PER_PIECE = 2048;
-    const MAX_ROOT_CAPTURE_PATHS = 8192;
-    const TT_MAX = 140000;
-    const PLAN_MARGIN = 35;
-    const PLAN_BANK_MAX = 3;
-    const PLAN_MAX_PLIES = 8;
-    const PLAN_TTL_MOVES = 8;
-    const ENGINE_VERSION = 'ai2-rebuild-v4.6-plan-bank';
-    const TIMEOUT = { timeout: true };
-
-    const LEVEL_DEFAULTS = Object.freeze({
-      beginner: Object.freeze({ depth: 2, qDepth: 4, timeMs: 300, criticalTimeMs: 500, topN: 3, noise: 70, mistakePct: 18, maxNodes: 25000 }),
-      easy: Object.freeze({ depth: 4, qDepth: 6, timeMs: 800, criticalTimeMs: 1200, topN: 2, noise: 30, mistakePct: 6, maxNodes: 60000 }),
-      medium: Object.freeze({ depth: 6, qDepth: 8, timeMs: 1800, criticalTimeMs: 3000, topN: 1, noise: 0, mistakePct: 0, maxNodes: 140000 }),
-      hard: Object.freeze({ depth: 8, qDepth: 11, timeMs: 4500, criticalTimeMs: 7000, topN: 1, noise: 0, mistakePct: 0, maxNodes: 320000 }),
-      strong: Object.freeze({ depth: 11, qDepth: 14, timeMs: 9000, criticalTimeMs: 14000, topN: 1, noise: 0, mistakePct: 0, maxNodes: 700000 }),
-      expert: Object.freeze({ depth: 14, qDepth: 18, timeMs: 15000, criticalTimeMs: 25000, topN: 1, noise: 0, mistakePct: 0, maxNodes: 1400000 }),
-    });
-
-    const SOUFLA_LEVEL_DEFAULTS = Object.freeze({
-      beginner: Object.freeze({ depth: 1, qDepth: 2, timeMs: 200, maxNodes: 8000, trapDepthBoost: 0, trapTimeMs: 300, trapMaxNodes: 12000, trapBonus: 140, forceHoldMargin: 120 }),
-      easy: Object.freeze({ depth: 2, qDepth: 4, timeMs: 600, maxNodes: 25000, trapDepthBoost: 1, trapTimeMs: 900, trapMaxNodes: 40000, trapBonus: 260, forceHoldMargin: 240 }),
-      medium: Object.freeze({ depth: 4, qDepth: 6, timeMs: 1500, maxNodes: 70000, trapDepthBoost: 1, trapTimeMs: 2400, trapMaxNodes: 110000, trapBonus: 460, forceHoldMargin: 420 }),
-      hard: Object.freeze({ depth: 6, qDepth: 8, timeMs: 4000, maxNodes: 180000, trapDepthBoost: 1, trapTimeMs: 6000, trapMaxNodes: 280000, trapBonus: 700, forceHoldMargin: 650 }),
-      strong: Object.freeze({ depth: 8, qDepth: 10, timeMs: 8000, maxNodes: 400000, trapDepthBoost: 2, trapTimeMs: 11000, trapMaxNodes: 620000, trapBonus: 980, forceHoldMargin: 900 }),
-      expert: Object.freeze({ depth: 10, qDepth: 12, timeMs: 15000, maxNodes: 800000, trapDepthBoost: 2, trapTimeMs: 20000, trapMaxNodes: 1200000, trapBonus: 1300, forceHoldMargin: 1200 }),
-    });
-
-    const DIRS = Object.freeze([
-      [-1, 0], [1, 0], [0, -1], [0, 1], [-1, 1], [1, -1], [-1, -1], [1, 1],
-    ]);
-
-    const NEXT = Array.from({ length: CELLS }, () => new Int16Array(DIRS.length).fill(-1));
-    const CELL_ROW = new Int8Array(CELLS);
-    const CELL_COL = new Int8Array(CELLS);
-    const CELL_WIDE = new Int8Array(CELLS);
-    const CELL_CENTER = new Int16Array(CELLS);
-    const CELL_PROMO_TOP = new Int8Array(CELLS);
-    const CELL_PROMO_BOT = new Int8Array(CELLS);
-
-    for (let idx = 0; idx < CELLS; idx++) {
-      const rc = R.rc(idx);
-      const r = rc[0] | 0;
-      const c = rc[1] | 0;
-      CELL_ROW[idx] = r;
-      CELL_COL[idx] = c;
-      CELL_WIDE[idx] = R.pointType(idx) === 'wasaa' ? 1 : 0;
-      const centerDist = Math.abs(r - 4) + Math.abs(c - 4);
-      CELL_CENTER[idx] = 8 - centerDist;
-      CELL_PROMO_TOP[idx] = Math.max(0, r);
-      CELL_PROMO_BOT[idx] = Math.max(0, 8 - r);
-      for (let d = 0; d < DIRS.length; d++) {
-        const dr = DIRS[d][0];
-        const dc = DIRS[d][1];
-        const rr = r + dr;
-        const cc = c + dc;
-        if (R.inside(rr, cc) && R.canStepFrom(null, r, c, dr, dc)) NEXT[idx][d] = R.idx(rr, cc);
-      }
-    }
-
-    function nowMs() {
+    function serializeState() {
+      let starter = null;
       try {
-        if (typeof performance !== 'undefined' && performance && typeof performance.now === 'function') return performance.now();
+        if (Game.forcedSeq === R.FORCED_OPENING_TOP) starter = TOP;
+        else if (Game.forcedSeq === R.FORCED_OPENING_BOT) starter = BOT;
       } catch (_) {}
-      return Date.now();
-    }
-
-    function sideOf(v) { return v > 0 ? TOP_SIDE : v < 0 ? BOT_SIDE : 0; }
-    function kindOf(v) { const a = Math.abs(v | 0); return a === KING_KIND ? KING_KIND : a === MAN_KIND ? MAN_KIND : 0; }
-    function piece(side, kind) { return (side === BOT_SIDE ? -1 : 1) * (kind === KING_KIND ? KING_KIND : MAN_KIND); }
-    function opponent(side) { return side === TOP_SIDE ? BOT_SIDE : TOP_SIDE; }
-    function forward(side) { return side === TOP_SIDE ? 1 : -1; }
-    function isBackRankIdx(idx, side) { return side === TOP_SIDE ? CELL_ROW[idx] === BOARD_SIZE - 1 : CELL_ROW[idx] === 0; }
-    function encode(from, to) { return typeof encodeAction === 'function' ? encodeAction(from, to) : ((from | 0) * CELLS + (to | 0)); }
-
-    function hashSeed(i) {
-      let x = (0x9e3779b9 ^ ((i + 1) * 0x85ebca6b)) >>> 0;
-      x ^= x >>> 16;
-      x = Math.imul(x, 0x7feb352d) >>> 0;
-      x ^= x >>> 15;
-      x = Math.imul(x, 0x846ca68b) >>> 0;
-      x ^= x >>> 16;
-      return x >>> 0;
-    }
-
-    const ZOBRIST = Array.from({ length: CELLS }, (_, idx) => ({
-      '-2': hashSeed(idx * 5 + 0),
-      '-1': hashSeed(idx * 5 + 1),
-      '1': hashSeed(idx * 5 + 2),
-      '2': hashSeed(idx * 5 + 3),
-    }));
-    const Z_SIDE_TOP = hashSeed(9991);
-    const Z_SIDE_BOT = hashSeed(9992);
-
-    function pieceHash(idx, v) {
-      const row = ZOBRIST[idx];
-      return row && row[String(v)] ? row[String(v)] : 0;
-    }
-
-    function boardToArray(board) {
-      const out = new Int8Array(CELLS);
-      if (Array.isArray(board)) {
-        for (let r = 0; r < BOARD_SIZE; r++) {
-          const row = board[r] || [];
-          for (let c = 0; c < BOARD_SIZE; c++) out[r * BOARD_SIZE + c] = Number(row[c] || 0) | 0;
-        }
-      }
-      return out;
-    }
-
-    function arrayToBoard(arr) {
-      const b = Array.from({ length: BOARD_SIZE }, () => Array(BOARD_SIZE).fill(0));
-      for (let i = 0; i < CELLS; i++) b[(i / BOARD_SIZE) | 0][i % BOARD_SIZE] = arr[i] | 0;
-      return b;
-    }
-
-    function cloneMove(m) {
-      if (!m) return null;
-      return {
-        type: m.type,
-        from: m.from | 0,
-        to: m.to | 0,
-        path: Array.isArray(m.path) ? m.path.slice() : [],
-        jumps: Array.isArray(m.jumps) ? m.jumps.slice() : [],
-        captures: m.captures | 0,
-        promotes: !!m.promotes,
-        capturedValue: Number(m.capturedValue || 0) || 0,
-        capturedKings: Number(m.capturedKings || 0) || 0,
-        ai2EducationalIgnoreCapture: !!m.ai2EducationalIgnoreCapture,
-        ai2IgnoreCapture: m.ai2IgnoreCapture ? Object.assign({}, m.ai2IgnoreCapture) : null,
-      };
-    }
-
-    function moveKey(m) {
-      if (!m) return '';
-      return String(m.from) + '>' + (m.path || []).join('.') + '#' + (m.jumps || []).join('.');
-    }
-
-    function movesEqual(a, b) { return !!a && !!b && moveKey(a) === moveKey(b); }
-
-    function boardArraySignature(arr, side) {
-      try {
-        let h = side === BOT_SIDE ? 'b|' : 't|';
-        for (let i = 0; i < CELLS; i++) {
-          const v = arr[i] | 0;
-          if (v) h += i + ':' + v + ';';
-        }
-        return h;
-      } catch (_) { return ''; }
-    }
-
-    function clonePlan(plan) {
-      if (!plan || typeof plan !== 'object') return null;
-      try {
-        return JSON.parse(JSON.stringify(plan));
-      } catch (_) { return null; }
-    }
-
-    function normalizePlanBank(src) {
-      const arr = Array.isArray(src) ? src : [];
-      const out = [];
-      for (let i = 0; i < arr.length && out.length < PLAN_BANK_MAX; i++) {
-        const p = clonePlan(arr[i]);
-        if (!p || p.kind !== 'plan-intent') continue;
-        if (p.side !== TOP_SIDE && p.side !== BOT_SIDE) continue;
-        if (!p.nextOwnKey || typeof p.nextOwnKey !== 'string') continue;
-        p.priority = Math.max(0, Math.min(300, Number(p.priority || 0) | 0));
-        out.push(p);
-      }
-      return out;
-    }
-
-    function getPlanBank() {
-      try {
-        if (Game && Array.isArray(Game.ai2PlanBank)) planBankMemory = normalizePlanBank(Game.ai2PlanBank);
-      } catch (_) {}
-      return planBankMemory || [];
-    }
-
-    function setPlanBank(bank) {
-      planBankMemory = normalizePlanBank(bank).slice(0, PLAN_BANK_MAX);
-      try { Game.ai2PlanBank = planBankMemory.map(clonePlan).filter(Boolean); } catch (_) {}
-      return planBankMemory;
-    }
-
-    function clearPlanBank() { return setPlanBank([]); }
-
-    function moveToAction(move) {
-      if (!move || !move.path || !move.path.length) return ENDCHAIN;
-      return encode(move.from, move.path[0]);
-    }
-
-    class EngineState {
-      constructor(board, side) {
-        this.board = boardToArray(board);
-        this.side = side === BOT_SIDE ? BOT_SIDE : TOP_SIDE;
-        this.ply = 0;
-        this.hash = this.computeHash();
-      }
-      computeHash() {
-        let h = this.side === TOP_SIDE ? Z_SIDE_TOP : Z_SIDE_BOT;
-        const b = this.board;
-        for (let i = 0; i < CELLS; i++) {
-          const v = b[i] | 0;
-          if (v) h = (h ^ pieceHash(i, v)) >>> 0;
-        }
-        return h >>> 0;
-      }
-      key() { return (this.hash >>> 0).toString(36) + '|' + this.side; }
-      set(idx, value, undo) {
-        idx |= 0;
-        value |= 0;
-        const old = this.board[idx] | 0;
-        if (old === value) return;
-        if (!undo.seen[idx]) {
-          undo.seen[idx] = 1;
-          undo.changes.push([idx, old]);
-        }
-        if (old) this.hash = (this.hash ^ pieceHash(idx, old)) >>> 0;
-        if (value) this.hash = (this.hash ^ pieceHash(idx, value)) >>> 0;
-        this.board[idx] = value;
-      }
-      makeMove(move) {
-        const undo = {
-          changes: [],
-          seen: new Uint8Array(CELLS),
-          side: this.side,
-          hash: this.hash,
-          ply: this.ply,
-        };
-        const from = move.from | 0;
-        const path = move.path || [];
-        const jumps = move.jumps || [];
-        let cur = from;
-        let v = this.board[from] | 0;
-        const startKind = kindOf(v);
-        const startSide = sideOf(v);
-        for (let i = 0; i < path.length; i++) {
-          const to = path[i] | 0;
-          this.set(cur, 0, undo);
-          if (jumps[i] != null) this.set(jumps[i] | 0, 0, undo);
-          this.set(to, v, undo);
-          cur = to;
-        }
-        if (v && startKind === MAN_KIND && isBackRankIdx(cur, startSide)) {
-          this.set(cur, piece(startSide, KING_KIND), undo);
-        }
-        this.hash = (this.hash ^ (this.side === TOP_SIDE ? Z_SIDE_TOP : Z_SIDE_BOT)) >>> 0;
-        this.side = opponent(this.side);
-        this.hash = (this.hash ^ (this.side === TOP_SIDE ? Z_SIDE_TOP : Z_SIDE_BOT)) >>> 0;
-        this.ply++;
-        return undo;
-      }
-      undoMove(undo) {
-        this.side = undo.side;
-        this.hash = undo.hash;
-        this.ply = undo.ply;
-        for (let i = undo.changes.length - 1; i >= 0; i--) {
-          const pair = undo.changes[i];
-          this.board[pair[0]] = pair[1];
-        }
-      }
-    }
-
-    const TT = new Map();
-    let ttAge = 0;
-    let souflaTrapMemory = null;
-    let planBankMemory = [];
-
-    function trimTT() {
-      if (TT.size <= TT_MAX) return;
-      const target = Math.floor(TT_MAX * 0.72);
-      for (const [k, v] of TT.entries()) {
-        if (TT.size <= target) break;
-        if (!v || v.age !== ttAge) TT.delete(k);
-      }
-      if (TT.size > TT_MAX) {
-        for (const k of TT.keys()) {
-          if (TT.size <= target) break;
-          TT.delete(k);
-        }
-      }
-    }
-
-    function levelName(settings) {
-      const src = settings && settings.advanced ? settings.advanced : {};
-      if (typeof normalizeAILevel === 'function') return normalizeAILevel(src.aiLevel || 'medium');
-      const v = String(src.aiLevel || 'medium');
-      return LEVEL_DEFAULTS[v] ? v : 'medium';
-    }
-
-    function runtimeSettings(settings, side, board) {
-      const level = levelName(settings);
-      const base = LEVEL_DEFAULTS[level] || LEVEL_DEFAULTS.medium;
-      const adv = settings && settings.advanced ? settings.advanced : {};
-      const nDepth = Number(adv.minimaxDepth);
-      const nTime = Number(adv.thinkTimeMs);
-      const maxDepth = Number.isFinite(nDepth) && nDepth > 0 ? Math.max(1, Math.min(20, Math.trunc(nDepth))) : base.depth;
-      let timeMs = Number.isFinite(nTime) && nTime > 0 ? Math.max(80, Math.min(30000, Math.trunc(nTime))) : base.timeMs;
-      const critical = isPositionCritical(board, side);
-      if (critical) timeMs = Math.max(timeMs, base.criticalTimeMs || Math.ceil(base.timeMs * 1.3));
-      timeMs = Math.min(30000, timeMs);
-      return {
-        level,
-        maxDepth,
-        qDepth: base.qDepth,
-        timeMs,
-        topN: base.topN,
-        noise: base.noise,
-        mistakePct: base.mistakePct,
-        maxNodes: Number(adv.maxNodes) > 0 ? Math.min(2000000, Number(adv.maxNodes) | 0) : base.maxNodes,
-      };
-    }
-
-    function souflaRuntimeSettings(settings) {
-      const level = levelName(settings);
-      const base = SOUFLA_LEVEL_DEFAULTS[level] || SOUFLA_LEVEL_DEFAULTS.medium;
-      const adv = settings && settings.advanced ? settings.advanced : {};
-      const explicitDepth = Number(adv.souflaDepth);
-      const explicitTime = Number(adv.souflaTimeMs);
-      return {
-        level,
-        depth: Number.isFinite(explicitDepth) && explicitDepth >= 0 ? Math.max(0, Math.min(14, Math.trunc(explicitDepth))) : base.depth,
-        qDepth: base.qDepth,
-        timeMs: Number.isFinite(explicitTime) && explicitTime > 0 ? Math.max(30, Math.min(25000, Math.trunc(explicitTime))) : base.timeMs,
-        maxNodes: base.maxNodes,
-        trapDepthBoost: base.trapDepthBoost || 0,
-        trapTimeMs: base.trapTimeMs || base.timeMs,
-        trapMaxNodes: base.trapMaxNodes || base.maxNodes,
-        trapBonus: base.trapBonus || 0,
-        forceHoldMargin: base.forceHoldMargin || 0,
-      };
-    }
-
-    function isPositionCritical(board, side) {
-      try {
-        const state = new EngineState(board, side);
-        const moves = generateTurnMoves(state, { capturesOnly: false, limit: 64 });
-        if (moves.some((m) => m.captures > 0 || m.promotes || m.capturedKings > 0)) return true;
-        const oppState = new EngineState(board, opponent(side));
-        const oppMoves = generateTurnMoves(oppState, { capturesOnly: false, limit: 64 });
-        return oppMoves.some((m) => m.captures > 1 || m.capturedKings > 0 || m.promotes);
-      } catch (_) {
-        try { return typeof detectCriticalState === 'function' && detectCriticalState(side); } catch (__) { return false; }
-      }
-    }
-
-    function stepMoves(state, side, out) {
-      const b = state.board;
-      const fwd = forward(side);
-      for (let from = 0; from < CELLS; from++) {
-        const v = b[from] | 0;
-        if (!v || sideOf(v) !== side) continue;
-        const k = kindOf(v);
-        if (k === MAN_KIND) {
-          for (let d = 0; d < DIRS.length; d++) {
-            if (DIRS[d][0] !== fwd || Math.abs(DIRS[d][1]) > 1) continue;
-            const to = NEXT[from][d];
-            if (to >= 0 && !b[to]) {
-              out.push({ type: MOVE_STEP, from, to, path: [to], jumps: [], captures: 0, promotes: isBackRankIdx(to, side), capturedValue: 0, capturedKings: 0 });
-            }
-          }
-        } else if (k === KING_KIND) {
-          for (let d = 0; d < DIRS.length; d++) {
-            let to = NEXT[from][d];
-            while (to >= 0 && !b[to]) {
-              out.push({ type: MOVE_STEP, from, to, path: [to], jumps: [], captures: 0, promotes: false, capturedValue: 0, capturedKings: 0 });
-              to = NEXT[to][d];
-            }
-          }
-        }
-      }
-    }
-
-    function captureOptionsFrom(state, from) {
-      const b = state.board;
-      const v = b[from] | 0;
-      if (!v) return [];
-      const side = sideOf(v);
-      const k = kindOf(v);
-      const out = [];
-      if (k === MAN_KIND) {
-        for (let d = 0; d < DIRS.length; d++) {
-          const mid = NEXT[from][d];
-          if (mid < 0) continue;
-          const land = NEXT[mid][d];
-          if (land < 0) continue;
-          const mv = b[mid] | 0;
-          if (mv && sideOf(mv) === opponent(side) && !b[land]) {
-            out.push({ from, to: land, jumped: mid, capturedValue: captureValue(mv), capturedKing: kindOf(mv) === KING_KIND ? 1 : 0 });
-          }
-        }
-        return out;
-      }
-
-      for (let d = 0; d < DIRS.length; d++) {
-        let pos = NEXT[from][d];
-        let jumped = -1;
-        let jumpedVal = 0;
-        while (pos >= 0) {
-          const cur = b[pos] | 0;
-          if (!cur) {
-            if (jumped >= 0) out.push({ from, to: pos, jumped, capturedValue: captureValue(jumpedVal), capturedKing: kindOf(jumpedVal) === KING_KIND ? 1 : 0 });
-            pos = NEXT[pos][d];
-            continue;
-          }
-          if (sideOf(cur) === side || jumped >= 0) break;
-          jumped = pos;
-          jumpedVal = cur;
-          pos = NEXT[pos][d];
-        }
-      }
-      return out;
-    }
-
-    function captureValue(v) { return kindOf(v) === KING_KIND ? 380 : 100; }
-
-    function buildChainsFrom(state, from, limitPerPiece) {
-      const out = [];
-      const startPiece = state.board[from] | 0;
-      if (!startPiece) return out;
-      const path = [];
-      const jumps = [];
-      let capValue = 0;
-      let capKings = 0;
-
-      function dfs(cur, depth) {
-        if (out.length >= limitPerPiece || depth >= MAX_CAPTURE_CHAIN_PLY) {
-          if (depth > 0) pushCurrent(cur);
-          return;
-        }
-        const opts = captureOptionsFrom(state, cur);
-        if (!opts.length) {
-          if (depth > 0) pushCurrent(cur);
-          return;
-        }
-        orderCaptureOptions(state, opts);
-        for (let i = 0; i < opts.length && out.length < limitPerPiece; i++) {
-          const opt = opts[i];
-          const undo = makeCaptureSegment(state, cur, opt.to, opt.jumped);
-          path.push(opt.to);
-          jumps.push(opt.jumped);
-          capValue += opt.capturedValue;
-          capKings += opt.capturedKing;
-          dfs(opt.to, depth + 1);
-          capKings -= opt.capturedKing;
-          capValue -= opt.capturedValue;
-          jumps.pop();
-          path.pop();
-          undoCaptureSegment(state, undo);
-        }
-      }
-
-      function pushCurrent(cur) {
-        const side = sideOf(startPiece);
-        out.push({
-          type: MOVE_CAPTURE,
-          from,
-          to: cur,
-          path: path.slice(),
-          jumps: jumps.slice(),
-          captures: jumps.length,
-          promotes: kindOf(startPiece) === MAN_KIND && isBackRankIdx(cur, side),
-          capturedValue: capValue,
-          capturedKings: capKings,
-        });
-      }
-
-      dfs(from, 0);
-      return out;
-    }
-
-    function makeCaptureSegment(state, from, to, jumped) {
-      const undo = { from, to, jumped, fromVal: state.board[from] | 0, toVal: state.board[to] | 0, jumpVal: state.board[jumped] | 0 };
-      state.board[from] = 0;
-      state.board[jumped] = 0;
-      state.board[to] = undo.fromVal;
-      return undo;
-    }
-
-    function undoCaptureSegment(state, undo) {
-      state.board[undo.from] = undo.fromVal;
-      state.board[undo.to] = undo.toVal;
-      state.board[undo.jumped] = undo.jumpVal;
-    }
-
-    function orderCaptureOptions(state, opts) {
-      opts.sort((a, b) => {
-        const av = a.capturedValue + a.capturedKing * 500 + (isBackRankIdx(a.to, sideOf(state.board[a.from] | 0)) ? 25 : 0);
-        const bv = b.capturedValue + b.capturedKing * 500 + (isBackRankIdx(b.to, sideOf(state.board[b.from] | 0)) ? 25 : 0);
-        return bv - av;
-      });
-    }
-
-    function generateTurnMoves(state, options) {
-      const opts = options || {};
-      const side = state.side;
-      const limit = Number(opts.limit || MAX_ROOT_CAPTURE_PATHS) || MAX_ROOT_CAPTURE_PATHS;
-      let best = 0;
-      const caps = [];
-      for (let from = 0; from < CELLS; from++) {
-        const v = state.board[from] | 0;
-        if (!v || sideOf(v) !== side) continue;
-        const chains = buildChainsFrom(state, from, MAX_CAPTURE_PATHS_PER_PIECE);
-        for (let i = 0; i < chains.length; i++) {
-          const m = chains[i];
-          if (m.captures > best) {
-            best = m.captures;
-            caps.length = 0;
-            caps.push(m);
-          } else if (m.captures === best && best > 0) {
-            caps.push(m);
-          }
-          if (caps.length >= limit && best > 0) break;
-        }
-        if (caps.length >= limit && best > 0) break;
-      }
-      if (best > 0) return caps.filter((m) => m.captures === best).slice(0, limit);
-      if (opts.capturesOnly) return [];
-      const out = [];
-      stepMoves(state, side, out);
-      return out;
-    }
-
-    function countState(state) {
-      let top = 0, bot = 0, topMen = 0, botMen = 0, topKings = 0, botKings = 0;
-      const b = state.board;
-      for (let i = 0; i < CELLS; i++) {
-        const v = b[i] | 0;
-        if (!v) continue;
-        if (v > 0) {
-          top++;
-          if (kindOf(v) === KING_KIND) topKings++; else topMen++;
-        } else {
-          bot++;
-          if (kindOf(v) === KING_KIND) botKings++; else botMen++;
-        }
-      }
-      return { top, bot, topMen, botMen, topKings, botKings, total: top + bot };
-    }
-
-    function terminalScore(state, ply) {
-      const c = countState(state);
-      if (c.top === 0) return state.side === TOP_SIDE ? -WIN_SCORE + ply : WIN_SCORE - ply;
-      if (c.bot === 0) return state.side === BOT_SIDE ? -WIN_SCORE + ply : WIN_SCORE - ply;
-      if (c.top === 1 && c.bot === 1 && c.topKings === 1 && c.botKings === 1) return 0;
-      return null;
-    }
-
-    function evaluate(state, side) {
-      const b = state.board;
-      const c = countState(state);
-      const phase = c.total > 48 ? 0 : c.total > 18 ? 1 : 2;
-      const kingVal = phase === 0 ? 320 : phase === 1 ? 380 : 460;
-      let score = 0;
-      for (let i = 0; i < CELLS; i++) {
-        const v = b[i] | 0;
-        if (!v) continue;
-        const s = sideOf(v);
-        const sign = s === side ? 1 : -1;
-        const k = kindOf(v);
-        if (k === MAN_KIND) {
-          const promo = s === TOP_SIDE ? CELL_PROMO_TOP[i] : CELL_PROMO_BOT[i];
-          const advancement = promo * (phase === 2 ? 12 : 7);
-          const backRankSafety = promo <= 1 ? 8 : 0;
-          score += sign * (100 + advancement + backRankSafety + CELL_CENTER[i] * 2 + CELL_WIDE[i] * 4);
-        } else if (k === KING_KIND) {
-          const ray = kingRayMobility(b, i);
-          score += sign * (kingVal + CELL_CENTER[i] * 4 + CELL_WIDE[i] * 8 + ray * (phase === 2 ? 8 : 5));
-        }
-      }
-
-      const myThreat = quickThreatScore(state, side);
-      const oppThreat = quickThreatScore(state, opponent(side));
-      score += myThreat * 12 - oppThreat * 14;
-
-      const myPromo = promotionPressure(state, side);
-      const oppPromo = promotionPressure(state, opponent(side));
-      score += myPromo - oppPromo;
-
-      const mob = quickMobility(state, side) - quickMobility(state, opponent(side));
-      score += mob * (phase === 0 ? 2 : 4);
-
-      return Math.trunc(score);
-    }
-
-    function kingRayMobility(board, from) {
-      let n = 0;
-      for (let d = 0; d < DIRS.length; d++) {
-        let p = NEXT[from][d];
-        while (p >= 0 && !board[p]) {
-          n++;
-          p = NEXT[p][d];
-        }
-      }
-      return n;
-    }
-
-    function quickMobility(state, side) {
-      const b = state.board;
-      let n = 0;
-      const fwd = forward(side);
-      for (let from = 0; from < CELLS; from++) {
-        const v = b[from] | 0;
-        if (!v || sideOf(v) !== side) continue;
-        if (kindOf(v) === MAN_KIND) {
-          for (let d = 0; d < DIRS.length; d++) {
-            if (DIRS[d][0] !== fwd) continue;
-            const to = NEXT[from][d];
-            if (to >= 0 && !b[to]) n++;
-          }
-        } else {
-          for (let d = 0; d < DIRS.length; d++) {
-            let to = NEXT[from][d];
-            let ray = 0;
-            while (to >= 0 && !b[to] && ray < 4) {
-              n++;
-              ray++;
-              to = NEXT[to][d];
-            }
-          }
-        }
-        n += captureOptionsFrom(state, from).length * 2;
-      }
-      return n;
-    }
-
-    function quickThreatScore(state, side) {
-      let score = 0;
-      const b = state.board;
-      for (let from = 0; from < CELLS; from++) {
-        const v = b[from] | 0;
-        if (!v || sideOf(v) !== side) continue;
-        const opts = captureOptionsFrom(state, from);
-        for (let i = 0; i < opts.length; i++) {
-          const jv = b[opts[i].jumped] | 0;
-          score += kindOf(jv) === KING_KIND ? 45 : 10;
-        }
-      }
-      return score;
-    }
-
-    function promotionPressure(state, side) {
-      const b = state.board;
-      let score = 0;
-      for (let i = 0; i < CELLS; i++) {
-        const v = b[i] | 0;
-        if (!v || sideOf(v) !== side || kindOf(v) !== MAN_KIND) continue;
-        const dist = side === TOP_SIDE ? (8 - CELL_ROW[i]) : CELL_ROW[i];
-        if (dist <= 3) {
-          score += (4 - dist) * 35;
-          if (isPromotionLaneOpen(state, i, side)) score += (4 - dist) * 18;
-        }
-      }
-      return score;
-    }
-
-    function isPromotionLaneOpen(state, from, side) {
-      const b = state.board;
-      const fwd = forward(side);
-      for (let d = 0; d < DIRS.length; d++) {
-        if (DIRS[d][0] !== fwd) continue;
-        const to = NEXT[from][d];
-        if (to >= 0 && !b[to]) return true;
-      }
-      return false;
-    }
-
-
-
-    function legalMoveByKey(moves) {
-      const map = new Map();
-      for (let i = 0; i < (moves || []).length; i++) map.set(moveKey(moves[i]), moves[i]);
-      return map;
-    }
-
-    function activePlanContinuations(state, rootMoves) {
-      const bank = getPlanBank();
-      if (!bank.length || !rootMoves || !rootMoves.length) return new Map();
-      const nowMove = Game && typeof Game.moveCount === 'number' ? (Game.moveCount | 0) : 0;
-      const legal = legalMoveByKey(rootMoves);
-      const active = new Map();
-      const keep = [];
-      for (let i = 0; i < bank.length; i++) {
-        const plan = bank[i];
-        if (!plan || plan.side !== state.side) continue;
-        if (plan.expiresAtMoveCount != null && nowMove > (plan.expiresAtMoveCount | 0)) continue;
-        const m = legal.get(plan.nextOwnKey);
-        if (!m) continue;
-        const from = m.from | 0;
-        const v = state.board[from] | 0;
-        if (!v || sideOf(v) !== state.side) continue;
-        const age = Math.max(0, nowMove - (plan.createdAtMoveCount | 0));
-        const decay = Math.max(0, age * 12);
-        const boost = Math.max(15, Math.min(120, (plan.priority | 0) - decay));
-        if (boost <= 0) continue;
-        const entry = { plan, move: m, boost, key: plan.nextOwnKey };
-        const old = active.get(plan.nextOwnKey);
-        if (!old || old.boost < boost) active.set(plan.nextOwnKey, entry);
-        keep.push(plan);
-      }
-      setPlanBank(keep);
-      return active;
-    }
-
-    function planOrderingBoost(ctx, move) {
-      try {
-        if (!ctx || !ctx.planMatches || !move) return 0;
-        const ent = ctx.planMatches.get(moveKey(move));
-        return ent ? Math.max(0, ent.boost | 0) : 0;
-      } catch (_) { return 0; }
-    }
-
-    function materialScoreForSide(state, side) {
-      let s = 0;
-      const b = state.board;
-      for (let i = 0; i < CELLS; i++) {
-        const v = b[i] | 0;
-        if (!v) continue;
-        const val = kindOf(v) === KING_KIND ? 360 : 100;
-        s += sideOf(v) === side ? val : -val;
-      }
-      return s;
-    }
-
-    function extractPVLine(state, firstMove, maxPlies) {
-      const line = [];
-      const undos = [];
-      try {
-        let m = cloneMove(firstMove);
-        for (let ply = 0; m && ply < maxPlies; ply++) {
-          const legal = generateTurnMoves(state, { capturesOnly: false, limit: 2048 });
-          let real = null;
-          const wanted = moveKey(m);
-          for (let i = 0; i < legal.length; i++) {
-            if (moveKey(legal[i]) === wanted) { real = legal[i]; break; }
-          }
-          if (!real) break;
-          line.push(cloneMove(real));
-          undos.push(state.makeMove(real));
-          const ent = TT.get(state.key());
-          m = ent && ent.move ? cloneMove(ent.move) : null;
-        }
-      } catch (_) {
-      } finally {
-        for (let i = undos.length - 1; i >= 0; i--) state.undoMove(undos[i]);
-      }
-      return line;
-    }
-
-    function classifyPlanGoal(state, line, score, depth, side) {
-      if (!line || line.length < 3) return null;
-      const startMaterial = materialScoreForSide(state, side);
-      const undos = [];
-      let promotes = false;
-      let ourCaptures = 0;
-      let oppCaptures = 0;
-      let ourKingCapture = false;
-      try {
-        for (let i = 0; i < line.length; i++) {
-          const sideBefore = state.side;
-          const m = line[i];
-          if (sideBefore === side) {
-            if (m.promotes) promotes = true;
-            ourCaptures += m.captures | 0;
-            if ((m.capturedKings | 0) > 0) ourKingCapture = true;
-          } else {
-            oppCaptures += m.captures | 0;
-          }
-          undos.push(state.makeMove(m));
-        }
-        const endMaterial = materialScoreForSide(state, side);
-        const materialGain = endMaterial - startMaterial;
-        let goal = null;
-        let base = 0;
-        if (Math.abs(score) > WIN_SCORE - 5000) { goal = score > 0 ? 'forced-win' : 'avoid-loss'; base = 220; }
-        else if (promotes) { goal = 'promotion'; base = 135; }
-        else if (materialGain >= 180 || ourKingCapture) { goal = 'material-gain'; base = 125; }
-        else if (materialGain >= 80 || ourCaptures > oppCaptures) { goal = 'tactical-gain'; base = 85; }
-        else if (score >= 120) { goal = 'positional-pressure'; base = 65; }
-        if (!goal) return null;
-        const forcing = Math.max(0, Math.min(45, ourCaptures * 12 + (line[1] && (line[1].captures | 0) ? 10 : 0)));
-        const closeness = Math.max(0, 35 - Math.max(0, line.length - 3) * 6);
-        const depthBonus = Math.max(0, Math.min(25, (depth | 0) * 3));
-        const priority = Math.max(35, Math.min(240, base + forcing + closeness + depthBonus));
-        return { goal, priority, materialGain, promotes, ourCaptures, oppCaptures };
-      } catch (_) {
-        return null;
-      } finally {
-        for (let i = undos.length - 1; i >= 0; i--) state.undoMove(undos[i]);
-      }
-    }
-
-    function buildPlanFromLine(state, chosenMove, score, depth) {
-      try {
-        const line = extractPVLine(state, chosenMove, PLAN_MAX_PLIES);
-        if (!line || line.length < 3) return null;
-        const side = state.side;
-        const goal = classifyPlanGoal(state, line, score, depth, side);
-        if (!goal || goal.priority < 45) return null;
-        const nextOwnMove = line[2];
-        if (!nextOwnMove) return null;
-        const nowMove = Game && typeof Game.moveCount === 'number' ? (Game.moveCount | 0) : 0;
-        return {
-          engine: ENGINE_VERSION,
-          kind: 'plan-intent',
-          id: 'p' + nowMove + '-' + Math.abs((state.hash || 0) | 0).toString(36) + '-' + Math.random().toString(36).slice(2, 6),
-          side,
-          createdAtMoveCount: nowMove,
-          expiresAtMoveCount: nowMove + PLAN_TTL_MOVES,
-          score: Math.trunc(score || 0),
-          depth: depth | 0,
-          goal: goal.goal,
-          priority: goal.priority | 0,
-          materialGain: goal.materialGain | 0,
-          rootMoveKey: moveKey(line[0]),
-          expectedOpponentKey: line[1] ? moveKey(line[1]) : '',
-          nextOwnKey: moveKey(nextOwnMove),
-          line: line.map(cloneMove),
-          lineKeys: line.map(moveKey),
-          startSig: boardArraySignature(state.board, side),
-        };
-      } catch (_) { return null; }
-    }
-
-    function applyPlanPreference(state, rootScores, currentBest, currentScore, ctx) {
-      if (!rootScores || !rootScores.length || !ctx || !ctx.planMatches || !ctx.planMatches.size) {
-        return { move: currentBest, score: currentScore, plan: null };
-      }
-      const bestRaw = Math.max.apply(null, rootScores.map((x) => x.score));
-      let chosen = currentBest;
-      let chosenScore = currentScore;
-      let chosenPlan = null;
-      for (let i = 0; i < rootScores.length; i++) {
-        const ent = rootScores[i];
-        const key = moveKey(ent.move);
-        const match = ctx.planMatches.get(key);
-        if (!match) continue;
-        const rawGap = bestRaw - ent.score;
-        const allowedGap = Math.max(PLAN_MARGIN, Math.min(140, 55 + match.boost));
-        if (rawGap > allowedGap) continue;
-        const adjusted = ent.score + Math.min(120, match.boost);
-        const currentAdjusted = chosenScore + (chosenPlan ? Math.min(120, chosenPlan.boost) : 0);
-        if (!chosenPlan || adjusted > currentAdjusted || (adjusted === currentAdjusted && rawGap < (bestRaw - chosenScore))) {
-          chosen = cloneMove(ent.move);
-          chosenScore = ent.score;
-          chosenPlan = match;
-        }
-      }
-      return { move: chosen, score: chosenScore, plan: chosenPlan };
-    }
-
-    function updatePlanBankAfterSearch(state, chosenMove, score, depth, continuedPlan) {
-      try {
-        const newPlan = buildPlanFromLine(state, chosenMove, score, depth);
-        const out = [];
-        if (newPlan) out.push(newPlan);
-        // Keep still-valid plans only when they are not tied to a broken immediate continuation.
-        const old = getPlanBank();
-        for (let i = 0; i < old.length && out.length < PLAN_BANK_MAX; i++) {
-          const p = clonePlan(old[i]);
-          if (!p) continue;
-          if (continuedPlan && p.id === continuedPlan.plan.id) continue;
-          // Old plans that did not guide the selected move are usually stale after our move.
-          // Keep only high-priority defensive or forced plans briefly if their next move was not contradicted.
-          if ((p.priority | 0) >= 150 && p.goal && p.expiresAtMoveCount != null) out.push(p);
-        }
-        out.sort((a, b) => (b.priority | 0) - (a.priority | 0));
-        setPlanBank(out.slice(0, PLAN_BANK_MAX));
-        return getPlanBank();
-      } catch (_) { return getPlanBank(); }
-    }
-    function shouldStop(ctx) {
-      if ((ctx.nodes & 1023) === 0) {
-        if (ctx.deadline != null && nowMs() >= ctx.deadline) return true;
-        if (ctx.maxNodes && ctx.nodes >= ctx.maxNodes) return true;
-      }
-      return false;
-    }
-
-    function quiesce(state, alpha, beta, qDepth, ctx, ply) {
-      if (shouldStop(ctx)) throw TIMEOUT;
-      ctx.nodes++;
-      const term = terminalScore(state, ply);
-      if (term != null) return term;
-      const moves = generateTurnMoves(state, { capturesOnly: true, limit: 1024 });
-      if (!moves.length || qDepth <= 0) return evaluate(state, state.side);
-      orderMoves(state, moves, null, ctx, ply);
-      let best = -INF;
-      for (let i = 0; i < moves.length; i++) {
-        const undo = state.makeMove(moves[i]);
-        const score = -quiesce(state, -beta, -alpha, qDepth - 1, ctx, ply + 1);
-        state.undoMove(undo);
-        if (score > best) best = score;
-        if (score > alpha) alpha = score;
-        if (alpha >= beta) break;
-      }
-      return best;
-    }
-
-    function negamax(state, depth, alpha, beta, ctx, ply) {
-      if (shouldStop(ctx)) throw TIMEOUT;
-      ctx.nodes++;
-      const term = terminalScore(state, ply);
-      if (term != null) return term;
-      const key = state.key();
-      const oldAlpha = alpha;
-      const table = ctx && ctx.tt ? ctx.tt : TT;
-      const ent = table.get(key);
-      let ttMove = null;
-      if (ent && ent.depth >= depth) {
-        ttMove = ent.move;
-        if (ent.flag === 'exact') return ent.score;
-        if (ent.flag === 'lower') alpha = Math.max(alpha, ent.score);
-        else if (ent.flag === 'upper') beta = Math.min(beta, ent.score);
-        if (alpha >= beta) return ent.score;
-      } else if (ent) {
-        ttMove = ent.move;
-      }
-      if (depth <= 0) return quiesce(state, alpha, beta, ctx.qDepth, ctx, ply);
-      const moves = generateTurnMoves(state, { capturesOnly: false, limit: 2048 });
-      if (!moves.length) return -WIN_SCORE + ply;
-      orderMoves(state, moves, ttMove, ctx, ply);
-      let bestScore = -INF;
-      let bestMove = null;
-      for (let i = 0; i < moves.length; i++) {
-        const m = moves[i];
-        const undo = state.makeMove(m);
-        const score = -negamax(state, depth - 1, -beta, -alpha, ctx, ply + 1);
-        state.undoMove(undo);
-        if (score > bestScore) {
-          bestScore = score;
-          bestMove = m;
-        }
-        if (score > alpha) alpha = score;
-        if (alpha >= beta) break;
-      }
-      const flag = bestScore <= oldAlpha ? 'upper' : bestScore >= beta ? 'lower' : 'exact';
-      table.set(key, { depth, score: bestScore, flag, move: cloneMove(bestMove), age: ttAge });
-      return bestScore;
-    }
-
-    function orderMoves(state, moves, ttMove, ctx, ply) {
-      for (let i = 0; i < moves.length; i++) moves[i]._ord = moveOrderScore(state, moves[i], ttMove, ctx, ply);
-      moves.sort((a, b) => b._ord - a._ord);
-    }
-
-    function moveOrderScore(state, m, ttMove, ctx, ply) {
-      let s = 0;
-      if (ttMove && movesEqual(m, ttMove)) s += 100000000;
-      if (m.captures > 0) s += 1000000 + m.captures * 50000 + m.capturedValue * 80 + m.capturedKings * 300000;
-      if (m.promotes) s += 600000;
-      const moving = state.board[m.from] | 0;
-      if (kindOf(moving) === KING_KIND) s += 2000 + kingRayMobility(state.board, m.to) * 25;
-      s += CELL_CENTER[m.to] * 35 + CELL_WIDE[m.to] * 30;
-      if (ply === 0) s += planOrderingBoost(ctx, m) * 5000;
-      if (ctx && ctx.history) s += ctx.history.get(moveKey(m)) || 0;
-      if (ply <= 1 && moveLeavesMajorThreat(state, m)) s -= 120000;
-      return s;
-    }
-
-    function moveLeavesMajorThreat(state, move) {
-      const undo = state.makeMove(move);
-      const oppMoves = generateTurnMoves(state, { capturesOnly: false, limit: 256 });
-      let bad = false;
-      for (let i = 0; i < oppMoves.length; i++) {
-        if (oppMoves[i].capturedKings > 0 || oppMoves[i].captures >= 3) { bad = true; break; }
-      }
-      state.undoMove(undo);
-      return bad;
-    }
-
-    function searchRoot(state, settings) {
-      ttAge = (ttAge + 1) & 0xffff;
-      const started = nowMs();
-      const deadline = settings.timeMs > 0 ? started + settings.timeMs : null;
-      const ctx = { nodes: 0, deadline, maxNodes: settings.maxNodes, qDepth: settings.qDepth, history: new Map(), rootSide: state.side, planMatches: null };
-      const rootMoves = generateTurnMoves(state, { capturesOnly: false, limit: MAX_ROOT_CAPTURE_PATHS });
-      ctx.planMatches = activePlanContinuations(state, rootMoves);
-      if (!rootMoves.length) return { move: null, score: -WIN_SCORE, depth: 0, nodes: 0, timeMs: nowMs() - started, pv: [] };
-      if (rootMoves.length === 1) {
-        const undo = state.makeMove(rootMoves[0]);
-        const score = -quiesce(state, -INF, INF, Math.min(4, settings.qDepth), ctx, 1);
-        state.undoMove(undo);
-        return { move: cloneMove(rootMoves[0]), score, depth: 1, nodes: ctx.nodes, timeMs: nowMs() - started, pv: [cloneMove(rootMoves[0])] };
-      }
-
-      let completedDepth = 0;
-      let bestMove = cloneMove(rootMoves[0]);
-      let bestScore = -INF;
-      let rootScores = [];
-      let ttMove = null;
-      const rootEnt = TT.get(state.key());
-      if (rootEnt && rootEnt.move) ttMove = rootEnt.move;
-
-      try {
-        for (let depth = 1; depth <= settings.maxDepth; depth++) {
-          if (deadline != null && nowMs() >= deadline) break;
-          const moves = rootMoves.map(cloneMove);
-          orderMoves(state, moves, ttMove || bestMove, ctx, 0);
-          let alpha = -INF;
-          let localBest = null;
-          let localBestScore = -INF;
-          const scores = [];
-          for (let i = 0; i < moves.length; i++) {
-            if (shouldStop(ctx)) throw TIMEOUT;
-            const m = moves[i];
-            const undo = state.makeMove(m);
-            const score = -negamax(state, depth - 1, -INF, -alpha, ctx, 1);
-            state.undoMove(undo);
-            scores.push({ move: cloneMove(m), score });
-            if (score > localBestScore || (score === localBestScore && preferMove(m, localBest))) {
-              localBestScore = score;
-              localBest = cloneMove(m);
-            }
-            if (score > alpha) alpha = score;
-          }
-          completedDepth = depth;
-          bestMove = cloneMove(localBest);
-          bestScore = localBestScore;
-          rootScores = scores;
-          ttMove = bestMove;
-          TT.set(state.key(), { depth, score: bestScore, flag: 'exact', move: cloneMove(bestMove), age: ttAge });
-          if (Math.abs(bestScore) > WIN_SCORE - 1000) break;
-        }
-      } catch (e) {
-        if (!(e && e.timeout)) throw e;
-      }
-
-      trimTT();
-      if (!bestMove) bestMove = cloneMove(rootMoves[0]);
-      if (completedDepth === 0) {
-        orderMoves(state, rootMoves, ttMove, ctx, 0);
-        bestMove = cloneMove(rootMoves[0]);
-        bestScore = evaluateAfterMove(state, bestMove);
-        rootScores = rootMoves.slice(0, 8).map((m) => ({ move: cloneMove(m), score: evaluateAfterMove(state, m) }));
-      }
-
-      const planChoice = applyPlanPreference(state, rootScores, bestMove, bestScore, ctx);
-      bestMove = planChoice.move;
-      bestScore = planChoice.score;
-      bestMove = chooseByLevel(bestMove, rootScores, settings);
-      const line = bestMove ? extractPVLine(state, bestMove, PLAN_MAX_PLIES) : [];
-      return {
-        move: cloneMove(bestMove),
-        score: bestScore,
-        depth: completedDepth,
-        nodes: ctx.nodes,
-        timeMs: nowMs() - started,
-        pv: line && line.length ? line.map(cloneMove) : (bestMove ? [cloneMove(bestMove)] : []),
-        continuedPlan: planChoice.plan ? clonePlan(planChoice.plan) : null,
-        rootScores: rootScores.slice(0, 8).map((x) => ({ move: cloneMove(x.move), score: x.score })),
-      };
-    }
-
-    function evaluateAfterMove(state, move) {
-      const undo = state.makeMove(move);
-      const score = -evaluate(state, state.side);
-      state.undoMove(undo);
-      return score;
-    }
-
-    function preferMove(a, b) {
-      if (!b) return true;
-      if ((a.captures | 0) !== (b.captures | 0)) return (a.captures | 0) > (b.captures | 0);
-      if (!!a.promotes !== !!b.promotes) return !!a.promotes;
-      return moveKey(a) < moveKey(b);
-    }
-
-    function chooseByLevel(best, rootScores, settings) {
-      if (!best || !rootScores || !rootScores.length) return best;
-      if (settings.topN <= 1 && settings.noise <= 0 && settings.mistakePct <= 0) return best;
-      const sorted = rootScores.slice().sort((a, b) => b.score - a.score);
-      const allowed = sorted.filter((x) => x.score >= sorted[0].score - Math.max(90, settings.noise * 3)).slice(0, settings.topN);
-      if (!allowed.length) return best;
-      if (settings.mistakePct > 0 && Math.random() * 100 < settings.mistakePct && allowed.length > 1) {
-        return cloneMove(allowed[Math.min(allowed.length - 1, 1 + ((Math.random() * (allowed.length - 1)) | 0))].move);
-      }
-      if (settings.noise > 0 && allowed.length > 1) {
-        let chosen = allowed[0];
-        let bestNoisy = -INF;
-        for (const ent of allowed) {
-          const noisy = ent.score + (Math.random() * 2 - 1) * settings.noise;
-          if (noisy > bestNoisy) { bestNoisy = noisy; chosen = ent; }
-        }
-        return cloneMove(chosen.move);
-      }
-      return best;
-    }
-
-
-    function sharedLegalMoves(board, side) {
-      try {
-        const res = R.generateLegalMoves(board, side, { policy: 'strict' });
-        return res && Array.isArray(res.moves) ? res.moves : [];
-      } catch (_) {
-        return [];
-      }
-    }
-
-    function normalizeSharedMove(m) {
-      if (!m || m.from == null) return null;
-      const path = Array.isArray(m.path) ? m.path.slice() : (m.to != null ? [m.to | 0] : []);
-      const jumps = Array.isArray(m.jumps) ? m.jumps.slice() : [];
-      if (!path.length) return null;
-      const captures = Number(m.captures || jumps.length || 0) | 0;
-      return {
-        type: captures > 0 ? MOVE_CAPTURE : MOVE_STEP,
-        from: m.from | 0,
-        to: path[path.length - 1] | 0,
-        path,
-        jumps,
-        captures,
-        promotes: !!m.promotes,
-        capturedValue: Number(m.capturedValue || 0) || 0,
-        capturedKings: Number(m.capturedKings || 0) || 0,
-      };
-    }
-
-    function alignWithSharedLegalMove(move, board, side) {
-      const legal = sharedLegalMoves(board, side);
-      if (!legal.length) return null;
-      const wanted = moveKey(move);
-      for (let i = 0; i < legal.length; i++) {
-        const m = normalizeSharedMove(legal[i]);
-        if (m && moveKey(m) === wanted) return enrichMoveMetadata(m, board);
-      }
-      return enrichMoveMetadata(normalizeSharedMove(legal[0]), board);
-    }
-
-    function enrichMoveMetadata(move, board) {
-      if (!move) return null;
-      let capturedValue = 0;
-      let capturedKings = 0;
-      try {
-        for (let i = 0; i < (move.jumps || []).length; i++) {
-          const j = move.jumps[i] | 0;
-          const rc = R.rc(j);
-          const v = Number(board[rc[0]] && board[rc[0]][rc[1]] || 0) | 0;
-          capturedValue += captureValue(v);
-          if (kindOf(v) === KING_KIND) capturedKings += 1;
-        }
-        const start = R.rc(move.from);
-        const end = R.rc(move.to);
-        const v0 = Number(board[start[0]] && board[start[0]][start[1]] || 0) | 0;
-        move.promotes = kindOf(v0) === MAN_KIND && isBackRankIdx(move.to, sideOf(v0));
-      } catch (_) {}
-      move.capturedValue = capturedValue;
-      move.capturedKings = capturedKings;
-      return move;
-    }
-
-    function boardSignature(board) {
-      try {
-        let h = '';
-        for (let r = 0; r < BOARD_SIZE; r++) {
-          const row = board[r] || [];
-          for (let c = 0; c < BOARD_SIZE; c++) h += String(Number(row[c] || 0) | 0) + ',';
-        }
-        return h;
-      } catch (_) { return ''; }
-    }
-
-    function applyFullTurnBoard(board, move, side) {
-      try {
-        if (!board || !move || !Array.isArray(move.path) || !move.path.length) return null;
-        const applied = R.applyMovePath(board, { from: move.from, path: move.path }, side);
-        if (!applied || !applied.ok) return null;
-        if (R.finalizeTurnBoard) {
-          const fin = R.finalizeTurnBoard(applied.board, applied);
-          if (fin && fin.ok && fin.board) return fin.board;
-        }
-        if (applied.promotionPending && R.promoteAt) {
-          const pr = R.promoteAt(applied.board, applied.promotionPending.idx);
-          if (pr && pr.ok && pr.board) return pr.board;
-        }
-        return applied.board;
-      } catch (_) { return null; }
-    }
-
-
-    function fullPathKey(from, path) {
-      return String(from | 0) + '>' + (Array.isArray(path) ? path.map((x) => x | 0).join('.') : '');
-    }
-
-    function buildSouflaTrapMemory(aiMove, result, aiSideValue) {
-      try {
-        if (!aiMove || !Array.isArray(aiMove.path) || !aiMove.path.length) return null;
-        const afterAi = applyFullTurnBoard(Game.board, aiMove, aiSideValue);
-        if (!afterAi) return null;
-        const offenderSide = opponent(aiSideValue);
-        const legal = R.generateLegalMoves(afterAi, offenderSide, { policy: 'strict' });
-        const moves = (legal && Array.isArray(legal.moves) ? legal.moves : []).map(normalizeSharedMove).filter(Boolean);
-        const captures = moves.filter((m) => (m.captures | 0) > 0 && Array.isArray(m.path) && m.path.length);
-        if (!captures.length) return null;
-        const expected = [];
-        for (let i = 0; i < captures.length && expected.length < 64; i++) {
-          const m = captures[i];
-          expected.push({
-            offenderIdx: m.from | 0,
-            path: m.path.slice(),
-            jumps: Array.isArray(m.jumps) ? m.jumps.slice() : [],
-            captures: m.captures | 0,
-            to: m.to | 0,
-            key: fullPathKey(m.from, m.path),
-          });
-        }
-        if (!expected.length) return null;
-        return {
-          engine: ENGINE_VERSION,
-          kind: 'forced-capture-intent',
-          aiSide: aiSideValue,
-          offenderSide,
-          createdAtMoveCount: Game.moveCount | 0,
-          expiresAtMoveCount: (Game.moveCount | 0) + 2,
-          afterAiBoardSig: boardSignature(afterAi),
-          aiMove: cloneMove(aiMove),
-          expected,
-          score: result ? Math.trunc(result.score || 0) : 0,
-          depth: result ? (result.depth | 0) : 0,
-        };
-      } catch (_) { return null; }
-    }
-
-    function setSouflaTrapMemory(mem) {
-      souflaTrapMemory = mem && mem.kind === 'forced-capture-intent' ? mem : null;
-      try { Game.ai2SouflaTrapMemory = souflaTrapMemory ? JSON.parse(JSON.stringify(souflaTrapMemory)) : null; } catch (_) {}
-    }
-
-    function getSouflaTrapMemory() {
-      try {
-        if (souflaTrapMemory && souflaTrapMemory.kind === 'forced-capture-intent') return souflaTrapMemory;
-        const g = Game && Game.ai2SouflaTrapMemory;
-        if (g && g.kind === 'forced-capture-intent') return g;
-      } catch (_) {}
-      return null;
-    }
-
-    function pendingMatchesTrapTurn(pending, mem) {
-      if (!pending || !mem) return false;
-      if (pending.penalizer !== mem.aiSide || pending.offenderSide !== mem.offenderSide) return false;
-      try {
-        const snapBoard = pending.turnStartSnapshot && pending.turnStartSnapshot.board;
-        if (snapBoard && mem.afterAiBoardSig && boardSignature(snapBoard) !== mem.afterAiBoardSig) return false;
-      } catch (_) {}
-      const now = Game.moveCount | 0;
-      if (mem.expiresAtMoveCount != null && now > mem.expiresAtMoveCount + 2) return false;
-      return true;
-    }
-
-    function findSouflaTrapMatch(pending, opt) {
-      if (!opt || opt.kind !== 'force') return null;
-      const mem = getSouflaTrapMemory();
-      if (!pendingMatchesTrapTurn(pending, mem)) return null;
-      const key = fullPathKey(opt.offenderIdx, opt.path);
-      const expected = Array.isArray(mem.expected) ? mem.expected : [];
-      for (let i = 0; i < expected.length; i++) {
-        const e = expected[i];
-        if (e && e.key === key) return { memory: mem, expected: e };
-      }
-      return null;
-    }
-
-    function souflaSettingsForOption(settings, trapMatch) {
-      if (!trapMatch) return settings;
-      return {
-        level: settings.level,
-        depth: Math.min(14, settings.depth + (settings.trapDepthBoost || 0)),
-        qDepth: Math.min(18, settings.qDepth + 2),
-        timeMs: Math.max(settings.timeMs, settings.trapTimeMs || settings.timeMs),
-        maxNodes: Math.max(settings.maxNodes, settings.trapMaxNodes || settings.maxNodes),
-        trapDepthBoost: settings.trapDepthBoost,
-        trapTimeMs: settings.trapTimeMs,
-        trapMaxNodes: settings.trapMaxNodes,
-        trapBonus: settings.trapBonus,
-        forceHoldMargin: settings.forceHoldMargin,
-      };
-    }
-
-
-    function clampInt(v, min, max, fallback) {
-      const n = Number(v);
-      if (!Number.isFinite(n)) return fallback;
-      return Math.max(min, Math.min(max, Math.trunc(n)));
-    }
-
-    function ignoreCapturePct(settings) {
-      try {
-        const mode = String(settings && settings.aiCaptureMode || 'mandatory');
-        if (mode !== 'random') return 0;
-        return clampInt(settings && settings.aiRandomIgnoreCaptureRatePct, 0, 100, 0);
-      } catch (_) { return 0; }
-    }
-
-    function shouldEducationallyIgnoreCapture(settings) {
-      const pct = ignoreCapturePct(settings);
-      return pct > 0 && Math.random() * 100 < pct;
-    }
-
-    function generateQuietMovesIgnoringMandatory(state, limit) {
-      const out = [];
-      stepMoves(state, state.side, out);
-      const max = Number(limit || 512) || 512;
-      if (out.length > max) return out.slice(0, max);
-      return out;
-    }
-
-    function chooseEducationalIgnoreCaptureMove(state, settings) {
-      try {
-        const pct = ignoreCapturePct(Game.settings || settings || {});
-        if (pct <= 0) return null;
-        const captures = generateTurnMoves(state, { capturesOnly: true, limit: 8 });
-        if (!captures.length) return null;
-        if (!shouldEducationallyIgnoreCapture(Game.settings || settings || {})) return null;
-        const quiet = generateQuietMovesIgnoringMandatory(state, 1024);
-        if (!quiet.length) return null;
-        const scored = [];
-        for (let i = 0; i < quiet.length; i++) scored.push({ move: cloneMove(quiet[i]), score: evaluateAfterMove(state, quiet[i]) });
-        scored.sort((a, b) => b.score - a.score || moveKey(a.move).localeCompare(moveKey(b.move)));
-        const chosen = chooseByLevel(scored[0].move, scored, settings || runtimeSettings(Game.settings || {}, state.side, arrayToBoard(state.board)));
-        if (!chosen) return null;
-        chosen.ai2EducationalIgnoreCapture = true;
-        chosen.ai2IgnoreCapture = {
-          engine: ENGINE_VERSION,
-          kind: 'optional-educational-ignore-capture',
-          percent: pct,
-          availableCaptureCount: captures.length,
-          selectedFromQuietCount: quiet.length,
-          level: settings && settings.level || levelName(Game.settings || {}),
-        };
-        return chosen;
-      } catch (_) { return null; }
-    }
-
-    function alignEducationalIgnoreMove(move, board, side) {
-      try {
-        if (!move || !move.ai2EducationalIgnoreCapture) return null;
-        const state = new EngineState(board, side);
-        const captures = generateTurnMoves(state, { capturesOnly: true, limit: 8 });
-        if (!captures.length) return null;
-        const quiet = generateQuietMovesIgnoringMandatory(state, 2048);
-        const wanted = moveKey(move);
-        for (let i = 0; i < quiet.length; i++) {
-          if (moveKey(quiet[i]) === wanted) {
-            const out = cloneMove(quiet[i]);
-            out.ai2EducationalIgnoreCapture = true;
-            out.ai2IgnoreCapture = move.ai2IgnoreCapture ? Object.assign({}, move.ai2IgnoreCapture) : { engine: ENGINE_VERSION, kind: 'optional-educational-ignore-capture' };
-            return enrichMoveMetadata(out, board);
-          }
-        }
-      } catch (_) {}
-      return null;
-    }
-
-    function forcedOpeningMove() {
-      if (!(Game.forcedEnabled && (Game.forcedPly | 0) < 10)) return null;
-      const exp = typeof getForcedOpeningExpectedAction === 'function' ? getForcedOpeningExpectedAction() : null;
-      if (!exp || exp.endChain || exp.from == null || exp.to == null) return null;
-      const path = [exp.to];
-      try {
-        if (exp.info && Array.isArray(exp.info.path)) {
-          const pos = exp.info.path.indexOf(exp.from);
-          if (pos >= 0) return { type: MOVE_STEP, from: exp.from, to: exp.info.path[exp.info.path.length - 1], path: exp.info.path.slice(pos + 1), jumps: [], captures: 0, promotes: false };
-        }
-      } catch (_) {}
-      return { type: MOVE_STEP, from: exp.from, to: exp.to, path, jumps: [], captures: 0, promotes: false };
-    }
-
-    function analyzeTurnLocal() {
-      if (Game.gameOver || Game.awaitingPenalty) return null;
-      if (Game.forcedEnabled && (Game.forcedPly | 0) < 10) {
-        clearPlanBank();
-        const fm = forcedOpeningMove();
-        return fm ? { move: fm, action: moveToAction(fm), score: 0, depth: 0, nodes: 0, timeMs: 0, ai2PlanBank: [], engine: ENGINE_VERSION } : null;
-      }
-      const side = Game.player === BOT_SIDE ? BOT_SIDE : TOP_SIDE;
-      const settings = runtimeSettings(Game.settings || {}, side, Game.board);
-      const state = new EngineState(Game.board, side);
-      const ignoredMove = chooseEducationalIgnoreCaptureMove(state, settings);
-      if (ignoredMove) {
-        setSouflaTrapMemory(null);
-        clearPlanBank();
-        return {
-          move: ignoredMove,
-          action: moveToAction(ignoredMove),
-          score: evaluateAfterMove(state, ignoredMove),
-          depth: 0,
-          nodes: 0,
-          timeMs: 0,
-          pv: [cloneMove(ignoredMove)],
-          souflaTrapMemory: null,
-          ai2IgnoreCapture: ignoredMove.ai2IgnoreCapture,
-          engine: ENGINE_VERSION,
-        };
-      }
-      const result = searchRoot(state, settings);
-      const move = alignWithSharedLegalMove(result.move, Game.board, side);
-      if (!move) return null;
-      const trapMemory = buildSouflaTrapMemory(move, result, side);
-      setSouflaTrapMemory(trapMemory);
-      const updatedPlans = updatePlanBankAfterSearch(state, move, result.score, result.depth, result.continuedPlan);
-      return {
-        move,
-        action: moveToAction(move),
-        score: result.score,
-        depth: result.depth,
-        nodes: result.nodes,
-        timeMs: Math.round(result.timeMs || 0),
-        pv: result.pv || [],
-        souflaTrapMemory: trapMemory,
-        ai2PlanBank: updatedPlans.map(clonePlan).filter(Boolean),
-        continuedPlan: result.continuedPlan || null,
-        engine: ENGINE_VERSION,
-      };
-    }
-
-    const __aiWorkerBridge = DhametAIRuntime.createWorkerBridge({
-      canUse: () => !__IN_WORKER && typeof Worker !== 'undefined',
-      workerUrl: () => (typeof assetUrl === 'function' ? assetUrl('js/ai.worker.js') : 'js/ai.worker.js'),
-      serializeState: serializeAIWorkerState,
-      planTimeoutMs: 0,
-      maxTimeoutMs: 30000,
-    });
-
-    function serializeAIWorkerState() {
       return {
         board: Game.board,
         player: Game.player,
-        inChain: !!Game.inChain,
-        chainPos: Game.chainPos == null ? null : Game.chainPos,
+        deferredPromotion: Game.deferredPromotion || null,
+        deferredPromotions: Array.isArray(Game.deferredPromotions) ? Game.deferredPromotions : [],
         forcedEnabled: !!Game.forcedEnabled,
-        forcedPly: Game.forcedPly | 0,
-        forcedSeq: Game.forcedSeq,
-        gameOver: !!Game.gameOver,
-        awaitingPenalty: !!Game.awaitingPenalty,
+        forcedPly: Number(Game.forcedPly || 0) | 0,
+        openingStarter: starter,
+        moveCount: Number(Game.moveCount || 0) | 0,
         settings: Game.settings,
-        moveCount: Game.moveCount | 0,
-        ai2PlanBank: (() => {
-          try { return Game.ai2PlanBank || planBankMemory || []; } catch (_) { return []; }
-        })(),
-        ai2SouflaTrapMemory: (() => {
-          try { return Game.ai2SouflaTrapMemory || souflaTrapMemory || null; } catch (_) { return null; }
-        })(),
-        turnCtx: (() => {
-          try {
-            if (Turn && Turn.ctx) return { startedFrom: Turn.ctx.startedFrom, capturesDone: Turn.ctx.capturesDone | 0 };
-          } catch (_) {}
-          return null;
-        })(),
       };
     }
 
-    async function analyzeTurn() {
-      const analysis = await DhametAIRuntime.callWorkerWithRetry(
-        __aiWorkerBridge,
+    const bridge = DhametAIRuntime.createWorkerBridge({
+      canUse: () => !__IN_WORKER && typeof Worker !== 'undefined',
+      workerUrl: () => (typeof assetUrl === 'function' ? assetUrl('js/ai.worker.js') : 'js/ai.worker.js'),
+      serializeState,
+    });
+
+    let thinking = false;
+    let scheduled = false;
+    let timer = null;
+    let lastAnalysis = null;
+
+    function positionSignature() {
+      try {
+        return hashPosition(normalizePosition(serializeState())).toString(16) + '|' + Game.moveCount;
+      } catch (_) {
+        return String(Game.moveCount || 0) + '|' + String(Game.player || 0);
+      }
+    }
+
+    function applyPendingLevel() {
+      try {
+        if (!Game.pendingAILevel) return;
+        const level = typeof normalizeAILevel === 'function' ? normalizeAILevel(Game.pendingAILevel) : Config.normalizeLevel(Game.pendingAILevel);
+        Game.pendingAILevel = null;
+        Game.settings.advanced = Config.createDefaultAdvancedSettings(level);
+        if (Game.normalizeAdvancedSettings) Game.normalizeAdvancedSettings();
+        if (saveSessionSettings) saveSessionSettings();
+        if (root.UI && root.UI.updateAll) root.UI.updateAll();
+      } catch (_) {}
+    }
+
+    async function requestAnalysis() {
+      return DhametAIRuntime.callWorkerWithRetry(
+        bridge,
         'analyzeTurn',
         [],
-        async function () { return analyzeTurnLocal(); },
-        { accept: (r) => !!(r && r.move && Array.isArray(r.move.path)) },
+        async function () { throw new Error('computer/worker-unavailable'); },
+        { accept: (value) => !!(value && value.move && Array.isArray(value.move.path)) },
       );
-      try {
-        if (analysis && Object.prototype.hasOwnProperty.call(analysis, 'ai2PlanBank')) setPlanBank(analysis.ai2PlanBank || []);
-      } catch (_) {}
-      return analysis;
     }
 
-
-
-    function executeMove(move) {
-      if (!move || !Array.isArray(move.path) || !move.path.length) return false;
-      if (!(Game.forcedEnabled && (Game.forcedPly | 0) < 10)) {
-        const side = Game.player === BOT_SIDE ? BOT_SIDE : TOP_SIDE;
-        if (move && move.ai2EducationalIgnoreCapture) {
-          move = alignEducationalIgnoreMove(move, Game.board, side);
-        } else {
-          move = alignWithSharedLegalMove(move, Game.board, side);
-        }
-        if (!move) return false;
-      }
-      if (move.captures > 0 || move.type === MOVE_CAPTURE || (move.jumps && move.jumps.length)) {
-        if (!Turn.ctx) Turn.start();
-        Turn.beginCapture(move.from);
-        if (typeof consumeTurnClearForMove === 'function') consumeTurnClearForMove();
-        let cur = move.from;
-        for (let i = 0; i < move.path.length; i++) {
-          const nxt = move.path[i] | 0;
-          let isCap = true;
-          let jumped = move.jumps && move.jumps[i] != null ? move.jumps[i] | 0 : null;
-          try {
-            const cc = typeof classifyCapture === 'function' ? classifyCapture(cur, nxt) : [false, null];
-            isCap = !!cc[0];
-            if (jumped == null) jumped = cc[1];
-          } catch (_) {}
-          if (!isCap || jumped == null) break;
-          applyMove(cur, nxt, true, jumped);
-          Turn.recordCapture();
-          Game.inChain = true;
-          Game.chainPos = nxt;
-          Game.lastMovedTo = nxt;
-          try { Visual && Visual.setLastMovePath && Visual.setLastMovePath(Game.lastMoveFrom, Game.lastMovePath); } catch (_) {}
-          cur = nxt;
-        }
-        finishAIChainEndTurn();
-        try { Visual && Visual.draw && Visual.draw(); } catch (_) {}
-        return true;
-      }
-
-      const to = move.path[0] | 0;
-      if (typeof consumeTurnClearForMove === 'function') consumeTurnClearForMove();
-      applyMove(move.from, to, false, null);
-      try { Visual && Visual.setLastMovePath && Visual.setLastMovePath(Game.lastMoveFrom, Game.lastMovePath); } catch (_) {}
-      Turn.finishTurnAndSoufla();
-      try { Visual && Visual.draw && Visual.draw(); } catch (_) {}
-      return true;
-    }
-
-    function finishAIChainEndTurn() {
-      try { maybeQueueDeferredPromotion && maybeQueueDeferredPromotion(Game.chainPos != null ? Game.chainPos : Game.lastMovedTo); } catch (_) {}
+    function finishCaptureTurn() {
       Game.inChain = false;
       Game.chainPos = null;
       Turn.finishTurnAndSoufla();
-      try { scheduleComputerMoveIfNeeded && scheduleComputerMoveIfNeeded(); } catch (_) {}
     }
 
-    let _thinking = false;
-    let _scheduled = false;
-    let _scheduledTimer = null;
-    let _lastAnalysis = null;
+    function executeMove(candidate) {
+      if (!candidate || !Array.isArray(candidate.path) || !candidate.path.length) return false;
+      const state = serializeState();
+      const move = validateCanonicalMove(Game.board, Game.player, state, candidate);
+      if (!move) throw new Error('computer/non-canonical-worker-move');
+
+      if (move.captures > 0 || (move.jumps && move.jumps.length)) {
+        if (!Turn.ctx) Turn.start();
+        Turn.beginCapture(move.from);
+        if (consumeTurnClearForMove) consumeTurnClearForMove();
+        let cur = move.from;
+        for (let i = 0; i < move.path.length; i++) {
+          const to = Number(move.path[i]);
+          const expectedJump = Number(move.jumps[i]);
+          const classified = classifyCapture(cur, to);
+          if (!classified || !classified[0] || Number(classified[1]) !== expectedJump) {
+            throw new Error('computer/capture-path-mismatch');
+          }
+          applyRuntimeMove(cur, to, true, expectedJump);
+          Turn.recordCapture();
+          Game.inChain = true;
+          Game.chainPos = to;
+          Game.lastMovedTo = to;
+          cur = to;
+        }
+        try { if (Visual && Visual.setLastMovePath) Visual.setLastMovePath(Game.lastMoveFrom, Game.lastMovePath); } catch (_) {}
+        finishCaptureTurn();
+        try { if (Visual && Visual.draw) Visual.draw(); } catch (_) {}
+        return true;
+      }
+
+      const to = Number(move.path[0]);
+      if (consumeTurnClearForMove) consumeTurnClearForMove();
+      applyRuntimeMove(move.from, to, false, null);
+      try { if (Visual && Visual.setLastMovePath) Visual.setLastMovePath(Game.lastMoveFrom, Game.lastMovePath); } catch (_) {}
+      Turn.finishTurnAndSoufla();
+      try { if (Visual && Visual.draw) Visual.draw(); } catch (_) {}
+      return true;
+    }
 
     async function play() {
       if (Game.gameOver || Game.awaitingPenalty) return;
+      const side = typeof aiSide === 'function' ? aiSide() : Game.player;
+      if (Game.player !== side) return;
+      if (timer != null) clearTimer(timer);
+      timer = null;
+      scheduled = false;
+      thinking = true;
       try {
-        const side = typeof aiSide === 'function' ? aiSide() : Game.player;
-        if (Game.player !== side) return;
-      } catch (_) {}
-      try { if (_scheduledTimer != null) clearTimeout(_scheduledTimer); } catch (_) {}
-      _scheduledTimer = null;
-      _scheduled = false;
-      try { if (root.UI && typeof root.UI.updateStatus === 'function') root.UI.updateStatus(); } catch (_) {}
-      _thinking = true;
-      try {
-        const sig = signature();
-        const analysis = await analyzeTurn();
-        if (!analysis || !analysis.move) return;
-        try { if (sig !== signature()) return; } catch (_) {}
-        _lastAnalysis = analysis;
-        if (analysis.souflaTrapMemory) setSouflaTrapMemory(analysis.souflaTrapMemory);
-        else setSouflaTrapMemory(null);
+        if (root.UI && root.UI.updateStatus) root.UI.updateStatus();
+        const signature = positionSignature();
+        const analysis = await requestAnalysis();
+        if (signature !== positionSignature()) return;
+        lastAnalysis = analysis;
         executeMove(analysis.move);
+      } catch (error) {
+        if (error && error.message === 'ai_worker_cancelled') return;
+        try { console.error('Dhamet computer engine failed', error); } catch (_) {}
+        try {
+          if (root.UI && typeof root.UI.log === 'function') {
+            root.UI.log({ kind: 'error', message: 'computer_engine_failed', ts: Date.now() });
+          }
+        } catch (_) {}
       } finally {
-        _thinking = false;
-        try { if (root.UI && typeof root.UI.updateStatus === 'function') root.UI.updateStatus(); } catch (_) {}
+        thinking = false;
+        try { if (root.UI && root.UI.updateStatus) root.UI.updateStatus(); } catch (_) {}
       }
-    }
-
-    function signature() {
-      let h = 0;
-      try {
-        const b = Game.board || [];
-        for (let r = 0; r < BOARD_SIZE; r++) for (let c = 0; c < BOARD_SIZE; c++) h = ((h * 31) ^ (Number(b[r][c] || 0) + 7)) | 0;
-      } catch (_) {}
-      return String(h) + '|' + Game.player + '|' + (Game.moveCount || 0) + '|' + (Game.inChain ? Game.chainPos : '') + '|' + (Game.forcedEnabled ? Game.forcedPly : '');
     }
 
     function scheduleMove() {
-      applyPendingAILevelForNextMove();
-      try { __aiWorkerBridge.cancel(); } catch (_) {}
-      try { if (_scheduledTimer != null) clearTimeout(_scheduledTimer); } catch (_) {}
-      _scheduledTimer = null;
-      _scheduled = false;
-      try { if (root.UI && typeof root.UI.updateStatus === 'function') root.UI.updateStatus(); } catch (_) {}
-      const delay = 80;
-      _scheduled = true;
-      _scheduledTimer = setTimeout(play, delay);
-    }
-
-    function applyPendingAILevelForNextMove() {
+      applyPendingLevel();
       try {
-        if (!Game.pendingAILevel) return;
-        const pending = typeof normalizeAILevel === 'function' ? normalizeAILevel(Game.pendingAILevel) : String(Game.pendingAILevel || 'medium');
-        const current = typeof normalizeAILevel === 'function' ? normalizeAILevel(Game.settings?.advanced?.aiLevel || 'medium') : String(Game.settings?.advanced?.aiLevel || 'medium');
-        Game.pendingAILevel = null;
-        if (pending === current) return;
-        Game.settings.advanced = { aiLevel: pending };
-        Game.normalizeAdvancedSettings && Game.normalizeAdvancedSettings();
-        try { saveSessionSettings && saveSessionSettings(); } catch (_) {}
-        try { root.UI && root.UI.updateAll && root.UI.updateAll(); } catch (_) {}
-        try { root.ZGamePlayers && root.ZGamePlayers.refresh && root.ZGamePlayers.refresh(); } catch (_) {}
+        if (thinking || (bridge && typeof bridge.isBusy === 'function' && bridge.isBusy())) bridge.cancel();
       } catch (_) {}
-    }
-
-    function isThinking() {
-      return DhametAIRuntime.isThinking({ localThinking: _thinking, scheduled: _scheduled, bridge: __aiWorkerBridge });
-    }
-
-    function applySouflaOptionBoard(pending, opt) {
-      if (!pending || !opt) return null;
-      try {
-        if (opt.kind === 'remove') {
-          if (R.applySouflaRemoval) {
-            const res = R.applySouflaRemoval(Game.board, pending, opt.offenderIdx);
-            if (res && res.ok && res.board) return res.board;
-          }
-          return removeOffenderBoard(Game.board, pending, opt.offenderIdx);
-        }
-        if (opt.kind === 'force' && R.applySouflaForce) {
-          const res = R.applySouflaForce(pending, opt);
-          if (res && res.ok && res.board) {
-            if (res.applied && R.finalizeTurnBoard) {
-              const fin = R.finalizeTurnBoard(res.board, res.applied);
-              if (fin && fin.ok && fin.board) return fin.board;
-            }
-            return res.board;
-          }
-        }
-      } catch (_) {}
-      return null;
-    }
-
-    function removeOffenderBoard(board, pending, offenderIdx) {
-      const next = R.cloneBoard(board);
-      const target = R.resolveOffenderCurrentCell ? R.resolveOffenderCurrentCell(pending, offenderIdx) : offenderIdx;
-      if (target != null && R.validIdx(target)) R.setCell(next, target, 0);
-      return next;
-    }
-
-    function compareSouflaOptions(a, b) {
-      if (!b) return true;
-      const ak = a && a.kind === 'force' ? 1 : 0;
-      const bk = b && b.kind === 'force' ? 1 : 0;
-      if (ak !== bk) return ak > bk;
-      const ai = Number(a && a.offenderIdx);
-      const bi = Number(b && b.offenderIdx);
-      if (Number.isFinite(ai) && Number.isFinite(bi) && ai !== bi) return ai < bi;
-      return JSON.stringify(a || {}) < JSON.stringify(b || {});
-    }
-
-    function immediateSouflaScore(state, penalizer) {
-      const term = terminalScore(state, 0);
-      if (term != null) return state.side === penalizer ? term : -term;
-      const moves = generateTurnMoves(state, { capturesOnly: false, limit: 96 });
-      if (!moves.length) return state.side === penalizer ? -WIN_SCORE : WIN_SCORE;
-      return evaluate(state, penalizer);
-    }
-
-    function souflaSearchScore(board, penalizer, settings) {
-      const state = new EngineState(board, penalizer);
-      const started = nowMs();
-      const deadline = settings.timeMs > 0 ? started + settings.timeMs : null;
-      const ctx = {
-        nodes: 0,
-        deadline,
-        maxNodes: settings.maxNodes,
-        qDepth: settings.qDepth,
-        history: new Map(),
-        rootSide: penalizer,
-        tt: new Map(),
-      };
-
-      const staticScore = immediateSouflaScore(state, penalizer);
-      if (settings.depth <= 0 || Math.abs(staticScore) > WIN_SCORE - 1000) {
-        return { score: staticScore, depth: 0, nodes: ctx.nodes, timeMs: nowMs() - started };
-      }
-
-      let bestScore = staticScore;
-      let completedDepth = 0;
-      try {
-        for (let depth = 1; depth <= settings.depth; depth++) {
-          if (deadline != null && nowMs() >= deadline) break;
-          const score = negamax(state, depth, -INF, INF, ctx, 0);
-          bestScore = state.side === penalizer ? score : -score;
-          completedDepth = depth;
-          if (Math.abs(bestScore) > WIN_SCORE - 1000) break;
-        }
-      } catch (e) {
-        if (!(e && e.timeout)) throw e;
-      }
-      return { score: bestScore, depth: completedDepth, nodes: ctx.nodes, timeMs: nowMs() - started };
-    }
-
-    function _pickSouflaDecisionLocal(pending) {
-      if (!pending || !Array.isArray(pending.options) || !pending.options.length) return null;
-      const penalizer = pending.penalizer === BOT_SIDE ? BOT_SIDE : TOP_SIDE;
-      const settings = souflaRuntimeSettings(Game.settings || {});
-      let best = null;
-      let bestScore = -INF;
-      let bestRawScore = -INF;
-      let bestMeta = null;
-      let bestTrapMatch = null;
-      let bestMatchedForce = null;
-      let bestMatchedForceMeta = null;
-      let bestMatchedForceRaw = -INF;
-      let bestRemoveRaw = -INF;
-
-      for (let i = 0; i < pending.options.length; i++) {
-        const opt = pending.options[i];
-        const board = applySouflaOptionBoard(pending, opt);
-        if (!board) continue;
-        const trapMatch = findSouflaTrapMatch(pending, opt);
-        const optSettings = souflaSettingsForOption(settings, trapMatch);
-        const meta = souflaSearchScore(board, penalizer, optSettings);
-        const rawScore = Number(meta && meta.score);
-        if (!Number.isFinite(rawScore)) continue;
-        let score = rawScore;
-        if (trapMatch) score += settings.trapBonus || 0;
-        if (opt.kind === 'remove') bestRemoveRaw = Math.max(bestRemoveRaw, rawScore);
-        if (trapMatch && opt.kind === 'force' && rawScore > bestMatchedForceRaw) {
-          bestMatchedForceRaw = rawScore;
-          bestMatchedForce = opt;
-          bestMatchedForceMeta = Object.assign({}, meta, { trapMatched: true, rawScore });
-        }
-        if (score > bestScore || (score === bestScore && compareSouflaOptions(opt, best))) {
-          bestScore = score;
-          bestRawScore = rawScore;
-          best = opt;
-          bestMeta = Object.assign({}, meta, { trapMatched: !!trapMatch, rawScore });
-          bestTrapMatch = trapMatch;
-        }
-      }
-
-      if (bestMatchedForce && bestRemoveRaw > -INF) {
-        const margin = settings.forceHoldMargin || 0;
-        if (bestMatchedForceRaw >= bestRemoveRaw - margin && bestMatchedForceRaw > -WIN_SCORE / 4) {
-          best = bestMatchedForce;
-          bestMeta = bestMatchedForceMeta;
-          bestRawScore = bestMatchedForceRaw;
-          bestScore = bestMatchedForceRaw + (settings.trapBonus || 0);
-          bestTrapMatch = findSouflaTrapMatch(pending, bestMatchedForce);
-        }
-      }
-
-      if (!best) best = pending.options.find((o) => o && o.kind === 'remove') || pending.options[0];
-      try {
-        if (best && typeof best === 'object') {
-          best = Object.assign({}, best, {
-            ai2Soufla: {
-              engine: ENGINE_VERSION,
-              score: Math.trunc(bestScore),
-              rawScore: Number.isFinite(bestRawScore) ? Math.trunc(bestRawScore) : Math.trunc(bestScore),
-              depth: bestMeta ? bestMeta.depth | 0 : 0,
-              nodes: bestMeta ? bestMeta.nodes | 0 : 0,
-              timeMs: bestMeta ? Math.round(bestMeta.timeMs || 0) : 0,
-              level: settings.level,
-              trapMatched: !!(bestMeta && bestMeta.trapMatched),
-              trapKind: bestTrapMatch ? 'forced-capture-intent' : null,
-            },
-          });
-        }
-      } catch (_) {}
-      return best;
+      if (timer != null) clearTimer(timer);
+      scheduled = true;
+      timer = setTimer(play, 80);
+      try { if (root.UI && root.UI.updateStatus) root.UI.updateStatus(); } catch (_) {}
     }
 
     async function pickSouflaDecision(pending) {
-      return await DhametAIRuntime.callWorkerWithRetry(
-        __aiWorkerBridge,
+      return DhametAIRuntime.callWorkerWithRetry(
+        bridge,
         'pickSouflaDecision',
         [pending],
-        async function () { return _pickSouflaDecisionLocal(pending); },
-        { accept: (d) => !!d },
+        async function () { throw new Error('computer/worker-unavailable'); },
+        { accept: (value) => !!value },
       );
     }
 
-
-    function _analyzeTurnInternal() { return analyzeTurnLocal(); }
+    function isThinking() {
+      return DhametAIRuntime.isThinking({ localThinking: thinking, scheduled, bridge });
+    }
 
     return Object.freeze({
       version: ENGINE_VERSION,
       isThinking,
       scheduleMove,
       pickSouflaDecision,
-      _pickSouflaDecisionInternal: _pickSouflaDecisionLocal,
-      _analyzeTurnInternal,
-      _lastAnalysis: function () { return _lastAnalysis; },
-      _debug: function () { return { ttSize: TT.size, souflaTrapMemory, planBank: getPlanBank(), version: ENGINE_VERSION }; },
+      _lastAnalysis: () => lastAnalysis,
+      _debug: () => ({ version: ENGINE_VERSION, ttSize: TT.map.size, ttGeneration: TT.generation }),
     });
   }
 
-  root.DhametAIEngine = Object.freeze({ create });
+  root.DhametAIEngine = Object.freeze({
+    version: ENGINE_VERSION,
+    create,
+    analyzePosition,
+    analyzePenalty,
+    _internals: Object.freeze({ normalizePosition, generateMoves, applyMove, evaluate, hashPosition, verificationKey, validateCanonicalMove, penaltyPosition }),
+  });
 })(typeof globalThis !== 'undefined' ? globalThis : this);

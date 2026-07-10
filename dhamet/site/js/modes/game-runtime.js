@@ -204,24 +204,16 @@ const Game = {
   lastMovePath: null,
   lastMoveSide: null,
   lastMoveWasCapture: false,
+  deferredPromotion: null,
+  deferredPromotions: [],
 
   settings: {
     starter: "white",
-    aiCaptureMode: "mandatory",
-    aiRandomIgnoreCaptureRatePct: 0,
     theme: "light",
     showCoords: false,
     boardStyle: "2d",
 
-    advanced: {
-      aiLevel: "medium",
-      thinkTimeMs: 900,
-      timeBoostCriticalMs: 250,
-      minimaxDepth: 5,
-      moveChoiceTopN: 1,
-      moveMistakeRatePct: 0,
-      evalNoise: 0,
-    },
+    advanced: DhametAIConfig.createDefaultAdvancedSettings("medium"),
   },
 
   pendingAILevel: null,
@@ -432,10 +424,6 @@ function finishForcedOpeningAppliedTurn(mover, info) {
   scheduleForcedOpeningAutoIfNeeded();
   Visual.draw();
 
-  if (Game.forcedPly >= 10 && Game.player === aiSide()) {
-    Turn.finishTurnAndSoufla();
-  }
-
   scheduleComputerMoveIfNeeded();
 }
 
@@ -486,6 +474,7 @@ function setupInitialBoard() {
     Game.availableSouflaForHuman = null;
     Game.terminationReason = null;
     Game.deferredPromotion = null;
+    Game.deferredPromotions = [];
     Game.forcedEnabled = true;
     Game.forcedPly = 0;
     Game.forcedSeq = forcedOpeningSeqForStarterSide(Game.player);
@@ -534,10 +523,6 @@ function generateStepsFrom(fromIdx, v) {
 
 function generateCapturesFrom(fromIdx, v) {
   return DhametRulesShared.captureOptions(Game.board, fromIdx).map(function (x) { return [x.to, x.jumped]; });
-}
-
-function maxCaptureLenFrom(fromIdx) {
-  return DhametRulesShared.longestCaptureSearch(Game.board, fromIdx, 0, 64).max || 0;
 }
 
 function simEnter() {
@@ -670,26 +655,56 @@ function applyMove(fromIdx, toIdx, isCapture, jumpedIdx) {
   } catch {}
 }
 
-function promoteIfNeeded(idx) {
-  const v = valueAt(idx);
-  if (!v) return;
-  if (pieceKind(v) !== MAN) return;
-  const owner = pieceOwner(v);
-  if (isBackRank(idx, owner)) {
-    setValueAt(idx, owner === TOP ? KING : -KING);
-    Visual.queueCrown(idx);
-    UI.log({ kind: "promote", idx: idx, side: owner, ts: Date.now() });
+function normalizeDeferredPromotionQueue() {
+  // Online games remain server-authoritative and currently expose the legacy
+  // single deferred-promotion field. Do not preserve a local second entry that
+  // the server did not commit, otherwise the browser board can diverge from the
+  // authoritative online board. The queue is used only by the local PvC game.
+  if (window.Online && window.Online.isActive) {
+    const item = Game.deferredPromotion;
+    const idx = Number(item && item.idx);
+    const side = Number(item && item.side);
+    const queue = DhametRulesShared.validIdx(idx) && (side === TOP || side === BOT)
+      ? [{ idx, side }]
+      : [];
+    Game.deferredPromotions = queue;
+    Game.deferredPromotion = queue.length ? { ...queue[0] } : null;
+    return queue;
   }
+
+  const raw = [];
+  if (Array.isArray(Game.deferredPromotions)) raw.push(...Game.deferredPromotions);
+  if (Game.deferredPromotion && typeof Game.deferredPromotion === "object") raw.push(Game.deferredPromotion);
+  const seen = new Set();
+  const queue = [];
+  for (const item of raw) {
+    const idx = Number(item && item.idx);
+    const side = Number(item && item.side);
+    if (!DhametRulesShared.validIdx(idx) || (side !== TOP && side !== BOT)) continue;
+    const key = `${side}:${idx}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    queue.push({ idx, side });
+  }
+  Game.deferredPromotions = queue;
+  Game.deferredPromotion = queue.length ? { ...queue[0] } : null;
+  return queue;
 }
 
 function maybeQueueDeferredPromotion(idx) {
   const v = valueAt(idx);
-  if (!v) return;
-  if (pieceKind(v) !== MAN) return;
+  if (!v || pieceKind(v) !== MAN) return;
   const owner = pieceOwner(v);
-  if (isBackRank(idx, owner)) {
+  if (!isBackRank(idx, owner)) return;
+  if (window.Online && window.Online.isActive) {
     Game.deferredPromotion = { idx, side: owner };
+    Game.deferredPromotions = [{ idx, side: owner }];
+    return;
   }
+  const queue = normalizeDeferredPromotionQueue();
+  if (!queue.some((entry) => entry.idx === idx && entry.side === owner)) queue.push({ idx, side: owner });
+  Game.deferredPromotions = queue;
+  Game.deferredPromotion = queue.length ? { ...queue[0] } : null;
 }
 
 function valueAt(idx) {
@@ -741,15 +756,29 @@ const Turn = {
   ctx: null,
 
   start() {
-    if (Game.deferredPromotion && Game.player === Game.deferredPromotion.side) {
-      const { idx, side } = Game.deferredPromotion;
-      const v = valueAt(idx);
-      if (v && pieceKind(v) === MAN && pieceOwner(v) === side) {
-        setValueAt(idx, side === TOP ? KING : -KING);
-        Visual.queueCrown(idx);
-        UI.log({ kind: "promote", idx: idx, side: side, ts: Date.now() });
+    const promotionQueue = normalizeDeferredPromotionQueue();
+    const remainingPromotions = [];
+    for (const pending of promotionQueue) {
+      if (pending.side !== Game.player) {
+        remainingPromotions.push(pending);
+        continue;
       }
-      Game.deferredPromotion = null;
+      const v = valueAt(pending.idx);
+      if (v && pieceKind(v) === MAN && pieceOwner(v) === pending.side) {
+        setValueAt(pending.idx, pending.side === TOP ? KING : -KING);
+        Visual.queueCrown(pending.idx);
+        UI.log({ kind: "promote", idx: pending.idx, side: pending.side, ts: Date.now() });
+      }
+    }
+    Game.deferredPromotions = remainingPromotions;
+    Game.deferredPromotion = remainingPromotions.length ? { ...remainingPromotions[0] } : null;
+
+    // Promotion becomes active at the start of this turn, so terminal rules
+    // (including one king versus one king) must be reevaluated afterwards.
+    if (!Game.gameOver) checkEndConditions();
+    if (Game.gameOver) {
+      UI.updateStatus();
+      return;
     }
 
     const { longestByPiece, Lmax, candidates } = computeLongestForPlayer(Game.player);
@@ -829,12 +858,9 @@ const Turn = {
     const endedBy = Game.player;
 
     if (Game.lastMovedTo != null) {
-      if (Game.lastMovedTo != null) {
-        try {
-          promoteIfNeeded(Game.lastMovedTo);
-        } catch {}
-        Game.deferredPromotion = null;
-      }
+      try {
+        maybeQueueDeferredPromotion(Game.lastMovedTo);
+      } catch {}
     }
 
     try {
@@ -899,12 +925,11 @@ const Turn = {
                 UI.showSouflaAgainstHuman(decision, pending);
               } catch {}
             })
-            .catch((e) => {
-              const fallback =
-                pending.options.find((o) => o.kind === "remove") || pending.options[0];
-              applySouflaDecision(fallback, pending);
+            .catch((error) => {
               try {
-                UI.showSouflaAgainstHuman(fallback, pending);
+                console.error("Computer soufla analysis failed", error);
+                UI.log({ kind: "error", message: "computer_soufla_analysis_failed", ts: Date.now() });
+                UI.updateAll();
               } catch {}
             });
           return;
@@ -1034,6 +1059,8 @@ function snapshotState(options) {
     lastMoveFrom: Game.lastMoveFrom,
     lastMovePath: Array.isArray(Game.lastMovePath) ? Game.lastMovePath.slice() : null,
     moveCount: Game.moveCount,
+    deferredPromotion: Game.deferredPromotion ? { ...Game.deferredPromotion } : null,
+    deferredPromotions: normalizeDeferredPromotionQueue().map((entry) => ({ ...entry })),
 
     forcedEnabled: Game.forcedEnabled,
     forcedPly: Game.forcedPly,
@@ -1123,6 +1150,11 @@ function restoreSnapshot(snap, opts) {
       : null;
 
   Game.moveCount = snap.moveCount;
+  Game.deferredPromotions = Array.isArray(snap.deferredPromotions)
+    ? snap.deferredPromotions.map((entry) => ({ idx: Number(entry.idx), side: Number(entry.side) }))
+    : snap.deferredPromotion ? [{ idx: Number(snap.deferredPromotion.idx), side: Number(snap.deferredPromotion.side) }] : [];
+  Game.deferredPromotion = Game.deferredPromotions.length ? { ...Game.deferredPromotions[0] } : null;
+  normalizeDeferredPromotionQueue();
 
   if (typeof snap.forcedEnabled === "boolean") Game.forcedEnabled = snap.forcedEnabled;
   if (typeof snap.forcedPly === "number") Game.forcedPly = snap.forcedPly;
@@ -1533,7 +1565,7 @@ try {
 function longestPathsWithJumpsFrom(fromIdx, maxLen) {
   const wanted = Math.max(0, Number(maxLen || 0) | 0);
   if (wanted <= 0) return [];
-  const res = DhametRulesShared.longestCaptureSearch(Game.board, fromIdx, 0, 128);
+  const res = DhametRulesShared.longestCaptureSearch(Game.board, fromIdx);
   if (!res || (res.max | 0) < wanted) return [];
   return (res.paths || [])
     .filter((p) => ((p && p.captures) || ((p && p.path && p.path.length) || 0)) === wanted)
@@ -1713,9 +1745,8 @@ function applySouflaDecision(decision, pending) {
       }
 
       try {
-        promoteIfNeeded(cur);
+        maybeQueueDeferredPromotion(cur);
       } catch {}
-      Game.deferredPromotion = null;
 
       Game.inChain = false;
       Game.chainPos = null;
@@ -1918,178 +1949,6 @@ function scheduleForcedOpeningAutoIfNeeded() {
     finishForcedOpeningAppliedTurn(current.mover, current);
   }, 500);
 }
-function detectCriticalState(side) {
-  const { Lmax } = computeLongestForPlayer(side);
-  if (Lmax > 0) return true;
-
-  for (let idx = 0; idx < N_CELLS; idx++) {
-    const v = valueAt(idx);
-    if (!v || pieceOwner(v) !== side || pieceKind(v) !== MAN) continue;
-    const [r] = idxToRC(idx);
-    if ((side === TOP && r >= 7) || (side === BOT && r <= 1)) return true;
-  }
-
-  try {
-    if ((__aiCrownPriority(side) | 0) > 0) return true;
-  } catch {}
-
-  const opp = -side;
-  for (let from = 0; from < N_CELLS; from++) {
-    const v = valueAt(from);
-    if (!v || pieceOwner(v) !== opp) continue;
-    const caps = generateCapturesFrom(from, v);
-    for (const [toIdx, jIdx] of caps) {
-      const jv = valueAt(jIdx);
-      if (jv && pieceOwner(jv) === side && pieceKind(jv) === KING) {
-        return true;
-      }
-    }
-  }
-  return false;
-}
-
-const __AI_IMM_CAP_CACHE = new Map();
-const __AI_LONGEST_CACHE = new Map();
-const __AI_LONGEST_LIM_CACHE = new Map();
-
-function __cacheGet(map, key) {
-  return map.has(key) ? map.get(key) : null;
-}
-function __cachePut(map, key, val, maxSize = 20000) {
-  map.set(key, val);
-  if (map.size <= maxSize) return;
-
-  const drop = Math.max(50, Math.floor(maxSize * 0.08));
-  let i = 0;
-  for (const k of map.keys()) {
-    map.delete(k);
-    if (++i >= drop) break;
-  }
-}
-
-
-
-
-function immediateCapturableInfo(attackerSide) {
-  const key = String(zobristKey()) + "|immcap|" + attackerSide;
-  const hit = __cacheGet(__AI_IMM_CAP_CACHE, key);
-  if (hit) return hit;
-
-  const jumpedSet = new Set();
-  let kingVictims = 0;
-
-  for (let from = 0; from < N_CELLS; from++) {
-    const v = valueAt(from);
-    if (!v || pieceOwner(v) !== attackerSide) continue;
-    const caps = generateCapturesFrom(from, v);
-    for (let k = 0; k < caps.length; k++) {
-      const jumped = caps[k][1];
-      if (jumped == null) continue;
-      const jv = valueAt(jumped);
-      if (!jv) continue;
-      if (pieceOwner(jv) === -attackerSide) {
-        jumpedSet.add(jumped);
-        if (pieceKind(jv) === KING) kingVictims++;
-      }
-    }
-  }
-
-  const out = { count: jumpedSet.size, kingVictims, jumpedSet };
-  __cachePut(__AI_IMM_CAP_CACHE, key, out);
-  return out;
-}
-
-function longestCaptureLenCached(side) {
-  const key = String(zobristKey()) + "|L|" + side;
-  const hit = __cacheGet(__AI_LONGEST_CACHE, key);
-  if (hit != null) return hit;
-  const { Lmax } = computeLongestForPlayer(side);
-  __cachePut(__AI_LONGEST_CACHE, key, Lmax);
-  return Lmax;
-}
-
-function snapshotStateSim() {
-  return {
-    board: cloneBoard(Game.board),
-    player: Game.player,
-    inChain: !!Game.inChain,
-    chainPos: Game.chainPos == null ? null : Game.chainPos,
-  };
-}
-
-function restoreSnapshotSim(snap) {
-  Game.board = cloneBoard(snap.board);
-  Game.player = snap.player;
-  Game.inChain = snap.inChain;
-  Game.chainPos = snap.chainPos;
-}
-
-function applyMoveSim(fromIdx, toIdx) {
-  const [isCap, jumped] = classifyCapture(fromIdx, toIdx);
-
-  const [r1, c1] = idxToRC(fromIdx);
-  const [r2, c2] = idxToRC(toIdx);
-
-  const v = Game.board[r1][c1];
-  Game.board[r1][c1] = 0;
-
-  if (isCap && jumped != null) {
-    const [jr, jc] = idxToRC(jumped);
-    Game.board[jr][jc] = 0;
-  }
-
-  Game.board[r2][c2] = v;
-
-  const owner = pieceOwner(v);
-  if (!isCap && pieceKind(v) === MAN && isBackRank(toIdx, owner)) {
-    Game.board[r2][c2] = owner === TOP ? KING : -KING;
-  }
-
-  return { isCap, jumped };
-}
-
-function applyActionSim(a) {
-  if (a === ACTION_ENDCHAIN) {
-    const idx = Game.chainPos;
-    if (idx != null) {
-      const v = valueAt(idx);
-      const owner = pieceOwner(v);
-      if (v && pieceKind(v) === MAN && isBackRank(idx, owner)) {
-        setValueAt(idx, owner === TOP ? KING : -KING);
-      }
-    }
-    Game.inChain = false;
-    Game.chainPos = null;
-    Game.player = -Game.player;
-    return;
-  }
-
-  const from = Math.floor(a / N_CELLS);
-  const to = a % N_CELLS;
-
-  const { isCap } = applyMoveSim(from, to);
-
-  if (isCap) {
-    const vcur = valueAt(to);
-    const caps = generateCapturesFrom(to, vcur);
-    if (caps.length) {
-      Game.inChain = true;
-      Game.chainPos = to;
-      return;
-    }
-
-    const owner = pieceOwner(vcur);
-    if (vcur && pieceKind(vcur) === MAN && isBackRank(to, owner)) {
-      setValueAt(to, owner === TOP ? KING : -KING);
-    }
-  }
-
-  Game.inChain = false;
-  Game.chainPos = null;
-  Game.player = -Game.player;
-}
-
-// AI engine internals moved to js/ai/ai-engine.js.
 function humanSide() {
   const ctx = { Online: window.Online, document, fallbackHumanSide: BOT };
   try {
@@ -2739,8 +2598,7 @@ const TrainRecorder = (() => {
 
   function _sideHasAnyMove(side) {
     try {
-      const m = mobilityInfo(side);
-      return (m.steps | 0) + (m.caps | 0) > 0;
+      return !!DhametRulesShared.hasAnyLegalMove(Game.board, side);
     } catch (_) {
       return true;
     }
@@ -2784,48 +2642,26 @@ const TrainRecorder = (() => {
   }
 
   function _isFullyTrapped(side) {
-    let saved = null;
     try {
-      if (
-        typeof snapshotStateSim !== "function" ||
-        typeof restoreSnapshotSim !== "function" ||
-        typeof applyMoveSim !== "function"
-      )
-        return false;
-      saved = snapshotStateSim();
-
-      const moves = [];
-      const captures = [];
-      for (let r = 0; r < BOARD_N; r++) {
-        for (let c = 0; c < BOARD_N; c++) {
-          const v = Game.board[r][c];
-          if (!v) continue;
-          if (pieceOwner(v) !== side) continue;
-          const from = r * BOARD_N + c;
-          const caps = generateCapturesFrom(from, v);
-          for (const cap of caps) captures.push([from, cap[0]]);
-          const steps = generateStepsFrom(from, v);
-          for (const to of steps) moves.push([from, to]);
-        }
-      }
-      const legal = captures.length ? captures : moves;
+      const generated = DhametRulesShared.generateLegalMoves(Game.board, side, { policy: "strict" });
+      const legal = generated && Array.isArray(generated.moves) ? generated.moves : [];
       if (!legal.length) return true;
-
       const opp = -side;
-      for (const [from, to] of legal) {
-        restoreSnapshotSim(saved);
-        applyMoveSim(from, to);
-        if (!_isIdxCapturableBySide(to, opp)) {
-          restoreSnapshotSim(saved);
-          return false;
+      for (const move of legal) {
+        const applied = DhametRulesShared.applyMovePath(Game.board, move, side);
+        if (!applied || !applied.ok) continue;
+        const landing = Number(applied.to);
+        let capturable = false;
+        for (let from = 0; from < N_CELLS && !capturable; from++) {
+          const v = applied.board[Math.floor(from / BOARD_N)][from % BOARD_N];
+          if (!v || pieceOwner(v) !== opp) continue;
+          const caps = DhametRulesShared.captureOptions(applied.board, from);
+          capturable = caps.some((cap) => Number(cap.jumped) === landing);
         }
+        if (!capturable) return false;
       }
-      restoreSnapshotSim(saved);
       return true;
     } catch (_) {
-      try {
-        if (saved) restoreSnapshotSim(saved);
-      } catch (e) {}
       return false;
     }
   }
@@ -2888,12 +2724,9 @@ const TrainRecorder = (() => {
         if (myTotal < 8 && oppKings > 0) {
           let lmax = 0;
           try {
-            if (typeof longestCaptureLenLimitedCached === "function")
-              lmax = longestCaptureLenLimitedCached(opp, 3) | 0;
+            lmax = DhametRulesShared.mandatoryCaptureInfo(Game.board, opp).longestGlobal | 0;
           } catch (_) {}
-          if (lmax >= 3) {
-            return { confidence: "low", tag: "king_chain_threat" };
-          }
+          if (lmax >= 3) return { confidence: "low", tag: "king_chain_threat" };
         }
 
         return null;
@@ -3115,6 +2948,14 @@ const TrainRecorder = (() => {
       if (record.matchId) record.matchId = String(record.matchId).slice(0, 140);
     } catch (_) {}
 
+    // Computer games are deliberately local-only. The engine, result handling,
+    // and learning path must not call Cloudflare APIs or consume dynamic quotas.
+    // Online PvP keeps its existing server-authoritative behavior unchanged.
+    if (record.mode === "vs_cpu") {
+      resetGame();
+      return { uploaded: false, skipped: true, reason: "local_computer_game" };
+    }
+
     let statsRes = null;
     try {
       const officialPvpStats = record && record.mode === "online_pvp";
@@ -3314,7 +3155,6 @@ const AI = DhametAIEngine.create({
   classifyCapture,
   clearTimeout,
   consumeTurnClearForMove,
-  detectCriticalState,
   encodeAction,
   getForcedOpeningExpectedAction,
   maybeQueueDeferredPromotion,
@@ -3847,7 +3687,7 @@ if (typeof window !== "undefined") window.AI = AI;
           const data = JSON.parse(raw);
           if (!data || typeof data !== "object") return;
 
-          const allowed = ["starter","aiCaptureMode","aiRandomIgnoreCaptureRatePct","theme","showCoords","boardStyle"];
+          const allowed = ["starter","theme","showCoords","boardStyle"];
           const merged = {};
           for (const k of allowed) {
             merged[k] = (data && Object.prototype.hasOwnProperty.call(data, k)) ? data[k] : Game.settings[k];

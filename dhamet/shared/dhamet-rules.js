@@ -2,7 +2,7 @@
  * Dhamet shared rules engine v2.
  *
  * Runtime-neutral, single-source rule logic for Dhamet/Zamat. This file is
- * intentionally pure: no DOM, no localStorage, no no Cloudflare APIs,
+ * intentionally pure: no DOM, no localStorage, no Cloudflare APIs,
  * no UI, and no AI evaluation. It attaches one object to globalThis:
  *   globalThis.DhametRules
  *
@@ -294,66 +294,371 @@
     return true;
   }
 
-  function countPieces(board) {
+
+  /*
+   * Compact shared core.
+   *
+   * This is the canonical high-throughput move generator used by the public
+   * rules API and by the computer engine.  The board is an Int8Array(81); all
+   * capture recursion uses make/unmake on one buffer, so legal-path generation
+   * does not allocate a cloned 9x9 board at every jump.
+   */
+  const COMPACT_NEXT = Array.from({ length: N_CELLS }, () => new Int16Array(DIRS_ALL.length).fill(-1));
+  for (let cellIdx = 0; cellIdx < N_CELLS; cellIdx++) {
+    const [r, c] = rc(cellIdx);
+    for (let d = 0; d < DIRS_ALL.length; d++) {
+      const [dr, dc] = DIRS_ALL[d];
+      if (canStepFrom(null, r, c, dr, dc)) COMPACT_NEXT[cellIdx][d] = idx(r + dr, c + dc);
+    }
+  }
+
+  function compactFromBoard(board) {
+    if (board instanceof Int8Array && board.length === N_CELLS) return new Int8Array(board);
+    const normalized = normalizeBoard(board);
+    if (!normalized) return null;
+    const out = new Int8Array(N_CELLS);
+    for (let r = 0; r < BOARD_N; r++) for (let c = 0; c < BOARD_N; c++) out[idx(r, c)] = normalized[r][c] | 0;
+    return out;
+  }
+
+  function compactToBoard(position) {
+    if (!(position instanceof Int8Array) || position.length !== N_CELLS) return null;
+    const out = Array.from({ length: BOARD_N }, () => Array(BOARD_N).fill(0));
+    for (let i = 0; i < N_CELLS; i++) out[(i / BOARD_N) | 0][i % BOARD_N] = position[i] | 0;
+    return out;
+  }
+
+  function compactClone(position) {
+    return position instanceof Int8Array ? new Int8Array(position) : compactFromBoard(position);
+  }
+
+  function compactStepDestinations(position, from) {
+    from = Number(from);
+    if (!(position instanceof Int8Array) || !validIdx(from)) return [];
+    const v = position[from] | 0;
+    if (!v) return [];
+    const out = [];
+    if (kind(v) === MAN) {
+      const wantedDr = forward(owner(v));
+      for (let d = 0; d < DIRS_ALL.length; d++) {
+        const dir = DIRS_ALL[d];
+        if (dir[0] !== wantedDr || !(dir[1] === 0 || Math.abs(dir[1]) === 1)) continue;
+        const to = COMPACT_NEXT[from][d];
+        if (to >= 0 && position[to] === 0) out.push(to);
+      }
+      return out;
+    }
+    for (let d = 0; d < DIRS_ALL.length; d++) {
+      let to = COMPACT_NEXT[from][d];
+      while (to >= 0 && position[to] === 0) {
+        out.push(to);
+        to = COMPACT_NEXT[to][d];
+      }
+    }
+    return out;
+  }
+
+  function compactCaptureOptions(position, from) {
+    from = Number(from);
+    if (!(position instanceof Int8Array) || !validIdx(from)) return [];
+    const v = position[from] | 0;
+    if (!v) return [];
+    const side = owner(v);
+    const out = [];
+    if (kind(v) === MAN) {
+      for (let d = 0; d < DIRS_ALL.length; d++) {
+        const jumped = COMPACT_NEXT[from][d];
+        if (jumped < 0) continue;
+        const to = COMPACT_NEXT[jumped][d];
+        if (to < 0) continue;
+        const mid = position[jumped] | 0;
+        if (mid && owner(mid) === opponent(side) && position[to] === 0) {
+          out.push({ from, to, jumped, type: MOVE_CAPTURE, piece: v });
+        }
+      }
+      return out;
+    }
+    for (let d = 0; d < DIRS_ALL.length; d++) {
+      let cur = COMPACT_NEXT[from][d];
+      let jumped = -1;
+      while (cur >= 0) {
+        const value = position[cur] | 0;
+        if (!value) {
+          if (jumped >= 0) out.push({ from, to: cur, jumped, type: MOVE_CAPTURE, piece: v });
+          cur = COMPACT_NEXT[cur][d];
+          continue;
+        }
+        if (owner(value) === side || jumped >= 0) break;
+        jumped = cur;
+        cur = COMPACT_NEXT[cur][d];
+      }
+    }
+    return out;
+  }
+
+  function compactLongestCaptureSearch(position, from, limit) {
+    const rawLimit = Number(limit);
+    const storeLimit = Number.isFinite(rawLimit) && rawLimit > 0 ? Math.trunc(rawLimit) : Number.POSITIVE_INFINITY;
+    const work = compactClone(position);
+    if (!work || !validIdx(Number(from)) || !work[Number(from)]) return { max: 0, paths: [] };
+    const origin = Number(from);
+    const path = [];
+    const jumps = [];
+    let best = 0;
+    let paths = [];
+
+    function record() {
+      const length = jumps.length;
+      if (!length || length < best) return;
+      const item = { from: origin, path: path.slice(), jumps: jumps.slice(), captures: length };
+      if (length > best) {
+        best = length;
+        paths = [item];
+      } else if (paths.length < storeLimit) {
+        paths.push(item);
+      }
+      if (Number.isFinite(storeLimit) && paths.length > storeLimit) paths.length = storeLimit;
+    }
+
+    function dfs(current) {
+      const options = compactCaptureOptions(work, current);
+      if (!options.length) {
+        record();
+        return;
+      }
+      for (const option of options) {
+        const mover = work[current] | 0;
+        const captured = work[option.jumped] | 0;
+        work[current] = 0;
+        work[option.jumped] = 0;
+        work[option.to] = mover;
+        path.push(option.to);
+        jumps.push(option.jumped);
+        dfs(option.to);
+        jumps.pop();
+        path.pop();
+        work[option.to] = 0;
+        work[option.jumped] = captured;
+        work[current] = mover;
+      }
+    }
+
+    dfs(origin);
+    return { max: best, paths };
+  }
+
+  function compactMandatoryCaptureInfo(position, side, options) {
+    options = options || {};
+    const configured = Number(options.maxPathsPerPiece);
+    const limit = Number.isFinite(configured) && configured > 0 ? Math.trunc(configured) : Number.POSITIVE_INFINITY;
+    const longestByPiece = [];
+    const byPiece = new Map();
+    let longestGlobal = 0;
+    for (let i = 0; i < N_CELLS; i++) {
+      const v = position[i] | 0;
+      if (!v || owner(v) !== side) continue;
+      const result = compactLongestCaptureSearch(position, i, limit);
+      if (result.max <= 0) continue;
+      byPiece.set(i, result);
+      longestByPiece.push([i, result.max]);
+      if (result.max > longestGlobal) longestGlobal = result.max;
+    }
+    const candidates = longestByPiece.filter((entry) => entry[1] === longestGlobal).map((entry) => entry[0]);
+    return { hasCapture: longestGlobal > 0, longestGlobal, longestByPiece, candidates, byPiece };
+  }
+
+  function compactHasAnyLegalMove(position, side) {
+    if (!(position instanceof Int8Array) || (side !== TOP && side !== BOT)) return false;
+    // A single legal capture segment guarantees at least one finite complete
+    // capture path because every jump removes an opposing piece.
+    for (let from = 0; from < N_CELLS; from++) {
+      const v = position[from] | 0;
+      if (v && owner(v) === side && compactCaptureOptions(position, from).length) return true;
+    }
+    for (let from = 0; from < N_CELLS; from++) {
+      const v = position[from] | 0;
+      if (v && owner(v) === side && compactStepDestinations(position, from).length) return true;
+    }
+    return false;
+  }
+
+  function compactGenerateAllStepMoves(position, side) {
+    const moves = [];
+    for (let from = 0; from < N_CELLS; from++) {
+      const v = position[from] | 0;
+      if (!v || owner(v) !== side) continue;
+      for (const to of compactStepDestinations(position, from)) {
+        moves.push({
+          type: MOVE_STEP,
+          from,
+          path: [to],
+          to,
+          captures: 0,
+          jumps: [],
+          promotes: kind(v) === MAN && isBackRank(to, side),
+        });
+      }
+    }
+    return moves;
+  }
+
+  function compactGenerateCaptureMoves(position, side, onlyLongest, options) {
+    const info = compactMandatoryCaptureInfo(position, side, options);
+    if (!info.hasCapture) return { moves: [], mandatory: info };
+    const moves = [];
+    for (const [from, result] of info.byPiece.entries()) {
+      if (onlyLongest && result.max !== info.longestGlobal) continue;
+      for (const item of result.paths) {
+        if (onlyLongest && item.captures !== info.longestGlobal) continue;
+        const to = item.path[item.path.length - 1];
+        moves.push({
+          type: MOVE_CAPTURE,
+          from,
+          path: item.path.slice(),
+          to,
+          jumps: item.jumps.slice(),
+          captures: item.captures,
+          promotes: kind(position[from] | 0) === MAN && isBackRank(to, side),
+        });
+      }
+    }
+    return { moves, mandatory: info };
+  }
+
+  function compactGenerateLegalMoves(position, side, options) {
+    options = options || {};
+    const policy = options.policy || 'strict';
+    const captured = compactGenerateCaptureMoves(position, side, policy !== 'playable', options);
+    const mandatory = captured.mandatory;
+    if (!mandatory.hasCapture) return { moves: compactGenerateAllStepMoves(position, side), mandatory };
+    if (policy !== 'playable') return captured;
+    const allCaps = compactGenerateCaptureMoves(position, side, false, options).moves.map((move) => ({
+      ...move,
+      soufla: move.captures < mandatory.longestGlobal || !mandatory.candidates.includes(move.from),
+    }));
+    const steps = compactGenerateAllStepMoves(position, side).map((move) => ({ ...move, soufla: true }));
+    return { moves: allCaps.concat(steps), mandatory };
+  }
+
+  function compactApplyMove(position, move, side) {
+    const norm = normalizePath(move);
+    if (!norm) return { ok: false, error: 'move/invalid-path' };
+    const work = compactClone(position);
+    if (!work) return { ok: false, error: 'move/invalid-board' };
+    const original = work[norm.from] | 0;
+    if (!original) return { ok: false, error: 'move/empty-source' };
+    const by = side == null ? owner(original) : side;
+    if (owner(original) !== by) return { ok: false, error: 'move/wrong-side' };
+    let current = norm.from;
+    let captures = 0;
+    const jumps = [];
+    const segments = [];
+    for (let i = 0; i < norm.path.length; i++) {
+      const to = norm.path[i];
+      const capture = compactCaptureOptions(work, current).find((option) => option.to === to) || null;
+      if (capture) {
+        const mover = work[current] | 0;
+        work[current] = 0;
+        work[capture.jumped] = 0;
+        work[to] = mover;
+        captures++;
+        jumps.push(capture.jumped);
+        segments.push({ type: MOVE_CAPTURE, from: current, to, jumped: capture.jumped });
+        current = to;
+        continue;
+      }
+      if (norm.path.length !== 1 || captures > 0 || !compactStepDestinations(work, current).includes(to)) {
+        return { ok: false, error: 'move/illegal-segment', at: i, from: current, to };
+      }
+      const mover = work[current] | 0;
+      work[current] = 0;
+      work[to] = mover;
+      segments.push({ type: MOVE_STEP, from: current, to, jumped: null });
+      current = to;
+    }
+    const promotionPending = kind(original) === MAN && isBackRank(current, by) ? { idx: current, side: by } : null;
+    const continuationCaptures = captures > 0 ? compactCaptureOptions(work, current) : [];
+    return {
+      ok: true,
+      position: work,
+      by,
+      type: captures > 0 ? MOVE_CAPTURE : MOVE_STEP,
+      from: norm.from,
+      to: current,
+      path: norm.path.slice(),
+      jumps,
+      captures,
+      segments,
+      pieceStartedAs: kind(original),
+      promotionPending,
+      continuationCaptures,
+      mustContinue: continuationCaptures.length > 0,
+    };
+  }
+
+  function compactPromoteAt(position, cellIdx) {
+    const work = compactClone(position);
+    if (!work || !validIdx(Number(cellIdx))) return { ok: false, error: 'promotion/invalid' };
+    const v = work[Number(cellIdx)] | 0;
+    let promoted = null;
+    if (v && kind(v) === MAN && isBackRank(Number(cellIdx), owner(v))) {
+      work[Number(cellIdx)] = piece(owner(v), KING);
+      promoted = { idx: Number(cellIdx), side: owner(v) };
+    }
+    return { ok: true, position: work, promoted };
+  }
+
+  function compactCountPieces(position) {
     const counts = { [TOP]: 0, [BOT]: 0, top: 0, bot: 0, topMen: 0, botMen: 0, topKings: 0, botKings: 0, total: 0 };
     for (let i = 0; i < N_CELLS; i++) {
-      const v = cell(board, i);
+      const v = position[i] | 0;
       if (!v) continue;
-      counts.total += 1;
+      counts.total++;
       if (owner(v) === TOP) {
-        counts[TOP] += 1; counts.top += 1;
-        if (kind(v) === KING) counts.topKings += 1; else counts.topMen += 1;
-      } else if (owner(v) === BOT) {
-        counts[BOT] += 1; counts.bot += 1;
-        if (kind(v) === KING) counts.botKings += 1; else counts.botMen += 1;
+        counts[TOP]++; counts.top++;
+        if (kind(v) === KING) counts.topKings++; else counts.topMen++;
+      } else {
+        counts[BOT]++; counts.bot++;
+        if (kind(v) === KING) counts.botKings++; else counts.botMen++;
       }
     }
     return counts;
   }
 
+  const compactApi = Object.freeze({
+    fromBoard: compactFromBoard,
+    toBoard: compactToBoard,
+    clone: compactClone,
+    cell: (position, cellIdx) => validIdx(Number(cellIdx)) ? position[Number(cellIdx)] | 0 : 0,
+    stepDestinations: compactStepDestinations,
+    captureOptions: compactCaptureOptions,
+    longestCaptureSearch: compactLongestCaptureSearch,
+    mandatoryCaptureInfo: compactMandatoryCaptureInfo,
+    generateAllStepMoves: compactGenerateAllStepMoves,
+    generateCaptureMoves: compactGenerateCaptureMoves,
+    generateLegalMoves: compactGenerateLegalMoves,
+    applyMove: compactApplyMove,
+    promoteAt: compactPromoteAt,
+    countPieces: compactCountPieces,
+    hasAnyLegalMove: compactHasAnyLegalMove,
+  });
+
+  function countPieces(board) {
+    const position = compactFromBoard(board);
+    return position ? compactCountPieces(position) : { [TOP]: 0, [BOT]: 0, top: 0, bot: 0, topMen: 0, botMen: 0, topKings: 0, botKings: 0, total: 0 };
+  }
+
   function normalizePath(move) {
     const from = Number(move && move.from);
     const raw = Array.isArray(move && move.path) && move.path.length ? move.path : [Number(move && move.to)];
-    const path = raw.map((x) => Number(x)).filter((x) => validIdx(x));
-    if (!validIdx(from) || !path.length) return null;
+    const path = raw.map((x) => Number(x));
+    if (!validIdx(from) || !path.length || path.some((x) => !validIdx(x))) return null;
     return { from, path };
   }
 
   function generateStepDestinations(board, from) {
-    from = Number(from);
-    const v = cell(board, from);
-    if (!v) return [];
-    const [r, c] = rc(from);
-    const k = kind(v);
-    const out = [];
-
-    if (k === MAN) {
-      const dr = forward(owner(v));
-      const candidates = [[dr, 0], [dr, -1], [dr, +1]];
-      for (const [sr, sc] of candidates) {
-        const rr = r + sr;
-        const cc = c + sc;
-        if (!inside(rr, cc)) continue;
-        if (!dirAllowedFrom(r, c, sr, sc)) continue;
-        if (board[rr][cc] === 0) out.push(idx(rr, cc));
-      }
-      return out;
-    }
-
-    if (k === KING) {
-      for (const [dr, dc] of dirsFrom(r, c)) {
-        let rr = r + dr;
-        let cc = c + dc;
-        while (inside(rr, cc)) {
-          if (!canStepFrom(board, rr - dr, cc - dc, dr, dc)) break;
-          if (board[rr][cc] !== 0) break;
-          out.push(idx(rr, cc));
-          rr += dr;
-          cc += dc;
-        }
-      }
-    }
-    return out;
+    const position = compactFromBoard(board);
+    return position ? compactStepDestinations(position, from) : [];
   }
 
   function classifyStep(board, from, to) {
@@ -421,148 +726,48 @@
   }
 
   function captureOptions(board, from) {
-    from = Number(from);
-    const v = cell(board, from);
-    if (!v) return [];
-    const [r, c] = rc(from);
-    const side = owner(v);
-    const k = kind(v);
-    const out = [];
-
-    for (const [dr, dc] of dirsFrom(r, c)) {
-      if (k === MAN) {
-        const mr = r + dr;
-        const mc = c + dc;
-        const lr = r + 2 * dr;
-        const lc = c + 2 * dc;
-        if (!inside(mr, mc) || !inside(lr, lc)) continue;
-        if (!canStepFrom(board, r, c, dr, dc) || !canStepFrom(board, mr, mc, dr, dc)) continue;
-        const mid = board[mr][mc];
-        if (mid && owner(mid) === opponent(side) && board[lr][lc] === 0) {
-          out.push({ from, to: idx(lr, lc), jumped: idx(mr, mc), type: MOVE_CAPTURE, piece: v });
-        }
-        continue;
-      }
-
-      let rr = r + dr;
-      let cc = c + dc;
-      let jumped = null;
-      while (inside(rr, cc)) {
-        if (!canStepFrom(board, rr - dr, cc - dc, dr, dc)) break;
-        const cur = board[rr][cc];
-        const curIdx = idx(rr, cc);
-        if (!cur) {
-          if (jumped != null) out.push({ from, to: curIdx, jumped, type: MOVE_CAPTURE, piece: v });
-          rr += dr;
-          cc += dc;
-          continue;
-        }
-        if (owner(cur) === side || jumped != null) break;
-        jumped = curIdx;
-        rr += dr;
-        cc += dc;
-      }
-    }
-    return out;
+    const position = compactFromBoard(board);
+    return position ? compactCaptureOptions(position, from) : [];
   }
 
   function applyCaptureForSearch(board, from, option) {
-    const next = cloneBoard(board);
-    const v = cell(next, from);
-    setCell(next, from, 0);
-    setCell(next, option.jumped, 0);
-    setCell(next, option.to, v);
-    return next;
+    const position = compactFromBoard(board);
+    if (!position || !option) return cloneBoard(board);
+    const mover = position[Number(from)] | 0;
+    position[Number(from)] = 0;
+    position[Number(option.jumped)] = 0;
+    position[Number(option.to)] = mover;
+    return compactToBoard(position);
   }
 
   function longestCaptureSearch(board, from, depth, limit) {
-    depth = Number(depth || 0);
-    limit = Number(limit || 64);
-    if (depth > 60) return { max: 0, paths: [] };
-    const opts = captureOptions(board, from);
-    if (!opts.length) return { max: 0, paths: [] };
-    let best = 0;
-    let paths = [];
-    for (const opt of opts) {
-      const nextBoard = applyCaptureForSearch(board, from, opt);
-      const tail = longestCaptureSearch(nextBoard, opt.to, depth + 1, limit);
-      const length = 1 + (tail.max || 0);
-      const tails = tail.paths && tail.paths.length ? tail.paths : [{ path: [], jumps: [] }];
-      const built = tails.map((t) => ({
-        from,
-        path: [opt.to].concat(t.path || []),
-        jumps: [opt.jumped].concat(t.jumps || []),
-        captures: length,
-      }));
-      if (length > best) {
-        best = length;
-        paths = built.slice(0, limit);
-      } else if (length === best && paths.length < limit) {
-        paths.push(...built.slice(0, Math.max(0, limit - paths.length)));
-      }
-    }
-    return { max: best, paths };
+    void depth;
+    const position = compactFromBoard(board);
+    return position ? compactLongestCaptureSearch(position, from, limit) : { max: 0, paths: [] };
   }
 
   function mandatoryCaptureInfo(board, side, options) {
-    options = options || {};
-    const maxPathsPerPiece = Number(options.maxPathsPerPiece || 64);
-    const longestByPiece = [];
-    const byPiece = new Map();
-    let longestGlobal = 0;
-    for (let i = 0; i < N_CELLS; i++) {
-      const v = cell(board, i);
-      if (!v || owner(v) !== side) continue;
-      const res = longestCaptureSearch(board, i, 0, maxPathsPerPiece);
-      if (res.max > 0) {
-        byPiece.set(i, res);
-        longestByPiece.push([i, res.max]);
-        if (res.max > longestGlobal) longestGlobal = res.max;
-      }
-    }
-    const candidates = longestByPiece.filter((x) => x[1] === longestGlobal).map((x) => x[0]);
-    return { hasCapture: longestGlobal > 0, longestGlobal, longestByPiece, candidates, byPiece };
+    const position = compactFromBoard(board);
+    return position
+      ? compactMandatoryCaptureInfo(position, side, options)
+      : { hasCapture: false, longestGlobal: 0, longestByPiece: [], candidates: [], byPiece: new Map() };
   }
 
   function generateAllStepMoves(board, side) {
-    const out = [];
-    for (let from = 0; from < N_CELLS; from++) {
-      const v = cell(board, from);
-      if (!v || owner(v) !== side) continue;
-      for (const to of generateStepDestinations(board, from)) out.push({ type: MOVE_STEP, from, path: [to], to, captures: 0, jumps: [] });
-    }
-    return out;
+    const position = compactFromBoard(board);
+    return position ? compactGenerateAllStepMoves(position, side) : [];
   }
 
-  function generateCaptureMoves(board, side, onlyLongest) {
-    const info = mandatoryCaptureInfo(board, side);
-    if (!info.hasCapture) return [];
-    const out = [];
-    for (const [from, res] of info.byPiece.entries()) {
-      if (onlyLongest && res.max !== info.longestGlobal) continue;
-      for (const p of res.paths || []) {
-        if (onlyLongest && p.captures !== info.longestGlobal) continue;
-        out.push({ type: MOVE_CAPTURE, from, path: p.path.slice(), to: p.path[p.path.length - 1], jumps: (p.jumps || []).slice(), captures: p.captures || p.path.length });
-      }
-    }
-    return out;
+  function generateCaptureMoves(board, side, onlyLongest, options) {
+    const position = compactFromBoard(board);
+    return position ? compactGenerateCaptureMoves(position, side, !!onlyLongest, options).moves : [];
   }
 
-  // policy: "strict" returns only moves that obey mandatory capture/longest chain.
-  // policy: "playable" returns structurally possible moves and annotates soufla risk.
   function generateLegalMoves(board, side, options) {
-    options = options || {};
-    const policy = options.policy || 'strict';
-    const mandatory = mandatoryCaptureInfo(board, side);
-    if (mandatory.hasCapture) {
-      if (policy === 'playable') {
-        const caps = generateCaptureMoves(board, side, false).map((m) => ({ ...m, soufla: m.captures < mandatory.longestGlobal || !mandatory.candidates.includes(m.from) }));
-        const steps = generateAllStepMoves(board, side).map((m) => ({ ...m, soufla: true }));
-        return { moves: caps.concat(steps), mandatory };
-      }
-      return { moves: generateCaptureMoves(board, side, true), mandatory };
-    }
-    return { moves: generateAllStepMoves(board, side), mandatory };
+    const position = compactFromBoard(board);
+    return position
+      ? compactGenerateLegalMoves(position, side, options)
+      : { moves: [], mandatory: { hasCapture: false, longestGlobal: 0, longestByPiece: [], candidates: [], byPiece: new Map() } };
   }
 
   function applySegment(board, from, to) {
@@ -587,68 +792,35 @@
   }
 
   function applyMovePath(board, move, side) {
-    const norm = normalizePath(move);
-    if (!norm) return { ok: false, error: 'move/invalid-path' };
-    const v0 = cell(board, norm.from);
-    if (!v0) return { ok: false, error: 'move/empty-source' };
-    if (side != null && owner(v0) !== side) return { ok: false, error: 'move/wrong-side' };
-    const by = side == null ? owner(v0) : side;
-    let cur = norm.from;
-    let working = cloneBoard(board);
-    let captures = 0;
-    const jumps = [];
-    const segments = [];
-    const pieceStartedAs = kind(v0);
-
-    for (let i = 0; i < norm.path.length; i++) {
-      const to = norm.path[i];
-      const seg = applySegment(working, cur, to);
-      if (!seg.ok) return { ok: false, error: seg.reason || 'move/illegal-segment', at: i, from: cur, to };
-      if (seg.type === MOVE_STEP) {
-        if (norm.path.length > 1 || captures > 0) return { ok: false, error: 'move/non-capture-inside-chain', at: i };
-      } else {
-        captures += 1;
-        jumps.push(seg.jumped);
-      }
-      working = seg.board;
-      segments.push({ type: seg.type, from: cur, to, jumped: seg.jumped });
-      cur = to;
-    }
-
-    const endsOnBackRank = pieceStartedAs === MAN && isBackRank(cur, by);
-    const continuation = captures > 0 ? captureOptions(working, cur) : [];
-    return {
-      ok: true,
-      board: working,
-      by,
-      type: captures > 0 ? MOVE_CAPTURE : MOVE_STEP,
-      from: norm.from,
-      to: cur,
-      path: norm.path.slice(),
-      jumps,
-      captures,
-      segments,
-      pieceStartedAs,
-      promotionPending: endsOnBackRank ? { idx: cur, side: by } : null,
-      continuationCaptures: continuation,
-      mustContinue: continuation.length > 0,
-    };
+    const position = compactFromBoard(board);
+    if (!position) return { ok: false, error: 'move/invalid-board' };
+    const applied = compactApplyMove(position, move, side);
+    if (!applied.ok) return applied;
+    const out = { ...applied, board: compactToBoard(applied.position) };
+    delete out.position;
+    return out;
   }
 
   function promoteAt(board, cellIdx) {
-    const next = cloneBoard(board);
-    const v = cell(next, cellIdx);
-    if (v && kind(v) === MAN && isBackRank(Number(cellIdx), owner(v))) {
-      setCell(next, Number(cellIdx), piece(owner(v), KING));
-      return { ok: true, board: next, promoted: { idx: Number(cellIdx), side: owner(v) } };
-    }
-    return { ok: true, board: next, promoted: null };
+    const position = compactFromBoard(board);
+    if (!position) return { ok: false, error: 'promotion/invalid-board' };
+    const result = compactPromoteAt(position, cellIdx);
+    return result.ok
+      ? { ok: true, board: compactToBoard(result.position), promoted: result.promoted }
+      : result;
   }
 
   function finalizeTurnBoard(board, applied) {
     if (!applied || !applied.ok) return { ok: false, error: 'turn/not-applied' };
-    if (applied.promotionPending) return promoteAt(board, applied.promotionPending.idx);
-    return { ok: true, board: cloneBoard(board), promoted: null };
+    // Reaching the back rank creates a deferred right to promotion. The piece
+    // remains a man until the opponent has completed a turn and this player's
+    // next turn starts.
+    return {
+      ok: true,
+      board: cloneBoard(board),
+      promoted: null,
+      promotionPending: applied.promotionPending ? clone(applied.promotionPending) : null,
+    };
   }
 
   function forcedOpeningSeqForStarterSide(side) {
@@ -727,7 +899,7 @@
       options.push({ kind: 'remove', offenderIdx: cellIdx });
       const res = byPiece.get(cellIdx);
       if (!res || !res.paths) continue;
-      for (const path of res.paths.slice(0, 48)) {
+      for (const path of res.paths) {
         if ((path.captures || 0) !== mandatory.longestGlobal) continue;
         options.push({ kind: 'force', offenderIdx: cellIdx, path: path.path || [], jumps: path.jumps || [], captures: path.captures || 0 });
       }
@@ -779,7 +951,12 @@
     const target = resolveOffenderCurrentCell(pending, offenderIdx);
     if (!validIdx(target)) return { ok: false, error: 'soufla/invalid-offender' };
     const next = cloneBoard(boardAfterViolation);
-    if (!cell(next, target)) return { ok: false, error: 'soufla/offender-not-found', target };
+    const value = cell(next, target);
+    if (!value) return { ok: false, error: 'soufla/offender-not-found', target };
+    const offenderSide = Number(pending.offenderSide);
+    if ((offenderSide === TOP || offenderSide === BOT) && owner(value) !== offenderSide) {
+      return { ok: false, error: 'soufla/wrong-offender-side', target };
+    }
     setCell(next, target, 0);
     return { ok: true, board: next, removed: target, penalty: 'remove' };
   }
@@ -793,14 +970,18 @@
     if (!validIdx(from) || !path.length) return { ok: false, error: 'soufla/invalid-force-path' };
     const side = owner(cell(before, from));
     if (!side) return { ok: false, error: 'soufla/empty-offender' };
+    const offenderSide = Number(pending.offenderSide);
+    if ((offenderSide === TOP || offenderSide === BOT) && side !== offenderSide) {
+      return { ok: false, error: 'soufla/wrong-offender-side' };
+    }
     const applied = applyMovePath(before, { from, path }, side);
     if (!applied.ok || applied.captures <= 0) return { ok: false, error: applied.error || 'soufla/force-not-capture' };
     return { ok: true, board: applied.board, applied, penalty: 'force' };
   }
 
   function hasAnyLegalMove(board, side) {
-    const moves = generateLegalMoves(board, side, { policy: 'strict' }).moves;
-    return moves.length > 0;
+    const position = compactFromBoard(board);
+    return !!(position && compactHasAnyLegalMove(position, side));
   }
 
   function getGameOutcome(board, sideToMove) {
@@ -869,6 +1050,7 @@
     cell,
     setCell,
     countPieces,
+    compact: compactApi,
     normalizePath,
     generateStepDestinations,
     classifyStep,

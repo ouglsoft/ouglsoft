@@ -3,9 +3,9 @@
 // Build-level browser storage migration.
 // Normal browser windows may retain old PvC session data or cached JS between AI engine rebuilds,
 // while incognito starts clean.  Keep account/language/theme data, but clear volatile local game
-// state once per application build to avoid mixing old runtime snapshots with the new AI2 runtime.
+// state once per application build to avoid mixing old runtime snapshots with the new computer-engine runtime.
 (function () {
-  var BUILD = "ai2-v4.6-plan-bank";
+  var BUILD = "computer-pvs-1.1.0";
   try {
     if (typeof window !== "undefined") window.DHAMET_APP_BUILD = BUILD;
     var key = "zamat.app.build.applied";
