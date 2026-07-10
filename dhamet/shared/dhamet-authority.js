@@ -166,8 +166,20 @@
     const resolvedMoveCount = decision && decision.kind === 'force'
       ? Math.max(currentMoveCount, baseMoveCount + 1)
       : Math.max(currentMoveCount, baseMoveCount);
+
+    const pending = State.normalizeDeferredPromotions(applied && applied.deferredPromotions);
+    if (applied && applied.promotionPending) pending.push(clone(applied.promotionPending));
+    // The forced capture is the offender's replacement turn. Once it finishes,
+    // the penalizer's next turn starts immediately, so any crown that had been
+    // waiting through the offender's turn must become active in the authoritative
+    // state now. A new crown earned by the forced offender remains deferred.
+    const activated = State.activateDeferredPromotions(board, pending, nextTurn);
+    if (!activated || !activated.ok) return null;
+    const resolvedBoard = activated.board;
+    const deferredPromotions = activated.deferredPromotions;
+
     const snap = State.normalizeSnapshot(Object.assign({}, base, {
-      board,
+      board: resolvedBoard,
       player: nextTurn,
       inChain: false,
       chainPos: null,
@@ -182,9 +194,6 @@
       soufla: null,
     }), { defaultPlayer: nextTurn });
     if (!snap) return null;
-    const pending = State.normalizeDeferredPromotions(applied && applied.deferredPromotions);
-    if (applied && applied.promotionPending) pending.push(clone(applied.promotionPending));
-    const deferredPromotions = sanitizeDeferredPromotions(board, pending);
     const snapWithPromotions = snapshotWithDeferredPromotions(snap, deferredPromotions);
     return State.createStatePayload({
       snapshot: snapWithPromotions,
@@ -893,7 +902,11 @@
     if (serverSoufla && serverSoufla.penalizer != null) nextGame.soufla = { availableFor: serverSoufla.penalizer, pending: serverSoufla };
     else nextGame.soufla = null;
 
-    let result = Result && typeof Result.fromSnapshot === 'function'
+    // A detected soufla gives the opponent an immediate penalty right before
+    // any new move or terminal claim is settled. The violating board is not the
+    // final legal consequence until removal/force is chosen, so defer result
+    // evaluation to applySouflaDecision in that case.
+    let result = !serverSoufla && Result && typeof Result.fromSnapshot === 'function'
       ? Result.fromSnapshot(statePayload.snapshot, { mode: 'pvp', moveIndex: mi, ply, source: 'gameroom-authority', endedAt: ts })
       : null;
     if (result) {

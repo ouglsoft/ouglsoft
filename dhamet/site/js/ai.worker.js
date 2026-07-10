@@ -2,7 +2,7 @@
 (() => {
   'use strict';
 
-  const BUILD = '?v=computer-pvs-1.7.0';
+  const BUILD = '?v=computer-pvs-1.7.1';
   importScripts(
     '../shared/dhamet-utils.js' + BUILD,
     '../shared/dhamet-rules.js' + BUILD,

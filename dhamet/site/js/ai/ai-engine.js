@@ -25,7 +25,7 @@
   const WIN = 10000000;
   const INF = 1000000000;
   const MATE_WINDOW = 100000;
-  const ENGINE_VERSION = 'dhamet-computer-pvs-1.7.0';
+  const ENGINE_VERSION = 'dhamet-computer-pvs-1.7.1';
   // Root-only tie preference for a remembered, uniquely forced soufla plan.
   // One man is worth 100 evaluation points. The bonus is deliberately small:
   // it preserves a previously proven plan when results are close, but cannot
@@ -802,7 +802,7 @@
   function exactTTRecord(pos, minDepth) {
     const entry = TT.get(hashPosition(pos), verificationKey(pos));
     if (!entry || entry.bound !== 'exact' || entry.depth < Math.max(0, minDepth | 0) || !entry.move) return null;
-    const legal = generateMoves(pos);
+    const legal = generateSearchMoves(pos, null);
     const move = legal.find((candidate) => sameMove(candidate, entry.move)) || null;
     if (!move) return null;
     return Object.freeze({
@@ -819,7 +819,7 @@
     for (let ply = 0; ply < limit; ply++) {
       const entry = TT.get(hashPosition(cur), verificationKey(cur));
       if (!entry || !entry.move) break;
-      const legal = generateMoves(cur);
+      const legal = generateSearchMoves(cur, null);
       const move = legal.find((candidate) => sameMove(candidate, entry.move)) || null;
       if (!move) break;
       hints.push(Object.freeze({ identity: positionIdentity(cur), move: clonePlanMove(move) }));
@@ -839,10 +839,9 @@
     let humanTurn;
     try { humanTurn = applyMove(pos, chosenMove); }
     catch (_) { return null; }
-    const humanMoves = generateMoves(humanTurn);
-    if (humanMoves.length !== 1) return null;
-    const expectedCapture = humanMoves[0];
-    if (!(expectedCapture.captures > 0 || (expectedCapture.jumps && expectedCapture.jumps.length))) return null;
+    const uniqueCapture = R.compact.uniqueLongestCapture(humanTurn.board, humanTurn.side);
+    if (!uniqueCapture || !uniqueCapture.unique || !uniqueCapture.move) return null;
+    const expectedCapture = uniqueCapture.move;
 
     let computerTurn;
     try { computerTurn = applyMove(humanTurn, expectedCapture); }
@@ -905,12 +904,13 @@
 
     // Reconfirm uniqueness from the authoritative shared generator. A plan is
     // never used when the human originally had more than one legal capture.
-    const legal = generateMoves(turnStart);
-    if (legal.length !== 1 || !(legal[0].captures > 0 || (legal[0].jumps && legal[0].jumps.length))) return null;
-    if (!sameMove(legal[0], plan.expectedCapture)) return null;
+    const uniqueCapture = R.compact.uniqueLongestCapture(turnStart.board, turnStart.side);
+    if (!uniqueCapture || !uniqueCapture.unique || !uniqueCapture.move) return null;
+    const legalCapture = uniqueCapture.move;
+    if (!sameMove(legalCapture, plan.expectedCapture)) return null;
 
     let afterForce;
-    try { afterForce = applyMove(turnStart, legal[0]); }
+    try { afterForce = applyMove(turnStart, legalCapture); }
     catch (_) { return null; }
     if (positionIdentity(afterForce) !== String(plan.afterForceIdentity || '')) return null;
 
@@ -945,7 +945,7 @@
       const entry = TT.get(hashPosition(cur), verificationKey(cur));
       move = entry && entry.move ? entry.move : null;
       if (move) {
-        const legal = generateMoves(cur);
+        const legal = generateSearchMoves(cur, null);
         move = legal.find((candidate) => sameMove(candidate, move)) || null;
       }
     }
@@ -1285,8 +1285,26 @@
 
   function validateCanonicalMove(board, side, state, candidate) {
     const pos = normalizePosition({ ...state, board, player: side });
-    const legal = generateMoves(pos);
-    return legal.find((move) => sameMove(move, candidate)) || null;
+    if (!candidate || !Array.isArray(candidate.path) || !candidate.path.length) return null;
+
+    const forced = forcedOpeningMove(pos);
+    if (pos.forcedEnabled && pos.forcedPly < 10) {
+      return forced && sameMove(forced, candidate) ? forced : null;
+    }
+
+    const applied = R.compact.applyMove(pos.board, candidate, side);
+    if (!applied || !applied.ok) return null;
+    const mandatory = R.compact.mandatoryCaptureInfo(pos.board, side, { includePaths: false });
+    if (applied.captures > 0) {
+      const selected = mandatory.byPiece && mandatory.byPiece.get(Number(applied.from));
+      const selectedMax = selected ? Number(selected.max || 0) : 0;
+      if (!mandatory.hasCapture || applied.mustContinue) return null;
+      if (applied.captures !== mandatory.longestGlobal || selectedMax !== mandatory.longestGlobal) return null;
+    } else if (mandatory.hasCapture) {
+      return null;
+    }
+    if (Array.isArray(candidate.jumps) && candidate.jumps.length && !R.samePath(candidate.jumps, applied.jumps)) return null;
+    return canonicalMove(candidate, applied);
   }
 
   function create(deps) {

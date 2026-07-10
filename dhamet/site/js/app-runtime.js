@@ -4,7 +4,7 @@
 // Clear an incompatible pre-rebuild automatic PvC snapshot once, while preserving user settings,
 // manual saves, account data, language, theme, and compatible sessions from later engine builds.
 (function () {
-  var BUILD = "computer-pvs-1.7.0";
+  var BUILD = "computer-pvs-1.7.1";
   try {
     if (typeof window !== "undefined") window.DHAMET_APP_BUILD = BUILD;
     var key = "zamat.app.build.applied";

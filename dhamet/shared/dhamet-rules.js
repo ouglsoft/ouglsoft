@@ -409,26 +409,14 @@
     return out;
   }
 
-  function compactCaptureAnalysis(position, from, options) {
+  function compactCreateCaptureSolver(position, from, options) {
     options = options && typeof options === 'object' ? options : {};
     const work = compactClone(position);
-    if (!work || !validIdx(Number(from)) || !work[Number(from)]) {
-      return { max: 0, paths: [], firstJumps: [], firstLandings: 0, nodes: 0 };
-    }
+    if (!work || !validIdx(Number(from)) || !work[Number(from)]) return null;
 
     const origin = Number(from);
-    const collectPaths = options.collectPaths !== false;
-    const collectFirst = !!options.collectFirst;
-    const dedupeEquivalent = !!options.dedupeEquivalent;
     const shouldAbort = typeof options.shouldAbort === 'function' ? options.shouldAbort : null;
-    const path = [];
-    const jumps = [];
     const memo = Array.from({ length: N_CELLS }, () => new Map());
-    const firstJumpSet = new Set();
-    const firstLandingSet = new Set();
-    const equivalentEnds = dedupeEquivalent ? new Set() : null;
-    const enumeratedStates = dedupeEquivalent ? new Set() : null;
-    const paths = [];
     let nodes = 0;
 
     function poll() {
@@ -440,17 +428,17 @@
       }
     }
 
-    function withCapture(current, option, callback) {
+    function withCapture(current, to, jumped, callback) {
       const mover = work[current] | 0;
-      const captured = work[option.jumped] | 0;
+      const captured = work[jumped] | 0;
       work[current] = 0;
-      work[option.jumped] = 0;
-      work[option.to] = mover;
+      work[jumped] = 0;
+      work[to] = mover;
       try {
         return callback();
       } finally {
-        work[option.to] = 0;
-        work[option.jumped] = captured;
+        work[to] = 0;
+        work[jumped] = captured;
         work[current] = mover;
       }
     }
@@ -461,9 +449,8 @@
       if (cellMemo.has(capturedMask)) return cellMemo.get(capturedMask);
       let best = 0;
       compactVisitCaptureOptions(work, current, (to, jumped) => {
-        const option = { to, jumped };
         const nextMask = capturedMask | COMPACT_BITS[jumped];
-        const value = 1 + withCapture(current, option, () => maxRemaining(to, nextMask));
+        const value = 1 + withCapture(current, to, jumped, () => maxRemaining(to, nextMask));
         if (value > best) best = value;
       });
       cellMemo.set(capturedMask, best);
@@ -471,61 +458,94 @@
     }
 
     const best = maxRemaining(origin, 0n);
-    if (best <= 0) return { max: 0, paths: [], firstJumps: [], firstLandings: 0, nodes };
 
-    function record(current, capturedMask) {
-      if (!collectPaths) return;
-      if (equivalentEnds) {
-        const key = (capturedMask << 7n) | BigInt(current);
-        if (equivalentEnds.has(key)) return;
-        equivalentEnds.add(key);
-      }
-      paths.push({ from: origin, path: path.slice(), jumps: jumps.slice(), captures: jumps.length });
-    }
+    function analyze(request) {
+      request = request && typeof request === 'object' ? request : {};
+      const collectPaths = request.collectPaths !== false;
+      const collectFirst = !!request.collectFirst;
+      const dedupeEquivalent = !!request.dedupeEquivalent;
+      const maxPaths = Number.isFinite(Number(request.maxPaths))
+        ? Math.max(1, Number(request.maxPaths) | 0)
+        : Infinity;
+      const path = [];
+      const jumps = [];
+      const firstJumpSet = new Set();
+      const firstLandingSet = new Set();
+      const equivalentEnds = dedupeEquivalent ? new Set() : null;
+      const enumeratedStates = dedupeEquivalent ? new Set() : null;
+      const paths = [];
+      let truncated = false;
 
-    function enumerate(current, capturedMask, remaining) {
-      poll();
-      if (enumeratedStates) {
-        const stateKey = (capturedMask << 14n) | (BigInt(remaining) << 7n) | BigInt(current);
-        if (enumeratedStates.has(stateKey)) return;
-        enumeratedStates.add(stateKey);
+      if (best <= 0) {
+        return { max: 0, paths, firstJumps: [], firstLandings: 0, nodes, truncated: false };
       }
-      if (remaining <= 0) {
-        record(current, capturedMask);
-        return;
-      }
-      compactVisitCaptureOptions(work, current, (to, jumped) => {
-        const option = { to, jumped };
-        const nextMask = capturedMask | COMPACT_BITS[jumped];
-        const continuation = withCapture(current, option, () => maxRemaining(to, nextMask));
-        if (1 + continuation !== remaining) return;
-        path.push(to);
-        jumps.push(jumped);
-        withCapture(current, option, () => enumerate(to, nextMask, remaining - 1));
-        jumps.pop();
-        path.pop();
-      });
-    }
 
-    if (collectFirst) {
-      compactVisitCaptureOptions(work, origin, (to, jumped) => {
-        const option = { to, jumped };
-        const nextMask = COMPACT_BITS[jumped];
-        const continuation = withCapture(origin, option, () => maxRemaining(to, nextMask));
-        if (1 + continuation === best) {
-          firstJumpSet.add(jumped);
-          firstLandingSet.add(to);
+      function record(current, capturedMask) {
+        if (!collectPaths || truncated) return;
+        if (equivalentEnds) {
+          const key = (capturedMask << 7n) | BigInt(current);
+          if (equivalentEnds.has(key)) return;
+          equivalentEnds.add(key);
         }
-      });
+        paths.push({ from: origin, path: path.slice(), jumps: jumps.slice(), captures: jumps.length });
+        if (paths.length >= maxPaths) truncated = true;
+      }
+
+      function enumerate(current, capturedMask, remaining) {
+        if (truncated) return;
+        poll();
+        if (enumeratedStates) {
+          const stateKey = (capturedMask << 14n) | (BigInt(remaining) << 7n) | BigInt(current);
+          if (enumeratedStates.has(stateKey)) return;
+          enumeratedStates.add(stateKey);
+        }
+        if (remaining <= 0) {
+          record(current, capturedMask);
+          return;
+        }
+        compactVisitCaptureOptions(work, current, (to, jumped) => {
+          if (truncated) return false;
+          const nextMask = capturedMask | COMPACT_BITS[jumped];
+          const continuation = withCapture(current, to, jumped, () => maxRemaining(to, nextMask));
+          if (1 + continuation !== remaining) return;
+          path.push(to);
+          jumps.push(jumped);
+          withCapture(current, to, jumped, () => enumerate(to, nextMask, remaining - 1));
+          jumps.pop();
+          path.pop();
+          if (truncated) return false;
+        });
+      }
+
+      if (collectFirst) {
+        compactVisitCaptureOptions(work, origin, (to, jumped) => {
+          const nextMask = COMPACT_BITS[jumped];
+          const continuation = withCapture(origin, to, jumped, () => maxRemaining(to, nextMask));
+          if (1 + continuation === best) {
+            firstJumpSet.add(jumped);
+            firstLandingSet.add(to);
+          }
+        });
+      }
+      if (collectPaths) enumerate(origin, 0n, best);
+      return {
+        max: best,
+        paths,
+        firstJumps: Array.from(firstJumpSet),
+        firstLandings: firstLandingSet.size,
+        nodes,
+        truncated,
+      };
     }
-    if (collectPaths) enumerate(origin, 0n, best);
-    return {
-      max: best,
-      paths,
-      firstJumps: Array.from(firstJumpSet),
-      firstLandings: firstLandingSet.size,
-      nodes,
-    };
+
+    return Object.freeze({ origin, max: best, analyze, nodes: () => nodes });
+  }
+
+  function compactCaptureAnalysis(position, from, options) {
+    const solver = compactCreateCaptureSolver(position, from, options);
+    return solver
+      ? solver.analyze(options)
+      : { max: 0, paths: [], firstJumps: [], firstLandings: 0, nodes: 0, truncated: false };
   }
 
   function compactLongestCaptureSearch(position, from, limit) {
@@ -540,26 +560,27 @@
     if (!(position instanceof Int8Array) || (side !== TOP && side !== BOT)) {
       return { hasCapture: false, longest: 0, candidates: 0, threatened: [], landingChoices: 0 };
     }
-    const analyses = [];
+    const solvers = [];
     let longest = 0;
     for (let from = 0; from < N_CELLS; from++) {
       const v = position[from] | 0;
       if (!v || owner(v) !== side) continue;
       if (!compactCaptureOptions(position, from).length) continue;
-      const analysis = compactCaptureAnalysis(position, from, { ...(options || {}), collectPaths: false, collectFirst: true });
-      if (analysis.max <= 0) continue;
-      analyses.push({ from, analysis });
-      if (analysis.max > longest) longest = analysis.max;
+      const solver = compactCreateCaptureSolver(position, from, options);
+      if (!solver || solver.max <= 0) continue;
+      solvers.push({ from, solver });
+      if (solver.max > longest) longest = solver.max;
     }
     if (!longest) return { hasCapture: false, longest: 0, candidates: 0, threatened: [], landingChoices: 0 };
     const threatened = new Set();
     let candidates = 0;
     let landingChoices = 0;
-    for (const item of analyses) {
-      if (item.analysis.max !== longest) continue;
+    for (const item of solvers) {
+      if (item.solver.max !== longest) continue;
+      const analysis = item.solver.analyze({ collectPaths: false, collectFirst: true });
       candidates++;
-      landingChoices += item.analysis.firstLandings;
-      for (const jumped of item.analysis.firstJumps) threatened.add(jumped);
+      landingChoices += analysis.firstLandings;
+      for (const jumped of analysis.firstJumps) threatened.add(jumped);
     }
     return { hasCapture: true, longest, candidates, threatened: Array.from(threatened), landingChoices };
   }
@@ -571,15 +592,17 @@
     }
 
     const longestByPiece = [];
+    const solvers = new Map();
     let longestGlobal = 0;
     for (let from = 0; from < N_CELLS; from++) {
       const v = position[from] | 0;
       if (!v || owner(v) !== side) continue;
       if (!compactCaptureOptions(position, from).length) continue;
-      const analysis = compactCaptureAnalysis(position, from, { ...options, collectPaths: false });
-      if (analysis.max <= 0) continue;
-      longestByPiece.push([from, analysis.max]);
-      if (analysis.max > longestGlobal) longestGlobal = analysis.max;
+      const solver = compactCreateCaptureSolver(position, from, options);
+      if (!solver || solver.max <= 0) continue;
+      solvers.set(from, solver);
+      longestByPiece.push([from, solver.max]);
+      if (solver.max > longestGlobal) longestGlobal = solver.max;
     }
 
     if (!longestGlobal) {
@@ -593,8 +616,8 @@
     const byPiece = new Map();
     const moves = [];
     for (const from of candidates) {
-      const result = compactCaptureAnalysis(position, from, {
-        ...options,
+      const solver = solvers.get(from);
+      const result = solver.analyze({
         collectPaths: true,
         dedupeEquivalent: options.dedupeEquivalent !== false,
       });
@@ -618,23 +641,74 @@
     };
   }
 
+  function compactUniqueLongestCapture(position, side, options) {
+    options = options && typeof options === 'object' ? options : {};
+    if (!(position instanceof Int8Array) || (side !== TOP && side !== BOT)) {
+      return { unique: false, move: null, longestGlobal: 0, candidates: [] };
+    }
+    const solvers = [];
+    let longestGlobal = 0;
+    for (let from = 0; from < N_CELLS; from++) {
+      const v = position[from] | 0;
+      if (!v || owner(v) !== side) continue;
+      if (!compactCaptureOptions(position, from).length) continue;
+      const solver = compactCreateCaptureSolver(position, from, options);
+      if (!solver || solver.max <= 0) continue;
+      solvers.push({ from, solver });
+      if (solver.max > longestGlobal) longestGlobal = solver.max;
+    }
+    const candidates = solvers.filter((item) => item.solver.max === longestGlobal);
+    if (!longestGlobal || candidates.length !== 1) {
+      return { unique: false, move: null, longestGlobal, candidates: candidates.map((item) => item.from) };
+    }
+    const item = candidates[0];
+    const result = item.solver.analyze({ collectPaths: true, dedupeEquivalent: false, maxPaths: 2 });
+    if (result.truncated || result.paths.length !== 1) {
+      return { unique: false, move: null, longestGlobal, candidates: [item.from] };
+    }
+    const pathInfo = result.paths[0];
+    const to = pathInfo.path[pathInfo.path.length - 1];
+    return {
+      unique: true,
+      longestGlobal,
+      candidates: [item.from],
+      move: {
+        type: MOVE_CAPTURE,
+        from: item.from,
+        path: pathInfo.path.slice(),
+        to,
+        jumps: pathInfo.jumps.slice(),
+        captures: pathInfo.captures,
+        promotes: kind(position[item.from] | 0) === MAN && isBackRank(to, side),
+      },
+    };
+  }
+
   function compactMandatoryCaptureInfo(position, side, options) {
-    options = options || {};
-    // options is accepted for API compatibility; enumeration is exhaustive.
-    void options;
+    options = options && typeof options === 'object' ? options : {};
+    const includePaths = options.includePaths !== false;
+    const includeAllPiecePaths = options.includeAllPiecePaths !== false;
     const longestByPiece = [];
     const byPiece = new Map();
+    const solvers = new Map();
     let longestGlobal = 0;
     for (let i = 0; i < N_CELLS; i++) {
       const v = position[i] | 0;
       if (!v || owner(v) !== side) continue;
-      const result = compactLongestCaptureSearch(position, i);
-      if (result.max <= 0) continue;
-      byPiece.set(i, result);
-      longestByPiece.push([i, result.max]);
-      if (result.max > longestGlobal) longestGlobal = result.max;
+      if (!compactCaptureOptions(position, i).length) continue;
+      const solver = compactCreateCaptureSolver(position, i, options);
+      if (!solver || solver.max <= 0) continue;
+      solvers.set(i, solver);
+      longestByPiece.push([i, solver.max]);
+      if (solver.max > longestGlobal) longestGlobal = solver.max;
     }
     const candidates = longestByPiece.filter((entry) => entry[1] === longestGlobal).map((entry) => entry[0]);
+    for (const [from, solver] of solvers.entries()) {
+      const shouldCollect = includePaths && (includeAllPiecePaths || solver.max === longestGlobal);
+      byPiece.set(from, shouldCollect
+        ? solver.analyze({ collectPaths: true, dedupeEquivalent: false })
+        : { max: solver.max, paths: [], firstJumps: [], firstLandings: 0, nodes: solver.nodes(), truncated: false });
+    }
     return { hasCapture: longestGlobal > 0, longestGlobal, longestByPiece, candidates, byPiece };
   }
 
@@ -674,7 +748,11 @@
   }
 
   function compactGenerateCaptureMoves(position, side, onlyLongest, options) {
-    const info = compactMandatoryCaptureInfo(position, side, options);
+    const info = compactMandatoryCaptureInfo(position, side, {
+      ...(options || {}),
+      includePaths: true,
+      includeAllPiecePaths: !onlyLongest,
+    });
     if (!info.hasCapture) return { moves: [], mandatory: info };
     const moves = [];
     for (const [from, result] of info.byPiece.entries()) {
@@ -809,6 +887,7 @@
     captureOptions: compactCaptureOptions,
     captureThreatSummary: compactCaptureThreatSummary,
     generateSearchMoves: compactGenerateSearchMoves,
+    uniqueLongestCapture: compactUniqueLongestCapture,
     longestCaptureSearch: compactLongestCaptureSearch,
     mandatoryCaptureInfo: compactMandatoryCaptureInfo,
     generateAllStepMoves: compactGenerateAllStepMoves,
@@ -1062,12 +1141,18 @@
     const selectedMax = selectedInfo ? Number(selectedInfo.max || 0) : 0;
     let offenders = [];
     if (!capturesDone) {
+      // Ignoring capture entirely makes every piece that owned a globally
+      // longest chain an eligible offender.
       offenders = mandatory.candidates.slice();
-    } else {
-      if (selectedMax > 0 && capturesDone < selectedMax) offenders.push(from);
-      if (selectedMax < mandatory.longestGlobal) {
-        for (const cellIdx of mandatory.candidates) if (cellIdx !== from) offenders.push(cellIdx);
-      }
+    } else if (selectedMax < mandatory.longestGlobal) {
+      // When a shorter piece/chain was chosen, the rules identify the pieces
+      // that owned the global longest chain—not the moved shorter piece—as the
+      // offenders on which the opponent may apply the single penalty.
+      offenders = mandatory.candidates.slice();
+    } else if (capturesDone < selectedMax) {
+      // A player who started a globally longest chain and stopped early has
+      // violated with that moving piece itself.
+      offenders = [from];
     }
     offenders = Array.from(new Set(offenders)).filter(validIdx);
     if (!offenders.length) return null;
@@ -1104,15 +1189,17 @@
   function detectSoufla(beforeSnap, board, by, ruleCheck) {
     // Forced opening is a strict rule step: an opening mismatch is invalid, not a soufla.
     if (beforeSnap && beforeSnap.forcedEnabled && Number(beforeSnap.forcedPly || 0) >= 0 && Number(beforeSnap.forcedPly || 0) < 10) return null;
-    const mandatory = mandatoryCaptureInfo(board, by);
+    const mandatory = mandatoryCaptureInfo(board, by, { includePaths: true, includeAllPiecePaths: false });
     if (!mandatory.hasCapture) return null;
     const captures = Number(ruleCheck && ruleCheck.captures || 0);
     const from = Number(ruleCheck && ruleCheck.from);
     const selected = mandatory.byPiece.get(from);
     const selectedMax = selected ? Number(selected.max || 0) : 0;
     if (captures <= 0) return buildSouflaPending(mandatory, ruleCheck, beforeSnap, by, SOUFLA_MISSED_CAPTURE);
-    if (captures < selectedMax) return buildSouflaPending(mandatory, ruleCheck, beforeSnap, by, SOUFLA_SHORT_CHAIN);
-    if (selectedMax < mandatory.longestGlobal) return buildSouflaPending(mandatory, ruleCheck, beforeSnap, by, SOUFLA_SHORTER_THAN_GLOBAL_LONGEST);
+    if (selectedMax < mandatory.longestGlobal) {
+      return buildSouflaPending(mandatory, ruleCheck, beforeSnap, by, SOUFLA_SHORTER_THAN_GLOBAL_LONGEST);
+    }
+    if (captures < selectedMax) return buildSouflaPending(mandatory, ruleCheck, beforeSnap, by, SOUFLA_CUT_CHAIN);
     return null;
   }
 

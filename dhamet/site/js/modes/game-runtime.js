@@ -476,7 +476,7 @@ function generateCapturesFrom(fromIdx) {
 }
 
 function computeLongestForPlayer(side) {
-  const info = DhametRulesShared.mandatoryCaptureInfo(Game.board, side);
+  const info = DhametRulesShared.mandatoryCaptureInfo(Game.board, side, { includePaths: false });
   const longestByPiece = new Map(info.longestByPiece || []);
   return { longestByPiece, Lmax: info.longestGlobal || 0, candidates: info.candidates || [] };
 }
@@ -2521,7 +2521,7 @@ const TrainRecorder = (() => {
         if (myTotal < 8 && oppKings > 0) {
           let lmax = 0;
           try {
-            lmax = DhametRulesShared.mandatoryCaptureInfo(Game.board, opp).longestGlobal | 0;
+            lmax = DhametRulesShared.mandatoryCaptureInfo(Game.board, opp, { includePaths: false }).longestGlobal | 0;
           } catch (_) {}
           if (lmax >= 3) return { confidence: "low", tag: "king_chain_threat" };
         }
