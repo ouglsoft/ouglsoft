@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <meta name="robots" content="noindex,nofollow" />
+  <link rel="canonical" href="https://ouglsoft.com/dhamet/pages/dashboard.html" />
+
+  <title data-i18n="dashboard.title">لوحة التحكم</title>
+    <link rel="icon" type="image/webp" href="../assets/icons/icon.webp" />
+<script src="../js/app-runtime.js"></script>
+
+  <link rel="stylesheet" href="../css/style.css" />
+  <link rel="stylesheet" href="../css/pages.css" />
+
+<link rel="stylesheet" href="../css/mobile.css" />
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-3511LJEQ1R"></script>
+
+</head>
+<body class="z-page-body z-dashboard-page">
+  <main class="z-page z-dashboard z-vcenter" data-i18n-aria-label="aria.dashboard">
+    <div class="z-page-inner z-dashboard-inner">
+      <div class="z-dash-main-block">
+        <div class="z-page-head z-dashboard-head">
+          <h1 class="z-page-title z-dash-title" data-i18n="dashboard.title">لوحة التحكم</h1>
+        </div>
+
+        <div class="z-dash-upper-row">
+          <div class="z-dash-side-panel">
+            <div class="z-dash-side-top">
+              <section class="z-dash-profile-card" data-i18n-aria-label="topbar.account">
+                <img class="z-dash-profile-icon" id="dashProfileIcon" src="../assets/icons/users/user1.png" alt="" />
+                <div class="z-dash-profile-text">
+                  <span class="z-dash-profile-label" data-i18n="dashboard.nameLabel">الاسم</span>
+                  <span class="z-dash-profile-sep">:</span>
+                  <span class="z-dash-profile-name" id="dashProfileName">—</span>
+                </div>
+              </section>
+
+              <section class="z-dash-summary" data-i18n-aria-label="aria.stats">
+                <table class="z-dash-summary-table">
+                  <thead>
+                    <tr>
+                      <th data-summary-key="games" data-i18n="dashboard.totalGames">إجمالي المباريات</th>
+                      <th data-summary-key="points" data-i18n="dashboard.points">النقاط</th>
+                      <th data-summary-key="rank" data-i18n="dashboard.rank">الترتيب العام</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td data-stat="statTotalGames">—</td>
+                      <td data-stat="statPoints">—</td>
+                      <td>
+                        <button type="button" class="z-dash-summary-table-rank" data-open-leaderboard="1" data-stat="statRank" data-i18n-title="dashboard.showLeaderboard" data-i18n-aria-label="dashboard.showLeaderboard">—</button>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </section>
+            </div>
+          </div>
+
+          <section class="z-dash-details" data-i18n-aria-label="aria.matchDetails">
+            <table class="z-dash-details-table">
+              <colgroup>
+                <col class="z-dash-match-col" />
+                <col />
+                <col />
+                <col />
+                <col />
+              </colgroup>
+              <thead>
+                <tr>
+                  <th data-i18n="dashboard.matches">المباريات</th>
+                  <th data-i18n="dashboard.wins">الفوز</th>
+                  <th data-i18n="dashboard.draws">التعادل</th>
+                  <th data-i18n="dashboard.losses">الخسارة</th>
+                  <th data-i18n="dashboard.total">المجموع</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <th data-i18n="dashboard.vsComputer">ضد الحاسوب</th>
+                  <td data-stat="statCpuWins">—</td>
+                  <td data-stat="statCpuDraws">—</td>
+                  <td data-stat="statCpuLosses">—</td>
+                  <td data-stat="statCpuTotal">—</td>
+                </tr>
+                <tr>
+                  <th data-i18n="dashboard.vsHumans">ضد البشر</th>
+                  <td data-stat="statHumWins">—</td>
+                  <td data-stat="statHumDraws">—</td>
+                  <td data-stat="statHumLosses">—</td>
+                  <td data-stat="statHumTotal">—</td>
+                </tr>
+                <tr>
+                  <th data-i18n="dashboard.total">المجموع</th>
+                  <td data-stat="statAllWins">—</td>
+                  <td data-stat="statAllDraws">—</td>
+                  <td data-stat="statAllLosses">—</td>
+                  <td data-stat="statAllTotal">—</td>
+                </tr>
+              </tbody>
+            </table>
+          </section>
+        </div>
+      </div>
+
+      <section class="z-dash-actions-panel" data-i18n-aria-label="aria.editAccount">
+        <div class="z-dash-actions-grid z-dash-actions-edit">
+          <button class="btn secondary" id="btnEditNick" type="button" data-i18n="dashboard.editNick">تغيير الاسم</button>
+          <button class="btn secondary" id="btnEditEmail" type="button" data-i18n="dashboard.editEmail">تغيير البريد</button>
+          <button class="btn secondary" id="btnEditPass" type="button" data-i18n="dashboard.editPass">تغيير كلمة المرور</button>
+          <button class="btn secondary" id="btnEditIcon" type="button" data-i18n="dashboard.editIcon">تغيير الصورة</button>
+        </div>
+        <div class="z-dash-actions-tail z-dash-actions-exit">
+          <button class="btn danger" id="btnDeleteAccount" type="button" data-i18n="dashboard.deleteAccount">حذف الحساب</button>
+          <button class="btn secondary" id="btnDashLogout" type="button" data-i18n="topbar.logout">تسجيل الخروج</button>
+        </div>
+        <a class="btn primary z-dash-play-btn" href="mode.html" id="btnDashPlay">
+          <img class="btn-ico" src="../assets/icons/play.svg" alt="" aria-hidden="true" />
+          <span data-i18n="pages.cta.playNow">ابدأ اللعب الآن</span>
+        </a>
+      </section>
+    </div>
+  </main>
+
+  <div id="zModalRoot"></div>
+
+        <script src="../js/auth-runtime.js"></script>
+    <script src="../js/account-runtime.js"></script>
+<script src="../shared/dhamet-utils.js"></script>
+<script src="../shared/dhamet-presence.js"></script>
+<script src="../shared/dhamet-live.js"></script>
+<script src="../js/online/game-room-client.js"></script>
+
+  <script src="../js/i18n.js"></script>
+<script src="../js/modal.js"></script>
+  <script defer src="../js/online/lobby-runtime.js"></script>
+  <script src="../js/leaderboard.js"></script>
+  <script src="../js/dashboard-runtime.js"></script>
+<script src="../js/mobile.js"></script>
+</body>
+</html>
