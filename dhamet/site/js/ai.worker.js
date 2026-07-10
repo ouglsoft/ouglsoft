@@ -2,7 +2,7 @@
 (() => {
   'use strict';
 
-  const BUILD = '?v=computer-pvs-1.3.1';
+  const BUILD = '?v=computer-pvs-1.5.0';
   importScripts(
     '../shared/dhamet-utils.js' + BUILD,
     '../shared/dhamet-rules.js' + BUILD,
@@ -11,17 +11,26 @@
     'ai/ai-engine.js' + BUILD,
   );
 
+  // One-turn, in-memory soufla plan. It is replaced by every new computer
+  // turn and consumed by the next penalty decision. It is never persisted or
+  // sent to the server.
+  let rememberedSouflaPlan = null;
+
   self.onmessage = (event) => {
     const message = event && event.data ? event.data : {};
     const id = Number(message.id || 0);
     try {
       if (message.cmd === 'analyzeTurn') {
+        rememberedSouflaPlan = null;
         const analysis = self.DhametAIEngine.analyzePosition(message.state || {});
+        rememberedSouflaPlan = analysis && analysis.souflaPlan ? analysis.souflaPlan : null;
         self.postMessage({ id, analysis });
         return;
       }
       if (message.cmd === 'pickSouflaDecision') {
-        const decision = self.DhametAIEngine.analyzePenalty(message.state || {}, message.pending || null);
+        const plan = rememberedSouflaPlan;
+        rememberedSouflaPlan = null;
+        const decision = self.DhametAIEngine.analyzePenalty(message.state || {}, message.pending || null, plan);
         self.postMessage({ id, decision });
         return;
       }
