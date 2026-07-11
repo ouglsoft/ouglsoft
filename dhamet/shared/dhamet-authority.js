@@ -13,6 +13,7 @@
 
   const Rules = root.DhametRules;
   const State = root.DhametState;
+  const TurnResolution = root.DhametTurnResolution;
   const Move = root.DhametMove;
   const Result = root.DhametResult;
   const Events = root.DhametEvents;
@@ -23,6 +24,7 @@
 
   if (!Rules) throw new Error('DhametAuthority requires DhametRules');
   if (!State) throw new Error('DhametAuthority requires DhametState');
+  if (!TurnResolution || typeof TurnResolution.resolveSouflaPenalty !== 'function') throw new Error('DhametAuthority requires DhametTurnResolution');
   if (!Move || typeof Move.normalizeGameRoomMovePayload !== 'function') throw new Error('DhametAuthority requires DhametMove.normalizeGameRoomMovePayload');
   if (!Soufla || typeof Soufla.normalizePending !== 'function' || typeof Soufla.normalizeDecisionPayload !== 'function' || typeof Soufla.matchingOption !== 'function') throw new Error('DhametAuthority requires DhametSoufla');
   if (!Control || typeof Control.normalizeControlPayload !== 'function' || typeof Control.normalizeUndoRequest !== 'function') throw new Error('DhametAuthority requires DhametControl');
@@ -239,43 +241,35 @@
     const currentBoard = Rules.normalizeBoard(currentSnapshot.board);
     if (!currentBoard) return { ok: false, error: 'game/invalid-current-board' };
 
-    let penaltyResult = null;
-    let baseSnapshotForNext = currentSnapshot;
-    let appliedMeta = { decision };
-    if (decision.kind === 'remove') {
-      penaltyResult = Rules.applySouflaRemoval(currentBoard, pending, option.offenderIdx);
-      appliedMeta = Object.assign(appliedMeta, {
-        board: penaltyResult && penaltyResult.board,
-        jumps: [],
-        captures: 0,
-        promotionPending: null,
-        deferredPromotions: promotionStart.deferredPromotions,
-        removed: penaltyResult && penaltyResult.removed,
-      });
-    } else if (decision.kind === 'force') {
-      penaltyResult = Rules.applySouflaForce(pending, option);
-      baseSnapshotForNext = pending.turnStartSnapshot || currentSnapshot;
-      const applied = penaltyResult && penaltyResult.applied ? penaltyResult.applied : null;
-      let rollbackPromotions = State.normalizeDeferredPromotions(baseSnapshotForNext);
-      if (!rollbackPromotions.length) {
-        // Backward compatibility for pending records created before promotion queues
-        // were embedded in turn-start snapshots: only the penalizer's carried
-        // promotion can survive rollback of the offender's invalid move.
-        rollbackPromotions = pendingPromotionsFromState(record.state).filter((item) => item.side === penalizer);
-      }
-      appliedMeta = Object.assign(appliedMeta, {
-        board: penaltyResult && penaltyResult.board,
-        jumps: applied && Array.isArray(applied.jumps) ? applied.jumps.slice() : [],
-        captures: applied ? Number(applied.captures || 0) || 0 : 0,
-        promotionPending: applied && applied.promotionPending ? clone(applied.promotionPending) : null,
-        deferredPromotions: rollbackPromotions,
-        forced: applied ? clone(applied) : null,
-      });
-    } else {
-      return { ok: false, error: 'soufla/unsupported-decision', game: record, pending };
+    const resolvedPenalty = TurnResolution.resolveSouflaPenalty({
+      currentBoard,
+      currentDeferredPromotions: promotionStart.deferredPromotions,
+      pending,
+      option,
+      penalizer,
+    });
+    if (!resolvedPenalty || !resolvedPenalty.ok) {
+      return { ok: false, error: resolvedPenalty && resolvedPenalty.error || 'soufla/apply-failed', game: record, pending };
     }
 
-    if (!penaltyResult || !penaltyResult.ok) return { ok: false, error: (penaltyResult && penaltyResult.error) || 'soufla/apply-failed', game: record, pending };
+    const baseSnapshotForNext = decision.kind === 'force'
+      ? (pending.turnStartSnapshot || currentSnapshot)
+      : currentSnapshot;
+    const applied = resolvedPenalty.applied || null;
+    const appliedMeta = {
+      decision,
+      board: resolvedPenalty.preActivationBoard,
+      jumps: applied && Array.isArray(applied.jumps) ? applied.jumps.slice() : [],
+      captures: applied ? Number(applied.captures || 0) || 0 : 0,
+      // The shared resolver already placed any newly earned crown in the
+      // pre-activation queue. Do not enqueue it a second time here.
+      promotionPending: null,
+      deferredPromotions: resolvedPenalty.preActivationPromotions,
+      removed: resolvedPenalty.removed,
+      forced: applied ? clone(applied) : null,
+    };
+    const penaltyResult = { ok: true, board: resolvedPenalty.preActivationBoard };
+
     const nextTurn = penalizer;
     const statePayload = createSouflaStatePayload(record, baseSnapshotForNext, penaltyResult.board, nextTurn, appliedMeta);
     if (!statePayload) return { ok: false, error: 'authority/state-build-failed' };

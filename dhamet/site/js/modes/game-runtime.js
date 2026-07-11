@@ -8,6 +8,7 @@
  */
 const DhametRulesShared = globalThis.DhametRules;
 const DhametStateShared = globalThis.DhametState;
+const DhametTurnResolutionShared = globalThis.DhametTurnResolution;
 const DhametAIConfig = globalThis.DhametAIConfig;
 const DhametAIRuntime = globalThis.DhametAIRuntime;
 const DhametAIEngine = globalThis.DhametAIEngine;
@@ -22,6 +23,9 @@ if (!DhametRulesShared) {
 }
 if (!DhametStateShared || typeof DhametStateShared.normalizeDeferredPromotions !== "function") {
   throw new Error("DhametState shared engine must be loaded before the game runtime");
+}
+if (!DhametTurnResolutionShared || typeof DhametTurnResolutionShared.resolveSouflaPenalty !== "function") {
+  throw new Error("DhametTurnResolution must be loaded before the game runtime");
 }
 if (!DhametAIConfig) {
   throw new Error("DhametAIConfig must be loaded before the game runtime");
@@ -631,10 +635,6 @@ function valueAt(idx) {
   const [r, c] = idxToRC(idx);
   return Game.board[r][c];
 }
-function setValueAt(idx, v) {
-  const [r, c] = idxToRC(idx);
-  Game.board[r][c] = v;
-}
 function rcStr(idx) {
   const [r, c] = idxToRC(idx);
   return `${r}.${c}`;
@@ -719,41 +719,6 @@ const Turn = {
       UI.updateStatus();
       return;
     }
-
-    try {
-      const { mask } = legalActions();
-      let any = false;
-      for (let a = 0; a < N_ACTIONS; a++) {
-        if (mask[a] && a !== ACTION_ENDCHAIN) {
-          any = true;
-          break;
-        }
-      }
-      if (!any) {
-        Game.gameOver = true;
-        Game.winner = -Game.player;
-        Game.terminationReason = "no_legal_moves";
-        try {
-          SessionGame.clear();
-        } catch {}
-        try {
-          UI.showGameOverModal?.(Game.winner);
-        } catch {}
-        try {
-          Promise.resolve(
-            TrainRecorder.finalizeAndUpload({
-              winner: Game.winner,
-              endReason: "no_legal_moves",
-            }),
-          ).finally(() => {
-            try {
-              TrainRecorder.startNewGame();
-            } catch {}
-          });
-        } catch {}
-        return;
-      }
-    } catch {}
 
     UI.updateStatus();
   },
@@ -1514,10 +1479,13 @@ function applySouflaDecision(requestedDecision, pending) {
     return false;
   }
 
-  const prepared =
-    decision.kind === "remove"
-      ? DhametRulesShared.applySouflaRemoval(Game.board, pending, decision.offenderIdx)
-      : DhametRulesShared.applySouflaForce(pending, decision);
+  const prepared = DhametTurnResolutionShared.resolveSouflaPenalty({
+    currentBoard: Game.board,
+    currentDeferredPromotions: normalizeDeferredPromotionQueue(),
+    pending,
+    option: decision,
+    penalizer: pending.penalizer,
+  });
   if (!prepared || !prepared.ok) {
     console.error("Rejected non-applicable soufla decision", prepared && prepared.error);
     return false;
@@ -1559,8 +1527,9 @@ function applySouflaDecision(requestedDecision, pending) {
     Visual.setLastMove(null, null);
 
     if (decision.kind === "remove") {
-      Game.board = prepared.board;
-      normalizeDeferredPromotionQueue();
+      Game.board = prepared.preActivationBoard;
+      Game.deferredPromotions = prepared.preActivationPromotions.map((entry) => ({ ...entry }));
+      Game.deferredPromotion = Game.deferredPromotions.length ? { ...Game.deferredPromotions[0] } : null;
       fxRemoveIdx = decision.offenderIdx;
 
       UI.log({ kind: "soufla_remove", idx: decision.offenderIdx, ts: Date.now() });
@@ -1608,11 +1577,17 @@ function applySouflaDecision(requestedDecision, pending) {
         current = to;
         fullPath.push(to);
       }
-      if (!DhametRulesShared.boardsEqual(Game.board, prepared.board)) {
+      if (!DhametRulesShared.boardsEqual(Game.board, prepared.preActivationBoard)) {
         throw new Error("soufla/force-board-mismatch");
       }
 
       maybeQueueDeferredPromotion(current);
+      const replayQueue = normalizeDeferredPromotionQueue();
+      const expectedQueue = prepared.preActivationPromotions;
+      const sameQueue = replayQueue.length === expectedQueue.length && replayQueue.every((entry, index) =>
+        Number(entry.idx) === Number(expectedQueue[index].idx) && Number(entry.side) === Number(expectedQueue[index].side)
+      );
+      if (!sameQueue) throw new Error("soufla/force-promotion-queue-mismatch");
       Game.inChain = false;
       Game.chainPos = null;
       try {
@@ -1667,6 +1642,9 @@ function applySouflaDecision(requestedDecision, pending) {
       Game.availableSouflaForHuman = null;
       try {
         Turn.start();
+        if (!DhametRulesShared.boardsEqual(Game.board, prepared.board)) {
+          throw new Error("soufla/resolved-board-mismatch");
+        }
         scheduleForcedOpeningAutoIfNeeded();
         UI.updateAll();
         Board3D.setSuspended(false);
@@ -1703,83 +1681,38 @@ function switchPlayer() {
 }
 
 function checkEndConditions() {
-  let top = 0,
-    bot = 0,
-    tKings = 0,
-    bKings = 0;
-  for (let r = 0; r < BOARD_N; r++) {
-    for (let c = 0; c < BOARD_N; c++) {
-      const v = Game.board[r][c];
-      if (v > 0) {
-        top++;
-        if (Math.abs(v) === 2) tKings++;
-      }
-      if (v < 0) {
-        bot++;
-        if (Math.abs(v) === 2) bKings++;
-      }
-    }
-  }
+  const counts = DhametRulesShared.countPieces(Game.board);
   try {
-    UI.updateCounts?.({ top, bot, tKings, bKings });
+    UI.updateCounts?.({
+      top: counts.top,
+      bot: counts.bot,
+      tKings: counts.topKings,
+      bKings: counts.botKings,
+    });
   } catch {}
 
-  // A violating board is provisional until the entitled player chooses
-  // removal or force. Declaring a result here could adjudicate a position that
-  // will be rolled back by force, so terminal checks wait for resolution.
-  if (hasUnresolvedSoufla()) {
-    return;
-  }
+  const outcome = DhametTurnResolutionShared.outcomeAfterResolution(
+    Game.board,
+    Game.player,
+    hasUnresolvedSoufla(),
+  );
+  if (!outcome || outcome.status === DhametRulesShared.RESULT_ONGOING) return;
 
-  if (top === 0 || bot === 0) {
-    Game.gameOver = true;
-    Game.winner = top === 0 ? BOT : TOP;
-
-    try {
-      SessionGame.clear();
-    } catch {}
-
-    try {
-      UI.showGameOverModal?.(Game.winner);
-    } catch {}
-
-    try {
-      Promise.resolve(
-        TrainRecorder.finalizeAndUpload({
-          winner: Game.winner,
-          endReason: Game.winner == null ? "draw" : "natural_win",
-        }),
-      ).finally(() => {
-        try {
-          TrainRecorder.startNewGame();
-        } catch {}
-      });
-    } catch {}
-    return;
-  }
-
-  if (top === 1 && bot === 1 && tKings === 1 && bKings === 1) {
-    Game.gameOver = true;
-    Game.winner = null;
-    try {
-      SessionGame.clear();
-    } catch {}
-    try {
-      UI.showGameOverModal?.(null);
-    } catch {}
-    try {
-      Promise.resolve(
-        TrainRecorder.finalizeAndUpload({
-          winner: Game.winner,
-          endReason: Game.winner == null ? "draw" : "natural_win",
-        }),
-      ).finally(() => {
-        try {
-          TrainRecorder.startNewGame();
-        } catch {}
-      });
-    } catch {}
-  }
+  Game.gameOver = true;
+  Game.winner = outcome.status === DhametRulesShared.RESULT_DRAW ? null : Number(outcome.winner);
+  Game.terminationReason = outcome.reason || (Game.winner == null ? "draw" : "natural_win");
+  try { SessionGame.clear(); } catch {}
+  try { UI.showGameOverModal?.(Game.winner); } catch {}
+  try {
+    Promise.resolve(
+      TrainRecorder.finalizeAndUpload({
+        winner: Game.winner,
+        endReason: Game.terminationReason,
+      }),
+    ).finally(() => {
+      try { TrainRecorder.startNewGame(); } catch {}
+    });
+  } catch {}
 }
 
 function scheduleForcedOpeningAutoIfNeeded() {

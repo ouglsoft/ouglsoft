@@ -2,11 +2,12 @@
 (() => {
   'use strict';
 
-  const BUILD = '?v=computer-pvs-1.8.0';
+  const BUILD = '?v=__DHAMET_BUILD__';
   importScripts(
     '../shared/dhamet-utils.js' + BUILD,
     '../shared/dhamet-rules.js' + BUILD,
     '../shared/dhamet-state.js' + BUILD,
+    '../shared/dhamet-turn-resolution.js' + BUILD,
     'ai/ai-config.js' + BUILD,
     'ai/ai-engine.js' + BUILD,
   );

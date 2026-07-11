@@ -12,9 +12,11 @@
 
   const R = root.DhametRules;
   const State = root.DhametState;
+  const TurnResolution = root.DhametTurnResolution;
   const Config = root.DhametAIConfig;
   if (!R) throw new Error('DhametAIEngine requires DhametRules');
   if (!State || typeof State.normalizeDeferredPromotions !== 'function') throw new Error('DhametAIEngine requires DhametState');
+  if (!TurnResolution || typeof TurnResolution.resolveSouflaPenalty !== 'function') throw new Error('DhametAIEngine requires DhametTurnResolution');
   if (!Config) throw new Error('DhametAIEngine requires DhametAIConfig');
 
   const TOP = R.TOP;
@@ -25,7 +27,7 @@
   const WIN = 10000000;
   const INF = 1000000000;
   const MATE_WINDOW = 100000;
-  const ENGINE_VERSION = 'dhamet-computer-pvs-1.8.0';
+  const ENGINE_VERSION = 'dhamet-__DHAMET_BUILD__';
   // Root-only tie preference for a remembered, uniquely forced soufla plan.
   // One man is worth 100 evaluation points. The bonus is deliberately small:
   // it preserves a previously proven plan when results are close, but cannot
@@ -44,6 +46,11 @@
 
   function opponent(side) {
     return side === TOP ? BOT : TOP;
+  }
+
+  function roundSymmetric(value) {
+    const n = Number(value || 0);
+    return n < 0 ? -Math.round(-n) : Math.round(n);
   }
 
   function pieceIndex(value) {
@@ -93,11 +100,9 @@
     const rayReach = new Int16Array(CELLS);
     const wide = new Int8Array(CELLS);
     const row = new Int8Array(CELLS);
-    const col = new Int8Array(CELLS);
     for (let i = 0; i < CELLS; i++) {
       const rc = R.rc(i);
       row[i] = rc[0];
-      col[i] = rc[1];
       wide[i] = R.pointType(i) === 'wasaa' ? 1 : 0;
       const dirs = R.dirsFrom(rc[0], rc[1]);
       degree[i] = dirs.length;
@@ -115,7 +120,7 @@
       }
       rayReach[i] = reach;
     }
-    return Object.freeze({ degree, centrality, rayReach, wide, row, col });
+    return Object.freeze({ degree, centrality, rayReach, wide, row });
   })();
 
   function normalizePosition(input) {
@@ -235,13 +240,6 @@
     return applied && applied.ok ? canonicalMove(expected, applied) : null;
   }
 
-  function generateMoves(pos) {
-    const forced = forcedOpeningMove(pos);
-    if (pos.forcedEnabled && pos.forcedPly < 10) return forced ? [forced] : [];
-    const generated = R.compact.generateLegalMoves(pos.board, pos.side, { policy: 'strict' });
-    return generated.moves || [];
-  }
-
   function generationShouldAbort(ctx) {
     if (!ctx) return false;
     if (nowMs() >= ctx.hardDeadline) return true;
@@ -254,6 +252,7 @@
     const generated = R.compact.generateSearchMoves(pos.board, pos.side, {
       dedupeEquivalent: true,
       shouldAbort: ctx ? () => generationShouldAbort(ctx) : null,
+      onMove: ctx && typeof ctx.onMove === 'function' ? ctx.onMove : null,
     });
     return generated.moves || [];
   }
@@ -323,11 +322,16 @@
 
   function pieceValue(v, totalPieces) {
     if (Math.abs(v) !== KING) return 100;
-    // A smooth phase curve avoids changing the value of every king abruptly
-    // when one unrelated piece disappears from the board.
+    // In practical Dhamet a crowned piece is commonly decisive. Keep a smooth
+    // phase curve, but value the king clearly above a small material gain.
     const phaseTotal = Math.max(6, Math.min(36, Number(totalPieces) || 36));
     const phase = (36 - phaseTotal) / 30;
-    return 325 + Math.round(65 * phase);
+    return 440 + Math.round(60 * phase);
+  }
+
+  function promotionDistance(side, cellIdx) {
+    const row = GRAPH.row[Number(cellIdx)] | 0;
+    return side === TOP ? 8 - row : row;
   }
 
   function captureThreatSummary(pos, side, ctx) {
@@ -340,14 +344,10 @@
     return summary;
   }
 
-  function evaluate(pos, ctx) {
-    const evalKey = positionIdentity(pos);
-    if (ctx && ctx.evalCache.has(evalKey)) return ctx.evalCache.get(evalKey);
-
+  function buildEvaluationFacts(pos, ctx) {
     const board = pos.board;
     const counts = R.compact.countPieces(board);
-    const total = counts.total;
-    let absolute = 0;
+    const stepCounts = new Int16Array(CELLS);
     let topSteps = 0;
     let botSteps = 0;
     let topSupportPairs = 0;
@@ -357,31 +357,12 @@
       const v = board[i] | 0;
       if (!v) continue;
       const side = R.owner(v);
-      const sign = side === TOP ? 1 : -1;
-      const kind = R.kind(v);
-      let score = pieceValue(v, total);
-      score += GRAPH.centrality[i] * (kind === KING ? 2 : 1);
-      score += GRAPH.wide[i] * (kind === KING ? 8 : 4);
-      score += GRAPH.degree[i] * (kind === KING ? 3 : 2);
-
       const steps = R.compact.stepDestinations(board, i).length;
+      stepCounts[i] = steps;
       if (side === TOP) topSteps += steps;
       else botSteps += steps;
 
-      if (kind === MAN) {
-        const progress = side === TOP ? GRAPH.row[i] : 8 - GRAPH.row[i];
-        score += progress * (total <= 20 ? 9 : 5);
-        if (progress >= 7) score += 24;
-        if (steps === 0) score -= 14;
-      } else {
-        // Dynamic mobility is counted once below. This term describes only the
-        // point's permanent line potential and is intentionally modest.
-        score += Math.round(GRAPH.rayReach[i] * 0.5);
-      }
-
-      absolute += sign * score;
-
-      // Count each friendly adjacency once, not once from each endpoint.
+      // Count each support relation once, not once from each endpoint.
       const rc = R.rc(i);
       for (const dir of R.dirsFrom(rc[0], rc[1])) {
         const rr = rc[0] + dir[0];
@@ -399,47 +380,165 @@
 
     const topThreat = captureThreatSummary(pos, TOP, ctx);
     const botThreat = captureThreatSummary(pos, BOT, ctx);
-    const topThreatened = new Set(botThreat.threatened || []);
-    const botThreatened = new Set(topThreat.threatened || []);
-    const topForcedThreatened = new Set(botThreat.forcedThreatened || []);
-    const botForcedThreatened = new Set(topThreat.forcedThreatened || []);
+    return {
+      board,
+      counts,
+      stepCounts,
+      topSteps,
+      botSteps,
+      topSupportPairs,
+      botSupportPairs,
+      topThreat,
+      botThreat,
+      topThreatened: new Set(botThreat.threatened || []),
+      botThreatened: new Set(topThreat.threatened || []),
+      topForcedThreatened: new Set(botThreat.forcedThreatened || []),
+      botForcedThreatened: new Set(topThreat.forcedThreatened || []),
+    };
+  }
 
-    // Ordinary movement is not legal when a capture is compulsory. Capture
-    // mobility is represented by legal longest-chain choices instead.
-    const topMobility = topThreat.hasCapture ? 0 : topSteps;
-    const botMobility = botThreat.hasCapture ? 0 : botSteps;
-    absolute += (topMobility - botMobility) * 3;
-    absolute += (topSupportPairs - botSupportPairs) * 6;
+  function scoreMaterial(facts) {
+    let score = 0;
+    for (let i = 0; i < CELLS; i++) {
+      const v = facts.board[i] | 0;
+      if (!v) continue;
+      score += (R.owner(v) === TOP ? 1 : -1) * pieceValue(v, facts.counts.total);
+    }
+    return score;
+  }
 
-    function pressure(summary) {
-      if (!summary || !summary.hasCapture) return 0;
-      return summary.longest * 18
-        + (summary.threatened || []).length * 14
-        + Math.max(0, summary.candidates - 1) * 4
-        + Math.min(8, Math.max(0, summary.landingChoices - 1)) * 2;
+  function scoreStructure(facts) {
+    let score = 0;
+    for (let i = 0; i < CELLS; i++) {
+      const v = facts.board[i] | 0;
+      if (!v) continue;
+      const sign = R.owner(v) === TOP ? 1 : -1;
+      const king = R.kind(v) === KING;
+      let value = GRAPH.centrality[i] * (king ? 1 : 0.6);
+      value += GRAPH.wide[i] * (king ? 6 : 3);
+      value += GRAPH.degree[i] * (king ? 2 : 1);
+      if (king) value += GRAPH.rayReach[i] * 0.35;
+      score += sign * Math.round(value);
     }
-    absolute += pressure(topThreat) - pressure(botThreat);
+    score += (facts.topSupportPairs - facts.botSupportPairs) * 4;
+    return score;
+  }
 
-    // A piece appearing in at least one longest chain is at risk; a piece
-    // captured in every legal longest chain is under a stronger forced threat.
-    for (const i of topThreatened) {
-      const factor = topForcedThreatened.has(i) ? 0.42 : 0.22;
-      absolute -= Math.round(pieceValue(board[i] | 0, total) * factor);
+  function scoreMobility(facts) {
+    // Ordinary movement is not legal when capture is compulsory. Capture
+    // freedom is represented by the legal longest-chain summary instead.
+    const top = facts.topThreat.hasCapture ? 0 : facts.topSteps;
+    const bot = facts.botThreat.hasCapture ? 0 : facts.botSteps;
+    return (top - bot) * 3;
+  }
+
+  function promotionStatus(facts, side, idx) {
+    const threatened = side === TOP ? facts.topThreatened.has(idx) : facts.botThreatened.has(idx);
+    const forced = side === TOP ? facts.topForcedThreatened.has(idx) : facts.botForcedThreatened.has(idx);
+    return { threatened, forced, safe: !threatened };
+  }
+
+  function scorePromotion(facts, pos) {
+    let score = 0;
+    let bestTopRace = 0;
+    let bestBotRace = 0;
+    const total = facts.counts.total;
+
+    for (let i = 0; i < CELLS; i++) {
+      const v = facts.board[i] | 0;
+      if (!v || R.kind(v) !== MAN) continue;
+      const side = R.owner(v);
+      const sign = side === TOP ? 1 : -1;
+      const distance = promotionDistance(side, i);
+      const progress = 8 - distance;
+      const status = promotionStatus(facts, side, i);
+      const mobile = facts.stepCounts[i] > 0;
+
+      // A small general progress value remains, but the large reward is reserved
+      // for a safe, usable route rather than blind forward movement.
+      let value = progress * (total <= 20 ? 6 : 3);
+      if (!mobile && distance > 0) value -= 10;
+
+      let race = 0;
+      if (distance === 1) {
+        race = status.forced ? 18 : status.threatened ? 75 : mobile ? 240 : 120;
+      } else if (distance === 2) {
+        race = status.forced ? 6 : status.threatened ? 28 : mobile ? 105 : 45;
+      } else if (distance === 3) {
+        race = status.forced ? 2 : status.threatened ? 10 : mobile ? 42 : 16;
+      }
+      value += race;
+      score += sign * value;
+      if (side === TOP) bestTopRace = Math.max(bestTopRace, race);
+      else bestBotRace = Math.max(bestBotRace, race);
     }
-    for (const i of botThreatened) {
-      const factor = botForcedThreatened.has(i) ? 0.42 : 0.22;
-      absolute += Math.round(pieceValue(board[i] | 0, total) * factor);
-    }
+
+    // Compare the best credible promotion race directly. This is intentionally
+    // not a second search; it reuses distances, legal mobility, and capture-risk
+    // information already computed for the normal evaluation.
+    score += roundSymmetric((bestTopRace - bestBotRace) * 0.55);
 
     for (const dp of Array.isArray(pos.deferredPromotions) ? pos.deferredPromotions : []) {
-      const threatened = dp.side === TOP ? topThreatened.has(dp.idx) : botThreatened.has(dp.idx);
-      const forcedThreat = dp.side === TOP ? topForcedThreatened.has(dp.idx) : botForcedThreatened.has(dp.idx);
-      const bonus = forcedThreat ? 35 : threatened ? 80 : 160;
-      absolute += dp.side === TOP ? bonus : -bonus;
+      const status = promotionStatus(facts, dp.side, dp.idx);
+      const value = status.forced ? 35 : status.threatened ? 100 : 285;
+      score += dp.side === TOP ? value : -value;
+    }
+    return Math.trunc(score);
+  }
+
+  function scoreCaptureThreats(facts) {
+    function pressure(summary) {
+      if (!summary || !summary.hasCapture) return 0;
+      const threatened = (summary.threatened || []).length;
+      const forced = (summary.forcedThreatened || []).length;
+      const optional = Math.max(0, threatened - forced);
+      return summary.longest * 12
+        + forced * 14
+        + optional * 5
+        + Math.max(0, summary.candidates - 1) * 2
+        + Math.min(5, Math.max(0, summary.landingChoices - 1));
     }
 
-    absolute += pos.side === TOP ? 8 : -8;
-    const result = pos.side === TOP ? Math.trunc(absolute) : -Math.trunc(absolute);
+    let score = pressure(facts.topThreat) - pressure(facts.botThreat);
+    // Material risk is counted once here. The lighter pressure term above
+    // describes forcing power and flexibility, not the same material again.
+    for (const i of facts.topThreatened) {
+      const v = facts.board[i] | 0;
+      if (!v) continue;
+      const factor = facts.topForcedThreatened.has(i) ? 0.30 : 0.10;
+      score -= Math.round(pieceValue(v, facts.counts.total) * factor);
+    }
+    for (const i of facts.botThreatened) {
+      const v = facts.board[i] | 0;
+      if (!v) continue;
+      const factor = facts.botForcedThreatened.has(i) ? 0.30 : 0.10;
+      score += Math.round(pieceValue(v, facts.counts.total) * factor);
+    }
+    return score;
+  }
+
+  function evaluateBreakdown(pos, ctx) {
+    const facts = buildEvaluationFacts(pos, ctx);
+    const components = {
+      material: scoreMaterial(facts),
+      promotion: scorePromotion(facts, pos),
+      mobility: scoreMobility(facts),
+      structure: scoreStructure(facts),
+      captures: scoreCaptureThreats(facts),
+      tempo: pos.side === TOP ? 10 : -10,
+    };
+    const absolute = Object.values(components).reduce((sum, value) => sum + Number(value || 0), 0);
+    return {
+      components,
+      absolute: Math.trunc(absolute),
+      score: pos.side === TOP ? Math.trunc(absolute) : -Math.trunc(absolute),
+    };
+  }
+
+  function evaluate(pos, ctx) {
+    const evalKey = positionIdentity(pos);
+    if (ctx && ctx.evalCache.has(evalKey)) return ctx.evalCache.get(evalKey);
+    const result = evaluateBreakdown(pos, ctx).score;
     if (ctx && ctx.evalCache.size < 4096) ctx.evalCache.set(evalKey, result);
     return result;
   }
@@ -462,6 +561,64 @@
     return String(side) + ':' + String(move && move.from) + ':' + String(to);
   }
 
+  function moveDestination(move) {
+    const path = move && Array.isArray(move.path) ? move.path : [];
+    return path.length ? Number(path[path.length - 1]) : Number(move && move.to);
+  }
+
+  function imminentPromotionTargets(pos, side, ctx) {
+    const key = positionIdentity(pos) + ':promotion-targets:' + side;
+    if (ctx && ctx.promotionTargetCache.has(key)) return ctx.promotionTargetCache.get(key);
+    const targets = new Set();
+    for (let i = 0; i < CELLS; i++) {
+      const v = pos.board[i] | 0;
+      if (!v || R.owner(v) !== side || R.kind(v) !== MAN || promotionDistance(side, i) !== 1) continue;
+      for (const to of R.compact.stepDestinations(pos.board, i)) targets.add(Number(to));
+    }
+    if (ctx && ctx.promotionTargetCache.size < 1024) ctx.promotionTargetCache.set(key, targets);
+    return targets;
+  }
+
+  function isPromotionCriticalMove(pos, move, ctx) {
+    if (!move) return false;
+    if (move.promotes) return true;
+    const from = Number(move.from);
+    const to = moveDestination(move);
+    const mover = R.validIdx(from) ? pos.board[from] | 0 : 0;
+    if (mover && R.kind(mover) === MAN && R.validIdx(to) && promotionDistance(pos.side, to) <= 1) return true;
+    const enemy = opponent(pos.side);
+    for (const jumped of move.jumps || []) {
+      const captured = pos.board[Number(jumped)] | 0;
+      if (captured && R.owner(captured) === enemy && R.kind(captured) === MAN && promotionDistance(enemy, Number(jumped)) <= 1) return true;
+    }
+    return R.validIdx(to) && imminentPromotionTargets(pos, enemy, ctx).has(to);
+  }
+
+  function promotionOrderingScore(pos, move, ctx) {
+    if (!move) return 0;
+    let score = 0;
+    const from = Number(move.from);
+    const to = moveDestination(move);
+    const mover = R.validIdx(from) ? pos.board[from] | 0 : 0;
+    if (mover && R.kind(mover) === MAN && R.validIdx(to)) {
+      const before = promotionDistance(pos.side, from);
+      const after = promotionDistance(pos.side, to);
+      const gain = before - after;
+      if (gain > 0) score += gain * 18000;
+      if (after === 1) score += 240000;
+      if (after === 0) score += 800000;
+    }
+    const enemy = opponent(pos.side);
+    if (R.validIdx(to) && imminentPromotionTargets(pos, enemy, ctx).has(to)) score += 180000;
+    for (const jumped of move.jumps || []) {
+      const captured = pos.board[Number(jumped)] | 0;
+      if (captured && R.owner(captured) === enemy && R.kind(captured) === MAN && promotionDistance(enemy, Number(jumped)) <= 1) {
+        score += 220000;
+      }
+    }
+    return score;
+  }
+
   function orderMoves(pos, moves, ctx, ply, ttMove) {
     const killer = ctx.killers[ply] || [];
     return moves
@@ -478,9 +635,10 @@
           else if (killer[1] === key) score += 350000;
           score += ctx.history.get(historyKey(pos.side, move)) || 0;
           const from = Number(move.from);
-          const to = Number(move.path && move.path[0]);
-          if (R.validIdx(from) && R.validIdx(to)) score += (GRAPH.centrality[to] - GRAPH.centrality[from]) * 8;
+          const to = moveDestination(move);
+          if (R.validIdx(from) && R.validIdx(to)) score += (GRAPH.centrality[to] - GRAPH.centrality[from]) * 4;
         }
+        score += promotionOrderingScore(pos, move, ctx);
         return { move, score, index };
       })
       .sort((a, b) => b.score - a.score || a.index - b.index)
@@ -558,6 +716,7 @@
       moveCache: new Map(),
       evalCache: new Map(),
       threatCache: new Map(),
+      promotionTargetCache: new Map(),
       preferredMoves: null,
       maxPly: 0,
     };
@@ -578,7 +737,7 @@
     return moves;
   }
 
-  function quiescence(pos, alpha, beta, ctx, ply) {
+  function quiescence(pos, alpha, beta, ctx, ply, quietPromotionPlies) {
     checkAbort(ctx);
     ctx.maxPly = Math.max(ctx.maxPly, ply);
     const basic = countAndTerminal(pos);
@@ -589,19 +748,30 @@
 
     const moves = cachedMoves(pos, ctx);
     if (!moves.length) return -WIN + ply;
-    const tactical = moves[0] && (moves[0].captures > 0 || (moves[0].jumps && moves[0].jumps.length));
-    if (!tactical) return evaluate(pos, ctx);
-
-    // Captures are compulsory and every complete capture move removes at least
-    // one piece. The continuation is therefore finite and must be searched to
-    // a genuinely quiet position; no arbitrary depth cap may score a position
-    // that the rules do not allow a player to keep.
-
-    const ordered = orderMoves(pos, moves, ctx, ply, null);
+    const hasCapture = moves[0] && (moves[0].captures > 0 || (moves[0].jumps && moves[0].jumps.length));
+    let tacticalMoves = moves;
+    let nextQuietPromotionPlies = quietPromotionPlies | 0;
     let best = -INF;
+    if (!hasCapture) {
+      // Quiet promotion-race moves are optional, unlike compulsory captures.
+      // Keep the current position as a stand-pat candidate so the extension can
+      // discover a good attack without forcing a bad forward move.
+      const standPat = evaluate(pos, ctx);
+      best = standPat;
+      if (standPat >= beta) return standPat;
+      if (standPat > alpha) alpha = standPat;
+      // A small cap prevents quiet blocker/reblocker loops from turning
+      // quiescence into a second full search.
+      if (nextQuietPromotionPlies >= 2) return standPat;
+      tacticalMoves = moves.filter((move) => isPromotionCriticalMove(pos, move, ctx));
+      if (!tacticalMoves.length) return standPat;
+      nextQuietPromotionPlies++;
+    }
+
+    const ordered = orderMoves(pos, tacticalMoves, ctx, ply, null);
     for (const move of ordered) {
       const child = applyMove(pos, move);
-      const score = -quiescence(child, -beta, -alpha, ctx, ply + 1);
+      const score = -quiescence(child, -beta, -alpha, ctx, ply + 1, nextQuietPromotionPlies);
       if (score > best) best = score;
       if (score > alpha) alpha = score;
       if (alpha >= beta) break;
@@ -632,7 +802,7 @@
       if (basic.draw) return 0;
       return basic.winner === pos.side ? WIN - ply : -WIN + ply;
     }
-    if (depth <= 0) return quiescence(pos, alpha, beta, ctx, ply);
+    if (depth <= 0) return quiescence(pos, alpha, beta, ctx, ply, 0);
 
     let moves = cachedMoves(pos, ctx);
     if (!moves.length) return -WIN + ply;
@@ -654,14 +824,15 @@
       const move = moves[i];
       const quiet = isQuiet(move);
       const child = applyMove(pos, move);
+      const promotionCritical = isPromotionCriticalMove(pos, move, ctx);
       let extension = 0;
       if (extensions < 2) {
         if (moves.length === 1 && depth >= 3) extension = 1;
-        else if (move.promotes && depth >= 2) extension = 1;
+        else if (promotionCritical && depth >= 2) extension = 1;
       }
       let nextDepth = depth - 1 + extension;
       let reduction = 0;
-      if (quiet && extension === 0 && depth >= 4 && i >= 4) {
+      if (quiet && !promotionCritical && extension === 0 && depth >= 4 && i >= 4) {
         reduction = 1;
         if (depth >= 7 && i >= 10) reduction = 2;
         nextDepth = Math.max(0, nextDepth - reduction);
@@ -715,6 +886,7 @@
     const scoredMoves = [];
     let bestScore = -INF;
     let bestMove = null;
+    let bestOrderScore = -INF;
     let localAlpha = alpha;
     const exactAlternatives = (ctx.settings.moveChoiceTopN | 0) > 1 && Number(ctx.settings.temperature || 0) > 0;
 
@@ -736,16 +908,18 @@
             exact = true;
           }
         }
-        scoredMoves.push({ move, score, exact });
-        if (score > bestScore) {
+        const orderScore = promotionOrderingScore(pos, move, ctx);
+        scoredMoves.push({ move, score, exact, child, orderScore });
+        if (score > bestScore || (score === bestScore && orderScore > bestOrderScore)) {
           bestScore = score;
           bestMove = move;
+          bestOrderScore = orderScore;
         }
         if (score > localAlpha) localAlpha = score;
         if (!exactAlternatives && localAlpha >= beta) break;
       } catch (error) {
         if ((error === TIMEOUT || (error && error.searchTimeout)) && scoredMoves.length) {
-          scoredMoves.sort((a, b) => b.score - a.score || moveKey(a.move).localeCompare(moveKey(b.move)));
+          scoredMoves.sort((a, b) => b.score - a.score || (b.orderScore || 0) - (a.orderScore || 0) || moveKey(a.move).localeCompare(moveKey(b.move)));
           throw {
             searchTimeout: true,
             partialRoot: { score: scoredMoves[0].score, move: scoredMoves[0].move, scoredMoves: scoredMoves.slice() },
@@ -754,7 +928,7 @@
         throw error;
       }
     }
-    scoredMoves.sort((a, b) => b.score - a.score || moveKey(a.move).localeCompare(moveKey(b.move)));
+    scoredMoves.sort((a, b) => b.score - a.score || (b.orderScore || 0) - (a.orderScore || 0) || moveKey(a.move).localeCompare(moveKey(b.move)));
     return { score: bestScore, move: bestMove, scoredMoves };
   }
 
@@ -812,45 +986,66 @@
 
   function exactTTRecord(pos, minDepth) {
     const entry = TT.get(hashPosition(pos), verificationKey(pos));
-    if (!entry || entry.bound !== 'exact' || entry.depth < Math.max(0, minDepth | 0) || !entry.move) return null;
-    const legal = generateSearchMoves(pos, null);
-    const move = legal.find((candidate) => sameMove(candidate, entry.move)) || null;
-    if (!move) return null;
+    if (!entry || entry.bound !== 'exact' || entry.depth < Math.max(0, minDepth | 0)) return null;
     return Object.freeze({
       score: ttLoadScore(entry.score, 0),
       depth: Math.max(0, entry.depth | 0),
-      move,
     });
   }
 
-  function rememberedLineFromTT(startPos, maxPlies) {
-    const hints = [];
-    let cur = startPos;
-    const limit = Math.max(1, Math.min(8, maxPlies | 0));
-    for (let ply = 0; ply < limit; ply++) {
-      const entry = TT.get(hashPosition(cur), verificationKey(cur));
-      if (!entry || !entry.move) break;
-      const legal = generateSearchMoves(cur, null);
-      const move = legal.find((candidate) => sameMove(candidate, entry.move)) || null;
-      if (!move) break;
-      hints.push(Object.freeze({ identity: positionIdentity(cur), move: clonePlanMove(move) }));
-      try { cur = applyMove(cur, move); }
-      catch (_) { break; }
+  function uniqueLongestCaptureWithin(position, side, budgetMs) {
+    const deadline = nowMs() + Math.max(1, Number(budgetMs || 1));
+    try {
+      return R.compact.uniqueLongestCapture(position, side, {
+        shouldAbort: () => nowMs() >= deadline,
+      });
+    } catch (error) {
+      if (error && error.searchTimeout) return null;
+      throw error;
     }
-    return Object.freeze({ hints: Object.freeze(hints) });
+  }
+
+  function deriveSingleMoveSouflaPlan(pos, chosenMove) {
+    if (!chosenMove || (pos.forcedEnabled && pos.forcedPly < 10)) return null;
+    let humanTurn = null;
+    if (!humanTurn) {
+      try { humanTurn = applyMove(pos, chosenMove); }
+      catch (_) { return null; }
+    }
+    const uniqueCapture = uniqueLongestCaptureWithin(humanTurn.board, humanTurn.side, 18);
+    if (!uniqueCapture || !uniqueCapture.unique || !uniqueCapture.move) return null;
+    let computerTurn;
+    try { computerTurn = applyMove(humanTurn, uniqueCapture.move); }
+    catch (_) { return null; }
+    return Object.freeze({
+      version: 3,
+      engine: ENGINE_VERSION,
+      aiSide: pos.side,
+      humanSide: humanTurn.side,
+      turnStartIdentity: positionIdentity(humanTurn),
+      turnStartMoveCount: humanTurn.moveCount | 0,
+      afterForceIdentity: positionIdentity(computerTurn),
+      expectedCapture: clonePlanMove(uniqueCapture.move),
+      plannedReply: null,
+      pvHints: Object.freeze([]),
+      previousScore: null,
+      previousDepth: 0,
+    });
   }
 
   // One-turn memory only. No new search or secondary evaluator is run here:
   // the plan is copied from the exact transposition record and PV produced by
   // the already completed search that selected the computer's move.
-  function deriveSouflaPlan(pos, chosenMove, fallbackScore, fallbackDepth) {
+  function deriveSouflaPlan(pos, chosenMove, fallbackScore, fallbackDepth, searchedHumanTurn, pvDetails) {
     if (!chosenMove) return null;
     if (pos.forcedEnabled && pos.forcedPly < 10) return null;
 
-    let humanTurn;
-    try { humanTurn = applyMove(pos, chosenMove); }
-    catch (_) { return null; }
-    const uniqueCapture = R.compact.uniqueLongestCapture(humanTurn.board, humanTurn.side);
+    let humanTurn = searchedHumanTurn || null;
+    if (!humanTurn) {
+      try { humanTurn = applyMove(pos, chosenMove); }
+      catch (_) { return null; }
+    }
+    const uniqueCapture = uniqueLongestCaptureWithin(humanTurn.board, humanTurn.side, 28);
     if (!uniqueCapture || !uniqueCapture.unique || !uniqueCapture.move) return null;
     const expectedCapture = uniqueCapture.move;
 
@@ -869,11 +1064,17 @@
       depth: Math.max(1, (Number(fallbackDepth) | 0) - 2),
     };
     const aiSide = pos.side;
-    const line = rememberedLineFromTT(computerTurn, previous.depth);
-    if (!line.hints.length) return null;
+    const allHints = pvDetails && Array.isArray(pvDetails.hints) ? pvDetails.hints : [];
+    const forceIndex = allHints.findIndex((hint) => hint && hint.identity === positionIdentity(computerTurn));
+    const planHints = forceIndex >= 0
+      ? Object.freeze(allHints.slice(forceIndex, forceIndex + Math.max(1, Math.min(8, previous.depth))).map((hint) => Object.freeze({
+          identity: String(hint.identity),
+          move: clonePlanMove(hint.move),
+        })))
+      : Object.freeze([]);
 
     return Object.freeze({
-      version: 2,
+      version: 3,
       engine: ENGINE_VERSION,
       aiSide,
       humanSide: humanTurn.side,
@@ -881,8 +1082,8 @@
       turnStartMoveCount: humanTurn.moveCount | 0,
       afterForceIdentity: positionIdentity(computerTurn),
       expectedCapture: clonePlanMove(expectedCapture),
-      plannedReply: line.hints[0].move,
-      pvHints: line.hints,
+      plannedReply: planHints.length ? planHints[0].move : null,
+      pvHints: planHints,
       previousScore: Math.trunc(previous.score),
       previousDepth: previous.depth,
     });
@@ -893,7 +1094,7 @@
   }
 
   function matchSouflaPlan(input, pending, plan) {
-    if (!plan || Number(plan.version) !== 2 || plan.engine !== ENGINE_VERSION || !pending || !pending.turnStartSnapshot) return null;
+    if (!plan || Number(plan.version) !== 3 || plan.engine !== ENGINE_VERSION || !pending || !pending.turnStartSnapshot) return null;
     const penalizer = Number(pending.penalizer);
     const offenderSide = Number(pending.offenderSide);
     if (penalizer !== Number(plan.aiSide) || offenderSide !== Number(plan.humanSide)) return null;
@@ -913,28 +1114,27 @@
     if (positionIdentity(turnStart) !== String(plan.turnStartIdentity || '')) return null;
     if ((turnStart.moveCount | 0) !== (Number(plan.turnStartMoveCount) | 0)) return null;
 
-    // Reconfirm uniqueness from the authoritative shared generator. A plan is
-    // never used when the human originally had more than one legal capture.
-    const uniqueCapture = R.compact.uniqueLongestCapture(turnStart.board, turnStart.side);
-    if (!uniqueCapture || !uniqueCapture.unique || !uniqueCapture.move) return null;
-    const legalCapture = uniqueCapture.move;
-    if (!sameMove(legalCapture, plan.expectedCapture)) return null;
+    // The pending record was built by the authoritative shared rules from this
+    // exact turn-start snapshot. Reuse its force choices instead of solving the
+    // capture tree again. A remembered plan is valid only when there was one
+    // unique force path in the original turn.
+    const expected = plan.expectedCapture;
+    const forceOptions = Array.isArray(pending.options)
+      ? pending.options.filter((candidate) => candidate && candidate.kind === 'force')
+      : [];
+    if (forceOptions.length !== 1) return null;
+    const option = forceOptions[0];
+    if (
+      Number(option.offenderIdx) !== Number(expected.from) ||
+      !R.samePath(option.path || [], expected.path || []) ||
+      (Array.isArray(expected.jumps) && expected.jumps.length && !R.samePath(option.jumps || [], expected.jumps))
+    ) return null;
 
     let afterForce;
-    try { afterForce = applyMove(turnStart, legalCapture); }
+    try { afterForce = applyMove(turnStart, expected); }
     catch (_) { return null; }
     if (positionIdentity(afterForce) !== String(plan.afterForceIdentity || '')) return null;
-
-    const expected = plan.expectedCapture;
-    const option = Array.isArray(pending.options)
-      ? pending.options.find((candidate) =>
-          candidate && candidate.kind === 'force' &&
-          Number(candidate.offenderIdx) === Number(expected.from) &&
-          R.samePath(candidate.path || [], expected.path || []) &&
-          (!Array.isArray(expected.jumps) || !expected.jumps.length || R.samePath(candidate.jumps || [], expected.jumps))
-        )
-      : null;
-    return option ? { plan, option, afterForce } : null;
+    return { plan, option, afterForce };
   }
 
   function preferredMovesFromPlan(plan) {
@@ -946,11 +1146,13 @@
     return preferred;
   }
 
-  function principalVariation(pos, firstMove, depth) {
+  function principalVariationDetailed(pos, firstMove, depth) {
     const pv = [];
+    const hints = [];
     let cur = pos;
     let move = firstMove;
     for (let i = 0; move && i < depth; i++) {
+      hints.push(Object.freeze({ identity: positionIdentity(cur), move: clonePlanMove(move) }));
       pv.push({ from: move.from, path: (move.path || []).slice(), score: null });
       try { cur = applyMove(cur, move); } catch (_) { break; }
       const entry = TT.get(hashPosition(cur), verificationKey(cur));
@@ -960,7 +1162,20 @@
         move = legal.find((candidate) => sameMove(candidate, move)) || null;
       }
     }
-    return pv;
+    return Object.freeze({ pv: Object.freeze(pv), hints: Object.freeze(hints) });
+  }
+
+  function emergencyMoveScore(pos, move) {
+    if (!move) return -INF;
+    let score = moveCapturedValue(pos, move) + (move.captures || 0) * 5000;
+    if (move.promotes) score += 1000000;
+    const from = Number(move.from);
+    const to = moveDestination(move);
+    const mover = R.validIdx(from) ? pos.board[from] | 0 : 0;
+    if (mover && R.kind(mover) === MAN && R.validIdx(to)) {
+      score += Math.max(0, promotionDistance(pos.side, from) - promotionDistance(pos.side, to)) * 20000;
+    }
+    return score;
   }
 
   function analyzePosition(input) {
@@ -973,12 +1188,23 @@
     // separately generated first *strict legal* move is returned rather than
     // evaluating illegal alternatives or failing the worker.
     let rootMoves;
+    let generatedFallback = null;
+    let generatedFallbackScore = -INF;
     try {
-      rootMoves = generateSearchMoves(pos, { hardDeadline: analysisStarted + Math.max(1, settings.hardTimeMs) });
+      rootMoves = generateSearchMoves(pos, {
+        hardDeadline: analysisStarted + Math.max(1, settings.hardTimeMs),
+        onMove(move) {
+          const score = emergencyMoveScore(pos, move);
+          if (!generatedFallback || score > generatedFallbackScore) {
+            generatedFallback = move;
+            generatedFallbackScore = score;
+          }
+        },
+      });
     } catch (error) {
       if (error !== TIMEOUT && !(error && error.searchTimeout)) throw error;
       const forced = forcedOpeningMove(pos);
-      const fallback = forced || R.compact.firstStrictMove(pos.board, pos.side);
+      const fallback = forced || generatedFallback || R.compact.firstStrictMove(pos.board, pos.side);
       if (!fallback) {
         return {
           move: null,
@@ -1034,13 +1260,15 @@
         timeMs: Math.round(nowMs() - analysisStarted),
         pv: [{ from: only.from, path: only.path.slice(), score: null }],
         rootAlternatives: [{ move: only, score: 0 }],
-        souflaPlan: null,
+        souflaPlan: deriveSingleMoveSouflaPlan(pos, only),
         engine: ENGINE_VERSION,
         singleLegalMove: true,
       };
     }
 
-    const critical = rootMoves.some((m) => m.captures > 0) || rootMoves.length >= 10;
+    const critical = rootMoves.some((move) => move.captures > 0 || isPromotionCriticalMove(pos, move, {
+      promotionTargetCache: new Map(),
+    })) || rootMoves.length >= 10 || (Array.isArray(pos.deferredPromotions) && pos.deferredPromotions.length > 0);
     if (critical) {
       settings.hardTimeMs = Math.min(45000, Math.max(settings.hardTimeMs, settings.thinkTimeMs + settings.timeBoostCriticalMs));
     }
@@ -1113,7 +1341,16 @@
     const chosen = chooseByLevel(completed.scoredMoves, settings, rootHash, pos.moveCount, completed.move) || completed.move;
     const chosenEntry = completed.scoredMoves.find((entry) => sameMove(entry.move, chosen)) || null;
     const chosenScore = chosenEntry ? chosenEntry.score : completed.score;
-    const souflaPlan = deriveSouflaPlan(pos, chosen, chosenScore, completed.depth);
+    const pvDetails = principalVariationDetailed(pos, chosen, completed.depth);
+    const souflaPlan = deriveSouflaPlan(
+      pos,
+      chosen,
+      chosenScore,
+      completed.depth,
+      chosenEntry && chosenEntry.child,
+      pvDetails,
+    );
+    const pv = pvDetails.pv;
     return {
       move: chosen,
       score: chosenScore,
@@ -1121,7 +1358,7 @@
       selectiveDepth: ctx.maxPly,
       nodes: ctx.nodes,
       timeMs: Math.round(nowMs() - ctx.startedAt),
-      pv: principalVariation(pos, chosen, completed.depth),
+      pv,
       rootAlternatives: completed.scoredMoves.slice(0, Math.min(5, completed.scoredMoves.length)).map((entry) => ({
         move: entry.move,
         score: entry.score,
@@ -1135,46 +1372,26 @@
     const penalizer = Number(pending && pending.penalizer);
     if (penalizer !== TOP && penalizer !== BOT) return null;
     const source = normalizePosition({ ...(input || {}), player: penalizer });
-    if (option.kind === 'remove') {
-      const removed = R.applySouflaRemoval(R.compact.toBoard(source.board), pending, option.offenderIdx);
-      if (!removed || !removed.ok) return null;
-      const board = R.compact.fromBoard(removed.board);
-      const deferredPromotions = State.sanitizeDeferredPromotions(board, source.deferredPromotions);
-      return attachHashes(activateStartOfTurnPromotion({
-        ...source,
-        board,
-        side: penalizer,
-        deferredPromotions,
-      }));
-    }
-    if (option.kind === 'force') {
-      const forced = R.applySouflaForce(pending, option);
-      if (!forced || !forced.ok) return null;
-      // Force rewinds the violating turn. Deferred promotions created by the
-      // discarded move must therefore be discarded as well; only the queue at
-      // the original turn boundary and a promotion created by the forced path
-      // belong to the resulting position.
-      const turnStart = pending && pending.turnStartSnapshot && typeof pending.turnStartSnapshot === 'object'
-        ? pending.turnStartSnapshot
-        : {};
-      let pendingPromotions = State.normalizeDeferredPromotions(turnStart).map((item) => ({ ...item }));
-      if (!pendingPromotions.length) {
-        // Compatibility with older pending-soufla records that did not embed
-        // the queue in the turn-start snapshot. The offender's promotion from
-        // the discarded move must not survive rollback; only the penalizer's
-        // previously carried right can remain.
-        pendingPromotions = State.normalizeDeferredPromotions(input).filter((item) => item.side === penalizer);
-      }
-      if (forced.applied && forced.applied.promotionPending) pendingPromotions.push({ ...forced.applied.promotionPending });
-      return attachHashes(activateStartOfTurnPromotion({
-        ...source,
-        board: R.compact.fromBoard(forced.board),
-        side: penalizer,
-        deferredPromotions: pendingPromotions,
-        moveCount: Math.max(0, Number(turnStart.moveCount != null ? turnStart.moveCount : source.moveCount) | 0) + 1,
-      }));
-    }
-    return null;
+    const resolved = TurnResolution.resolveSouflaPenalty({
+      currentBoard: R.compact.toBoard(source.board),
+      currentDeferredPromotions: source.deferredPromotions,
+      pending,
+      option,
+      penalizer,
+    });
+    if (!resolved || !resolved.ok) return null;
+    const turnStart = pending && pending.turnStartSnapshot && typeof pending.turnStartSnapshot === 'object'
+      ? pending.turnStartSnapshot
+      : {};
+    return attachHashes({
+      ...source,
+      board: R.compact.fromBoard(resolved.board),
+      side: penalizer,
+      deferredPromotions: State.sanitizeDeferredPromotions(resolved.board, resolved.deferredPromotions),
+      moveCount: option.kind === 'force'
+        ? Math.max(0, Number(turnStart.moveCount != null ? turnStart.moveCount : source.moveCount) | 0) + 1
+        : source.moveCount,
+    });
   }
 
   function analyzePenalty(input, pending, rememberedPlan) {
@@ -1187,11 +1404,8 @@
       Number(option.offenderIdx) === Number(matchedPlan.option.offenderIdx) &&
       R.samePath(option.path || [], matchedPlan.option.path || []));
 
-    // Build every legal penalty from its own correct state, then merge only
-    // options that produce the exact same complete position. This removes
-    // duplicate force paths without reducing the legal outcome set. Removal is
-    // still evaluated from the post-violation board; force is still evaluated
-    // from the turn-start snapshot after the imposed capture.
+    // Every option is built from its own legal origin. Only options producing
+    // the exact same complete next-turn state are merged.
     const candidateByIdentity = new Map();
     for (const option of options) {
       try {
@@ -1206,58 +1420,23 @@
     }
     const candidates = Array.from(candidateByIdentity.values());
     if (!candidates.length) return null;
-    for (const candidate of candidates) {
-      const terminal = terminalScore(candidate.pos, 0, null);
-      candidate.staticScore = terminal == null ? evaluate(candidate.pos) : terminal;
-    }
 
     const plannedCandidate = matchedPlan
       ? candidates.find((candidate) =>
           candidate.option.kind === 'force' &&
           Number(candidate.option.offenderIdx) === Number(matchedPlan.option.offenderIdx) &&
           R.samePath(candidate.option.path || [], matchedPlan.option.path || []) &&
-          positionIdentity(candidate.pos) === String(matchedPlan.plan.afterForceIdentity || '')
+          candidate.identity === String(matchedPlan.plan.afterForceIdentity || '')
         ) || null
       : null;
     const rememberedScore = plannedCandidate && Number.isFinite(Number(matchedPlan.plan.previousScore))
       ? Number(matchedPlan.plan.previousScore)
       : null;
     const rememberedDepth = rememberedScore == null ? 0 : Math.max(0, Number(matchedPlan.plan.previousDepth || 0) | 0);
-    const candidateInitialScore = (candidate) => candidate === plannedCandidate && rememberedScore != null
-      ? rememberedScore
-      : candidate.staticScore;
     const selectionScore = (candidate, rawScore) => souflaPenaltySelectionScore(rawScore, candidate === plannedCandidate);
 
-    candidates.sort((a, b) =>
-      selectionScore(b, candidateInitialScore(b)) - selectionScore(a, candidateInitialScore(a)) ||
-      (a === plannedCandidate ? -1 : b === plannedCandidate ? 1 : 0) ||
-      JSON.stringify(a.option).localeCompare(JSON.stringify(b.option))
-    );
-
-    if (candidates.length === 1) {
-      const rawScore = candidateInitialScore(candidates[0]);
-      return {
-        ...candidates[0].option,
-        computerAnalysis: {
-          engine: ENGINE_VERSION,
-          score: Math.trunc(rawScore),
-          depth: candidates[0] === plannedCandidate ? rememberedDepth : 0,
-          nodes: 0,
-          timeMs: Math.round(nowMs() - analysisStarted),
-          optionsEvaluated: 1,
-          selectionScore: Math.trunc(selectionScore(candidates[0], rawScore)),
-          souflaPlanMatched: !!plannedCandidate,
-          souflaPlanChosen: !!plannedCandidate,
-          souflaPlanBonus: plannedCandidate ? SOUFLA_PLAN_ROOT_BONUS : 0,
-          souflaPlanPreviousScore: plannedCandidate ? Math.trunc(rememberedScore) : null,
-          souflaPlanPreviousDepth: plannedCandidate ? rememberedDepth : 0,
-          souflaPlanScoreReused: !!plannedCandidate,
-        },
-      };
-    }
-
-    // Keep the original soufla-search budget. Remembering a plan adds neither
-    // time nor depth; it only reuses work already completed on the prior turn.
+    // Use the ordinary soufla budget. The plan changes ordering and reuses a
+    // completed score; it never adds a second evaluator, extra depth, or time.
     const totalSoft = Math.max(settings.thinkTimeMs, Math.min(settings.hardTimeMs, settings.thinkTimeMs + settings.timeBoostCriticalMs));
     const penaltySettings = {
       ...settings,
@@ -1271,36 +1450,61 @@
       const preferred = preferredMovesFromPlan(matchedPlan.plan);
       if (preferred.size) ctx.preferredMoves = preferred;
     }
-    const maxDepth = Math.max(1, penaltySettings.minimaxDepth | 0);
-    let ordered = plannedCandidate
-      ? [plannedCandidate, ...candidates.filter((candidate) => candidate !== plannedCandidate)]
-      : candidates.slice();
 
-    // The remembered exact score is a completed prior-search result for the
-    // same force position. It is the fallback and is reused at all shallower
-    // penalty iterations instead of rediscovering the plan from depth one.
-    const initialScored = candidates.map((candidate) => {
-      const score = candidateInitialScore(candidate);
-      return {
-        candidate,
-        score,
-        selectionScore: selectionScore(candidate, score),
-        reusedPlanScore: candidate === plannedCandidate && rememberedScore != null,
-      };
-    }).sort((a, b) =>
-      b.selectionScore - a.selectionScore ||
-      (a.candidate === plannedCandidate ? -1 : b.candidate === plannedCandidate ? 1 : 0) ||
-      JSON.stringify(a.candidate.option).localeCompare(JSON.stringify(b.candidate.option))
+    function cheapOrder(candidate) {
+      if (candidate === plannedCandidate) return 100000000 + (rememberedScore == null ? 0 : rememberedScore);
+      const option = candidate.option || {};
+      let score = option.kind === 'force' ? 20000 : 10000;
+      score += Math.max(0, Number(option.captures || (option.jumps && option.jumps.length) || 0)) * 3000;
+      if (option.kind === 'remove') {
+        const current = R.compact.fromBoard(input && input.board);
+        const cellIdx = R.resolveOffenderCurrentCell(pending, option.offenderIdx);
+        const piece = current && R.validIdx(Number(cellIdx)) ? current[Number(cellIdx)] | 0 : 0;
+        score += piece ? pieceValue(piece, R.compact.countPieces(current).total) * 20 : 0;
+      }
+      return score;
+    }
+
+    let ordered = candidates.slice().sort((a, b) =>
+      cheapOrder(b) - cheapOrder(a) || JSON.stringify(a.option).localeCompare(JSON.stringify(b.option))
     );
-    let completed = { depth: 0, scored: initialScored };
+
+    if (candidates.length === 1) {
+      const candidate = candidates[0];
+      const terminal = terminalScore(candidate.pos, 0, null);
+      const rawScore = candidate === plannedCandidate && rememberedScore != null
+        ? rememberedScore
+        : terminal == null ? evaluate(candidate.pos, ctx) : terminal;
+      return {
+        ...candidate.option,
+        computerAnalysis: {
+          engine: ENGINE_VERSION,
+          score: Math.trunc(rawScore),
+          depth: candidate === plannedCandidate ? rememberedDepth : 0,
+          nodes: ctx.nodes | 0,
+          timeMs: Math.round(nowMs() - analysisStarted),
+          optionsEvaluated: 1,
+          selectionScore: Math.trunc(selectionScore(candidate, rawScore)),
+          souflaPlanMatched: !!plannedCandidate,
+          souflaPlanChosen: !!plannedCandidate,
+          souflaPlanBonus: plannedCandidate ? SOUFLA_PLAN_ROOT_BONUS : 0,
+          souflaPlanPreviousScore: plannedCandidate && rememberedScore != null ? Math.trunc(rememberedScore) : null,
+          souflaPlanPreviousDepth: plannedCandidate ? rememberedDepth : 0,
+          souflaPlanScoreReused: !!(plannedCandidate && rememberedScore != null),
+        },
+      };
+    }
+
+    const maxDepth = Math.max(1, penaltySettings.minimaxDepth | 0);
+    let completed = null;
+    let partial = null;
     let stableKey = '';
     let stableCount = 0;
-    let reusedPlanScore = !!plannedCandidate;
+    let reusedPlanScore = false;
 
-    // Every removal and force option remains in every completed iteration. The
-    // planned force stays first, but a better removal still wins after search.
     for (let depth = 1; depth <= maxDepth; depth++) {
       const scored = [];
+      let timedOut = false;
       try {
         for (const candidate of ordered) {
           if (nowMs() >= ctx.hardDeadline || ctx.nodes >= ctx.maxNodes) throw TIMEOUT;
@@ -1317,13 +1521,19 @@
         }
       } catch (error) {
         if (error !== TIMEOUT && !(error && error.searchTimeout)) throw error;
-        break;
+        timedOut = true;
       }
-      scored.sort((a, b) =>
-        b.selectionScore - a.selectionScore ||
-        (a.candidate === plannedCandidate ? -1 : b.candidate === plannedCandidate ? 1 : 0) ||
-        JSON.stringify(a.candidate.option).localeCompare(JSON.stringify(b.candidate.option))
-      );
+
+      if (scored.length) {
+        scored.sort((a, b) =>
+          b.selectionScore - a.selectionScore ||
+          (a.candidate === plannedCandidate ? -1 : b.candidate === plannedCandidate ? 1 : 0) ||
+          JSON.stringify(a.candidate.option).localeCompare(JSON.stringify(b.candidate.option))
+        );
+        partial = { depth, scored };
+      }
+      if (timedOut || scored.length !== candidates.length) break;
+
       completed = { depth, scored };
       const ranked = scored.map((entry) => entry.candidate);
       ordered = plannedCandidate
@@ -1339,22 +1549,43 @@
       if (nowMs() >= ctx.softDeadline && stableCount >= 2 && depth >= 2) break;
     }
 
-    const bestEntry = completed.scored[0];
+    let result = completed || partial;
+    if (!result && plannedCandidate && rememberedScore != null) {
+      result = {
+        depth: rememberedDepth,
+        scored: [{
+          candidate: plannedCandidate,
+          score: rememberedScore,
+          selectionScore: selectionScore(plannedCandidate, rememberedScore),
+          reusedPlanScore: true,
+        }],
+      };
+      reusedPlanScore = true;
+    }
+    if (!result || !result.scored.length) {
+      const candidate = ordered[0];
+      const terminal = terminalScore(candidate.pos, 0, null);
+      const score = terminal == null ? evaluate(candidate.pos, ctx) : terminal;
+      result = { depth: 0, scored: [{ candidate, score, selectionScore: selectionScore(candidate, score), reusedPlanScore: false }] };
+    }
+
+    const bestEntry = result.scored[0];
     const best = bestEntry.candidate;
     return {
       ...best.option,
       computerAnalysis: {
         engine: ENGINE_VERSION,
         score: Math.trunc(bestEntry.score),
-        depth: completed.depth,
+        depth: result.depth,
         nodes: ctx.nodes | 0,
         timeMs: Math.round(nowMs() - analysisStarted),
         optionsEvaluated: candidates.length,
+        optionsSearched: result.scored.length,
         selectionScore: Math.trunc(bestEntry.selectionScore),
         souflaPlanMatched: !!plannedCandidate,
         souflaPlanChosen: !!(plannedCandidate && best === plannedCandidate),
         souflaPlanBonus: plannedCandidate ? SOUFLA_PLAN_ROOT_BONUS : 0,
-        souflaPlanPreviousScore: plannedCandidate ? Math.trunc(rememberedScore) : null,
+        souflaPlanPreviousScore: plannedCandidate && rememberedScore != null ? Math.trunc(rememberedScore) : null,
         souflaPlanPreviousDepth: plannedCandidate ? rememberedDepth : 0,
         souflaPlanScoreReused: !!(plannedCandidate && reusedPlanScore),
       },
@@ -1608,6 +1839,6 @@
     create,
     analyzePosition,
     analyzePenalty,
-    _internals: Object.freeze({ normalizePosition, generateMoves, applyMove, evaluate, hashPosition, verificationKey, validateCanonicalMove, penaltyPosition, deriveSouflaPlan, matchSouflaPlan, positionIdentity, exactTTRecord, rememberedLineFromTT, preferredMovesFromPlan, souflaPenaltySelectionScore, souflaPlanRootBonus: SOUFLA_PLAN_ROOT_BONUS }),
+    _internals: Object.freeze({ normalizePosition, applyMove, evaluate, evaluateBreakdown, validateCanonicalMove, penaltyPosition, positionIdentity, souflaPlanRootBonus: SOUFLA_PLAN_ROOT_BONUS }),
   });
 })(typeof globalThis !== 'undefined' ? globalThis : this);

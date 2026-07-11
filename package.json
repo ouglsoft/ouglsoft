@@ -16,5 +16,6 @@
     "pagesProjectName": "ouglsoft",
     "dhametPublicPath": "/dhamet",
     "dhametWorkerRoute": "ouglsoft.com/dhamet/api/*"
-  }
+  },
+  "dhametBuild": "computer-pvs-1.9.0"
 }

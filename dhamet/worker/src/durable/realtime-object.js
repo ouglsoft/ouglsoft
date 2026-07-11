@@ -1,6 +1,7 @@
 import '../../shared/dhamet-utils.js';
 import '../../shared/dhamet-rules.js';
 import '../../shared/dhamet-state.js';
+import '../../shared/dhamet-turn-resolution.js';
 import '../../shared/dhamet-move.js';
 import '../../shared/dhamet-soufla.js';
 import '../../shared/dhamet-control.js';

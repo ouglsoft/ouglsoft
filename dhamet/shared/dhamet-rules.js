@@ -495,6 +495,7 @@
       const collectFirst = !!request.collectFirst;
       const collectThreats = !!request.collectThreats;
       const dedupeEquivalent = !!request.dedupeEquivalent;
+      const onPath = typeof request.onPath === 'function' ? request.onPath : null;
       const maxPaths = Number.isFinite(Number(request.maxPaths))
         ? Math.max(1, Number(request.maxPaths) | 0)
         : Infinity;
@@ -512,14 +513,16 @@
       }
 
       function record(current, capturedMask) {
-        if (!collectPaths || truncated) return;
+        if ((!collectPaths && !onPath) || truncated) return;
         if (equivalentEnds) {
           const key = (capturedMask << 7n) | BigInt(current);
           if (equivalentEnds.has(key)) return;
           equivalentEnds.add(key);
         }
-        paths.push({ from: origin, path: path.slice(), jumps: jumps.slice(), captures: jumps.length });
-        if (paths.length >= maxPaths) truncated = true;
+        const item = { from: origin, path: path.slice(), jumps: jumps.slice(), captures: jumps.length };
+        if (collectPaths) paths.push(item);
+        if (onPath && onPath(item) === false) truncated = true;
+        if (collectPaths && paths.length >= maxPaths) truncated = true;
       }
 
       function enumerate(current, capturedMask, remaining) {
@@ -660,24 +663,42 @@
     const candidates = longestByPiece.filter((entry) => entry[1] === longestGlobal).map((entry) => entry[0]);
     const byPiece = new Map();
     const moves = [];
+    const onMove = typeof options.onMove === 'function' ? options.onMove : null;
+    const collectMoves = options.collectMoves !== false;
     for (const from of candidates) {
       const solver = solvers.get(from);
       const result = solver.analyze({
-        collectPaths: true,
+        collectPaths: collectMoves,
         dedupeEquivalent: options.dedupeEquivalent !== false,
+        onPath(item) {
+          const to = item.path[item.path.length - 1];
+          const move = {
+            type: MOVE_CAPTURE,
+            from,
+            path: item.path.slice(),
+            to,
+            jumps: item.jumps.slice(),
+            captures: item.captures,
+            promotes: kind(position[from] | 0) === MAN && isBackRank(to, side),
+          };
+          if (onMove) onMove(move);
+          return true;
+        },
       });
       byPiece.set(from, result);
-      for (const item of result.paths) {
-        const to = item.path[item.path.length - 1];
-        moves.push({
-          type: MOVE_CAPTURE,
-          from,
-          path: item.path.slice(),
-          to,
-          jumps: item.jumps.slice(),
-          captures: item.captures,
-          promotes: kind(position[from] | 0) === MAN && isBackRank(to, side),
-        });
+      if (collectMoves) {
+        for (const item of result.paths) {
+          const to = item.path[item.path.length - 1];
+          moves.push({
+            type: MOVE_CAPTURE,
+            from,
+            path: item.path.slice(),
+            to,
+            jumps: item.jumps.slice(),
+            captures: item.captures,
+            promotes: kind(position[from] | 0) === MAN && isBackRank(to, side),
+          });
+        }
       }
     }
     return {
@@ -1084,22 +1105,6 @@
     return position ? compactCaptureOptions(position, from) : [];
   }
 
-  function applyCaptureForSearch(board, from, option) {
-    const position = compactFromBoard(board);
-    if (!position || !option) return cloneBoard(board);
-    const mover = position[Number(from)] | 0;
-    position[Number(from)] = 0;
-    position[Number(option.jumped)] = 0;
-    position[Number(option.to)] = mover;
-    return compactToBoard(position);
-  }
-
-  function longestCaptureSearch(board, from, depth, limit) {
-    void depth;
-    const position = compactFromBoard(board);
-    return position ? compactLongestCaptureSearch(position, from, limit) : { max: 0, paths: [] };
-  }
-
   function mandatoryCaptureInfo(board, side, options) {
     const position = compactFromBoard(board);
     return position
@@ -1459,8 +1464,6 @@
     classifyStep,
     classifyCapture,
     captureOptions,
-    applyCaptureForSearch,
-    longestCaptureSearch,
     mandatoryCaptureInfo,
     generateAllStepMoves,
     generateCaptureMoves,

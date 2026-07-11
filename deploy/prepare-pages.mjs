@@ -10,6 +10,29 @@ const outDir = path.join(root, '.deploy', 'site');
 
 const dhametPublishedEntries = new Set(['index.html', 'assets', 'css', 'js', 'pages', 'training']);
 
+
+function readDhametBuild() {
+  const packageJsonPath = path.join(root, 'package.json');
+  try {
+    const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+    const value = String(packageJson?.dhametBuild || '').trim();
+    if (!value) fail('package.json dhametBuild is missing.');
+    return value;
+  } catch (error) {
+    fail(`Cannot read dhametBuild: ${error.message}`);
+  }
+}
+function injectBuildToken(dir, build) {
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const file = path.join(dir, entry.name);
+    if (entry.isDirectory()) injectBuildToken(file, build);
+    else if (entry.isFile() && /\.(?:html|js)$/.test(entry.name)) {
+      const text = fs.readFileSync(file, 'utf8');
+      if (text.includes('__DHAMET_BUILD__')) fs.writeFileSync(file, text.replaceAll('__DHAMET_BUILD__', build));
+    }
+  }
+}
+
 function fail(message) {
   console.error(`prepare-pages: ${message}`);
   process.exit(1);
@@ -55,6 +78,7 @@ const dhametOut = path.join(outDir, 'dhamet');
 resetDir(dhametOut);
 copyDhametPublicFiles(dhametSiteDir, dhametOut);
 copyDir(dhametSharedDir, path.join(dhametOut, 'shared'));
+injectBuildToken(dhametOut, readDhametBuild());
 
 console.log('Prepared Pages output: .deploy/site');
 console.log('Dhamet public path: .deploy/site/dhamet');
