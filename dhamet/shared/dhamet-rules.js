@@ -30,7 +30,6 @@
   const MOVE_CAPTURE = 'capture';
 
   const SOUFLA_MISSED_CAPTURE = 'missed_capture';
-  const SOUFLA_SHORT_CHAIN = 'short_chain';
   const SOUFLA_SHORTER_THAN_GLOBAL_LONGEST = 'shorter_than_global_longest';
   const SOUFLA_CUT_CHAIN = 'cut_chain';
 
@@ -458,11 +457,43 @@
     }
 
     const best = maxRemaining(origin, 0n);
+    let threatMemo = null;
+
+    function optimalCaptureMasks(current, capturedMask, remaining) {
+      poll();
+      if (remaining <= 0) return { union: 0n, forced: 0n };
+      if (!threatMemo) threatMemo = Array.from({ length: N_CELLS }, () => new Map());
+      const key = (capturedMask << 7n) | BigInt(remaining);
+      const cellMemo = threatMemo[current];
+      if (cellMemo.has(key)) return cellMemo.get(key);
+      let union = 0n;
+      let forced = null;
+      compactVisitCaptureOptions(work, current, (to, jumped) => {
+        const nextMask = capturedMask | COMPACT_BITS[jumped];
+        const continuation = withCapture(current, to, jumped, () => maxRemaining(to, nextMask));
+        if (1 + continuation !== remaining) return;
+        const child = withCapture(current, to, jumped, () => optimalCaptureMasks(to, nextMask, remaining - 1));
+        const branchUnion = COMPACT_BITS[jumped] | child.union;
+        const branchForced = COMPACT_BITS[jumped] | child.forced;
+        union |= branchUnion;
+        forced = forced == null ? branchForced : (forced & branchForced);
+      });
+      const result = { union, forced: forced == null ? 0n : forced };
+      cellMemo.set(key, result);
+      return result;
+    }
+
+    function maskToIndices(mask) {
+      const out = [];
+      for (let i = 0; i < N_CELLS; i++) if ((mask & COMPACT_BITS[i]) !== 0n) out.push(i);
+      return out;
+    }
 
     function analyze(request) {
       request = request && typeof request === 'object' ? request : {};
       const collectPaths = request.collectPaths !== false;
       const collectFirst = !!request.collectFirst;
+      const collectThreats = !!request.collectThreats;
       const dedupeEquivalent = !!request.dedupeEquivalent;
       const maxPaths = Number.isFinite(Number(request.maxPaths))
         ? Math.max(1, Number(request.maxPaths) | 0)
@@ -477,7 +508,7 @@
       let truncated = false;
 
       if (best <= 0) {
-        return { max: 0, paths, firstJumps: [], firstLandings: 0, nodes, truncated: false };
+        return { max: 0, paths, firstJumps: [], firstLandings: 0, allJumps: [], forcedJumps: [], nodes, truncated: false };
       }
 
       function record(current, capturedMask) {
@@ -528,11 +559,14 @@
         });
       }
       if (collectPaths) enumerate(origin, 0n, best);
+      const masks = collectThreats ? optimalCaptureMasks(origin, 0n, best) : { union: 0n, forced: 0n };
       return {
         max: best,
         paths,
         firstJumps: Array.from(firstJumpSet),
         firstLandings: firstLandingSet.size,
+        allJumps: collectThreats ? maskToIndices(masks.union) : [],
+        forcedJumps: collectThreats ? maskToIndices(masks.forced) : [],
         nodes,
         truncated,
       };
@@ -545,7 +579,7 @@
     const solver = compactCreateCaptureSolver(position, from, options);
     return solver
       ? solver.analyze(options)
-      : { max: 0, paths: [], firstJumps: [], firstLandings: 0, nodes: 0, truncated: false };
+      : { max: 0, paths: [], firstJumps: [], firstLandings: 0, allJumps: [], forcedJumps: [], nodes: 0, truncated: false };
   }
 
   function compactLongestCaptureSearch(position, from, limit) {
@@ -558,7 +592,7 @@
 
   function compactCaptureThreatSummary(position, side, options) {
     if (!(position instanceof Int8Array) || (side !== TOP && side !== BOT)) {
-      return { hasCapture: false, longest: 0, candidates: 0, threatened: [], landingChoices: 0 };
+      return { hasCapture: false, longest: 0, candidates: 0, threatened: [], forcedThreatened: [], landingChoices: 0 };
     }
     const solvers = [];
     let longest = 0;
@@ -571,18 +605,29 @@
       solvers.push({ from, solver });
       if (solver.max > longest) longest = solver.max;
     }
-    if (!longest) return { hasCapture: false, longest: 0, candidates: 0, threatened: [], landingChoices: 0 };
+    if (!longest) return { hasCapture: false, longest: 0, candidates: 0, threatened: [], forcedThreatened: [], landingChoices: 0 };
     const threatened = new Set();
+    let forcedThreatened = null;
     let candidates = 0;
     let landingChoices = 0;
     for (const item of solvers) {
       if (item.solver.max !== longest) continue;
-      const analysis = item.solver.analyze({ collectPaths: false, collectFirst: true });
+      const analysis = item.solver.analyze({ collectPaths: false, collectFirst: true, collectThreats: true });
       candidates++;
       landingChoices += analysis.firstLandings;
-      for (const jumped of analysis.firstJumps) threatened.add(jumped);
+      for (const jumped of analysis.allJumps || []) threatened.add(jumped);
+      const branchForced = new Set(analysis.forcedJumps || []);
+      if (forcedThreatened == null) forcedThreatened = branchForced;
+      else forcedThreatened = new Set(Array.from(forcedThreatened).filter((idx) => branchForced.has(idx)));
     }
-    return { hasCapture: true, longest, candidates, threatened: Array.from(threatened), landingChoices };
+    return {
+      hasCapture: true,
+      longest,
+      candidates,
+      threatened: Array.from(threatened),
+      forcedThreatened: Array.from(forcedThreatened || []),
+      landingChoices,
+    };
   }
 
   function compactGenerateSearchMoves(position, side, options) {
@@ -682,6 +727,58 @@
         promotes: kind(position[item.from] | 0) === MAN && isBackRank(to, side),
       },
     };
+  }
+
+  function compactFirstStrictMove(position, side, options) {
+    options = options && typeof options === 'object' ? options : {};
+    if (!(position instanceof Int8Array) || (side !== TOP && side !== BOT)) return null;
+    const solvers = [];
+    let longestGlobal = 0;
+    for (let from = 0; from < N_CELLS; from++) {
+      const v = position[from] | 0;
+      if (!v || owner(v) !== side) continue;
+      if (!compactCaptureOptions(position, from).length) continue;
+      const solver = compactCreateCaptureSolver(position, from, options);
+      if (!solver || solver.max <= 0) continue;
+      solvers.push({ from, solver });
+      if (solver.max > longestGlobal) longestGlobal = solver.max;
+    }
+    if (longestGlobal > 0) {
+      for (const item of solvers) {
+        if (item.solver.max !== longestGlobal) continue;
+        const result = item.solver.analyze({ collectPaths: true, dedupeEquivalent: false, maxPaths: 1 });
+        if (!result.paths.length) continue;
+        const pathInfo = result.paths[0];
+        const to = pathInfo.path[pathInfo.path.length - 1];
+        return {
+          type: MOVE_CAPTURE,
+          from: item.from,
+          path: pathInfo.path.slice(),
+          to,
+          jumps: pathInfo.jumps.slice(),
+          captures: pathInfo.captures,
+          promotes: kind(position[item.from] | 0) === MAN && isBackRank(to, side),
+        };
+      }
+      return null;
+    }
+    for (let from = 0; from < N_CELLS; from++) {
+      const v = position[from] | 0;
+      if (!v || owner(v) !== side) continue;
+      const destinations = compactStepDestinations(position, from);
+      if (!destinations.length) continue;
+      const to = destinations[0];
+      return {
+        type: MOVE_STEP,
+        from,
+        path: [to],
+        to,
+        jumps: [],
+        captures: 0,
+        promotes: kind(v) === MAN && isBackRank(to, side),
+      };
+    }
+    return null;
   }
 
   function compactMandatoryCaptureInfo(position, side, options) {
@@ -888,6 +985,7 @@
     captureThreatSummary: compactCaptureThreatSummary,
     generateSearchMoves: compactGenerateSearchMoves,
     uniqueLongestCapture: compactUniqueLongestCapture,
+    firstStrictMove: compactFirstStrictMove,
     longestCaptureSearch: compactLongestCaptureSearch,
     mandatoryCaptureInfo: compactMandatoryCaptureInfo,
     generateAllStepMoves: compactGenerateAllStepMoves,
@@ -1139,21 +1237,12 @@
     const byPiece = mandatory.byPiece || new Map();
     const selectedInfo = byPiece.get(from);
     const selectedMax = selectedInfo ? Number(selectedInfo.max || 0) : 0;
-    let offenders = [];
-    if (!capturesDone) {
-      // Ignoring capture entirely makes every piece that owned a globally
-      // longest chain an eligible offender.
-      offenders = mandatory.candidates.slice();
-    } else if (selectedMax < mandatory.longestGlobal) {
-      // When a shorter piece/chain was chosen, the rules identify the pieces
-      // that owned the global longest chain—not the moved shorter piece—as the
-      // offenders on which the opponent may apply the single penalty.
-      offenders = mandatory.candidates.slice();
-    } else if (capturesDone < selectedMax) {
-      // A player who started a globally longest chain and stopped early has
-      // violated with that moving piece itself.
-      offenders = [from];
-    }
+    // The offender set is defined exclusively by the turn-start position:
+    // every piece that owned a globally longest capture chain is eligible for
+    // the single penalty.  How the player violated the duty (ignored capture,
+    // chose a shorter chain, or stopped a chain) changes the reason only; it
+    // never changes the offender set.
+    let offenders = mandatory.candidates.slice();
     offenders = Array.from(new Set(offenders)).filter(validIdx);
     if (!offenders.length) return null;
     const options = [];
@@ -1189,18 +1278,50 @@
   function detectSoufla(beforeSnap, board, by, ruleCheck) {
     // Forced opening is a strict rule step: an opening mismatch is invalid, not a soufla.
     if (beforeSnap && beforeSnap.forcedEnabled && Number(beforeSnap.forcedPly || 0) >= 0 && Number(beforeSnap.forcedPly || 0) < 10) return null;
+
+    const supplied = ruleCheck && ruleCheck.mandatory && typeof ruleCheck.mandatory === 'object'
+      ? ruleCheck.mandatory
+      : null;
+    const suppliedLongest = supplied ? Math.max(0, Number(supplied.longestGlobal || 0) | 0) : 0;
+    const suppliedLongestByPiece = supplied && Array.isArray(supplied.longestByPiece)
+      ? supplied.longestByPiece.map((entry) => [Number(entry[0]), Math.max(0, Number(entry[1] || 0) | 0)])
+      : [];
+    const suppliedCandidates = supplied && Array.isArray(supplied.candidates)
+      ? supplied.candidates.map(Number).filter(validIdx)
+      : [];
+
+    // Most turns are compliant. Reuse the summary already computed at turn
+    // start to detect that fact without materialising any capture paths again.
+    let summary = null;
+    if (supplied && suppliedLongest > 0) {
+      summary = {
+        hasCapture: true,
+        longestGlobal: suppliedLongest,
+        longestByPiece: suppliedLongestByPiece,
+        candidates: suppliedCandidates,
+      };
+    } else if (supplied && suppliedLongest <= 0) {
+      return null;
+    } else {
+      summary = mandatoryCaptureInfo(board, by, { includePaths: false });
+      if (!summary.hasCapture) return null;
+    }
+
+    const captures = Math.max(0, Number(ruleCheck && ruleCheck.captures || 0) | 0);
+    const from = Number(ruleCheck && ruleCheck.from);
+    const longestMap = new Map(summary.longestByPiece || []);
+    const selectedMax = Math.max(0, Number(longestMap.get(from) || 0) | 0);
+    let reason = null;
+    if (captures <= 0) reason = SOUFLA_MISSED_CAPTURE;
+    else if (selectedMax < summary.longestGlobal) reason = SOUFLA_SHORTER_THAN_GLOBAL_LONGEST;
+    else if (captures < selectedMax) reason = SOUFLA_CUT_CHAIN;
+    if (!reason) return null;
+
+    // Full paths are needed only after a violation is confirmed, because they
+    // define the force choices.  This keeps normal legal turns inexpensive.
     const mandatory = mandatoryCaptureInfo(board, by, { includePaths: true, includeAllPiecePaths: false });
     if (!mandatory.hasCapture) return null;
-    const captures = Number(ruleCheck && ruleCheck.captures || 0);
-    const from = Number(ruleCheck && ruleCheck.from);
-    const selected = mandatory.byPiece.get(from);
-    const selectedMax = selected ? Number(selected.max || 0) : 0;
-    if (captures <= 0) return buildSouflaPending(mandatory, ruleCheck, beforeSnap, by, SOUFLA_MISSED_CAPTURE);
-    if (selectedMax < mandatory.longestGlobal) {
-      return buildSouflaPending(mandatory, ruleCheck, beforeSnap, by, SOUFLA_SHORTER_THAN_GLOBAL_LONGEST);
-    }
-    if (captures < selectedMax) return buildSouflaPending(mandatory, ruleCheck, beforeSnap, by, SOUFLA_CUT_CHAIN);
-    return null;
+    return buildSouflaPending(mandatory, ruleCheck, beforeSnap, by, reason);
   }
 
   function resolveOffenderCurrentCell(pending, offenderIdx) {
@@ -1293,7 +1414,6 @@
     MOVE_STEP,
     MOVE_CAPTURE,
     SOUFLA_MISSED_CAPTURE,
-    SOUFLA_SHORT_CHAIN,
     SOUFLA_SHORTER_THAN_GLOBAL_LONGEST,
     SOUFLA_CUT_CHAIN,
     FORCED_OPENING_TOP,

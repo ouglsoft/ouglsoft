@@ -542,7 +542,21 @@ function classifyCapture(fromIdx, toIdx) {
   return [!!res.ok, res.ok ? res.jumped : null];
 }
 
+function expireUnclaimedSouflaOnMoveStart() {
+  const pending = Game.availableSouflaForHuman;
+  if (!pending || Game._souflaApplying) return false;
+  if (Number(pending.penalizer) !== Number(Game.player)) return false;
+  // The right must be exercised before the penalizer starts a new move. Once
+  // the first board-changing segment begins, the previous soufla is waived.
+  Game.availableSouflaForHuman = null;
+  if (Game.souflaPending === pending) Game.souflaPending = null;
+  Game.awaitingPenalty = false;
+  return true;
+}
+
 function applyMove(fromIdx, toIdx, isCapture, jumpedIdx) {
+  const expiredSoufla = expireUnclaimedSouflaOnMoveStart();
+  if (expiredSoufla && (!Turn.ctx || !Turn.ctx.snapshot)) Turn.start();
   const applied = DhametRulesShared.applySegment(Game.board, fromIdx, toIdx);
   if (!applied || !applied.ok) throw new Error(applied && applied.reason ? applied.reason : "move/illegal-segment");
   const actualCapture = applied.type === DhametRulesShared.MOVE_CAPTURE;
@@ -652,6 +666,10 @@ function consumeTurnClearForMove() {
   } catch (_) {}
 }
 
+function hasUnresolvedSoufla() {
+  return !!(!Game._souflaApplying && (Game.awaitingPenalty || Game.souflaPending || Game.availableSouflaForHuman));
+}
+
 const Turn = {
   ctx: null,
 
@@ -671,6 +689,12 @@ const Turn = {
     // (including one king versus one king) must be reevaluated afterwards.
     if (!Game.gameOver) checkEndConditions();
     if (Game.gameOver) {
+      UI.updateStatus();
+      return;
+    }
+    if (hasUnresolvedSoufla()) {
+      this.ctx = null;
+      Game.killTimer.hardStop();
       UI.updateStatus();
       return;
     }
@@ -734,7 +758,11 @@ const Turn = {
     UI.updateStatus();
   },
   beginCapture(fromIdx) {
-    if (!this.ctx) this.start();
+    if (!this.ctx) {
+      expireUnclaimedSouflaOnMoveStart();
+      this.start();
+    }
+    if (!this.ctx) throw new Error("game/turn-context-unavailable");
     if (this.ctx.startedFrom == null) this.ctx.startedFrom = fromIdx;
     if (!Game.killTimer.running && Game.player === humanSide()) {
       Game.killTimer.start();
@@ -884,6 +912,14 @@ const Turn = {
         to: Game.lastMovedTo != null ? Number(Game.lastMovedTo) : path[path.length - 1],
         path,
         captures,
+        mandatory: {
+          hasCapture: (this.ctx.Lmax | 0) > 0,
+          longestGlobal: this.ctx.Lmax | 0,
+          longestByPiece: this.ctx.longestByPiece && typeof this.ctx.longestByPiece.entries === "function"
+            ? Array.from(this.ctx.longestByPiece.entries())
+            : [],
+          candidates: Array.isArray(this.ctx.candidates) ? this.ctx.candidates.slice() : [],
+        },
       },
     );
     if (!pending) return null;
@@ -1687,6 +1723,13 @@ function checkEndConditions() {
   try {
     UI.updateCounts?.({ top, bot, tKings, bKings });
   } catch {}
+
+  // A violating board is provisional until the entitled player chooses
+  // removal or force. Declaring a result here could adjudicate a position that
+  // will be rolled back by force, so terminal checks wait for resolution.
+  if (hasUnresolvedSoufla()) {
+    return;
+  }
 
   if (top === 0 || bot === 0) {
     Game.gameOver = true;

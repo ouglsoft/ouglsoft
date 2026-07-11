@@ -25,7 +25,7 @@
   const WIN = 10000000;
   const INF = 1000000000;
   const MATE_WINDOW = 100000;
-  const ENGINE_VERSION = 'dhamet-computer-pvs-1.7.1';
+  const ENGINE_VERSION = 'dhamet-computer-pvs-1.8.0';
   // Root-only tie preference for a remembered, uniquely forced soufla plan.
   // One man is worth 100 evaluation points. The bonus is deliberately small:
   // it preserves a previously proven plan when results are close, but cannot
@@ -401,6 +401,8 @@
     const botThreat = captureThreatSummary(pos, BOT, ctx);
     const topThreatened = new Set(botThreat.threatened || []);
     const botThreatened = new Set(topThreat.threatened || []);
+    const topForcedThreatened = new Set(botThreat.forcedThreatened || []);
+    const botForcedThreatened = new Set(topThreat.forcedThreatened || []);
 
     // Ordinary movement is not legal when a capture is compulsory. Capture
     // mobility is represented by legal longest-chain choices instead.
@@ -418,12 +420,21 @@
     }
     absolute += pressure(topThreat) - pressure(botThreat);
 
-    for (const i of topThreatened) absolute -= Math.round(pieceValue(board[i] | 0, total) * 0.30);
-    for (const i of botThreatened) absolute += Math.round(pieceValue(board[i] | 0, total) * 0.30);
+    // A piece appearing in at least one longest chain is at risk; a piece
+    // captured in every legal longest chain is under a stronger forced threat.
+    for (const i of topThreatened) {
+      const factor = topForcedThreatened.has(i) ? 0.42 : 0.22;
+      absolute -= Math.round(pieceValue(board[i] | 0, total) * factor);
+    }
+    for (const i of botThreatened) {
+      const factor = botForcedThreatened.has(i) ? 0.42 : 0.22;
+      absolute += Math.round(pieceValue(board[i] | 0, total) * factor);
+    }
 
     for (const dp of Array.isArray(pos.deferredPromotions) ? pos.deferredPromotions : []) {
       const threatened = dp.side === TOP ? topThreatened.has(dp.idx) : botThreatened.has(dp.idx);
-      const bonus = threatened ? 55 : 160;
+      const forcedThreat = dp.side === TOP ? topForcedThreatened.has(dp.idx) : botForcedThreatened.has(dp.idx);
+      const bonus = forcedThreat ? 35 : threatened ? 80 : 160;
       absolute += dp.side === TOP ? bonus : -bonus;
     }
 
@@ -957,9 +968,44 @@
     const pos = normalizePosition(input);
     const settings = Config.normalizeAdvancedSettings((input && input.settings && input.settings.advanced) || input.settings || {});
 
-    // Root generation is exhaustive but uses the shared memoized search and
-    // merges only paths that lead to an identical legal game state.
-    const rootMoves = generateSearchMoves(pos, null);
+    // Root generation is exhaustive, but it now observes the level's hard
+    // deadline. If an exceptional capture graph exhausts the whole budget, a
+    // separately generated first *strict legal* move is returned rather than
+    // evaluating illegal alternatives or failing the worker.
+    let rootMoves;
+    try {
+      rootMoves = generateSearchMoves(pos, { hardDeadline: analysisStarted + Math.max(1, settings.hardTimeMs) });
+    } catch (error) {
+      if (error !== TIMEOUT && !(error && error.searchTimeout)) throw error;
+      const forced = forcedOpeningMove(pos);
+      const fallback = forced || R.compact.firstStrictMove(pos.board, pos.side);
+      if (!fallback) {
+        return {
+          move: null,
+          score: -WIN,
+          depth: 0,
+          selectiveDepth: 0,
+          nodes: 0,
+          timeMs: Math.round(nowMs() - analysisStarted),
+          pv: [],
+          engine: ENGINE_VERSION,
+          rootGenerationTimedOut: true,
+        };
+      }
+      return {
+        move: fallback,
+        score: 0,
+        depth: 0,
+        selectiveDepth: 0,
+        nodes: 0,
+        timeMs: Math.round(nowMs() - analysisStarted),
+        pv: [{ from: fallback.from, path: fallback.path.slice(), score: null }],
+        rootAlternatives: [{ move: fallback, score: 0 }],
+        souflaPlan: null,
+        engine: ENGINE_VERSION,
+        rootGenerationTimedOut: true,
+      };
+    }
     const immediate = terminalScore(pos, 0, rootMoves);
     if (immediate != null || !rootMoves.length) {
       return {
@@ -971,6 +1017,26 @@
         timeMs: Math.round(nowMs() - analysisStarted),
         pv: [],
         engine: ENGINE_VERSION,
+      };
+    }
+
+    // With exactly one strict legal move there is no decision to optimise.
+    // Return it immediately; illegal/soufla-producing alternatives are never
+    // part of the computer's normal move search.
+    if (rootMoves.length === 1) {
+      const only = rootMoves[0];
+      return {
+        move: only,
+        score: 0,
+        depth: 0,
+        selectiveDepth: 0,
+        nodes: 0,
+        timeMs: Math.round(nowMs() - analysisStarted),
+        pv: [{ from: only.from, path: only.path.slice(), score: null }],
+        rootAlternatives: [{ move: only, score: 0 }],
+        souflaPlan: null,
+        engine: ENGINE_VERSION,
+        singleLegalMove: true,
       };
     }
 
@@ -1116,23 +1182,35 @@
     const options = pending && Array.isArray(pending.options) ? pending.options : [];
     if (!options.length) return null;
     const settings = Config.normalizeAdvancedSettings((input && input.settings && input.settings.advanced) || input.settings || {});
-    const candidates = [];
+    const matchedPlan = matchSouflaPlan(input, pending, rememberedPlan);
+    const isPlannedOption = (option) => !!(matchedPlan && option && option.kind === 'force' &&
+      Number(option.offenderIdx) === Number(matchedPlan.option.offenderIdx) &&
+      R.samePath(option.path || [], matchedPlan.option.path || []));
+
+    // Build every legal penalty from its own correct state, then merge only
+    // options that produce the exact same complete position. This removes
+    // duplicate force paths without reducing the legal outcome set. Removal is
+    // still evaluated from the post-violation board; force is still evaluated
+    // from the turn-start snapshot after the imposed capture.
+    const candidateByIdentity = new Map();
     for (const option of options) {
       try {
-        // Removal is built from the current post-violation board. Force is
-        // built by penaltyPosition from the original turn-start snapshot and
-        // the imposed capture. The two penalties therefore enter evaluation
-        // from their own legally correct positions.
         const pos = penaltyPosition(input, pending, option);
         if (!pos) continue;
-        const terminal = terminalScore(pos, 0, null);
-        const staticScore = terminal == null ? evaluate(pos) : terminal;
-        candidates.push({ option, pos, staticScore });
+        const identity = positionIdentity(pos);
+        const existing = candidateByIdentity.get(identity);
+        if (!existing || (isPlannedOption(option) && !isPlannedOption(existing.option))) {
+          candidateByIdentity.set(identity, { option, pos, identity });
+        }
       } catch (_) {}
     }
+    const candidates = Array.from(candidateByIdentity.values());
     if (!candidates.length) return null;
+    for (const candidate of candidates) {
+      const terminal = terminalScore(candidate.pos, 0, null);
+      candidate.staticScore = terminal == null ? evaluate(candidate.pos) : terminal;
+    }
 
-    const matchedPlan = matchSouflaPlan(input, pending, rememberedPlan);
     const plannedCandidate = matchedPlan
       ? candidates.find((candidate) =>
           candidate.option.kind === 'force' &&
