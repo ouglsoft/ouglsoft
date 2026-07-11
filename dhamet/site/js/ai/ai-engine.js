@@ -439,12 +439,102 @@
     return side === TOP ? facts.topForcedThreatened : facts.botForcedThreatened;
   }
 
+  function hasImmediateCapture(board, side) {
+    for (let i = 0; i < CELLS; i++) {
+      const value = board[i] | 0;
+      if (value && R.owner(value) === side && R.compact.captureOptions(board, i).length) return true;
+    }
+    return false;
+  }
+
+  // One lightweight, legality-aware promotion summary is shared by evaluation
+  // and move ordering. Quiet promotion moves are unavailable whenever that side
+  // has a compulsory capture, so they must not influence the race in that turn.
+  function promotionCandidatesSummary(pos, side, ctx, knownHasCapture) {
+    const key = positionIdentity(pos) + ':promotion-summary:' + side;
+    if (ctx && ctx.promotionCandidateCache && ctx.promotionCandidateCache.has(key)) {
+      return ctx.promotionCandidateCache.get(key);
+    }
+    const hasCapture = typeof knownHasCapture === 'boolean' ? knownHasCapture : hasImmediateCapture(pos.board, side);
+    const candidates = [];
+    const immediateTargets = new Set();
+    for (let i = 0; i < CELLS; i++) {
+      const value = pos.board[i] | 0;
+      if (!value || R.owner(value) !== side || R.kind(value) !== MAN) continue;
+      const distance = promotionDistance(side, i);
+      if (distance > 3) continue;
+      const targets = hasCapture ? [] : R.compact.stepDestinations(pos.board, i).map(Number);
+      const mobile = targets.length > 0;
+      if (distance === 1) for (const target of targets) immediateTargets.add(target);
+      candidates.push({ idx: i, distance, mobile, targets });
+    }
+    candidates.sort((a, b) => a.distance - b.distance || Number(b.mobile) - Number(a.mobile) || a.idx - b.idx);
+    const summary = { hasCapture, candidates, immediateTargets };
+    if (ctx && ctx.promotionCandidateCache && ctx.promotionCandidateCache.size < 1024) {
+      ctx.promotionCandidateCache.set(key, summary);
+    }
+    return summary;
+  }
+
+  function kingCaughtByStructuralTrap(board, kingIdx, kingSide, trapSide) {
+    const trap = trapSide === TOP ? STRATEGY.topTrap : STRATEGY.botTrap;
+    if (!trapPotential(board, trapSide)) return false;
+    const value = board[kingIdx] | 0;
+    if (!value || R.owner(value) !== kingSide || R.kind(value) !== KING) return false;
+    const entry = R.compact.captureOptions(board, kingIdx).find((option) =>
+      Number(option.to) === Number(trap.landing) && Number(option.jumped) === Number(trap.bait)
+    );
+    if (!entry) return false;
+    const entered = R.compact.applyMove(board, { from: kingIdx, path: [entry.to] }, kingSide);
+    if (!entered || !entered.ok) return false;
+    return R.compact.captureOptions(entered.position, trap.guard).some((option) =>
+      Number(option.jumped) === Number(trap.landing) && Number(option.to) === Number(trap.bait)
+    );
+  }
+
+  function candidateCaughtByStructuralTrap(pos, candidate, runnerSide, trapSide) {
+    if (!candidate || candidate.distance !== 1 || !candidate.mobile || !candidate.targets.length) return false;
+    // The trap is treated as relevant only when every currently legal promotion
+    // destination of this runner enters the known structural sequence. A mere
+    // intact shape elsewhere on the back rank must not discount the threat.
+    for (const target of candidate.targets) {
+      const board = new Int8Array(pos.board);
+      board[candidate.idx] = 0;
+      board[target] = runnerSide * KING;
+      if (!kingCaughtByStructuralTrap(board, target, runnerSide, trapSide)) return false;
+    }
+    return true;
+  }
+
+  function deferredCaughtByStructuralTrap(pos, deferred, trapSide) {
+    if (!deferred || !R.validIdx(Number(deferred.idx))) return false;
+    const board = new Int8Array(pos.board);
+    const idx = Number(deferred.idx);
+    const value = board[idx] | 0;
+    if (!value || R.owner(value) !== deferred.side) return false;
+    board[idx] = deferred.side * KING;
+    return kingCaughtByStructuralTrap(board, idx, deferred.side, trapSide);
+  }
+
+  function promotionMoveCaughtByStructuralTrap(pos, move, trapSide) {
+    if (!move || !move.promotes) return false;
+    const applied = R.compact.applyMove(pos.board, move, pos.side);
+    if (!applied || !applied.ok) return false;
+    const destination = moveDestination(move);
+    if (!R.validIdx(destination)) return false;
+    const board = new Int8Array(applied.position);
+    board[destination] = pos.side * KING;
+    return kingCaughtByStructuralTrap(board, destination, pos.side, trapSide);
+  }
+
   function buildEvaluationFacts(pos, ctx) {
     const board = pos.board;
     const counts = R.compact.countPieces(board);
     const stepCounts = new Int16Array(CELLS);
     const supportCount = new Uint8Array(CELLS);
     const reserveCount = new Uint8Array(CELLS);
+    const topThreat = captureThreatSummary(pos, TOP, ctx);
+    const botThreat = captureThreatSummary(pos, BOT, ctx);
     let topSteps = 0;
     let botSteps = 0;
 
@@ -452,7 +542,8 @@
       const v = board[i] | 0;
       if (!v) continue;
       const side = R.owner(v);
-      const steps = R.compact.stepDestinations(board, i).length;
+      const quietMovesLegal = side === TOP ? !topThreat.hasCapture : !botThreat.hasCapture;
+      const steps = quietMovesLegal ? R.compact.stepDestinations(board, i).length : 0;
       stepCounts[i] = steps;
       if (side === TOP) topSteps += steps;
       else botSteps += steps;
@@ -476,8 +567,6 @@
       reserveCount[i] = Math.min(255, reserve);
     }
 
-    const topThreat = captureThreatSummary(pos, TOP, ctx);
-    const botThreat = captureThreatSummary(pos, BOT, ctx);
     return {
       board,
       counts,
@@ -688,90 +777,105 @@
     return { threatened, forced, safe: !threatened };
   }
 
-  function scorePromotion(facts, pos) {
+  function scorePromotion(facts, pos, ctx) {
     let score = 0;
-    const topCandidates = [];
-    const botCandidates = [];
     const total = facts.counts.total;
+    const topSummary = promotionCandidatesSummary(pos, TOP, ctx, !!facts.topThreat.hasCapture);
+    const botSummary = promotionCandidatesSummary(pos, BOT, ctx, !!facts.botThreat.hasCapture);
 
+    // General progress is scored for every man, while near-promotion race
+    // values come from the single legality-aware summary shared with ordering.
     for (let i = 0; i < CELLS; i++) {
-      const v = facts.board[i] | 0;
-      if (!v || R.kind(v) !== MAN) continue;
-      const side = R.owner(v);
+      const value = facts.board[i] | 0;
+      if (!value || R.kind(value) !== MAN) continue;
+      const side = R.owner(value);
       const sign = side === TOP ? 1 : -1;
       const distance = promotionDistance(side, i);
       const progress = 8 - distance;
-      const status = promotionStatus(facts, side, i);
       const mobile = facts.stepCounts[i] > 0;
+      let positional = progress * (total <= 20 ? 6 : 3);
+      if (!mobile && distance > 0) positional -= 10;
+      score += sign * positional;
+    }
 
-      let value = progress * (total <= 20 ? 6 : 3);
-      if (!mobile && distance > 0) value -= 10;
-
-      let race = 0;
-      if (distance === 1) {
-        race = status.forced ? 18 : status.threatened ? 75 : mobile ? 240 : 120;
-      } else if (distance === 2) {
-        race = status.forced ? 6 : status.threatened ? 28 : mobile ? 105 : 45;
-      } else if (distance === 3) {
-        race = status.forced ? 2 : status.threatened ? 10 : mobile ? 42 : 16;
+    function rankedRace(summary, side) {
+      const ranked = [];
+      for (const candidate of summary.candidates) {
+        const status = promotionStatus(facts, side, candidate.idx);
+        let race = 0;
+        if (candidate.distance === 1) {
+          race = summary.hasCapture
+            ? status.forced ? 6 : status.threatened ? 18 : 42
+            : status.forced ? 18 : status.threatened ? 75 : candidate.mobile ? 240 : 120;
+        } else if (candidate.distance === 2) {
+          race = summary.hasCapture
+            ? status.forced ? 2 : status.threatened ? 8 : 16
+            : status.forced ? 6 : status.threatened ? 28 : candidate.mobile ? 105 : 45;
+        } else if (candidate.distance === 3) {
+          race = summary.hasCapture
+            ? status.forced ? 1 : status.threatened ? 3 : 6
+            : status.forced ? 2 : status.threatened ? 10 : candidate.mobile ? 42 : 16;
+        }
+        score += side === TOP ? race : -race;
+        ranked.push({ ...candidate, race, status });
       }
-      value += race;
-      score += sign * value;
-      const candidate = { idx: i, race, distance, status, mobile };
-      if (side === TOP) topCandidates.push(candidate);
-      else botCandidates.push(candidate);
+      ranked.sort((a, b) => b.race - a.race || a.distance - b.distance || a.idx - b.idx);
+      return [ranked[0] || null, ranked[1] || null];
     }
 
-    function rankCandidates(items) {
-      items.sort((a, b) => b.race - a.race || a.distance - b.distance || a.idx - b.idx);
-      return [items[0] || null, items[1] || null];
-    }
-
-    const [bestTop, secondTop] = rankCandidates(topCandidates);
-    const [bestBot, secondBot] = rankCandidates(botCandidates);
+    const [bestTop, secondTop] = rankedRace(topSummary, TOP);
+    const [bestBot, secondBot] = rankedRace(botSummary, BOT);
     const bestTopRace = bestTop ? bestTop.race : 0;
     const bestBotRace = bestBot ? bestBot.race : 0;
     const trapRaceFactor = 0.55 + facts.strategicPhase * 0.45;
     score += roundSymmetric((bestTopRace - bestBotRace) * 0.55);
 
-    // A company trap is a one-use time reserve, not a substitute for defence.
-    // It can delay the first opposing king, while a second close promotion
-    // remains dangerous because the trap structure is normally consumed.
-    if (facts.topTrapReady && bestBot && bestBot.race >= 75) {
-      let delay = 25;
-      if (secondBot && secondBot.race >= 75) delay = 5;
-      else if (secondBot && secondBot.race >= 28) delay = 12;
+    // The back trap is a one-use emergency resource. It affects the race only
+    // when the immediate promotion destinations actually enter its structural
+    // sequence; an intact but unrelated shape elsewhere gives no discount.
+    const topTrapRelevant = facts.topTrapReady
+      && candidateCaughtByStructuralTrap(pos, bestBot, BOT, TOP);
+    if (topTrapRelevant && bestBot && bestBot.race >= 75) {
+      let delay = 8;
+      if (secondBot && secondBot.race >= 75) delay = 2;
+      else if (secondBot && secondBot.race >= 28) delay = 4;
       score += roundSymmetric(delay * trapRaceFactor);
     }
 
-    // The first TOP promotion may deliberately break the opponent's one-use
-    // trap, but only when a second promotion is close or the first runner is
-    // already endangered. Otherwise entering an intact trap remains costly.
-    if (facts.botTrapReady && bestTop && bestTop.race >= 75) {
-      const secondClose = !!secondTop && (secondTop.race >= 75 || (secondTop.distance <= 2 && !secondTop.status.forced));
-      let penalty = 38;
-      if (secondClose) penalty = 7;
-      else if (bestTop.status.forced) penalty = 11;
-      else if (bestTop.status.threatened) penalty = 18;
+    const botTrapRelevant = facts.botTrapReady
+      && candidateCaughtByStructuralTrap(pos, bestTop, TOP, BOT);
+    if (botTrapRelevant && bestTop && bestTop.race >= 75) {
+      const secondClose = !!secondTop && (secondTop.race >= 75 || (secondTop.distance <= 2 && secondTop.mobile));
+      let penalty = 18;
+      if (secondClose) penalty = 5;
+      else if (bestTop.status.forced) penalty = 7;
+      else if (bestTop.status.threatened) penalty = 11;
       score -= roundSymmetric(penalty * trapRaceFactor);
     }
 
     let deferredTop = 0;
     let deferredBot = 0;
+    let trappedDeferredTop = 0;
+    let trappedDeferredBot = 0;
     for (const dp of Array.isArray(pos.deferredPromotions) ? pos.deferredPromotions : []) {
       const status = promotionStatus(facts, dp.side, dp.idx);
       const value = status.forced ? 35 : status.threatened ? 100 : 285;
       score += dp.side === TOP ? value : -value;
-      if (dp.side === TOP) deferredTop++;
-      else deferredBot++;
+      if (dp.side === TOP) {
+        deferredTop++;
+        if (facts.botTrapReady && deferredCaughtByStructuralTrap(pos, dp, BOT)) trappedDeferredTop++;
+      } else {
+        deferredBot++;
+        if (facts.topTrapReady && deferredCaughtByStructuralTrap(pos, dp, TOP)) trappedDeferredBot++;
+      }
     }
-    if (facts.topTrapReady && deferredBot > 0) {
+    if (trappedDeferredBot > 0) {
       const secondDanger = deferredBot > 1 || (secondBot && secondBot.race >= 75);
-      score += roundSymmetric((secondDanger ? 5 : 18) * trapRaceFactor);
+      score += roundSymmetric((secondDanger ? 2 : 7) * trapRaceFactor);
     }
-    if (facts.botTrapReady && deferredTop > 0) {
+    if (trappedDeferredTop > 0) {
       const secondClose = deferredTop > 1 || (secondTop && secondTop.race >= 75);
-      score -= roundSymmetric((secondClose ? 6 : 28) * trapRaceFactor);
+      score -= roundSymmetric((secondClose ? 3 : 12) * trapRaceFactor);
     }
     return Math.trunc(score);
   }
@@ -811,7 +915,7 @@
     const facts = buildEvaluationFacts(pos, ctx);
     const components = {
       material: scoreMaterial(facts),
-      promotion: scorePromotion(facts, pos),
+      promotion: scorePromotion(facts, pos, ctx),
       mobility: scoreMobility(facts),
       structure: scoreStructure(facts),
       captures: scoreCaptureThreats(facts),
@@ -857,16 +961,7 @@
   }
 
   function imminentPromotionTargets(pos, side, ctx) {
-    const key = positionIdentity(pos) + ':promotion-targets:' + side;
-    if (ctx && ctx.promotionTargetCache.has(key)) return ctx.promotionTargetCache.get(key);
-    const targets = new Set();
-    for (let i = 0; i < CELLS; i++) {
-      const v = pos.board[i] | 0;
-      if (!v || R.owner(v) !== side || R.kind(v) !== MAN || promotionDistance(side, i) !== 1) continue;
-      for (const to of R.compact.stepDestinations(pos.board, i)) targets.add(Number(to));
-    }
-    if (ctx && ctx.promotionTargetCache.size < 1024) ctx.promotionTargetCache.set(key, targets);
-    return targets;
+    return promotionCandidatesSummary(pos, side, ctx).immediateTargets;
   }
 
   function isPromotionCriticalMove(pos, move, ctx) {
@@ -940,36 +1035,16 @@
     return count;
   }
 
-  function quickPromotionCandidates(pos, side, ctx) {
-    const key = positionIdentity(pos) + ':quick-promotion:' + side;
-    if (ctx && ctx.promotionCandidateCache && ctx.promotionCandidateCache.has(key)) {
-      return ctx.promotionCandidateCache.get(key);
-    }
-    const out = [];
-    for (let i = 0; i < CELLS; i++) {
-      const value = pos.board[i] | 0;
-      if (!value || R.owner(value) !== side || R.kind(value) !== MAN) continue;
-      const distance = promotionDistance(side, i);
-      if (distance > 3) continue;
-      const mobile = R.compact.stepDestinations(pos.board, i).length > 0;
-      out.push({ idx: i, distance, mobile });
-    }
-    out.sort((a, b) => a.distance - b.distance || Number(b.mobile) - Number(a.mobile) || a.idx - b.idx);
-    if (ctx && ctx.promotionCandidateCache && ctx.promotionCandidateCache.size < 1024) {
-      ctx.promotionCandidateCache.set(key, out);
-    }
-    return out;
-  }
 
   function trapPromotionOrderingAdjustment(pos, move, ctx) {
     const from = Number(move && move.from);
     const to = moveDestination(move);
     const mover = R.validIdx(from) ? pos.board[from] | 0 : 0;
     if (!mover || R.kind(mover) !== MAN || !R.validIdx(to) || promotionDistance(pos.side, to) !== 0) return 0;
-    const opponentTrapReady = trapPotential(pos.board, opponent(pos.side));
-    if (!opponentTrapReady) return 0;
+    const trapSide = opponent(pos.side);
+    if (!trapPotential(pos.board, trapSide) || !promotionMoveCaughtByStructuralTrap(pos, move, trapSide)) return 0;
 
-    const second = quickPromotionCandidates(pos, pos.side, ctx)
+    const second = promotionCandidatesSummary(pos, pos.side, ctx).candidates
       .find((candidate) => candidate.idx !== from && candidate.distance <= 2 && candidate.mobile);
     const enemyThreat = captureThreatSummary(pos, opponent(pos.side), ctx);
     const threatened = new Set(enemyThreat && enemyThreat.threatened || []).has(from);
@@ -1140,7 +1215,6 @@
       moveCache: new Map(),
       evalCache: new Map(),
       threatCache: new Map(),
-      promotionTargetCache: new Map(),
       promotionCandidateCache: new Map(),
       strategicPhaseCache: new Map(),
       preferredMoves: null,
@@ -1693,7 +1767,7 @@
     }
 
     const critical = rootMoves.some((move) => move.captures > 0 || isPromotionCriticalMove(pos, move, {
-      promotionTargetCache: new Map(),
+      promotionCandidateCache: new Map(),
     })) || rootMoves.length >= 10 || (Array.isArray(pos.deferredPromotions) && pos.deferredPromotions.length > 0);
     if (critical) {
       settings.hardTimeMs = Math.min(45000, Math.max(settings.hardTimeMs, settings.thinkTimeMs + settings.timeBoostCriticalMs));
@@ -1820,6 +1894,7 @@
     });
   }
 
+
   function analyzePenalty(input, pending, rememberedPlan) {
     const analysisStarted = nowMs();
     const options = pending && Array.isArray(pending.options) ? pending.options : [];
@@ -1891,9 +1966,33 @@
       return score;
     }
 
-    let ordered = candidates.slice().sort((a, b) =>
-      cheapOrder(b) - cheapOrder(a) || JSON.stringify(a.option).localeCompare(JSON.stringify(b.option))
+    // Depth zero covers every distinct legal outcome before any option is
+    // deepened. If time expires later, the decision falls back to this common
+    // full-board baseline instead of comparing a searched prefix only.
+    const savedHardDeadline = ctx.hardDeadline;
+    ctx.hardDeadline = Infinity;
+    let baselineScored;
+    try {
+      baselineScored = candidates.map((candidate) => {
+        const terminal = terminalScore(candidate.pos, 0, null);
+        const score = terminal == null ? evaluate(candidate.pos, ctx) : terminal;
+        return {
+          candidate,
+          score,
+          selectionScore: selectionScore(candidate, score),
+          reusedPlanScore: false,
+        };
+      });
+    } finally {
+      ctx.hardDeadline = savedHardDeadline;
+    }
+    baselineScored.sort((a, b) =>
+      b.selectionScore - a.selectionScore ||
+      (a.candidate === plannedCandidate ? -1 : b.candidate === plannedCandidate ? 1 : 0) ||
+      cheapOrder(b.candidate) - cheapOrder(a.candidate) ||
+      JSON.stringify(a.candidate.option).localeCompare(JSON.stringify(b.candidate.option))
     );
+    let ordered = baselineScored.map((entry) => entry.candidate);
 
     if (candidates.length === 1) {
       const candidate = candidates[0];
@@ -1922,8 +2021,8 @@
     }
 
     const maxDepth = Math.max(1, penaltySettings.minimaxDepth | 0);
-    let completed = null;
-    let partial = null;
+    let completed = { depth: 0, scored: baselineScored, baselineOnly: true };
+    let partialOptionsSearched = 0;
     let stableKey = '';
     let stableCount = 0;
     let reusedPlanScore = false;
@@ -1956,11 +2055,11 @@
           (a.candidate === plannedCandidate ? -1 : b.candidate === plannedCandidate ? 1 : 0) ||
           JSON.stringify(a.candidate.option).localeCompare(JSON.stringify(b.candidate.option))
         );
-        partial = { depth, scored };
+        partialOptionsSearched = Math.max(partialOptionsSearched, scored.length);
       }
       if (timedOut || scored.length !== candidates.length) break;
 
-      completed = { depth, scored };
+      completed = { depth, scored, baselineOnly: false };
       const ranked = scored.map((entry) => entry.candidate);
       ordered = plannedCandidate
         ? [plannedCandidate, ...ranked.filter((candidate) => candidate !== plannedCandidate)]
@@ -1975,25 +2074,7 @@
       if (nowMs() >= ctx.softDeadline && stableCount >= 2 && depth >= 2) break;
     }
 
-    let result = completed || partial;
-    if (!result && plannedCandidate && rememberedScore != null) {
-      result = {
-        depth: rememberedDepth,
-        scored: [{
-          candidate: plannedCandidate,
-          score: rememberedScore,
-          selectionScore: selectionScore(plannedCandidate, rememberedScore),
-          reusedPlanScore: true,
-        }],
-      };
-      reusedPlanScore = true;
-    }
-    if (!result || !result.scored.length) {
-      const candidate = ordered[0];
-      const terminal = terminalScore(candidate.pos, 0, null);
-      const score = terminal == null ? evaluate(candidate.pos, ctx) : terminal;
-      result = { depth: 0, scored: [{ candidate, score, selectionScore: selectionScore(candidate, score), reusedPlanScore: false }] };
-    }
+    const result = completed;
 
     const bestEntry = result.scored[0];
     const best = bestEntry.candidate;
@@ -2006,7 +2087,10 @@
         nodes: ctx.nodes | 0,
         timeMs: Math.round(nowMs() - analysisStarted),
         optionsEvaluated: candidates.length,
-        optionsSearched: result.scored.length,
+        optionsCovered: candidates.length,
+        optionsSearched: result.depth > 0 ? candidates.length : partialOptionsSearched,
+        allOptionsCovered: true,
+        baselineOnly: result.depth === 0,
         selectionScore: Math.trunc(bestEntry.selectionScore),
         souflaPlanMatched: !!plannedCandidate,
         souflaPlanChosen: !!(plannedCandidate && best === plannedCandidate),

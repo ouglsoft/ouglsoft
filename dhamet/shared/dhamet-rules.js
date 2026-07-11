@@ -561,7 +561,7 @@
           }
         });
       }
-      if (collectPaths) enumerate(origin, 0n, best);
+      if (collectPaths || onPath) enumerate(origin, 0n, best);
       const masks = collectThreats ? optimalCaptureMasks(origin, 0n, best) : { union: 0n, forced: 0n };
       return {
         max: best,

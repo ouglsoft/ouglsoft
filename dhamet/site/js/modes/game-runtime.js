@@ -1676,7 +1676,9 @@ function switchPlayer() {
       Visual.markTurnBoundary();
   } catch {}
   Game.killTimer.hardStop();
-  checkEndConditions();
+  // Terminal rules are evaluated by Turn.start() after deferred promotions
+  // for the new side have been activated. Checking here would inspect a
+  // stale pre-promotion board and can declare a false no-move loss.
   UI.updateStatus();
 }
 
