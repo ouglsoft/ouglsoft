@@ -123,6 +123,73 @@
     return Object.freeze({ degree, centrality, rayReach, wide, row });
   })();
 
+  // Mauritanian strategic geometry for the computer's fixed TOP perspective.
+  // These values never affect move legality; they only refine the existing
+  // evaluation and move ordering. The shared rules module remains the sole
+  // authority for PvC and online play.
+  const STRATEGY = (() => {
+    const at = (r, c) => R.idx(r, c);
+    const backEyesTop = Object.freeze([
+      Object.freeze({ idx: at(0, 0), weight: 20 }),
+      Object.freeze({ idx: at(0, 2), weight: 20 }),
+      Object.freeze({ idx: at(0, 4), weight: 16 }),
+      Object.freeze({ idx: at(0, 6), weight: 7 }),
+      Object.freeze({ idx: at(0, 8), weight: 6 }),
+    ]);
+    const backGapsTop = Object.freeze([at(0, 1), at(0, 3), at(0, 5), at(0, 7)]);
+    const opponentTrapTargets = Object.freeze([
+      Object.freeze({ idx: at(8, 8), weight: 18 }),
+      Object.freeze({ idx: at(8, 6), weight: 18 }),
+      Object.freeze({ idx: at(8, 4), weight: 14 }),
+    ]);
+    const backEyeWeight = new Int8Array(CELLS);
+    const opponentTargetWeight = new Int8Array(CELLS);
+    const backGap = new Uint8Array(CELLS);
+    for (const item of backEyesTop) backEyeWeight[item.idx] = item.weight;
+    for (const item of opponentTrapTargets) opponentTargetWeight[item.idx] = item.weight;
+    for (const idx of backGapsTop) backGap[idx] = 1;
+
+    const neighbors = Array.from({ length: CELLS }, () => []);
+    for (let i = 0; i < CELLS; i++) {
+      const rc = R.rc(i);
+      for (const dir of R.dirsFrom(rc[0], rc[1])) {
+        const rr = rc[0] + dir[0];
+        const cc = rc[1] + dir[1];
+        if (!R.inside(rr, cc)) continue;
+        neighbors[i].push(R.idx(rr, cc));
+      }
+      Object.freeze(neighbors[i]);
+    }
+    const reserveCells = Array.from({ length: CELLS }, (_, start) => {
+      const direct = new Set(neighbors[start]);
+      const seen = new Set([start, ...direct]);
+      const out = [];
+      for (const one of neighbors[start]) {
+        for (const two of neighbors[one]) {
+          if (!seen.has(two)) {
+            seen.add(two);
+            out.push(two);
+          }
+        }
+      }
+      return Object.freeze(out);
+    });
+
+    return Object.freeze({
+      at,
+      backEyesTop,
+      backGapsTop,
+      opponentTrapTargets,
+      backEyeWeight,
+      opponentTargetWeight,
+      backGap,
+      neighbors: Object.freeze(neighbors),
+      reserveCells: Object.freeze(reserveCells),
+      topTrap: Object.freeze({ guard: at(0, 0), bait: at(0, 2), landing: at(0, 1), junction: at(0, 4) }),
+      botTrap: Object.freeze({ guard: at(8, 8), bait: at(8, 6), landing: at(8, 7), junction: at(8, 4) }),
+    });
+  })();
+
   function normalizePosition(input) {
     const src = input && typeof input === 'object' ? input : {};
     const board = R.compact.fromBoard(src.board);
@@ -344,14 +411,42 @@
     return summary;
   }
 
+  function strategicPhase(totalPieces) {
+    const total = Math.max(0, Number(totalPieces) || 0);
+    if (total >= 56) return 1;
+    if (total >= 36) return 0.72 + (total - 36) * 0.014;
+    if (total >= 20) return 0.38 + (total - 20) * 0.02125;
+    return 0.12 + total * 0.013;
+  }
+
+  function ownsAt(board, idx, side) {
+    const value = board[Number(idx)] | 0;
+    return !!value && R.owner(value) === side;
+  }
+
+  function trapPotential(board, side) {
+    const trap = side === TOP ? STRATEGY.topTrap : STRATEGY.botTrap;
+    return ownsAt(board, trap.guard, side)
+      && ownsAt(board, trap.bait, side)
+      && (board[trap.landing] | 0) === 0;
+  }
+
+  function threatenedSetFor(facts, side) {
+    return side === TOP ? facts.topThreatened : facts.botThreatened;
+  }
+
+  function forcedThreatenedSetFor(facts, side) {
+    return side === TOP ? facts.topForcedThreatened : facts.botForcedThreatened;
+  }
+
   function buildEvaluationFacts(pos, ctx) {
     const board = pos.board;
     const counts = R.compact.countPieces(board);
     const stepCounts = new Int16Array(CELLS);
+    const supportCount = new Uint8Array(CELLS);
+    const reserveCount = new Uint8Array(CELLS);
     let topSteps = 0;
     let botSteps = 0;
-    let topSupportPairs = 0;
-    let botSupportPairs = 0;
 
     for (let i = 0; i < CELLS; i++) {
       const v = board[i] | 0;
@@ -362,20 +457,23 @@
       if (side === TOP) topSteps += steps;
       else botSteps += steps;
 
-      // Count each support relation once, not once from each endpoint.
-      const rc = R.rc(i);
-      for (const dir of R.dirsFrom(rc[0], rc[1])) {
-        const rr = rc[0] + dir[0];
-        const cc = rc[1] + dir[1];
-        if (!R.inside(rr, cc)) continue;
-        const nearIdx = R.idx(rr, cc);
-        if (nearIdx <= i) continue;
+      let direct = 0;
+      for (const nearIdx of STRATEGY.neighbors[i]) {
         const near = board[nearIdx] | 0;
-        if (near && R.owner(near) === side) {
-          if (side === TOP) topSupportPairs++;
-          else botSupportPairs++;
-        }
+        if (!near || R.owner(near) !== side) continue;
+        if (side === TOP && STRATEGY.backGap[nearIdx]) continue;
+        direct++;
       }
+      supportCount[i] = Math.min(255, direct);
+
+      let reserve = 0;
+      for (const nearIdx of STRATEGY.reserveCells[i]) {
+        const near = board[nearIdx] | 0;
+        if (!near || R.owner(near) !== side) continue;
+        if (side === TOP && STRATEGY.backGap[nearIdx]) continue;
+        reserve++;
+      }
+      reserveCount[i] = Math.min(255, reserve);
     }
 
     const topThreat = captureThreatSummary(pos, TOP, ctx);
@@ -384,16 +482,19 @@
       board,
       counts,
       stepCounts,
+      supportCount,
+      reserveCount,
       topSteps,
       botSteps,
-      topSupportPairs,
-      botSupportPairs,
       topThreat,
       botThreat,
       topThreatened: new Set(botThreat.threatened || []),
       botThreatened: new Set(topThreat.threatened || []),
       topForcedThreatened: new Set(botThreat.forcedThreatened || []),
       botForcedThreatened: new Set(topThreat.forcedThreatened || []),
+      topTrapReady: trapPotential(board, TOP),
+      botTrapReady: trapPotential(board, BOT),
+      strategicPhase: strategicPhase(counts.total),
     };
   }
 
@@ -407,21 +508,170 @@
     return score;
   }
 
-  function scoreStructure(facts) {
+  function scoreBackStructure(facts) {
+    const board = facts.board;
+    const phase = facts.strategicPhase;
+    let score = 0;
+
+    for (const item of STRATEGY.backEyesTop) {
+      const value = board[item.idx] | 0;
+      if (value && R.owner(value) === TOP) score += item.weight * phase;
+    }
+
+    for (const idx of STRATEGY.backGapsTop) {
+      const value = board[idx] | 0;
+      if (!value) score += 6 * phase;
+      else if (R.owner(value) === TOP) score -= 2 * phase;
+      else score -= 7 * phase;
+    }
+
+    if (facts.topTrapReady) {
+      score += 15 * phase;
+      if (ownsAt(board, STRATEGY.topTrap.junction, TOP)) score += 5 * phase;
+    }
+
+    // For the opponent only 8.8, 8.6 and 8.4 have special strategic value.
+    // Their departure is rewarded implicitly by removing this defensive value.
+    for (const item of STRATEGY.opponentTrapTargets) {
+      const value = board[item.idx] | 0;
+      if (value && R.owner(value) === BOT) score -= item.weight * phase;
+    }
+    if (facts.botTrapReady) score -= 15 * phase;
+
+    return roundSymmetric(score);
+  }
+
+  function scoreFunctionalSupport(facts) {
     let score = 0;
     for (let i = 0; i < CELLS; i++) {
-      const v = facts.board[i] | 0;
-      if (!v) continue;
-      const sign = R.owner(v) === TOP ? 1 : -1;
-      const king = R.kind(v) === KING;
-      let value = GRAPH.centrality[i] * (king ? 1 : 0.6);
-      value += GRAPH.wide[i] * (king ? 6 : 3);
-      value += GRAPH.degree[i] * (king ? 2 : 1);
-      if (king) value += GRAPH.rayReach[i] * 0.35;
-      score += sign * Math.round(value);
+      const value = facts.board[i] | 0;
+      if (!value) continue;
+      const side = R.owner(value);
+      const sign = side === TOP ? 1 : -1;
+      const support = facts.supportCount[i] | 0;
+      const reserve = facts.reserveCount[i] | 0;
+      const threatened = threatenedSetFor(facts, side).has(i);
+      const forced = forcedThreatenedSetFor(facts, side).has(i);
+      const mobile = (facts.stepCounts[i] | 0) > 0;
+      const progress = 8 - promotionDistance(side, i);
+
+      // The TOP back-gap pieces must leave; their geometric adjacency is not
+      // functional support and must not be rewarded twice.
+      const excludedBackGap = side === TOP && !!STRATEGY.backGap[i];
+      if (!excludedBackGap && !forced && support > 0) {
+        let valueScore = Math.min(2, support) * (threatened ? 1 : 3);
+        if (mobile) valueScore += 1;
+        if (reserve > 0 && (progress >= 2 || !mobile)) valueScore += Math.min(2, reserve);
+        score += sign * valueScore;
+      }
+
+      if (R.kind(value) === MAN && progress >= 3 && support === 0 && reserve === 0) {
+        score -= sign * (forced ? 10 : threatened ? 7 : 4);
+      }
+      if (!mobile && support >= 2 && R.kind(value) === MAN) score -= sign * 2;
     }
-    score += (facts.topSupportPairs - facts.botSupportPairs) * 4;
     return score;
+  }
+
+  function scoreCorridors(facts) {
+    let score = 0;
+    const botAttackers = [];
+
+    for (let i = 0; i < CELLS; i++) {
+      const value = facts.board[i] | 0;
+      if (!value) continue;
+      const side = R.owner(value);
+      const row = GRAPH.row[i] | 0;
+      const col = i % 9;
+      const support = facts.supportCount[i] | 0;
+      const reserve = facts.reserveCount[i] | 0;
+      const forced = forcedThreatenedSetFor(facts, side).has(i);
+      const threatened = threatenedSetFor(facts, side).has(i);
+
+      if (side === TOP && R.kind(value) === MAN && col <= 2) {
+        const advance = Math.max(0, row - 2);
+        const lane = 3 - col;
+        if (advance > 0) {
+          if (!forced && support > 0) {
+            score += lane * advance * (2 + Math.min(2, support));
+            if (reserve > 0) score += lane * Math.min(2, reserve);
+          } else if (support === 0) {
+            score -= lane * advance * (threatened ? 3 : 2);
+          }
+        }
+      }
+
+      if (side === BOT && R.kind(value) === MAN && col >= 6) {
+        const advance = Math.max(0, 6 - row);
+        const lane = col - 5;
+        if (advance > 0) {
+          let pressure = lane * advance;
+          if (!forced && support > 0) pressure *= 2 + Math.min(2, support);
+          else if (threatened) pressure *= 0.6;
+          botAttackers.push({ idx: i, pressure });
+          score -= roundSymmetric(pressure * 1.2);
+        }
+      }
+    }
+
+    // Defence is local: a piece on the far side of the board does not count as
+    // a blocker merely because it shares columns 6-8. Only nearby supported
+    // pieces can offset the corresponding attack pressure.
+    for (const attacker of botAttackers) {
+      let coverage = 0;
+      for (const idx of [attacker.idx, ...STRATEGY.neighbors[attacker.idx], ...STRATEGY.reserveCells[attacker.idx]]) {
+        const value = facts.board[idx] | 0;
+        if (!value || R.owner(value) !== TOP) continue;
+        if (forcedThreatenedSetFor(facts, TOP).has(idx)) continue;
+        coverage += 1 + Math.min(2, facts.supportCount[idx] | 0) + Math.min(1, facts.reserveCount[idx] | 0);
+      }
+      score += Math.min(roundSymmetric(attacker.pressure * 0.75), coverage * 2);
+    }
+    return score;
+  }
+
+  function scorePositionalMobility(facts) {
+    let score = 0;
+    for (let i = 0; i < CELLS; i++) {
+      const value = facts.board[i] | 0;
+      if (!value) continue;
+      const side = R.owner(value);
+      const sign = side === TOP ? 1 : -1;
+      const king = R.kind(value) === KING;
+      const threatened = threatenedSetFor(facts, side).has(i);
+      const forced = forcedThreatenedSetFor(facts, side).has(i);
+      const support = facts.supportCount[i] | 0;
+
+      if (king) {
+        let positional = GRAPH.centrality[i];
+        positional += GRAPH.wide[i] * 6;
+        positional += GRAPH.degree[i] * 2;
+        positional += GRAPH.rayReach[i] * 0.35;
+        score += sign * roundSymmetric(positional);
+        continue;
+      }
+
+      // Ordinary pieces do not receive an unconditional centre/Wasaa bonus.
+      // The point is useful only when the piece is supported and not a forced
+      // bridge in the opponent's legal longest capture.
+      let positional = GRAPH.degree[i] * 0.3;
+      if (!forced && !threatened && support > 0) {
+        positional += Math.max(0, GRAPH.centrality[i]) * 0.28;
+        positional += GRAPH.wide[i] * 2;
+      } else if (GRAPH.wide[i] && (forced || threatened)) {
+        positional -= forced ? 6 : 3;
+      }
+      if (side === TOP && (STRATEGY.backEyeWeight[i] || STRATEGY.backGap[i])) positional *= 0.25;
+      score += sign * roundSymmetric(positional);
+    }
+    return score;
+  }
+
+  function scoreStructure(facts) {
+    return scoreBackStructure(facts)
+      + scoreCorridors(facts)
+      + scoreFunctionalSupport(facts)
+      + scorePositionalMobility(facts);
   }
 
   function scoreMobility(facts) {
@@ -440,8 +690,8 @@
 
   function scorePromotion(facts, pos) {
     let score = 0;
-    let bestTopRace = 0;
-    let bestBotRace = 0;
+    const topCandidates = [];
+    const botCandidates = [];
     const total = facts.counts.total;
 
     for (let i = 0; i < CELLS; i++) {
@@ -454,8 +704,6 @@
       const status = promotionStatus(facts, side, i);
       const mobile = facts.stepCounts[i] > 0;
 
-      // A small general progress value remains, but the large reward is reserved
-      // for a safe, usable route rather than blind forward movement.
       let value = progress * (total <= 20 ? 6 : 3);
       if (!mobile && distance > 0) value -= 10;
 
@@ -469,19 +717,61 @@
       }
       value += race;
       score += sign * value;
-      if (side === TOP) bestTopRace = Math.max(bestTopRace, race);
-      else bestBotRace = Math.max(bestBotRace, race);
+      const candidate = { idx: i, race, distance, status, mobile };
+      if (side === TOP) topCandidates.push(candidate);
+      else botCandidates.push(candidate);
     }
 
-    // Compare the best credible promotion race directly. This is intentionally
-    // not a second search; it reuses distances, legal mobility, and capture-risk
-    // information already computed for the normal evaluation.
+    function rankCandidates(items) {
+      items.sort((a, b) => b.race - a.race || a.distance - b.distance || a.idx - b.idx);
+      return [items[0] || null, items[1] || null];
+    }
+
+    const [bestTop, secondTop] = rankCandidates(topCandidates);
+    const [bestBot, secondBot] = rankCandidates(botCandidates);
+    const bestTopRace = bestTop ? bestTop.race : 0;
+    const bestBotRace = bestBot ? bestBot.race : 0;
+    const trapRaceFactor = 0.55 + facts.strategicPhase * 0.45;
     score += roundSymmetric((bestTopRace - bestBotRace) * 0.55);
 
+    // A company trap is a one-use time reserve, not a substitute for defence.
+    // It can delay the first opposing king, while a second close promotion
+    // remains dangerous because the trap structure is normally consumed.
+    if (facts.topTrapReady && bestBot && bestBot.race >= 75) {
+      let delay = 25;
+      if (secondBot && secondBot.race >= 75) delay = 5;
+      else if (secondBot && secondBot.race >= 28) delay = 12;
+      score += roundSymmetric(delay * trapRaceFactor);
+    }
+
+    // The first TOP promotion may deliberately break the opponent's one-use
+    // trap, but only when a second promotion is close or the first runner is
+    // already endangered. Otherwise entering an intact trap remains costly.
+    if (facts.botTrapReady && bestTop && bestTop.race >= 75) {
+      const secondClose = !!secondTop && (secondTop.race >= 75 || (secondTop.distance <= 2 && !secondTop.status.forced));
+      let penalty = 38;
+      if (secondClose) penalty = 7;
+      else if (bestTop.status.forced) penalty = 11;
+      else if (bestTop.status.threatened) penalty = 18;
+      score -= roundSymmetric(penalty * trapRaceFactor);
+    }
+
+    let deferredTop = 0;
+    let deferredBot = 0;
     for (const dp of Array.isArray(pos.deferredPromotions) ? pos.deferredPromotions : []) {
       const status = promotionStatus(facts, dp.side, dp.idx);
       const value = status.forced ? 35 : status.threatened ? 100 : 285;
       score += dp.side === TOP ? value : -value;
+      if (dp.side === TOP) deferredTop++;
+      else deferredBot++;
+    }
+    if (facts.topTrapReady && deferredBot > 0) {
+      const secondDanger = deferredBot > 1 || (secondBot && secondBot.race >= 75);
+      score += roundSymmetric((secondDanger ? 5 : 18) * trapRaceFactor);
+    }
+    if (facts.botTrapReady && deferredTop > 0) {
+      const secondClose = deferredTop > 1 || (secondTop && secondTop.race >= 75);
+      score -= roundSymmetric((secondClose ? 6 : 28) * trapRaceFactor);
     }
     return Math.trunc(score);
   }
@@ -619,8 +909,143 @@
     return score;
   }
 
+  function valueAfterMoveAt(pos, move, idx) {
+    const target = Number(idx);
+    const from = Number(move && move.from);
+    const to = moveDestination(move);
+    if (target === to) return R.validIdx(from) ? pos.board[from] | 0 : 0;
+    if (target === from) return 0;
+    for (const jumped of move && move.jumps || []) {
+      if (Number(jumped) === target) return 0;
+    }
+    return pos.board[target] | 0;
+  }
+
+  function trapPotentialAfterMove(pos, move, side) {
+    const trap = side === TOP ? STRATEGY.topTrap : STRATEGY.botTrap;
+    const guard = valueAfterMoveAt(pos, move, trap.guard);
+    const bait = valueAfterMoveAt(pos, move, trap.bait);
+    const landing = valueAfterMoveAt(pos, move, trap.landing);
+    return !!guard && R.owner(guard) === side
+      && !!bait && R.owner(bait) === side
+      && !landing;
+  }
+
+  function adjacentSupportAfterMove(pos, move, destination, side) {
+    let count = 0;
+    for (const idx of STRATEGY.neighbors[destination] || []) {
+      const value = valueAfterMoveAt(pos, move, idx);
+      if (value && R.owner(value) === side) count++;
+    }
+    return count;
+  }
+
+  function quickPromotionCandidates(pos, side, ctx) {
+    const key = positionIdentity(pos) + ':quick-promotion:' + side;
+    if (ctx && ctx.promotionCandidateCache && ctx.promotionCandidateCache.has(key)) {
+      return ctx.promotionCandidateCache.get(key);
+    }
+    const out = [];
+    for (let i = 0; i < CELLS; i++) {
+      const value = pos.board[i] | 0;
+      if (!value || R.owner(value) !== side || R.kind(value) !== MAN) continue;
+      const distance = promotionDistance(side, i);
+      if (distance > 3) continue;
+      const mobile = R.compact.stepDestinations(pos.board, i).length > 0;
+      out.push({ idx: i, distance, mobile });
+    }
+    out.sort((a, b) => a.distance - b.distance || Number(b.mobile) - Number(a.mobile) || a.idx - b.idx);
+    if (ctx && ctx.promotionCandidateCache && ctx.promotionCandidateCache.size < 1024) {
+      ctx.promotionCandidateCache.set(key, out);
+    }
+    return out;
+  }
+
+  function trapPromotionOrderingAdjustment(pos, move, ctx) {
+    const from = Number(move && move.from);
+    const to = moveDestination(move);
+    const mover = R.validIdx(from) ? pos.board[from] | 0 : 0;
+    if (!mover || R.kind(mover) !== MAN || !R.validIdx(to) || promotionDistance(pos.side, to) !== 0) return 0;
+    const opponentTrapReady = trapPotential(pos.board, opponent(pos.side));
+    if (!opponentTrapReady) return 0;
+
+    const second = quickPromotionCandidates(pos, pos.side, ctx)
+      .find((candidate) => candidate.idx !== from && candidate.distance <= 2 && candidate.mobile);
+    const enemyThreat = captureThreatSummary(pos, opponent(pos.side), ctx);
+    const threatened = new Set(enemyThreat && enemyThreat.threatened || []).has(from);
+    const forced = new Set(enemyThreat && enemyThreat.forcedThreatened || []).has(from);
+    if (second) return 70000;
+    if (forced) return -90000;
+    if (threatened) return -150000;
+    return -420000;
+  }
+
+  function strategicPhaseForPosition(pos, ctx) {
+    const key = positionIdentity(pos) + ':strategic-phase';
+    if (ctx && ctx.strategicPhaseCache && ctx.strategicPhaseCache.has(key)) return ctx.strategicPhaseCache.get(key);
+    const phase = strategicPhase(R.compact.countPieces(pos.board).total);
+    if (ctx && ctx.strategicPhaseCache && ctx.strategicPhaseCache.size < 1024) ctx.strategicPhaseCache.set(key, phase);
+    return phase;
+  }
+
+  function strategicOrderingScore(pos, move, phase) {
+    if (!move) return 0;
+    const from = Number(move.from);
+    const to = moveDestination(move);
+    const mover = R.validIdx(from) ? pos.board[from] | 0 : 0;
+    if (!mover || !R.validIdx(to)) return 0;
+    let absoluteTopDelta = 0;
+
+    function placement(value, idx) {
+      if (!value || !R.validIdx(idx)) return 0;
+      const side = R.owner(value);
+      let out = 0;
+      if (side === TOP) {
+        if (STRATEGY.backEyeWeight[idx]) out += STRATEGY.backEyeWeight[idx] * phase;
+        if (STRATEGY.backGap[idx]) out -= 6 * phase;
+      } else if (STRATEGY.opponentTargetWeight[idx]) {
+        out -= STRATEGY.opponentTargetWeight[idx] * phase;
+      }
+      return out;
+    }
+
+    absoluteTopDelta += placement(mover, to) - placement(mover, from);
+    for (const jumped of move.jumps || []) {
+      const captured = pos.board[Number(jumped)] | 0;
+      absoluteTopDelta -= placement(captured, Number(jumped));
+    }
+
+    const topTrapBefore = trapPotential(pos.board, TOP);
+    const botTrapBefore = trapPotential(pos.board, BOT);
+    const topTrapAfter = trapPotentialAfterMove(pos, move, TOP);
+    const botTrapAfter = trapPotentialAfterMove(pos, move, BOT);
+    if (topTrapBefore !== topTrapAfter) absoluteTopDelta += (topTrapAfter ? 18 : -18) * phase;
+    if (botTrapBefore !== botTrapAfter) absoluteTopDelta += (botTrapAfter ? -18 : 18) * phase;
+
+    const side = R.owner(mover);
+    if (R.kind(mover) === MAN) {
+      const fromRow = GRAPH.row[from] | 0;
+      const toRow = GRAPH.row[to] | 0;
+      const fromCol = from % 9;
+      const toCol = to % 9;
+      const support = adjacentSupportAfterMove(pos, move, to, side);
+      if (side === TOP && toCol <= 2) {
+        const gain = Math.max(0, toRow - fromRow);
+        const lane = 3 - toCol;
+        absoluteTopDelta += gain * lane * (support > 0 ? 5 : -3);
+      } else if (side === BOT && toCol >= 6) {
+        const gain = Math.max(0, fromRow - toRow);
+        const lane = toCol - 5;
+        absoluteTopDelta -= gain * lane * (support > 0 ? 5 : -3);
+      }
+    }
+
+    return roundSymmetric((pos.side === TOP ? absoluteTopDelta : -absoluteTopDelta) * 850);
+  }
+
   function orderMoves(pos, moves, ctx, ply, ttMove) {
     const killer = ctx.killers[ply] || [];
+    const strategyPhase = strategicPhaseForPosition(pos, ctx);
     return moves
       .map((move, index) => {
         const key = moveKey(move);
@@ -634,11 +1059,10 @@
           if (killer[0] === key) score += 500000;
           else if (killer[1] === key) score += 350000;
           score += ctx.history.get(historyKey(pos.side, move)) || 0;
-          const from = Number(move.from);
-          const to = moveDestination(move);
-          if (R.validIdx(from) && R.validIdx(to)) score += (GRAPH.centrality[to] - GRAPH.centrality[from]) * 4;
         }
+        score += strategicOrderingScore(pos, move, strategyPhase);
         score += promotionOrderingScore(pos, move, ctx);
+        score += trapPromotionOrderingAdjustment(pos, move, ctx);
         return { move, score, index };
       })
       .sort((a, b) => b.score - a.score || a.index - b.index)
@@ -717,6 +1141,8 @@
       evalCache: new Map(),
       threatCache: new Map(),
       promotionTargetCache: new Map(),
+      promotionCandidateCache: new Map(),
+      strategicPhaseCache: new Map(),
       preferredMoves: null,
       maxPly: 0,
     };
