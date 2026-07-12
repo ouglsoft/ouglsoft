@@ -2237,3 +2237,49 @@ body[dir="rtl"] .settings-control {
   border-color: #b91c1c !important;
   box-shadow: 0 8px 18px rgba(185, 28, 28, 0.28) !important;
 }
+
+
+/* Compact desktop game layout. This is used only when the responsive mobile
+   controller is not active, so a narrow desktop window never crushes the 9×9 board. */
+#board3d,
+#board3d canvas {
+  pointer-events: none;
+}
+
+@media (max-width: 1160px) {
+  body.z-game-page:not(.z-mobile-on) .app {
+    grid-template-columns: minmax(0, 1fr) 320px;
+    gap: 10px;
+    padding: 10px;
+  }
+}
+
+@media (max-width: 900px) {
+  body.z-game-page:not(.z-mobile-on) {
+    overflow-y: auto;
+  }
+
+  body.z-game-page:not(.z-mobile-on) .app {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto;
+    width: 100%;
+    height: auto;
+    min-height: 100dvh;
+    max-width: 900px;
+    overflow: visible;
+  }
+
+  body.z-game-page:not(.z-mobile-on) .board-wrap {
+    width: 100%;
+    min-height: 420px;
+    max-height: calc(100dvh - 20px);
+    aspect-ratio: 5 / 4;
+  }
+
+  body.z-game-page:not(.z-mobile-on) .side {
+    width: 100%;
+    height: auto;
+    max-height: none;
+    overflow: visible;
+  }
+}

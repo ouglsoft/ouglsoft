@@ -2,7 +2,9 @@
 /* ========================================================================== MOBILE FOUNDATIONS & TYPOGRAPHY ========================================================================== */
 body.z-mobile-on {
   --m-safe-top: calc(env(safe-area-inset-top) + 8px);
+  --m-safe-right: calc(env(safe-area-inset-right) + 8px);
   --m-safe-bottom: calc(env(safe-area-inset-bottom) + 8px);
+  --m-safe-left: calc(env(safe-area-inset-left) + 8px);
   --m-shell-size: 42px;
   --m-shell-offset: 12px;
   --m-page-pad: 14px;
@@ -1288,7 +1290,7 @@ body.z-mobile-on[data-mobile-page="lobby"] .z-mobile-lobby-headtexts .z-lobby-su
   text-align: center;
 }
 body.z-mobile-on[data-mobile-page="lobby"] .z-mobile-lobby-rank-btn {
-  display: inline-flex !important;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
   flex: 0 0 auto;
@@ -2031,6 +2033,34 @@ body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-head {
   border: 1px solid var(--border);
   border-radius: 18px;
 }
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-status {
+  grid-column: 1 / -1;
+  width: 100%;
+  min-height: 18px;
+  padding: 2px 6px 1px;
+  overflow: hidden;
+  color: var(--text-strong);
+  font-size: var(--m-text-sm);
+  font-weight: 700;
+  line-height: 1.25;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-head.is-ui-blocked .z-mobile-game-status {
+  opacity: 0.68;
+}
+.ui-hold body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-head,
+.ui-hold body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-host,
+.ui-hold body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-drawer,
+.ui-hold body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-drawer-backdrop,
+.role-pending body.z-mobile-on[data-mobile-page="game"].mode-pvp .z-mobile-game-head,
+.role-pending body.z-mobile-on[data-mobile-page="game"].mode-pvp .z-mobile-game-controls-host,
+.role-pending body.z-mobile-on[data-mobile-page="game"].mode-pvp .z-mobile-game-drawer,
+.role-pending body.z-mobile-on[data-mobile-page="game"].mode-pvp .z-mobile-game-drawer-backdrop {
+  visibility: hidden;
+  pointer-events: none;
+}
 body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-host {
   display: flex;
   width: 100%;
@@ -2363,7 +2393,7 @@ body.z-mobile-on[data-mobile-page="game"]
   width: 100%;
   margin: 0;
   min-height: 50px;
-  display: inline-flex !important;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 0;
@@ -2386,7 +2416,7 @@ body.z-mobile-on[data-mobile-page="game"]
   width: 100%;
   margin: 0;
   position: relative;
-  display: flex !important;
+  display: flex;
   align-items: center;
   justify-content: center;
   padding: 0;
@@ -2410,8 +2440,6 @@ body.z-mobile-on[data-mobile-page="game"]
   align-items: stretch;
 }
 body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid > * {
-  visibility: visible !important;
-  opacity: 1 !important;
   justify-self: stretch;
   align-self: stretch;
 }
@@ -2800,13 +2828,13 @@ body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="game"]
   display: block !important;
   height: var(--m-vh) !important;
   min-height: var(--m-vh) !important;
-  padding: 8px !important;
+  padding: 8px var(--m-safe-right) 8px var(--m-safe-left) !important;
   overflow: hidden;
 }
 body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="game"]
   .board-wrap {
-  width: calc(100vw - 16px - var(--m-game-side-w) - 12px);
-  max-width: calc(100vw - 16px - var(--m-game-side-w) - 12px);
+  width: calc(100vw - var(--m-safe-left) - var(--m-safe-right) - var(--m-game-side-w) - 12px);
+  max-width: calc(100vw - var(--m-safe-left) - var(--m-safe-right) - var(--m-game-side-w) - 12px);
   height: 100%;
   max-height: calc(var(--m-vh) - 16px);
   min-height: 0;
@@ -2815,7 +2843,7 @@ body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="game"]
 body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="game"]
   .z-mobile-game-side-lane {
   position: fixed;
-  right: 8px;
+  right: var(--m-safe-right);
   left: auto;
   top: var(--m-safe-top);
   bottom: var(--m-safe-bottom);
@@ -2876,9 +2904,9 @@ body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="game"]
 }
 body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="game"]
   .z-mobile-orient {
-  right: 10px;
+  right: var(--m-safe-right);
   left: auto;
-  bottom: 10px;
+  bottom: var(--m-safe-bottom);
   z-index: 10061;
 }
 body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="game"]
@@ -3041,18 +3069,6 @@ body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="game"]
   padding: 4px 4px;
   line-height: 1.15;
 }
-body.z-mobile-on[data-mobile-page="game"]
-  .z-mobile-game-controls-grid
-  .btn:hover:not(:disabled),
-body.z-mobile-on[data-mobile-page="game"]
-  .z-mobile-game-controls-grid
-  .soufla-row
-  .btn:hover:not(:disabled),
-body.z-mobile-on[data-mobile-page="game"]
-  .z-mobile-game-controls-grid
-  #btnEndKill:hover:not(:disabled) {
-  border-color: var(--accent) !important;
-}
 html.dark
   body.z-mobile-on[data-mobile-page="game"]
   .z-mobile-game-controls-grid
@@ -3102,7 +3118,7 @@ body.z-mobile-on[data-mobile-page="game"]
   .timer-row.is-live
   #btnEndKill
   .btn-ico {
-  opacity: 0.24;
+  opacity: 1;
 }
 body.z-mobile-on[data-mobile-page="game"]
   .z-mobile-game-controls-grid

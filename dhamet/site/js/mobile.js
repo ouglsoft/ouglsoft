@@ -4,8 +4,13 @@
   var qsa = typeof Common.qsa === "function" ? Common.qsa : function(sel, root) { return Array.prototype.slice.call((root || document).querySelectorAll(sel)); };
 
   var GAME_LOOP = 0;
+  var RESPONSIVE_LOOP = 0;
   var GAME_LAYOUT_OBSERVER = null;
-  var GAME_RESIZE_OBSERVER = null;
+  var GAME_BODY_OBSERVER = null;
+  var GAME_LAYOUT_MUTATING = 0;
+  var GAME_HOME_RECORDS = [];
+  var AI_LEVEL_INTERACTION_UNTIL = 0;
+  var LAST_GAME_MODE = null;
   var MOBILE_PAGES = { auth: 1, mode: 1, lobby: 1, dashboard: 1, game: 1 };
 
   /* Page detection */
@@ -45,6 +50,16 @@
   }
 
   function isLandscape() {
+    try {
+      var type = window.screen && window.screen.orientation && window.screen.orientation.type;
+      if (typeof type === 'string') {
+        if (type.indexOf('landscape') === 0) return true;
+        if (type.indexOf('portrait') === 0) return false;
+      }
+    } catch (_) {}
+    try {
+      if (window.matchMedia) return !!window.matchMedia('(orientation: landscape)').matches;
+    } catch (_) {}
     return (window.innerWidth || 0) > (window.innerHeight || 0);
   }
 
@@ -249,23 +264,51 @@
     document.body.appendChild(shell);
   }
 
-  async function requestLandscape() {
+  function reportOrientationFailure(error) {
+    try { console.warn('[Dhamet mobile orientation]', error || 'unsupported'); } catch (_) {}
+  }
+
+  async function requestOrientation(kind) {
+    var target = kind === 'portrait' ? 'portrait' : 'landscape';
     try {
       var el = document.documentElement;
       if (!document.fullscreenElement && el.requestFullscreen) await el.requestFullscreen();
-    } catch (_) {}
+    } catch (error) {
+      reportOrientationFailure(error);
+    }
     try {
-      if (screen.orientation && screen.orientation.lock) await screen.orientation.lock('landscape');
-    } catch (_) {}
+      if (screen.orientation && screen.orientation.lock) {
+        try {
+          await screen.orientation.lock(target + '-primary');
+        } catch (_) {
+          await screen.orientation.lock(target);
+        }
+        return true;
+      }
+    } catch (error) {
+      reportOrientationFailure(error);
+    }
+    return false;
+  }
+
+  function requestLandscape() {
+    return requestOrientation('landscape');
   }
 
   async function requestPortrait() {
+    var locked = await requestOrientation('portrait');
+    if (locked) return true;
     try {
       if (screen.orientation && screen.orientation.unlock) screen.orientation.unlock();
-    } catch (_) {}
+    } catch (error) {
+      reportOrientationFailure(error);
+    }
     try {
       if (document.fullscreenElement && document.exitFullscreen) await document.exitFullscreen();
-    } catch (_) {}
+    } catch (error) {
+      reportOrientationFailure(error);
+    }
+    return false;
   }
 
 function ensureOrientButton() {
@@ -666,6 +709,15 @@ if (!icon) {
 /* Game page */
 
   function gameMode() {
+    try {
+      var mm = window.DhametMatchMode;
+      if (mm && typeof mm.detectMode === 'function') {
+        var detected = mm.detectMode();
+        if (detected === mm.MODE_SPECTATOR) return 'spectator';
+        if (detected === mm.MODE_ONLINE) return 'pvp';
+        return 'pvc';
+      }
+    } catch (_) {}
     var body = document.body;
     if (body && body.classList.contains('z-spectator')) return 'spectator';
     if (body && body.classList.contains('mode-pvp')) return 'pvp';
@@ -688,6 +740,46 @@ if (!icon) {
       }
     } catch (_) {}
     location.href = baseHref() + '/pages/mode.html';
+  }
+
+  function markGameLayoutMutation(fn) {
+    GAME_LAYOUT_MUTATING += 1;
+    try {
+      return fn();
+    } finally {
+      window.setTimeout(function () {
+        GAME_LAYOUT_MUTATING = Math.max(0, GAME_LAYOUT_MUTATING - 1);
+      }, 0);
+    }
+  }
+
+  function rememberGameHome(node) {
+    if (!node || node.__zMobileHomeMarker) return;
+    var parent = node.parentNode;
+    if (!parent) return;
+    var marker = document.createComment('z-mobile-home:' + (node.id || node.className || node.nodeName));
+    parent.insertBefore(marker, node);
+    node.__zMobileHomeMarker = marker;
+    GAME_HOME_RECORDS.push(node);
+  }
+
+  function moveGameNode(node, parent, before) {
+    if (!node || !parent) return;
+    rememberGameHome(node);
+    if (node.parentNode === parent && (!before || node.nextSibling === before)) return;
+    if (before && before.parentNode === parent) parent.insertBefore(node, before);
+    else parent.appendChild(node);
+  }
+
+  function restoreGameNode(node) {
+    if (!node) return;
+    var marker = node.__zMobileHomeMarker;
+    if (!marker || !marker.parentNode) return;
+    marker.parentNode.insertBefore(node, marker.nextSibling);
+  }
+
+  function restoreAllGameNodes() {
+    GAME_HOME_RECORDS.forEach(restoreGameNode);
   }
 
   function ensureGameSideLane() {
@@ -727,26 +819,40 @@ if (!icon) {
     return slot;
   }
 
+  function bindAiLevelInteraction(box) {
+    if (!box || box.__zMobileAiInteractionBound) return;
+    box.__zMobileAiInteractionBound = true;
+    var hold = function (ms) { AI_LEVEL_INTERACTION_UNTIL = Date.now() + (ms || 500); };
+    box.addEventListener('pointerdown', function () { hold(1400); }, true);
+    box.addEventListener('focusin', function () { hold(60000); }, true);
+    box.addEventListener('change', function () { hold(350); }, true);
+    box.addEventListener('focusout', function () { hold(180); }, true);
+  }
+
   function isAiLevelSelectInteracting() {
-    return false;
+    var box = qs('#aiLevelBox');
+    if (!box) return false;
+    bindAiLevelInteraction(box);
+    try {
+      if (box.contains(document.activeElement)) return true;
+      if (box.matches && box.matches(':focus-within')) return true;
+    } catch (_) {}
+    return Date.now() < AI_LEVEL_INTERACTION_UNTIL;
   }
 
   function syncGameLevelInShell(shell) {
     var box = qs('#aiLevelBox');
     if (!box) return;
-    var show = gameMode() === 'pvc';
-    if (!show) {
-      box.classList.toggle('z-mobile-game-top-level', false);
-      box.hidden = true;
-      box.style.display = 'none';
+    bindAiLevelInteraction(box);
+    if (gameMode() !== 'pvc') {
+      box.classList.remove('z-mobile-game-top-level');
+      restoreGameNode(box);
       return;
     }
     if (isAiLevelSelectInteracting()) return;
-    box.classList.toggle('z-mobile-game-top-level', true);
-    box.hidden = false;
-    box.style.display = 'flex';
+    box.classList.add('z-mobile-game-top-level');
     var slot = ensureGameLevelSlot(shell || qs('.z-mobile-game-shell'));
-    if (slot && box.parentNode !== slot) slot.appendChild(box);
+    if (slot) moveGameNode(box, slot);
     try { if (window.UI && typeof window.UI.updateAiLevelDisplay === 'function') window.UI.updateAiLevelDisplay(); } catch (_) {}
   }
 
@@ -763,7 +869,7 @@ if (!icon) {
         '<div class="z-mobile-game-avatar-wrap is-black-piece"><img class="z-mobile-game-avatar" data-avatar="top" src="' + baseHref() + '/assets/icons/users/computeruser.png" alt="" aria-hidden="true"></div>',
         '<div class="z-mobile-game-meta">',
         '<div class="z-mobile-game-name" data-name="top"></div>',
-        '<div class="z-mobile-game-presence" data-presence="top">...</div>',
+        '<div class="z-mobile-game-presence" data-presence="top"></div>',
         '</div>',
         '</div>',
         '<div class="z-mobile-game-vs">VS</div>',
@@ -771,9 +877,10 @@ if (!icon) {
         '<div class="z-mobile-game-avatar-wrap is-white-piece"><img class="z-mobile-game-avatar" data-avatar="bot" src="' + baseHref() + '/assets/icons/users/autouser2.png" alt="" aria-hidden="true"></div>',
         '<div class="z-mobile-game-meta">',
         '<div class="z-mobile-game-name" data-name="bot"></div>',
-        '<div class="z-mobile-game-presence" data-presence="bot">...</div>',
+        '<div class="z-mobile-game-presence" data-presence="bot"></div>',
         '</div>',
-        '</div>'
+        '</div>',
+        '<div class="z-mobile-game-status" data-game-status="1" aria-live="polite"></div>'
       ].join('');
     }
     return head;
@@ -815,8 +922,6 @@ if (!icon) {
       var icon = ensureDrawerChevron(handle);
       if (icon) icon.textContent = open ? '▼' : '▲';
     }
-    drawer.style.transform = 'none';
-    drawer.removeAttribute('data-offset');
     if (backdrop) backdrop.hidden = !(open && !isLandscape());
   }
 
@@ -841,7 +946,6 @@ if (!icon) {
 
     var handle = qs('.z-mobile-game-drawer-handle', drawer);
     ensureDrawerChevron(handle);
-
     handle.setAttribute('aria-expanded', 'false');
     handle.setAttribute('aria-label', window.I18N.translate('aria.drawerToggle', null, 'تبديل الدرج', currentLang()));
     handle.addEventListener('click', function (event) {
@@ -850,25 +954,41 @@ if (!icon) {
       setGameDrawer(!drawer.classList.contains('is-open'));
     });
 
-    document.addEventListener('pointerdown', function (event) {
-      if (pageType() !== 'game' || !isPhone()) return;
-      if (!drawer.classList.contains('is-open')) return;
-      var target = event.target;
-      if (!target) return;
-      if (drawer.contains(target)) return;
-      setGameDrawer(false);
-    }, true);
+    if (!document.__zMobileDrawerOutsideBound) {
+      document.__zMobileDrawerOutsideBound = true;
+      document.addEventListener('pointerdown', function (event) {
+        if (pageType() !== 'game' || !isPhone()) return;
+        var current = qs('.z-mobile-game-drawer');
+        if (!current || !current.classList.contains('is-open')) return;
+        var target = event.target;
+        if (!target || current.contains(target)) return;
+        setGameDrawer(false);
+      }, true);
+    }
 
     return drawer;
   }
 
+  function formatPresenceElapsed(since) {
+    var elapsed = Math.max(0, Date.now() - (Number(since) || Date.now()));
+    var total = Math.floor(elapsed / 1000);
+    var mm = String(Math.floor(total / 60)).padStart(2, '0');
+    var ss = String(total % 60).padStart(2, '0');
+    return mm + ':' + ss;
+  }
+
   function gamePresence(side) {
     if (gameMode() === 'pvc') return '';
-    var chips = qsa('#onlinePresence .presence-chip');
-    var chip = chips[side === 'top' ? 0 : 1];
-    var status = chip ? qs('[data-presence-status="1"]', chip) : null;
-    var text = status ? String(status.textContent || '').trim() : '...';
-    return text || '...';
+    try {
+      var online = window.Online;
+      var p = online && typeof online._getGameSlotPresence === 'function' ? online._getGameSlotPresence(side) : null;
+      if (p) {
+        if (p.online) return '(' + window.I18N.translate('online.presence.online', null, 'متصل', currentLang()) + ')';
+        var label = window.I18N.translate('online.presence.disconnected', null, 'غير متصل', currentLang());
+        return '(' + label + ' ' + formatPresenceElapsed(p.disconnectedSince) + ')';
+      }
+    } catch (_) {}
+    return '';
   }
 
   function gameName(side) {
@@ -886,13 +1006,12 @@ if (!icon) {
 
   function gameActiveSide() {
     try {
-      if (window.Game && typeof window.Game.player !== 'undefined' && typeof window.BOT !== 'undefined') {
-        return window.Game.player === window.BOT ? 'bot' : 'top';
+      var botSide = window.DhametRules && typeof window.DhametRules.BOT === 'number'
+        ? window.DhametRules.BOT
+        : -1;
+      if (window.Game && typeof window.Game.player !== 'undefined') {
+        return window.Game.player === botSide ? 'bot' : 'top';
       }
-    } catch (_) {}
-    try {
-      var pawn = qs('#turnPawn');
-      if (pawn && /white/i.test(String(pawn.getAttribute('src') || ''))) return 'bot';
     } catch (_) {}
     return 'top';
   }
@@ -923,6 +1042,7 @@ if (!icon) {
       var nextPresence = gamePresence(side);
       if (name && name.textContent !== nextName) name.textContent = nextName;
       if (presence && presence.textContent !== nextPresence) presence.textContent = nextPresence;
+      if (presence) presence.hidden = !nextPresence;
       if (avatar) {
         var src = gameAvatar(side);
         if (src && avatar.getAttribute('src') !== src) avatar.setAttribute('src', src);
@@ -943,80 +1063,46 @@ if (!icon) {
     qsa('.z-mobile-game-player', head).forEach(function (card) {
       card.classList.toggle('is-active', card.getAttribute('data-player') === active);
     });
+    var status = qs('[data-game-status="1"]', head);
+    var sourceStatus = qs('#statusTextMsg');
+    if (status) status.textContent = sourceStatus ? String(sourceStatus.textContent || '').trim() : '';
     var gm = gameMode();
     if (head.getAttribute('data-mode') !== gm) head.setAttribute('data-mode', gm);
+    var root = document.documentElement;
+    head.classList.toggle('is-ui-blocked', !!(root && root.classList && (root.classList.contains('ui-hold') || root.classList.contains('role-pending'))));
   }
 
   function gameButtons() {
     if (gameMode() === 'spectator') return [qs('#btnChat')].filter(Boolean);
-    if (gameMode() === 'pvp') return [qs('.timer-row'), qs('.soufla-row'), qs('#btnUndo'), qs('#btnSync'), qs('#btnSettings'), qs('#btnChat'), qs('#btnMic'), qs('#btnSpk')].filter(Boolean);
+    if (gameMode() === 'pvp') return [qs('.timer-row'), qs('.soufla-row'), qs('#btnUndo'), qs('#syncControlWrap'), qs('#btnSettings'), qs('#btnChat'), qs('#btnMic'), qs('#btnSpk')].filter(Boolean);
     return [qs('.timer-row'), qs('.soufla-row'), qs('#btnUndo'), qs('#btnSave'), qs('#btnResume'), qs('#btnNew'), qs('#btnSettings')].filter(Boolean);
   }
 
   function syncKillTile() {
     var row = qs('.timer-row');
-    var clock = qs('#killClock');
     var btn = qs('#btnEndKill');
-    if (!row || !clock || !btn) return;
-    var live = String(clock.textContent || '').trim();
+    if (!row || !btn) return;
     var active = btn.getAttribute('data-chain-active') === 'true';
     row.classList.toggle('is-live', active);
     row.classList.toggle('is-disabled', !active);
-  }
-
-  function revealGameControl(node) {
-    if (!node) return;
-    node.hidden = false;
-    node.removeAttribute('hidden');
-    if (node.classList && node.classList.contains('timer-row')) {
-      node.style.display = 'flex';
-      var kill = qs('#btnEndKill', node);
-      if (kill) {
-        kill.hidden = false;
-        kill.removeAttribute('hidden');
-        kill.style.display = 'inline-flex';
-      }
-      return;
-    }
-    if (node.classList && node.classList.contains('soufla-row')) {
-      node.style.display = 'flex';
-      var soufla = qs('#btnSoufla', node);
-      if (soufla) {
-        soufla.hidden = false;
-        soufla.removeAttribute('hidden');
-        soufla.style.display = 'inline-flex';
-      }
-      return;
-    }
-    if (node.classList && node.classList.contains('btn')) {
-      node.style.display = 'inline-flex';
-    }
   }
 
   function syncGameControls() {
     var grid = qs('.z-mobile-game-controls-grid');
     if (!grid) return;
     var mode = gameMode();
-    if (mode === 'spectator') {
-      qsa('.timer-row, .soufla-row').forEach(function (node) {
-        node.hidden = true;
-        node.style.display = 'none';
-      });
-      var endKill = qs('#btnEndKill');
-      if (endKill) {
-        endKill.hidden = true;
-        endKill.style.display = 'none';
-      }
+    if (mode === 'pvp') {
+      var syncWrap = qs('#syncControlWrap');
+      var syncButton = qs('#btnSync');
+      if (syncWrap && syncButton && syncButton.parentNode !== syncWrap) moveGameNode(syncButton, syncWrap);
     }
     var items = gameButtons().filter(function (item) {
       return item && item.id !== 'btnEndOnline' && item.id !== 'btnEndLocalMatch' && item.id !== 'btnLeaveRoom';
     });
-    items.forEach(revealGameControl);
-    var same = grid.children.length === items.length && items.every(function (item, i) { return grid.children[i] === item; });
-    if (!same) {
-      while (grid.firstChild) grid.removeChild(grid.firstChild);
-      items.forEach(function (item) { grid.appendChild(item); });
-    }
+    Array.prototype.slice.call(grid.children).forEach(function (node) {
+      if (items.indexOf(node) === -1) restoreGameNode(node);
+    });
+    items.forEach(function (item) { moveGameNode(item, grid); });
     if (grid.getAttribute('data-mode') !== mode) grid.setAttribute('data-mode', mode);
     syncKillTile();
   }
@@ -1025,8 +1111,6 @@ if (!icon) {
     var drawer = qs('.z-mobile-game-drawer');
     var content = qs('.z-mobile-game-drawer-content', drawer);
     if (!drawer || !content) return;
-    var mode = gameMode();
-    var aiLevelBox = qs('#aiLevelBox');
     var stats = qs('.stats-mobile');
     var log = qs('#log');
     var logPanel = qs('.z-mobile-game-log-panel', content);
@@ -1038,29 +1122,13 @@ if (!icon) {
     if (!logTitle) {
       logTitle = document.createElement('div');
       logTitle.className = 'z-mobile-game-log-title';
-      logTitle.textContent = activityLogTitle();
-    } else {
-      logTitle.textContent = activityLogTitle();
     }
-    if (aiLevelBox && !isAiLevelSelectInteracting()) {
-      aiLevelBox.style.display = mode === 'pvc' ? 'flex' : 'none';
-      aiLevelBox.hidden = mode !== 'pvc';
-      aiLevelBox.style.order = '';
-    }
-    if (stats) {
-      stats.style.display = 'block';
-      stats.hidden = false;
-      stats.style.order = '2';
-      content.appendChild(stats);
-    }
+    logTitle.textContent = activityLogTitle();
+    if (stats) moveGameNode(stats, content);
     if (log) {
-      log.hidden = false;
-      log.style.display = 'block';
       if (logTitle.parentNode !== logPanel) logPanel.appendChild(logTitle);
-      if (log.parentNode !== logPanel) logPanel.appendChild(log);
-      logPanel.style.order = '3';
+      moveGameNode(log, logPanel);
       if (logPanel.parentNode !== content) content.appendChild(logPanel);
-      else content.appendChild(logPanel);
     }
     if (!drawer.classList.contains('is-dragging')) setGameDrawer(drawer.classList.contains('is-open'));
   }
@@ -1080,37 +1148,67 @@ if (!icon) {
 
     if (isLandscape()) {
       if (lane && lane.parentNode !== document.body) document.body.appendChild(lane);
-      if (shell && lane && shell.parentNode !== lane) lane.appendChild(shell);
-      if (side && lane && side.parentNode !== lane) lane.appendChild(side);
-      if (drawer && lane && drawer.parentNode !== lane) lane.appendChild(drawer);
-      if (head && head.parentNode !== side) side.insertBefore(head, side.firstChild);
-      if (controls && controls.parentNode !== side) side.appendChild(controls);
+      if (shell && lane) moveGameNode(shell, lane);
+      if (side && lane) moveGameNode(side, lane);
+      if (drawer && lane) moveGameNode(drawer, lane);
+      if (head && side) moveGameNode(head, side, side.firstChild);
+      if (controls && side) moveGameNode(controls, side);
     } else {
-      if (head && head.parentNode !== app) app.insertBefore(head, board);
-      if (side && side.parentNode !== app) app.appendChild(side);
-      if (controls && controls.parentNode !== side) side.insertBefore(controls, side.firstChild);
-      if (shell && shell.parentNode !== document.body) document.body.appendChild(shell);
-      if (drawer && drawer.parentNode !== document.body) document.body.appendChild(drawer);
+      if (head) moveGameNode(head, app, board);
+      if (side) moveGameNode(side, app);
+      if (controls) moveGameNode(controls, side, side.firstChild);
+      if (shell) moveGameNode(shell, document.body);
+      if (drawer) moveGameNode(drawer, document.body);
       if (lane && lane.parentNode) lane.parentNode.removeChild(lane);
     }
   }
 
+  function restoreDesktopGameLayout() {
+    if (pageType() !== 'game') return;
+    markGameLayoutMutation(function () {
+      setGameDrawer(false);
+      restoreAllGameNodes();
+      var body = document.body;
+      ['.z-mobile-game-shell', '.z-mobile-game-head', '.z-mobile-game-controls-host', '.z-mobile-game-drawer', '.z-mobile-game-drawer-backdrop'].forEach(function (sel) {
+        var node = qs(sel);
+        if (node && body && node.parentNode !== body) body.appendChild(node);
+      });
+      var lane = qs('.z-mobile-game-side-lane');
+      if (lane && lane.parentNode) lane.parentNode.removeChild(lane);
+      var ai = qs('#aiLevelBox');
+      if (ai) ai.classList.remove('z-mobile-game-top-level');
+      if (body) body.removeAttribute('data-mobile-game-mode');
+      try {
+        var online = gameMode() !== 'pvc';
+        var spectator = gameMode() === 'spectator';
+        if (window.ZamatControls && typeof window.ZamatControls.mount === 'function') window.ZamatControls.mount(online, spectator);
+      } catch (_) {}
+      try { if (window.UI && typeof window.UI.updateAiLevelDisplay === 'function') window.UI.updateAiLevelDisplay(); } catch (_) {}
+    });
+  }
+
   function syncGameLayout() {
-    if (pageType() !== 'game' || !isPhone()) return;
-    document.body.setAttribute('data-mobile-game-mode', gameMode());
-    placeGameLayout();
-    syncGameShellPins();
-    syncGameHead();
-    syncGameLevelInShell(qs('.z-mobile-game-shell'));
-    syncGameControls();
-    syncGameDrawer();
+    if (pageType() !== 'game') return;
+    if (!isPhone()) {
+      restoreDesktopGameLayout();
+      return;
+    }
+    markGameLayoutMutation(function () {
+      LAST_GAME_MODE = gameMode();
+      document.body.setAttribute('data-mobile-game-mode', LAST_GAME_MODE);
+      placeGameLayout();
+      syncGameShellPins();
+      syncGameHead();
+      syncGameLevelInShell(qs('.z-mobile-game-shell'));
+      syncGameControls();
+      syncGameDrawer();
+    });
   }
 
   function scheduleGameLayoutSync() {
-    if (pageType() !== 'game' || !isPhone() || GAME_LOOP) return;
+    if (pageType() !== 'game' || GAME_LOOP) return;
     GAME_LOOP = window.requestAnimationFrame(function () {
       GAME_LOOP = 0;
-      if (pageType() !== 'game' || !isPhone()) return;
       syncGameLayout();
     });
   }
@@ -1124,18 +1222,14 @@ if (!icon) {
       try { GAME_LAYOUT_OBSERVER.disconnect(); } catch (_) {}
       GAME_LAYOUT_OBSERVER = null;
     }
-    if (GAME_RESIZE_OBSERVER) {
-      try { GAME_RESIZE_OBSERVER.disconnect(); } catch (_) {}
-      GAME_RESIZE_OBSERVER = null;
+    if (GAME_BODY_OBSERVER) {
+      try { GAME_BODY_OBSERVER.disconnect(); } catch (_) {}
+      GAME_BODY_OBSERVER = null;
     }
   }
 
   function ensureGameLayoutObservers() {
-    if (pageType() !== 'game') {
-      disconnectGameLayoutObservers();
-      return;
-    }
-    if (!isPhone()) {
+    if (pageType() !== 'game' || !isPhone()) {
       disconnectGameLayoutObservers();
       return;
     }
@@ -1143,24 +1237,23 @@ if (!icon) {
     if (!app) return;
     if (!GAME_LAYOUT_OBSERVER) {
       try {
-        GAME_LAYOUT_OBSERVER = new MutationObserver(function () { scheduleGameLayoutSync(); });
-        GAME_LAYOUT_OBSERVER.observe(app, {
-          childList: true,
-          subtree: true,
-          attributes: true,
-          attributeFilter: ['class', 'style', 'hidden', 'data-mobile-game-mode']
+        GAME_LAYOUT_OBSERVER = new MutationObserver(function () {
+          if (GAME_LAYOUT_MUTATING) return;
+          scheduleGameLayoutSync();
         });
+        GAME_LAYOUT_OBSERVER.observe(app, { childList: true, subtree: true });
       } catch (_) {}
     }
-    if (!GAME_RESIZE_OBSERVER && typeof ResizeObserver === 'function') {
+    if (!GAME_BODY_OBSERVER) {
       try {
-        GAME_RESIZE_OBSERVER = new ResizeObserver(function () { scheduleGameLayoutSync(); });
-        [app, qs('.board-wrap'), qs('.side'), qs('#board'), qs('#board3d')].filter(Boolean).forEach(function (node) {
-          try { GAME_RESIZE_OBSERVER.observe(node); } catch (_) {}
+        GAME_BODY_OBSERVER = new MutationObserver(function () {
+          if (GAME_LAYOUT_MUTATING) return;
+          var nextMode = gameMode();
+          if (nextMode === LAST_GAME_MODE) return;
+          scheduleGameLayoutSync();
         });
-      } catch (_) {
-        GAME_RESIZE_OBSERVER = null;
-      }
+        GAME_BODY_OBSERVER.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+      } catch (_) {}
     }
     scheduleGameLayoutSync();
   }
@@ -1170,20 +1263,7 @@ if (!icon) {
     var shell = qs('.z-mobile-game-shell');
     if (!shell) return;
     var inner = qs('.z-mobile-game-shell-inner', shell);
-    var langBtn = qs('.z-mobile-shell-btn.is-lang', shell);
-    var backBtn = qs('.z-mobile-shell-btn.is-back', shell);
-    shell.style.left = '';
-    shell.style.right = '';
-    shell.style.insetInline = '';
     if (inner) inner.style.direction = 'ltr';
-    if (langBtn) {
-      langBtn.style.left = '';
-      langBtn.style.right = '';
-    }
-    if (backBtn) {
-      backBtn.style.left = '';
-      backBtn.style.right = '';
-    }
   }
 
 
@@ -1307,7 +1387,11 @@ if (!icon) {
       btn.setAttribute('title', window.I18N.translate(actionKey, null, fallback, currentLang()));
     });
     var orient = qs('.z-mobile-orient');
-    if (orient) orient.setAttribute('aria-label', window.I18N.translate('aria.fullscreen', null, 'Fullscreen', currentLang()));
+    if (orient) {
+      var orientLabel = window.I18N.translate('aria.orientationToggle', null, currentLang() === 'ar' ? 'تبديل اتجاه الشاشة' : (currentLang() === 'fr' ? "Changer l’orientation" : 'Change screen orientation'), currentLang());
+      orient.setAttribute('aria-label', orientLabel);
+      orient.setAttribute('title', orientLabel);
+    }
   }
 
 function refreshMobileText() {
@@ -1342,6 +1426,7 @@ function refreshMobileText() {
     if (!mobile) {
       restoreModeHead();
       restoreLobbyHead();
+      restoreDesktopGameLayout();
       qsa('.z-mobile-shell-menu, .z-mobile-game-shell-menu').forEach(function (menu) { menu.hidden = true; });
       disconnectGameLayoutObservers();
       clearPreinitState();
@@ -1364,25 +1449,36 @@ function refreshMobileText() {
     clearPreinitState();
   }
 
+  function scheduleResponsiveLayout() {
+    if (RESPONSIVE_LOOP) return;
+    RESPONSIVE_LOOP = window.requestAnimationFrame(function () {
+      RESPONSIVE_LOOP = 0;
+      applyState();
+    });
+  }
+
   window.Mobile = {
     refresh: refreshMobileText,
-    syncGameLayout: syncGameLayout,
-    syncGameHeadNow: syncGameHead
+    syncGameLayout: scheduleGameLayoutSync,
+    syncGameHeadNow: syncGameHead,
+    scheduleLayout: scheduleResponsiveLayout,
+    restoreDesktopGameLayout: restoreDesktopGameLayout
   };
 
   function handleViewportChange() {
-    syncViewportMetrics();
-    syncFooterMetrics();
-    scheduleAuthCardHeight();
-    placeDashboardSummary();
-    syncGameLayout();
+    scheduleResponsiveLayout();
   }
 
   function init() {
     applyState();
-    window.addEventListener('resize', applyState, { passive: true });
-    window.addEventListener('orientationchange', applyState);
-    window.addEventListener('pageshow', applyState);
+    window.addEventListener('resize', scheduleResponsiveLayout, { passive: true });
+    window.addEventListener('orientationchange', scheduleResponsiveLayout, { passive: true });
+    window.addEventListener('pageshow', scheduleResponsiveLayout, { passive: true });
+    try {
+      if (window.screen && window.screen.orientation && window.screen.orientation.addEventListener) {
+        window.screen.orientation.addEventListener('change', scheduleResponsiveLayout);
+      }
+    } catch (_) {}
     if (window.visualViewport) {
       window.visualViewport.addEventListener('resize', handleViewportChange, { passive: true });
       window.visualViewport.addEventListener('scroll', handleViewportChange, { passive: true });
@@ -1397,8 +1493,11 @@ function refreshMobileText() {
       }
     }
     try {
-      var observer = new MutationObserver(function () { refreshMobileText(); scheduleAuthCardHeight(); });
-      observer.observe(document.documentElement, { attributes: true, attributeFilter: ['lang', 'dir', 'class'] });
+      var observer = new MutationObserver(function () {
+        refreshMobileText();
+        scheduleResponsiveLayout();
+      });
+      observer.observe(document.documentElement, { attributes: true, attributeFilter: ['lang', 'dir'] });
     } catch (_) {}
   }
 

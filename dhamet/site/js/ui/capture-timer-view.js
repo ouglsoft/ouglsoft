@@ -16,8 +16,7 @@
     return `${mm}:${ss}`;
   }
 
-  function syncVisualState(deps) {
-    deps = deps || {};
+  function syncVisualState() {
     try {
       const row = qs(".timer-row");
       const btn = qs("#btnEndKill");
@@ -25,12 +24,10 @@
       const active = btn.getAttribute("data-chain-active") === "true";
       row.classList.toggle("is-live", active);
       row.classList.toggle("is-disabled", !active);
-      if (typeof deps.normalizeMobileControlIcons === "function") deps.normalizeMobileControlIcons();
     } catch (_) {}
   }
 
-  function syncEndKillAvailability(active, deps) {
-    deps = deps || {};
+  function syncEndKillAvailability(active) {
     try {
       const btn = qs("#btnEndKill");
       if (!btn) return;
@@ -40,15 +37,15 @@
       btn.removeAttribute("hidden");
       btn.setAttribute("data-chain-active", state ? "true" : "false");
       btn.setAttribute("aria-disabled", state ? "false" : "true");
-      syncVisualState(deps);
+      syncVisualState();
     } catch (_) {}
   }
 
-  function updateKillClock(ms, deps) {
+  function updateKillClock(ms) {
     try {
       const killClockEl = qs("#killClock");
       if (killClockEl) killClockEl.textContent = formatKillClock(ms);
-      syncVisualState(deps || {});
+      syncVisualState();
     } catch (_) {}
   }
 

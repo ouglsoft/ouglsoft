@@ -112,42 +112,6 @@
     return cleanup;
   }
 
-  function install3DBridge(wrap, opts) {
-    opts = opts || {};
-    if (!wrap || typeof wrap.addEventListener !== "function") return null;
-    var key = opts.onceKey || "__dhametBoardInput3DBridgeInstalled";
-    if (wrap[key]) return wrap[key];
-
-    var shouldForward = typeof opts.shouldForward === "function" ? opts.shouldForward : function () { return false; };
-    var onForward = typeof opts.onForward === "function" ? opts.onForward : function () {};
-    var getBusyKind = opts.getBusyKind;
-
-    var clickHandler = function (ev) {
-      try {
-        if (!shouldForward(ev)) return;
-        if (ev && ev.target && ev.target.id === "board") return;
-        onForward(ev);
-      } catch (_) {}
-    };
-    var pointerHandler = function (ev) {
-      try {
-        if (!shouldForward(ev)) return;
-        if (shouldBlockBusyPointer(getBusyKind)) {
-          try { ev.preventDefault(); } catch (_) {}
-        }
-      } catch (_) {}
-    };
-
-    wrap.addEventListener("click", clickHandler, true);
-    wrap.addEventListener("pointerdown", pointerHandler, true);
-    var cleanup = function () {
-      try { wrap.removeEventListener("click", clickHandler, true); } catch (_) {}
-      try { wrap.removeEventListener("pointerdown", pointerHandler, true); } catch (_) {}
-    };
-    wrap[key] = cleanup;
-    return cleanup;
-  }
-
   var api = Object.freeze({
     indexFromPoint: indexFromPoint,
     indexFromEvent: indexFromEvent,
@@ -157,7 +121,6 @@
     shouldBlockBusyPointer: shouldBlockBusyPointer,
     installCanvasClick: installCanvasClick,
     installBusyPointerBlocker: installBusyPointerBlocker,
-    install3DBridge: install3DBridge,
   });
 
   global.DhametBoardInput = api;

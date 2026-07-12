@@ -127,6 +127,9 @@
     const souflaButton = byId("btnSoufla");
     if (souflaButton && state.online) setAriaDisabled(souflaButton, !state.canClaimSoufla);
 
+    try {
+      if (root.Mobile && typeof root.Mobile.scheduleLayout === "function") root.Mobile.scheduleLayout();
+    } catch (_) {}
     return state;
   }
 

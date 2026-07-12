@@ -407,6 +407,9 @@
           try {
             this._syncPresenceTicker();
           } catch (e) {}
+          try {
+            if (window.Mobile && typeof window.Mobile.syncGameHeadNow === "function") window.Mobile.syncGameHeadNow();
+          } catch (e) {}
     
           if (!this._presenceUiReady) return;
     

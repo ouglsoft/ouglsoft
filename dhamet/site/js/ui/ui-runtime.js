@@ -468,7 +468,13 @@ const Visual = (() => {
         H = cv.height;
       ctx.clearRect(0, 0, W, H);
 
-      const __is3d = !!(Game.settings && Game.settings.boardStyle === "3d");
+      const __is3d = !!(
+        Game.settings &&
+        Game.settings.boardStyle === "3d" &&
+        typeof Board3D !== "undefined" &&
+        Board3D.ready &&
+        Board3D.enabled
+      );
 
       if (!__is3d) {
         drawGrid(ctx, W, H);
@@ -1429,88 +1435,9 @@ function restoreCaptureContinuationVisualState() {
   return true;
 }
 
-function normalizeMobileControlIcons() {
-  try {
-    const body = document.body;
-    if (!body || !body.classList || !body.classList.contains("z-mobile-on")) return;
-    if (String(body.getAttribute("data-mobile-page") || "") !== "game") return;
-    const grid = qs(".z-mobile-game-controls-grid");
-    if (!grid) return;
-    const tileBg = "linear-gradient(135deg, var(--btn-start), var(--btn-end))";
-    const tileBorder = "1px solid var(--btn-border)";
-    const tileShadow = "var(--btn-shadow)";
-    const actionTiles = qsa(
-      ".z-mobile-game-controls-grid .btn, .z-mobile-game-controls-grid .soufla-row .btn",
-      grid,
-    );
-    actionTiles.forEach((btn) => {
-      if (!btn || !btn.style) return;
-      if (btn.id === "btnEndKill") return;
-      btn.style.background = tileBg;
-      btn.style.backgroundColor = "var(--btn-start)";
-      btn.style.backgroundImage = tileBg;
-      btn.style.border = tileBorder;
-      btn.style.boxShadow = tileShadow;
-      btn.style.outline = "none";
-    });
-    const icons = qsa(
-      ".z-mobile-game-controls-grid .btn .btn-ico, .z-mobile-game-controls-grid #btnEndKill .btn-ico",
-      grid,
-    );
-    icons.forEach((ico) => {
-      if (!ico || !ico.style) return;
-      ico.style.background = "#ffffff";
-      ico.style.backgroundColor = "#ffffff";
-      ico.style.backgroundImage = "none";
-      ico.style.border = "none";
-      ico.style.boxShadow = "var(--shadow-sm)";
-      ico.style.filter = "none";
-      ico.style.outline = "none";
-      ico.style.padding = "6px";
-      ico.style.width = "40px";
-      ico.style.height = "40px";
-      ico.style.borderRadius = "12px";
-    });
-    [qs("#btnSync .btn-ico", grid), qs("#btnSoufla .btn-ico", grid)].forEach((ico) => {
-      if (!ico || !ico.style) return;
-      ico.style.background = "#ffffff";
-      ico.style.backgroundColor = "#ffffff";
-      ico.style.backgroundImage = "none";
-      ico.style.border = "none";
-      ico.style.boxShadow = "var(--shadow-sm)";
-      ico.style.filter = "none";
-      ico.style.opacity = "1";
-    });
-    const timerRow = qs(".timer-row", grid);
-    if (timerRow && timerRow.style) {
-      timerRow.style.background = tileBg;
-      timerRow.style.backgroundColor = "var(--btn-start)";
-      timerRow.style.backgroundImage = tileBg;
-      timerRow.style.border = tileBorder;
-      timerRow.style.boxShadow = tileShadow;
-    }
-    const endBtn = qs("#btnEndKill", grid);
-    if (endBtn && endBtn.style) {
-      endBtn.style.background = "transparent";
-      endBtn.style.backgroundColor = "transparent";
-      endBtn.style.backgroundImage = "none";
-      endBtn.style.border = "none";
-      endBtn.style.boxShadow = "none";
-      endBtn.style.outline = "none";
-    }
-    const endIco = qs("#btnEndKill .btn-ico", grid);
-    if (endIco && endIco.style) {
-      const live = endBtn && endBtn.getAttribute("data-chain-active") === "true";
-      endIco.style.background = "#ffffff";
-      endIco.style.backgroundColor = "#ffffff";
-      endIco.style.opacity = live ? "0.24" : "1";
-    }
-  } catch (_) {}
-}
-
 function syncKillTimerVisualState() {
   if (window.DhametCaptureTimerView && typeof DhametCaptureTimerView.syncVisualState === "function") {
-    DhametCaptureTimerView.syncVisualState({ normalizeMobileControlIcons });
+    DhametCaptureTimerView.syncVisualState();
     return;
   }
   try {
@@ -1520,13 +1447,12 @@ function syncKillTimerVisualState() {
     const active = btn.getAttribute("data-chain-active") === "true";
     row.classList.toggle("is-live", active);
     row.classList.toggle("is-disabled", !active);
-    normalizeMobileControlIcons();
   } catch (_) {}
 }
 
 function syncEndKillAvailability(active) {
   if (window.DhametCaptureTimerView && typeof DhametCaptureTimerView.syncEndKillAvailability === "function") {
-    DhametCaptureTimerView.syncEndKillAvailability(active, { normalizeMobileControlIcons });
+    DhametCaptureTimerView.syncEndKillAvailability(active);
     return;
   }
   try {
@@ -1539,7 +1465,6 @@ function syncEndKillAvailability(active) {
     btn.setAttribute("data-chain-active", state ? "true" : "false");
     btn.setAttribute("aria-disabled", state ? "false" : "true");
     syncKillTimerVisualState();
-    normalizeMobileControlIcons();
   } catch (_) {}
 }
 
@@ -1683,7 +1608,6 @@ const UI = {
       }
     } catch (_) {}
     try { if (window.ZGamePlayers && typeof window.ZGamePlayers.refresh === "function") window.ZGamePlayers.refresh(); } catch (_) {}
-    try { normalizeMobileControlIcons(); } catch (_) {}
     Visual.draw();
 
     try {
@@ -1917,7 +1841,7 @@ const UI = {
 
   updateKillClock(ms) {
     if (window.DhametCaptureTimerView && typeof DhametCaptureTimerView.updateKillClock === "function") {
-      DhametCaptureTimerView.updateKillClock(ms, { normalizeMobileControlIcons });
+      DhametCaptureTimerView.updateKillClock(ms);
       return;
     }
     const mm = Math.floor(ms / 60000)
@@ -2764,8 +2688,6 @@ const Board3D = (() => {
   let renderer = null;
   let scene = null;
   let camera = null;
-  let raycaster = null;
-  let mouse = null;
 
   let boardGroup = null;
   let piecesGroup = null;
@@ -2951,9 +2873,6 @@ const Board3D = (() => {
     camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 1, 10000);
     updateCameraPose();
 
-    raycaster = new THREE.Raycaster();
-    mouse = new THREE.Vector2();
-
     const amb = new THREE.AmbientLight(0xffffff, 0.8);
     scene.add(amb);
 
@@ -2981,8 +2900,6 @@ const Board3D = (() => {
     scene.add(piecesGroup);
 
     buildBoard();
-
-    renderer.domElement.addEventListener("click", onClick3D);
 
     window.addEventListener("resize", resize);
 
@@ -3686,65 +3603,19 @@ const Board3D = (() => {
     renderer.render(scene, camera);
   }
 
-  function animate() {
-    if (!enabled) return;
-    syncIfNeeded();
-    requestAnimationFrame(animate);
-  }
-
-  function onClick3D(ev) {
-    if (!enabled) return;
-    if (!renderer || !camera || !raycaster) return;
-    updateMetrics();
-
-    const rect = renderer.domElement.getBoundingClientRect();
-    const x = ((ev.clientX - rect.left) / rect.width) * 2 - 1;
-    const y = -(((ev.clientY - rect.top) / rect.height) * 2 - 1);
-    mouse.set(x, y);
-    raycaster.setFromCamera(mouse, camera);
-
-    const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
-    const hit = new THREE.Vector3();
-    const ok = raycaster.ray.intersectPlane(plane, hit);
-    if (!ok) return;
-
-    const cx = hit.x + M.halfW;
-    const cz = hit.z + M.halfH;
-
-    const cView = Math.floor(cx / M.stepX);
-    const rView = Math.floor(cz / M.stepY);
-    if (rView < 0 || rView >= BOARD_N || cView < 0 || cView >= BOARD_N) return;
-
-    const cv = qs("#board");
-    if (!cv) return;
-    const cvRect = cv.getBoundingClientRect();
-
-    const xCanvas = cView * M.stepX + M.stepX / 2;
-    const yCanvas = rView * M.stepY + M.stepY / 2;
-
-    const clientX = cvRect.left + xCanvas * (cvRect.width / cv.width);
-    const clientY = cvRect.top + yCanvas * (cvRect.height / cv.height);
-
-    try {
-      Input.onBoardClick({ clientX, clientY });
-    } catch {
-      try {
-        cv.dispatchEvent(new MouseEvent("click", { bubbles: true, clientX, clientY }));
-      } catch {}
-    }
-  }
-
   function setEnabled(v) {
-    enabled = !!v;
-    if (!enabled) {
-      try {
-        renderer?.domElement?.removeEventListener("click", onClick3D);
-      } catch {}
+    const next = !!v;
+    if (!next) {
+      enabled = false;
       return;
     }
-    if (!init()) return;
+    if (!init()) {
+      enabled = false;
+      return;
+    }
     enabled = true;
-    animate();
+    lastHash = null;
+    syncIfNeeded();
   }
 
   function show() {
@@ -3780,101 +3651,112 @@ const Board3D = (() => {
   };
 })();
 
-function ensure3DInputBridge() {
-  const wrap = document.querySelector(".board-wrap");
-  if (!wrap || wrap.__zamat3dBridgeInstalled) return;
+let threeRuntimePromise = null;
+const THREE_RUNTIME_SRC = "https://cdn.jsdelivr.net/npm/three@0.149.0/build/three.min.js";
 
-  if (window.DhametBoardInput && typeof DhametBoardInput.install3DBridge === "function") {
-    DhametBoardInput.install3DBridge(wrap, {
-      onceKey: "__zamat3dBridgeInstalled",
-      getBusyKind: computerBusyKind,
-      shouldForward: () => !!(Game && Game.settings && Game.settings.boardStyle === "3d"),
-      onForward: (ev) => Input.onBoardClick({ clientX: ev.clientX, clientY: ev.clientY }),
-    });
-    return;
-  }
+function ensureThreeRuntime() {
+  if (window.THREE) return Promise.resolve(true);
+  if (threeRuntimePromise) return threeRuntimePromise;
+  threeRuntimePromise = new Promise((resolve) => {
+    let settled = false;
+    let script = document.getElementById("dhametThreeRuntime");
+    const finish = (ok) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeoutId);
+      resolve(!!ok && !!window.THREE);
+    };
+    const timeoutId = setTimeout(() => finish(false), 8000);
+    if (!script) {
+      script = document.createElement("script");
+      script.id = "dhametThreeRuntime";
+      script.src = THREE_RUNTIME_SRC;
+      script.async = true;
+      script.crossOrigin = "anonymous";
+      (document.head || document.documentElement).appendChild(script);
+    }
+    if (window.THREE) {
+      finish(true);
+      return;
+    }
+    script.addEventListener("load", () => finish(true), { once: true });
+    script.addEventListener("error", () => finish(false), { once: true });
+  }).then((ready) => {
+    if (!ready) {
+      try { document.getElementById("dhametThreeRuntime")?.remove(); } catch {}
+      threeRuntimePromise = null;
+    }
+    return ready;
+  });
+  return threeRuntimePromise;
+}
 
-  wrap.__zamat3dBridgeInstalled = true;
-
-  const forward = (ev) => {
-    try {
-      if (!Game || !Game.settings || Game.settings.boardStyle !== "3d") return;
-
-      if (ev && ev.target && ev.target.id === "board") return;
-
-      Input.onBoardClick({ clientX: ev.clientX, clientY: ev.clientY });
-    } catch {}
-  };
-
-  wrap.addEventListener("click", forward, true);
-
-  wrap.addEventListener(
-    "pointerdown",
-    (ev) => {
-      try {
-        if (!Game || !Game.settings || Game.settings.boardStyle !== "3d") return;
-        const busy = computerBusyKind();
-        if (busy === "move" || busy === "soufla") {
-          try {
-            ev.preventDefault();
-          } catch (_) {}
-        }
-      } catch (_) {}
-    },
-    true,
-  );
-
+function setBoard3DLoading(loading) {
+  try {
+    document.body && document.body.classList.toggle("board-3d-loading", !!loading);
+  } catch {}
 }
 
 function applyBoardStyle(style) {
   const cv = qs("#board");
   const w3 = qs("#board3d");
+  const requested = style === "3d" ? "3d" : "2d";
+  Game.settings.boardStyle = requested;
 
-  const v = style === "3d" ? "3d" : "2d";
-  Game.settings.boardStyle = v;
-
-  if (v === "3d") {
-    if (!window.THREE) {
-      try {
-        showUiNotice(t("errors.render3d.failed"));
-      } catch {}
-      Game.settings.boardStyle = "2d";
+  if (requested === "3d" && !window.THREE) {
+    setBoard3DLoading(true);
+    try {
+      document.body && document.body.classList.remove("board-3d");
+      Board3D.disable();
+      Board3D.hide();
+    } catch {}
+    if (w3) w3.style.display = "none";
+    if (cv) {
+      cv.style.opacity = "";
+      cv.style.pointerEvents = "";
+      cv.style.background = "";
+      cv.style.backgroundColor = "";
     }
+    try { Visual.draw(); } catch {}
+    ensureThreeRuntime().then((ready) => {
+      setBoard3DLoading(false);
+      if (Game.settings.boardStyle !== "3d") return;
+      if (ready) {
+        applyBoardStyle("3d");
+        return;
+      }
+      Game.settings.boardStyle = "2d";
+      try { showUiNotice(t("errors.render3d.failed")); } catch {}
+      applyBoardStyle("2d");
+    });
+    return;
   }
 
-  const finalStyle = Game.settings.boardStyle;
-
+  setBoard3DLoading(false);
+  const is3D = requested === "3d";
   try {
-    document.body && document.body.classList.toggle("board-3d", finalStyle === "3d");
+    document.body && document.body.classList.toggle("board-3d", is3D);
   } catch {}
 
-  if (finalStyle === "3d") {
-    try {
-      ensure3DInputBridge();
-    } catch {}
+  if (is3D) {
     if (w3) w3.style.display = "block";
     if (cv) {
       cv.style.opacity = "1";
       cv.style.pointerEvents = "auto";
-
       cv.style.background = "transparent";
       cv.style.backgroundColor = "transparent";
     }
     try {
       Board3D.show();
       Board3D.enable();
-    } catch {}
-
-    setTimeout(() => {
-      try {
-        if (Game.settings.boardStyle === "3d" && !Board3D.ready) {
-          try {
-            showUiNotice(t("errors.render3d.failed"));
-          } catch {}
-          applyBoardStyle("2d");
-        }
-      } catch {}
-    }, 250);
+      if (!Board3D.ready || !Board3D.enabled) throw new Error("3D renderer unavailable");
+      Board3D.resize();
+    } catch {
+      Game.settings.boardStyle = "2d";
+      try { showUiNotice(t("errors.render3d.failed")); } catch {}
+      applyBoardStyle("2d");
+      return;
+    }
   } else {
     try {
       Board3D.disable();
@@ -3889,9 +3771,7 @@ function applyBoardStyle(style) {
     }
   }
 
-  try {
-    Visual.draw();
-  } catch {}
+  try { Visual.draw(); } catch {}
 }
 
 function bindEndKillShortcut() {
@@ -3961,10 +3841,6 @@ function init() {
       } catch {}
     }
   }
-
-  try {
-    ensure3DInputBridge();
-  } catch {}
 
   try {
     applyBoardStyle(Game.settings.boardStyle || "2d");
