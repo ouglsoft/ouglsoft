@@ -1346,6 +1346,7 @@ const SessionGame = (() => {
   function restore() {
     if (!_isPvCSession()) return false;
     if (_storageAdapter) return _storageAdapter.restore();
+
     let raw = null;
     try {
       raw = sessionStorage.getItem(_getKey());
@@ -1359,102 +1360,10 @@ const SessionGame = (() => {
       clear();
       return false;
     }
-    try {
-      if (DhametPvCSession && typeof DhametPvCSession.validateRestoreRecord === "function") {
-        data = DhametPvCSession.validateRestoreRecord(data) || data;
-      }
-    } catch {}
 
-    if (!data || typeof data !== "object") {
-      clear();
-      return false;
-    }
-
-    if (data.gameOver) {
-      clear();
-      return false;
-    }
-
-    const snap = data.snapshot || (data.sharedState && data.sharedState.snapshot);
-    if (!snap || !snap.board || !Array.isArray(snap.board)) {
-      clear();
-      return false;
-    }
-
-    try {
-      if (data.settings && typeof data.settings === "object") {
-        Game.settings = data.settings;
-        try {
-          Game.normalizeAdvancedSettings();
-        } catch {}
-      }
-
-      if (data.forcedSeqKey === "FO_TOP") Game.forcedSeq = FO_TOP;
-      else if (data.forcedSeqKey === "FO_BOT") Game.forcedSeq = FO_BOT;
-      else {
-        try {
-          const fp = typeof snap.forcedPly === "number" ? snap.forcedPly | 0 : 0;
-          const cur = snap.player;
-          const base = fp % 2 === 0 ? cur : -cur;
-          Game.forcedSeq = base === TOP ? FO_TOP : FO_BOT;
-        } catch {
-          Game.forcedSeq = FO_BOT;
-        }
-      }
-
-      restoreSnapshot(snap, { redraw: false, visual: true });
-
-      Game.gameOver = false;
-      Game.winner = null;
-      Game.terminationReason = null;
-
-      Game.history = Array.isArray(data.history) ? data.history : [];
-
-      try {
-        if (
-          window.LogMgr &&
-          typeof window.LogMgr.setEvents === "function" &&
-          Array.isArray(data.logEvents)
-        ) {
-          window.LogMgr.setEvents(data.logEvents);
-        } else if (typeof data.logHtml === "string" && typeof qs === "function" && qs("#log")) {
-          qs("#log").innerHTML = data.logHtml;
-        }
-      } catch {}
-      try {
-        const km = typeof data.killTimerMs === "number" ? data.killTimerMs : 0;
-        Game.killTimer.hardStop();
-        Game.killTimer.elapsedMs = Math.max(0, km | 0);
-        try {
-          UI.updateKillClock(Game.killTimer.elapsedMs | 0);
-        } catch {}
-        if (Game.inChain) {
-          try {
-            Game.killTimer.start();
-          } catch {}
-        }
-        try {
-          if (typeof syncEndKillAvailability === "function") syncEndKillAvailability(Game.inChain);
-          else {
-            const btn = typeof qs === "function" ? qs("#btnEndKill") : null;
-            if (btn) {
-              btn.disabled = false;
-              btn.setAttribute("data-chain-active", Game.inChain ? "true" : "false");
-              btn.setAttribute("aria-disabled", Game.inChain ? "false" : "true");
-            }
-          }
-        } catch {}
-      } catch {}
-
-      try {
-        UI.updateAll();
-      } catch {}
-
-      return true;
-    } catch {
-      clear();
-      return false;
-    }
+    const restored = _restoreData(data);
+    if (!restored) clear();
+    return restored;
   }
 
   return { KEY: KEY_PVC, KEY_PVC, getKey: _getKey, saveNow, saveSoon, restore, clear };

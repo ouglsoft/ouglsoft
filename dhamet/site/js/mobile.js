@@ -977,74 +977,51 @@ if (!icon) {
     return mm + ':' + ss;
   }
 
-  function gamePresence(side) {
-    if (gameMode() === 'pvc') return '';
+  function gameHeaderModel() {
     try {
-      var online = window.Online;
-      var p = online && typeof online._getGameSlotPresence === 'function' ? online._getGameSlotPresence(side) : null;
-      if (p) {
-        if (p.online) return '(' + window.I18N.translate('online.presence.online', null, 'متصل', currentLang()) + ')';
-        var label = window.I18N.translate('online.presence.disconnected', null, 'غير متصل', currentLang());
-        return '(' + label + ' ' + formatPresenceElapsed(p.disconnectedSince) + ')';
+      if (window.UI && typeof window.UI.getGameHeaderModel === 'function') {
+        return window.UI.getGameHeaderModel();
       }
     } catch (_) {}
-    return '';
+    return {
+      mode: gameMode(),
+      activeSide: 'top',
+      status: '',
+      uiBlocked: false,
+      top: { name: '', avatar: '', presence: null },
+      bot: { name: '', avatar: '', presence: null }
+    };
   }
 
-  function gameName(side) {
+  function gamePresenceText(presence) {
+    if (!presence) return '';
     try {
-      if (window.ZGamePlayers && typeof window.ZGamePlayers.resolveSlot === 'function') {
-        var slot = window.ZGamePlayers.resolveSlot(side);
-        if (slot && slot.name) return String(slot.name).trim();
-      }
-    } catch (_) {}
-    var selector = side === 'top' ? '#pTopName' : '#pBotName';
-    var fallback = side === 'top' ? '#pTopNameM' : '#pBotNameM';
-    var el = qs(selector) || qs(fallback);
-    return el ? String(el.textContent || '').trim() : '';
-  }
-
-  function gameActiveSide() {
-    try {
-      var botSide = window.DhametRules && typeof window.DhametRules.BOT === 'number'
-        ? window.DhametRules.BOT
-        : -1;
-      if (window.Game && typeof window.Game.player !== 'undefined') {
-        return window.Game.player === botSide ? 'bot' : 'top';
-      }
-    } catch (_) {}
-    return 'top';
-  }
-
-  function gameAvatar(side) {
-    try {
-      if (gameMode() === 'pvc' && side === 'top') return baseHref() + '/assets/icons/users/computeruser.png';
-      if (window.ZGamePlayers && typeof window.ZGamePlayers.resolveSlot === 'function') {
-        var slot = window.ZGamePlayers.resolveSlot(side);
-        if (slot && slot.avatar) return String(slot.avatar).trim();
-      }
-    } catch (_) {}
-    var selector = side === 'top' ? '#pTopAvatar' : '#pBotAvatar';
-    var fallback = side === 'top' ? '#pTopAvatarM' : '#pBotAvatarM';
-    var el = qs(selector) || qs(fallback);
-    return el ? String(el.getAttribute('src') || '').trim() : '';
+      if (presence.online) return '(' + window.I18N.translate('online.presence.online', null, 'متصل', currentLang()) + ')';
+      var label = window.I18N.translate('online.presence.disconnected', null, 'غير متصل', currentLang());
+      return '(' + label + ' ' + formatPresenceElapsed(presence.disconnectedSince) + ')';
+    } catch (_) {
+      return '';
+    }
   }
 
   function syncGameHead() {
     var head = qs('.z-mobile-game-head');
     if (!head) return;
+    var model = gameHeaderModel();
     ['top', 'bot'].forEach(function (side) {
       var name = qs('[data-name="' + side + '"]', head);
       var presence = qs('[data-presence="' + side + '"]', head);
       var avatar = qs('[data-avatar="' + side + '"]', head);
       var wrap = avatar ? avatar.parentElement : null;
-      var nextName = gameName(side);
-      var nextPresence = gamePresence(side);
+      var slot = model && model[side] ? model[side] : {};
+      var nextName = String(slot.name || '').trim();
+      var nextPresence = gamePresenceText(slot.presence);
       if (name && name.textContent !== nextName) name.textContent = nextName;
       if (presence && presence.textContent !== nextPresence) presence.textContent = nextPresence;
       if (presence) presence.hidden = !nextPresence;
       if (avatar) {
-        var src = gameAvatar(side);
+        var src = String(slot.avatar || '').trim();
+        if (!src && model.mode === 'pvc' && side === 'top') src = baseHref() + '/assets/icons/users/computeruser.png';
         if (src && avatar.getAttribute('src') !== src) avatar.setAttribute('src', src);
         avatar.onerror = function () {
           var fb = this.getAttribute('data-avatar') === 'top' ? 'computeruser.png' : 'autouser2.png';
@@ -1059,17 +1036,15 @@ if (!icon) {
         }
       }
     });
-    var active = gameActiveSide();
+    var active = model.activeSide || 'top';
     qsa('.z-mobile-game-player', head).forEach(function (card) {
       card.classList.toggle('is-active', card.getAttribute('data-player') === active);
     });
     var status = qs('[data-game-status="1"]', head);
-    var sourceStatus = qs('#statusTextMsg');
-    if (status) status.textContent = sourceStatus ? String(sourceStatus.textContent || '').trim() : '';
-    var gm = gameMode();
+    if (status) status.textContent = String(model.status || '');
+    var gm = model.mode || gameMode();
     if (head.getAttribute('data-mode') !== gm) head.setAttribute('data-mode', gm);
-    var root = document.documentElement;
-    head.classList.toggle('is-ui-blocked', !!(root && root.classList && (root.classList.contains('ui-hold') || root.classList.contains('role-pending'))));
+    head.classList.toggle('is-ui-blocked', !!model.uiBlocked);
   }
 
   function gameButtons() {

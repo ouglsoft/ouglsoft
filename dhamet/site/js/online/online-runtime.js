@@ -528,7 +528,7 @@
             if (!this._moveCommitEscalatedAt && elapsed >= MOVE_SYNC_STALL_MS) {
               this._moveCommitEscalatedAt = now;
               try {
-                this._requestOfficialSync({ reason: "commit-watchdog", preservePendingCommit: true });
+                this._requestOfficialSync({ reason: "commit-watchdog", notifyFailure: false });
               } catch (e) {}
               try {
                 const browserOffline = typeof navigator !== "undefined" && navigator.onLine === false;
@@ -887,17 +887,21 @@
 
     _startInviterGame: async function (gameId, entryRequest) {
           if (entryRequest && !this._isEntryRequestCurrent(entryRequest)) return false;
-          this.mySide = -1;
-          this.isActive = true;
-          this.isSpectator = false;
-          this.gameId = gameId;
-          this._inPostMatch = false;
-          this._postMatchShown = false;
-          this._lastRematchSeq = null;
-          try {
-            if (window.DhametMatchCoordinator) DhametMatchCoordinator.begin(DhametMatchCoordinator.phases.ONLINE_PLAYER, "online-inviter-enter");
-            this._bindCaptureDraftLifecycle && this._bindCaptureDraftLifecycle();
-          } catch (e) {}
+          this._applySessionState({
+            active: true,
+            spectator: false,
+            side: -1,
+            gameId,
+            postMatch: false,
+            postMatchShown: false,
+            lastRematchSeq: null,
+            presenceStatus: "inPvP",
+            presenceRole: "player",
+            presenceRoomId: gameId,
+            phase: window.DhametMatchCoordinator ? DhametMatchCoordinator.phases.ONLINE_PLAYER : null,
+            reason: "online-inviter-enter",
+          });
+          try { this._bindCaptureDraftLifecycle && this._bindCaptureDraftLifecycle(); } catch (e) {}
           try {
             this._discardLocalInvitesOnEnterMatch && this._discardLocalInvitesOnEnterMatch();
           } catch (e) {}
@@ -918,11 +922,6 @@
           this._setOnlineButtonsState(true, { keepBlocked: true });
     
           try {
-            this._presenceStatus = "inPvP";
-            this._presenceRole = "player";
-            this._presenceRoomId = gameId;
-          } catch (e) {}
-          try {
             await this._runUnifiedAppPulse(true, "enter-game");
           } catch (e) {}
           if ((entryRequest && !this._isEntryRequestCurrent(entryRequest)) || !this._isAsyncContextCurrent(asyncContext)) return false;
@@ -931,7 +930,7 @@
             if (window.DhametMatchCoordinator) DhametMatchCoordinator.resetPresentation({ draw: true });
           } catch (e) {}
     
-          this.gameRef = this._makeOfficialGameRef(gameId); // Official /dhamet/api/game/live and /dhamet/api/game/resync endpoints provide live state.
+          this._applySessionState({ gameRef: this._makeOfficialGameRef(gameId) }); // Official /dhamet/api/game/live and /dhamet/api/game/resync endpoints provide live state.
     
           let synced = false;
           try { synced = await this.syncNow({ repairPresence: false }); } catch (e) { synced = false; }
@@ -941,7 +940,7 @@
           try {
             this._bindInviteListener();
           } catch (e) {}
-this._bindGameListeners();
+          this._bindGameListeners();
           try {
             await this._initRoomComms();
           } catch (e) {}
@@ -1211,8 +1210,7 @@ this._bindGameListeners();
           const gid = String(gameId || this.gameId || this._presenceRoomId || "").trim();
           if (!gid || !this.myUid) return true;
           try {
-            const originalGameId = this.gameId;
-            if (!this.gameId) this.gameId = gid;
+            if (!this.gameId) this._applySessionState({ gameId: gid });
             const res = await this._commitOfficialMatchEnd("leave", "ended_by_player");
             if (!res || res.committed === false || !res.game || res.game.status !== "ended") {
               try { this._forceResync && this._forceResync(); } catch (e) {}
@@ -1222,14 +1220,16 @@ this._bindGameListeners();
             try { this._teardownRoomComms && this._teardownRoomComms(); } catch (e) {}
             try { this.gameRef && this.gameRef.off && this.gameRef.off(); } catch (e) {}
             try { this._clearPersistedActiveGame && this._clearPersistedActiveGame(); } catch (e) {}
-            this.isActive = false;
-            this.isSpectator = false;
-            this.gameId = null;
-            this.gameRef = null;
-            this.mySide = null;
-            this._presenceStatus = "available";
-            this._presenceRole = "lobby";
-            this._presenceRoomId = null;
+            this._applySessionState({
+              active: false,
+              spectator: false,
+              gameId: null,
+              gameRef: null,
+              side: null,
+              presenceStatus: "available",
+              presenceRole: "lobby",
+              presenceRoomId: null,
+            });
             return true;
           } catch (e) {
             handleDbError(e, window.I18N.translateArgs("online.endFail"), { ctx: "invite.leaveActiveMatch" });
@@ -1298,17 +1298,21 @@ this._bindGameListeners();
 
     _joinGame: async function (gameId, entryRequest) {
           if (entryRequest && !this._isEntryRequestCurrent(entryRequest)) return false;
-          this.mySide = +1;
-          this.isActive = true;
-          this.isSpectator = false;
-          this.gameId = gameId;
-          this._inPostMatch = false;
-          this._postMatchShown = false;
-          this._lastRematchSeq = null;
-          try {
-            if (window.DhametMatchCoordinator) DhametMatchCoordinator.begin(DhametMatchCoordinator.phases.ONLINE_PLAYER, "online-join-enter");
-            this._bindCaptureDraftLifecycle && this._bindCaptureDraftLifecycle();
-          } catch (e) {}
+          this._applySessionState({
+            active: true,
+            spectator: false,
+            side: +1,
+            gameId,
+            postMatch: false,
+            postMatchShown: false,
+            lastRematchSeq: null,
+            presenceStatus: "inPvP",
+            presenceRole: "player",
+            presenceRoomId: gameId,
+            phase: window.DhametMatchCoordinator ? DhametMatchCoordinator.phases.ONLINE_PLAYER : null,
+            reason: "online-join-enter",
+          });
+          try { this._bindCaptureDraftLifecycle && this._bindCaptureDraftLifecycle(); } catch (e) {}
           try {
             this._discardLocalInvitesOnEnterMatch && this._discardLocalInvitesOnEnterMatch();
           } catch (e) {}
@@ -1317,11 +1321,6 @@ this._bindGameListeners();
           this._setOnlineButtonsState(true, { keepBlocked: true });
           try {
             this._syncMyUidFromAuth && this._syncMyUidFromAuth();
-          } catch (e) {}
-          try {
-            this._presenceStatus = "inPvP";
-            this._presenceRole = "player";
-            this._presenceRoomId = gameId;
           } catch (e) {}
           await this._runUnifiedAppPulse(true, "enter-game");
           if ((entryRequest && !this._isEntryRequestCurrent(entryRequest)) || !this._isAsyncContextCurrent(asyncContext)) return false;
@@ -1335,7 +1334,7 @@ this._bindGameListeners();
             if (window.DhametMatchCoordinator) DhametMatchCoordinator.resetPresentation({ draw: true });
           } catch (e) {}
     
-          this.gameRef = this._makeOfficialGameRef(gameId); // Official /dhamet/api/game/live and /dhamet/api/game/resync endpoints provide live state.
+          this._applySessionState({ gameRef: this._makeOfficialGameRef(gameId) }); // Official /dhamet/api/game/live and /dhamet/api/game/resync endpoints provide live state.
     
     
           // Game activation is official in /dhamet/api/lobby/invite. Joining performs
@@ -1404,6 +1403,32 @@ this._bindGameListeners();
           } catch (e) {}
         },
 
+    _buildOnlineActionState: function (online) {
+          const on = online !== false;
+          const uiBlocked = !!(document.documentElement && document.documentElement.classList.contains("ui-hold"));
+          return {
+            online: on,
+            spectator: on && !!this.isSpectator,
+            uiBlocked,
+            postMatch: on && !!this._inPostMatch,
+            inChain: !!(typeof Game !== "undefined" && Game.inChain),
+            myTurn: !on || !!(typeof Game !== "undefined" && Game.player === this.mySide),
+            canUndo: on && !this.isSpectator && Number(this.moveIndex || 0) > 0,
+            canClaimSoufla: on && !this.isSpectator && !!(typeof Game !== "undefined" && Game.availableSouflaForHuman),
+            isSyncing: on && !!this._resyncInFlight,
+          };
+        },
+
+    _applyOnlineActionState: function (online) {
+          const state = this._buildOnlineActionState(online);
+          if (window.DhametActionStateView && typeof window.DhametActionStateView.applyModeState === "function") {
+            return window.DhametActionStateView.applyModeState(state);
+          }
+          document.body.classList.toggle("mode-pvp", !!state.online);
+          window.ZamatControls?.mount?.(!!state.online, !!state.spectator);
+          return state;
+        },
+
     _setOnlineButtonsState: function (on, options) {
           const stateOptions = options && typeof options === "object" ? options : {};
           try {
@@ -1414,23 +1439,10 @@ this._bindGameListeners();
           } catch (e) {}
 
           try {
-            if (window.DhametActionStateView && typeof window.DhametActionStateView.applyModeState === "function") {
-              window.DhametActionStateView.applyModeState({
-                online: !!on,
-                spectator: !!this.isSpectator,
-                uiBlocked: !!(document.documentElement && document.documentElement.classList.contains("ui-hold")),
-                postMatch: !!this._inPostMatch,
-                inChain: !!(typeof Game !== "undefined" && Game.inChain),
-                myTurn: !!(typeof Game !== "undefined" && Game.player === this.mySide),
-                canUndo: !!on && !this.isSpectator && Number(this.moveIndex || 0) > 0,
-                canClaimSoufla: !!on && !this.isSpectator && !!(typeof Game !== "undefined" && Game.availableSouflaForHuman),
-                isSyncing: !!this._resyncInFlight,
-              });
-            } else {
-              document.body.classList.toggle("mode-pvp", !!on);
-              window.ZamatControls?.mount?.(!!on, !!this.isSpectator);
-            }
-          } catch (e) {}
+            this._applyOnlineActionState(!!on);
+          } catch (error) {
+            try { Logger.warn("online_action_state_apply_failed", { error: String(error && (error.message || error)) }); } catch (_) {}
+          }
 
           try {
             const btnEnd = document.getElementById("btnEndOnline");
@@ -1532,13 +1544,15 @@ this._bindGameListeners();
           try {
             this._clearPostMatchSession();
           } catch (e) {}
-          this._inPostMatch = true;
-          try {
-            if (window.DhametMatchCoordinator) DhametMatchCoordinator.setPhase(DhametMatchCoordinator.phases.POST_MATCH);
-          } catch (e) {}
+          this._applySessionState({
+            postMatch: true,
+            phase: window.DhametMatchCoordinator ? DhametMatchCoordinator.phases.POST_MATCH : null,
+            newEpoch: false,
+            reason: "online-post-match",
+          });
     
           if (this._postMatchShown) return;
-          this._postMatchShown = true;
+          this._applySessionState({ postMatchShown: true });
           const asyncContext = this._captureAsyncContext(this.gameId);
     
           const reason = (meta && (meta.reason || meta.endedReason)) || null;
@@ -1657,8 +1671,7 @@ this._bindGameListeners();
         },
 
     _onRematchStarted: function () {
-          this._inPostMatch = false;
-          this._postMatchShown = false;
+          this._applySessionState({ postMatch: false, postMatchShown: false });
           this._localEndedOnline = false;
           this._rematchRequestedAt = 0;
           this._rematchPending = false;
@@ -1672,10 +1685,10 @@ this._bindGameListeners();
           } catch (e) {}
           try {
             if (window.DhametMatchCoordinator) {
-              DhametMatchCoordinator.begin(
-                this.isSpectator ? DhametMatchCoordinator.phases.ONLINE_SPECTATOR : DhametMatchCoordinator.phases.ONLINE_PLAYER,
-                "online-rematch",
-              );
+              this._applySessionState({
+                phase: this.isSpectator ? DhametMatchCoordinator.phases.ONLINE_SPECTATOR : DhametMatchCoordinator.phases.ONLINE_PLAYER,
+                reason: "online-rematch",
+              });
               DhametMatchCoordinator.resetPresentation({ draw: true });
             }
           } catch (e) {}
@@ -1955,11 +1968,10 @@ this._bindGameListeners();
         },
 
     exitToMode: async function () {
-          try {
-            if (window.DhametMatchCoordinator) {
-              DhametMatchCoordinator.begin(DhametMatchCoordinator.phases.LEAVING, "online-exit-to-mode");
-            }
-          } catch (e) {}
+          this._applySessionState({
+            phase: window.DhametMatchCoordinator ? DhametMatchCoordinator.phases.LEAVING : null,
+            reason: "online-exit-to-mode",
+          });
           try { if (typeof Modal !== "undefined" && Modal && Modal.close) Modal.close("state-change"); } catch (e) {}
           try { this._clearPostMatchSession(); } catch (e) {}
 
@@ -1977,16 +1989,14 @@ this._bindGameListeners();
           try { this._clearPersistedActiveGame && this._clearPersistedActiveGame(); } catch (e) {}
           try { this._markLocalCommitSettled && this._markLocalCommitSettled(); } catch (e) {}
 
-          this.isActive = false;
-          this.isSpectator = false;
-          this.gameId = null;
-          this.gameRef = null;
-          this.mySide = null;
-          this._presenceRoomId = null;
-
-          try {
-            if (typeof document !== "undefined" && document.body) document.body.classList.remove("z-spectator");
-          } catch (e) {}
+          this._applySessionState({
+            active: false,
+            spectator: false,
+            gameId: null,
+            gameRef: null,
+            side: null,
+            presenceRoomId: null,
+          });
           try {
             if (window.DhametMatchCoordinator) DhametMatchCoordinator.resetPresentation({ draw: false });
           } catch (e) {}
@@ -2071,24 +2081,22 @@ this._bindGameListeners();
             try {
               this._clearPersistedActiveGame();
             } catch (e) {}
-            this.isActive = false;
-            this.isSpectator = false;
-            this.gameId = null;
-            this.gameRef = null;
-            this.mySide = null;
-    
-            try {
-              document.body.classList.remove("z-spectator");
-            } catch (e) {}
+            this._applySessionState({
+              active: false,
+              spectator: false,
+              gameId: null,
+              gameRef: null,
+              side: null,
+            });
             try {
               this._setOnlineButtonsState(false);
             } catch (e) {}
     
-            try {
-              this._presenceStatus = "available";
-              this._presenceRole = "lobby";
-              this._presenceRoomId = null;
-            } catch (e) {}
+            this._applySessionState({
+              presenceStatus: "available",
+              presenceRole: "lobby",
+              presenceRoomId: null,
+            });
             try { await this._runUnifiedAppPulse(true); } catch (e) {}
     
             try {
@@ -2117,17 +2125,21 @@ this._bindGameListeners();
 
     _resetOnlineRuntimeState: function () {
           try { this._clearCaptureDraft && this._clearCaptureDraft(); } catch (e) {}
-          try {
-            if (window.DhametMatchCoordinator) DhametMatchCoordinator.begin(DhametMatchCoordinator.phases.LEAVING, "online-reset");
-          } catch (e) {}
+          this._applySessionState({
+            phase: window.DhametMatchCoordinator ? DhametMatchCoordinator.phases.LEAVING : null,
+            reason: "online-reset",
+          });
           this._lastTrainLoggedMoveIndex = 0;
           this._localEndedOnline = false;
           this._selfConnected = true;
           this._oppOnline = true;
-          this.isActive = false;
-          this.gameId = null;
-          this.gameRef = null;
-          this.mySide = null;
+          this._applySessionState({
+            active: false,
+            spectator: false,
+            gameId: null,
+            gameRef: null,
+            side: null,
+          });
           this._pendingSteps = [];
           this._cachedSouflaPlain = null;
           this._isApplyingRemote = false;
@@ -2138,9 +2150,11 @@ this._bindGameListeners();
         },
 
     _setPresenceMode: function (status, role, roomId, ctx) {
-          this._presenceStatus = status || (S.isPvCGamePage && S.isPvCGamePage() ? "vsComputer" : "available");
-          this._presenceRole = role || null;
-          this._presenceRoomId = roomId || null;
+          this._applySessionState({
+            presenceStatus: status || (S.isPvCGamePage && S.isPvCGamePage() ? "vsComputer" : "available"),
+            presenceRole: role || null,
+            presenceRoomId: roomId || null,
+          });
           try { this._runUnifiedAppPulse && this._runUnifiedAppPulse(true); } catch (e) {}
         },
 
@@ -2210,6 +2224,13 @@ this._bindGameListeners();
           try {
             this._installViewHooksOnce();
           } catch (e) {}
+        },
+
+    _resumeOfficialTurn: function (nextPlayer) {
+          if (typeof nextPlayer === "number") Game.player = nextPlayer;
+          Turn.ctx = null;
+          Turn.start();
+          if (typeof UI !== "undefined" && UI && typeof UI.updateAll === "function") UI.updateAll();
         },
 
     _applyRemoteState: function (data, options) {
@@ -2358,15 +2379,10 @@ this._bindGameListeners();
               }
             } catch (e) {}
             try {
-              Turn.ctx = null;
-            } catch (e) {}
-            try {
-              Turn.start();
-            } catch (e) {}
-    
-            try {
-              if (typeof UI !== "undefined" && UI && typeof UI.updateAll === "function") UI.updateAll();
-            } catch (e) {}
+              this._resumeOfficialTurn();
+            } catch (error) {
+              try { Logger.warn("official_turn_resume_failed", { gameId: this.gameId, error: String(error && (error.message || error)) }); } catch (_) {}
+            }
     
             try {
               const lm = data.lastMove;
@@ -2502,18 +2518,51 @@ this._bindGameListeners();
           return status === 404 || code.includes("not-found") || code.includes("game-not-found");
         },
 
-    _requestOfficialSync: function (opts) {
+    _normalizeOfficialSyncOptions: function (opts) {
           const cfg = opts && typeof opts === "object" ? opts : {};
+          const reason = String(cfg.reason || "sync").trim() || "sync";
+          return {
+            reasons: [reason],
+            discardCaptureDraft: !!cfg.discardCaptureDraft,
+            repairPresence: cfg.repairPresence === true,
+            notifyFailure: cfg.notifyFailure !== false,
+          };
+        },
+
+    _mergeOfficialSyncOptions: function (target, incoming) {
+          const current = target && typeof target === "object" ? target : this._normalizeOfficialSyncOptions({});
+          const next = incoming && typeof incoming === "object" && Array.isArray(incoming.reasons)
+            ? incoming
+            : this._normalizeOfficialSyncOptions(incoming);
+          const reasons = Array.isArray(current.reasons) ? current.reasons : [];
+          (next.reasons || []).forEach((reason) => {
+            const value = String(reason || "").trim();
+            if (value && !reasons.includes(value)) reasons.push(value);
+          });
+          current.reasons = reasons.length ? reasons : ["sync"];
+          current.discardCaptureDraft = !!(current.discardCaptureDraft || next.discardCaptureDraft);
+          current.repairPresence = !!(current.repairPresence || next.repairPresence);
+          current.notifyFailure = !!(current.notifyFailure || next.notifyFailure);
+          return current;
+        },
+
+    _requestOfficialSync: function (opts) {
+          const requested = this._normalizeOfficialSyncOptions(opts);
           if (!this.isActive || !this.gameId) return Promise.resolve(false);
           const expectedGameId = String(this.gameId || "");
           const existing = this._resyncInFlight;
-          if (existing && this._isAsyncContextCurrent(existing.context) && existing.promise) return existing.promise;
+          if (existing && this._isAsyncContextCurrent(existing.context) && existing.promise) {
+            existing.options = this._mergeOfficialSyncOptions(existing.options, requested);
+            try { this.refreshPvpControls && this.refreshPvpControls(); } catch (e) {}
+            return existing.promise;
+          }
 
           const asyncContext = this._captureAsyncContext(expectedGameId);
-          const flight = { context: asyncContext, reason: String(cfg.reason || "sync"), promise: null };
+          const flight = { context: asyncContext, options: requested, promise: null };
           const client = window.DhametGameRoomClient;
           if (!client || typeof client.resyncGame !== "function") return Promise.resolve(false);
 
+          const reasonText = () => (flight.options.reasons || ["sync"]).join("+");
           const promise = Promise.resolve(client.resyncGame({
             gameId: expectedGameId,
             baseMoveIndex: Number(this.moveIndex || 0) || 0,
@@ -2527,17 +2576,19 @@ this._bindGameListeners();
             }
 
             const applied = this._ingestOfficialGame(data, {
-              source: "sync:" + flight.reason,
+              source: "sync:" + reasonText(),
               gameId: expectedGameId,
               version: res && res.version,
               rejectDuplicate: false,
             });
 
             try { this._reconcilePendingMoveOutbox && this._reconcilePendingMoveOutbox(data); } catch (e) {}
-            if (cfg.discardCaptureDraft) try { this._clearCaptureDraft(); } catch (e) {}
+            if (flight.options.discardCaptureDraft) {
+              try { this._clearCaptureDraft(); } catch (e) {}
+            }
             if (applied) {
               try { this._noteOnlineGameTransportActivity && this._noteOnlineGameTransportActivity("resync"); } catch (e) {}
-              if (cfg.repairPresence === true && !this.isSpectator) {
+              if (flight.options.repairPresence && !this.isSpectator) {
                 try { this._writeFullGamePresence("gamePresence.sync", false); } catch (e) {}
               }
             }
@@ -2548,8 +2599,14 @@ this._bindGameListeners();
               await this._showUnavailableGameAndLeave();
               return false;
             }
-            try { Logger.warn("official_sync_failed", { gameId: expectedGameId, reason: flight.reason, err: String(error && (error.message || error)) }); } catch (_) {}
-            if (cfg.notifyFailure !== false) showOnlineNotice(window.I18N.translateArgs("online.syncFail"));
+            try {
+              Logger.warn("official_sync_failed", {
+                gameId: expectedGameId,
+                reasons: (flight.options.reasons || []).slice(),
+                err: String(error && (error.message || error)),
+              });
+            } catch (_) {}
+            if (flight.options.notifyFailure) showOnlineNotice(window.I18N.translateArgs("online.syncFail"));
             return false;
           }).finally(() => {
             if (this._resyncInFlight === flight) this._resyncInFlight = null;
@@ -2565,8 +2622,7 @@ this._bindGameListeners();
     syncNow: function (opts) {
           const cfg = opts && typeof opts === "object" ? opts : {};
           return this._requestOfficialSync({
-            reason: cfg.reason || (cfg.manual ? "manual" : "sync-now"),
-            preservePendingCommit: true,
+            reason: cfg.reason || "sync-now",
             discardCaptureDraft: !!cfg.discardCaptureDraft,
             repairPresence: cfg.repairPresence === true,
             notifyFailure: cfg.notifyFailure !== false,
@@ -2694,22 +2750,10 @@ this._bindGameListeners();
     refreshPvpControls: function () {
           if (!this.isActive) return;
           try {
-            if (window.DhametActionStateView && typeof window.DhametActionStateView.applyModeState === "function") {
-              window.DhametActionStateView.applyModeState({
-                online: true,
-                spectator: !!this.isSpectator,
-                uiBlocked: !!(document.documentElement && document.documentElement.classList.contains("ui-hold")),
-                postMatch: !!this._inPostMatch,
-                inChain: !!(typeof Game !== "undefined" && Game.inChain),
-                myTurn: !!(typeof Game !== "undefined" && Game.player === this.mySide),
-                canUndo: !this.isSpectator && Number(this.moveIndex || 0) > 0,
-                canClaimSoufla: !this.isSpectator && !!(typeof Game !== "undefined" && Game.availableSouflaForHuman),
-                isSyncing: !!this._resyncInFlight,
-              });
-            } else {
-              window.ZamatControls?.mount?.(true, !!this.isSpectator);
-            }
-          } catch (e) {}
+            this._applyOnlineActionState(true);
+          } catch (error) {
+            try { Logger.warn("pvp_controls_state_failed", { error: String(error && (error.message || error)) }); } catch (_) {}
+          }
     
           const btnSpk = document.getElementById("btnSpk");
           const btnMic = document.getElementById("btnMic");
@@ -4651,7 +4695,6 @@ this._bindGameListeners();
           if (!this._isAsyncContextCurrent(asyncContext, { ignorePostMatch: true })) return Promise.resolve(false);
           return this._requestOfficialSync({
             reason: reason || "automatic",
-            preservePendingCommit: true,
             repairPresence: false,
             notifyFailure: false,
           });
@@ -5719,12 +5762,13 @@ this._bindGameListeners();
               ? window.I18N.translateArgs("lobby.spectatorFull")
               : window.I18N.translateArgs("online.errors.spectatorJoinFailed");
             showOnlineNotice(msg, { allowSpectator: true });
-            this.isSpectator = false;
-            this.isActive = false;
-            this.mySide = null;
-            this.gameId = null;
-            this.gameRef = null;
-            if (typeof document !== "undefined" && document.body) document.body.classList.remove("z-spectator");
+            this._applySessionState({
+              active: false,
+              spectator: false,
+              side: null,
+              gameId: null,
+              gameRef: null,
+            });
             this._setOnlineButtonsState(false);
             if (typeof location !== "undefined" && isGamePage()) {
               const back = (location.pathname || "").includes("/pages/") ? "./loby.html" : "pages/loby.html";
@@ -5733,26 +5777,26 @@ this._bindGameListeners();
             return false;
           }
     
-          this.isSpectator = true;
-          this.isActive = true;
-          this.mySide = 0;
-          this.gameId = gameId;
-          this._inPostMatch = false;
-          this._postMatchShown = false;
-          this._lastRematchSeq = null;
-          try {
-            if (window.DhametMatchCoordinator) DhametMatchCoordinator.begin(DhametMatchCoordinator.phases.ONLINE_SPECTATOR, "online-spectator-enter");
-          } catch (e) {}
-          this.gameRef = this._makeOfficialGameRef(gameId); // Official /dhamet/api/game/live and /dhamet/api/game/resync endpoints provide live state.
+          this._applySessionState({
+            active: true,
+            spectator: true,
+            side: 0,
+            gameId,
+            postMatch: false,
+            postMatchShown: false,
+            lastRematchSeq: null,
+            presenceStatus: "spectating",
+            presenceRole: "spectator",
+            presenceRoomId: gameId,
+            phase: window.DhametMatchCoordinator ? DhametMatchCoordinator.phases.ONLINE_SPECTATOR : null,
+            reason: "online-spectator-enter",
+          });
+          this._applySessionState({ gameRef: this._makeOfficialGameRef(gameId) }); // Official /dhamet/api/game/live and /dhamet/api/game/resync endpoints provide live state.
     
           const asyncContext = this._captureAsyncContext(gameId);
-          if (typeof document !== "undefined" && document.body) document.body.classList.add("z-spectator");
           this._setOnlineButtonsState(true, { keepBlocked: true });
     
           try {
-            this._presenceStatus = "spectating";
-            this._presenceRole = "spectator";
-            this._presenceRoomId = gameId;
             await this._runUnifiedAppPulse(true);
           } catch (e) {
             handleDbError(e, "", { ctx: "presence.spectatorStatus" });
@@ -5764,7 +5808,7 @@ this._bindGameListeners();
           } catch (e) {
             Logger.warn("spectator_presentation_reset_failed", { gameId, err: String(e && (e.message || e)) });
           }
-          const synced = await this.syncNow({ repairPresence: false, force: true });
+          const synced = await this.syncNow({ reason: "spectator-entry", repairPresence: false, notifyFailure: false });
           if ((entryRequest && !this._isEntryRequestCurrent(entryRequest)) || !this._isAsyncContextCurrent(asyncContext)) return false;
           if (!synced) return await this._abortOnlineEntry("spectator-sync-failed");
           this._setOnlineButtonsState(true);
@@ -5788,11 +5832,10 @@ this._bindGameListeners();
           const gid = String(this.gameId || this._presenceRoomId || "").trim();
           const uid = String(this.myUid || "").trim();
           const wasSpectator = !!this.isSpectator;
-          try {
-            if (window.DhametMatchCoordinator) {
-              DhametMatchCoordinator.begin(DhametMatchCoordinator.phases.LEAVING, reason || "online-entry-aborted");
-            }
-          } catch (e) {}
+          this._applySessionState({
+            phase: window.DhametMatchCoordinator ? DhametMatchCoordinator.phases.LEAVING : null,
+            reason: reason || "online-entry-aborted",
+          });
           try { if (typeof Modal !== "undefined" && Modal && Modal.close) Modal.close("state-change"); } catch (e) {}
           try { this._unbindGameLiveSubscription && this._unbindGameLiveSubscription(); } catch (e) {}
           try { this.gameRef && this.gameRef.off && this.gameRef.off(); } catch (e) {}
@@ -5805,20 +5848,19 @@ this._bindGameListeners();
           try { this._markLocalCommitSettled && this._markLocalCommitSettled(); } catch (e) {}
           try { this._clearPersistedActiveGame && this._clearPersistedActiveGame(); } catch (e) {}
 
-          this.isActive = false;
-          this.isSpectator = false;
-          this.gameId = null;
-          this.gameRef = null;
-          this.mySide = null;
-          this._presenceRoomId = null;
+          this._applySessionState({
+            active: false,
+            spectator: false,
+            gameId: null,
+            gameRef: null,
+            side: null,
+            presenceRoomId: null,
+          });
 
           try {
             if (typeof history !== "undefined" && history.replaceState && typeof location !== "undefined") {
               history.replaceState(null, "", (location.pathname || "") + (location.hash || ""));
             }
-          } catch (e) {}
-          try {
-            if (typeof document !== "undefined" && document.body) document.body.classList.remove("z-spectator");
           } catch (e) {}
           try { this._setOnlineButtonsState(false); } catch (e) {}
           try { await this._setLobbyStatus("available"); } catch (e) {}
@@ -6055,11 +6097,10 @@ this._bindGameListeners();
             try { this._restoreCaptureDraftIfValid && this._restoreCaptureDraftIfValid(data); } catch (e) {}
           } else if (typeof data.turn === "number") {
             try {
-              Game.player = data.turn;
-              Turn.ctx = null;
-              Turn.start();
-              UI.updateAll();
-            } catch (e) {}
+              this._resumeOfficialTurn(data.turn);
+            } catch (error) {
+              try { Logger.warn("official_turn_only_resume_failed", { gameId: this.gameId, error: String(error && (error.message || error)) }); } catch (_) {}
+            }
           }
 
           if (rematchAdvanced) {

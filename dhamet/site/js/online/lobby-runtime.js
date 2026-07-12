@@ -1574,6 +1574,8 @@
   const Online = {
     isActive: false,
 
+    isSpectator: false,
+
     myUid: null,
 
     mySide: null,
@@ -1741,6 +1743,99 @@
     _reconnectRecoveryBound: false,
 
     _autoReconnectActionAt: 0,
+
+    _applySessionState: function (input) {
+          const next = input && typeof input === "object" ? input : {};
+          const has = (key) => Object.prototype.hasOwnProperty.call(next, key);
+
+          if (has("active")) this.isActive = !!next.active;
+          if (has("spectator")) this.isSpectator = !!next.spectator;
+          if (has("side")) this.mySide = next.side == null ? null : Number(next.side);
+          if (has("gameId")) this.gameId = next.gameId ? String(next.gameId) : null;
+          if (has("gameRef")) this.gameRef = next.gameRef || null;
+          if (has("postMatch")) this._inPostMatch = !!next.postMatch;
+          if (has("postMatchShown")) this._postMatchShown = !!next.postMatchShown;
+          if (has("lastRematchSeq")) this._lastRematchSeq = next.lastRematchSeq == null ? null : Number(next.lastRematchSeq);
+          if (has("presenceStatus")) this._presenceStatus = next.presenceStatus || "available";
+          if (has("presenceRole")) this._presenceRole = next.presenceRole || null;
+          if (has("presenceRoomId")) this._presenceRoomId = next.presenceRoomId ? String(next.presenceRoomId) : null;
+
+          try {
+            if (typeof document !== "undefined" && document.body && document.body.classList) {
+              document.body.classList.toggle("z-spectator", !!this.isSpectator);
+            }
+          } catch (error) {
+            try { Logger.warn("session_state_class_failed", { error: String(error && (error.message || error)) }); } catch (_) {}
+          }
+
+          if (next.phase && window.DhametMatchCoordinator) {
+            try {
+              if (next.newEpoch === false && typeof DhametMatchCoordinator.setPhase === "function") {
+                DhametMatchCoordinator.setPhase(next.phase);
+              } else if (typeof DhametMatchCoordinator.begin === "function") {
+                DhametMatchCoordinator.begin(next.phase, next.reason || "session-state");
+              }
+            } catch (error) {
+              try { Logger.warn("session_state_phase_failed", { phase: next.phase, error: String(error && (error.message || error)) }); } catch (_) {}
+            }
+          }
+
+          return {
+            active: !!this.isActive,
+            spectator: !!this.isSpectator,
+            side: this.mySide == null ? null : Number(this.mySide),
+            gameId: this.gameId || null,
+            gameRef: this.gameRef || null,
+            postMatch: !!this._inPostMatch,
+            presenceStatus: this._presenceStatus || "available",
+            presenceRole: this._presenceRole || null,
+            presenceRoomId: this._presenceRoomId || null,
+          };
+        },
+
+    _handleClearedBusyReconciliation: function (staleRoomId) {
+          const stale = String(staleRoomId || "").trim();
+          const current = String(this.gameId || this._presenceRoomId || "").trim();
+          if (stale && current && stale !== current) return false;
+
+          this._applySessionState({
+            phase: window.DhametMatchCoordinator ? DhametMatchCoordinator.phases.LEAVING : null,
+            reason: "presence-cleared-busy",
+          });
+
+          try { this._unbindGameLiveSubscription && this._unbindGameLiveSubscription(); } catch (error) {
+            try { Logger.warn("cleared_busy_live_teardown_failed", { error: String(error && (error.message || error)) }); } catch (_) {}
+          }
+          try { this._teardownRoomComms && this._teardownRoomComms(); } catch (error) {
+            try { Logger.warn("cleared_busy_comms_teardown_failed", { error: String(error && (error.message || error)) }); } catch (_) {}
+          }
+          try { this.gameRef && this.gameRef.off && this.gameRef.off(); } catch (error) {
+            try { Logger.warn("cleared_busy_ref_teardown_failed", { error: String(error && (error.message || error)) }); } catch (_) {}
+          }
+          try { this._teardownGamePresence && this._teardownGamePresence(); } catch (error) {
+            try { Logger.warn("cleared_busy_presence_teardown_failed", { error: String(error && (error.message || error)) }); } catch (_) {}
+          }
+          try { this._clearCaptureDraft && this._clearCaptureDraft(); } catch (_) {}
+          try { this._markLocalCommitSettled && this._markLocalCommitSettled(); } catch (_) {}
+          try { this._clearPersistedActiveGame && this._clearPersistedActiveGame(); } catch (_) {}
+
+          this._applySessionState({
+            active: false,
+            spectator: false,
+            side: null,
+            gameId: null,
+            gameRef: null,
+            postMatch: false,
+            presenceStatus: "available",
+            presenceRole: "lobby",
+            presenceRoomId: null,
+            phase: window.DhametMatchCoordinator ? DhametMatchCoordinator.phases.BOOTING : null,
+            newEpoch: false,
+            reason: "presence-cleared-busy-complete",
+          });
+          try { this._setOnlineButtonsState && this._setOnlineButtonsState(false); } catch (_) {}
+          return true;
+        },
 
     _bindReconnectRecovery: function () {
           try {
@@ -2413,22 +2508,19 @@
                 const ps = String(result.presence.status || "");
                 const pr = String(result.presence.role || "");
                 const rid = String(result.presence.roomId || "").trim();
-                this._presenceStatus = ps || this._presenceStatus;
-                this._presenceRole = pr || this._presenceRole;
-                this._presenceRoomId = rid || null;
+                this._applySessionState({
+                  presenceStatus: ps || this._presenceStatus,
+                  presenceRole: pr || this._presenceRole,
+                  presenceRoomId: rid || null,
+                });
               } catch (e) {}
             }
             if (result && result.reconciliation && result.reconciliation.action === "cleared-busy") {
               try {
-                const staleRoomId = String(result.reconciliation.staleRoomId || "").trim();
-                if (!this.gameId || this.gameId === staleRoomId) this.gameId = null;
-                if (!this._presenceRoomId || this._presenceRoomId === staleRoomId) this._presenceRoomId = null;
-                this._presenceStatus = "available";
-                this._presenceRole = "lobby";
-                this.isActive = false;
-                this.isSpectator = false;
-                this._clearPersistedActiveGame && this._clearPersistedActiveGame();
-              } catch (e) {}
+                this._handleClearedBusyReconciliation(result.reconciliation.staleRoomId);
+              } catch (error) {
+                try { Logger.warn("cleared_busy_reconciliation_failed", { error: String(error && (error.message || error)) }); } catch (_) {}
+              }
             }
             if (result && result.notifications) {
               try { await this._applyPulseNotifications(result.notifications); } catch (e) {}
@@ -2638,9 +2730,11 @@
               now: nowTs(),
             });
             if (!shouldWrite) return true;
-            if (body.status) this._presenceStatus = String(body.status);
-            if (body.role !== undefined) this._presenceRole = body.role || null;
-            if (body.roomId !== undefined) this._presenceRoomId = body.roomId || null;
+            this._applySessionState({
+              ...(body.status ? { presenceStatus: String(body.status) } : {}),
+              ...(body.role !== undefined ? { presenceRole: body.role || null } : {}),
+              ...(body.roomId !== undefined ? { presenceRoomId: body.roomId || null } : {}),
+            });
             this._rememberPresenceWrite("lobby", body);
             if (typeof this._runUnifiedAppPulse === "function") this._runUnifiedAppPulse(true, ctx || "lobby-presence");
             return true;
@@ -2652,9 +2746,11 @@
     _markPlayerBusyWithRoom: async function (gameId, ctx) {
           const gid = String(gameId || "").trim();
           if (!gid || !this.myUid) return false;
-          this._presenceStatus = "inPvP";
-          this._presenceRole = "player";
-          this._presenceRoomId = gid;
+          this._applySessionState({
+            presenceStatus: "inPvP",
+            presenceRole: "player",
+            presenceRoomId: gid,
+          });
           try { await this._runUnifiedAppPulse(true, "enter-game"); } catch (e) {}
           return true;
         },
@@ -2717,9 +2813,12 @@
             this.myIcon = getSavedIconOrDefault();
             this._presenceRegistered = currentSessionIsRegistered();
 
-            this._presenceStatus = isPvCGamePage() ? "vsComputer" : "available";
-            this._presenceRole = this._presenceStatus === "available" ? "lobby" : null;
-            this._presenceRoomId = null;
+            const initialPresenceStatus = isPvCGamePage() ? "vsComputer" : "available";
+            this._applySessionState({
+              presenceStatus: initialPresenceStatus,
+              presenceRole: initialPresenceStatus === "available" ? "lobby" : null,
+              presenceRoomId: null,
+            });
 
             const serverNow = () => nowTs();
             const payload = () => ({
@@ -3039,16 +3138,18 @@
               const busy = await this._markBusyIfActivePlayerRoom("players.lobbyStatus.activeRoom");
               if (busy) return;
             }
-            this._presenceStatus = status;
-            this._presenceRole =
-              status === "available"
-                ? "lobby"
-                : status === "inPvP"
-                  ? "player"
-                  : status === "spectating"
-                    ? "spectator"
-                    : null;
-            this._presenceRoomId = null;
+            this._applySessionState({
+              presenceStatus: status,
+              presenceRole:
+                status === "available"
+                  ? "lobby"
+                  : status === "inPvP"
+                    ? "player"
+                    : status === "spectating"
+                      ? "spectator"
+                      : null,
+              presenceRoomId: null,
+            });
             await this._runUnifiedAppPulse(true, "lobby-status");
           } catch (e) {}
         },
@@ -3575,9 +3676,11 @@
             } catch (e) {}
 
             try {
-              this._presenceStatus = "inPvP";
-              this._presenceRole = "player";
-              this._presenceRoomId = gameId;
+              this._applySessionState({
+                presenceStatus: "inPvP",
+                presenceRole: "player",
+                presenceRoomId: gameId,
+              });
               this._lastGameUserActivityAt = nowTs();
               this._rememberUnifiedPulseReason && this._rememberUnifiedPulseReason("accept-invite");
             } catch (e) {}

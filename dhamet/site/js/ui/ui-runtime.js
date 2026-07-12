@@ -1586,6 +1586,52 @@ function endKillPressed() {
 const UI = {
   confirmMatchExit: confirmMatchExitAction,
   restoreCaptureContinuationVisualState,
+  getGameHeaderModel() {
+    const resolveSlot = (side) => {
+      try {
+        if (window.ZGamePlayers && typeof window.ZGamePlayers.resolveSlot === "function") {
+          const slot = window.ZGamePlayers.resolveSlot(side);
+          if (slot) return slot;
+        }
+      } catch (_) {}
+      return null;
+    };
+    const resolvePresence = (side) => {
+      try {
+        if (window.Online && Online.isActive && typeof Online._getGameSlotPresence === "function") {
+          return Online._getGameSlotPresence(side) || null;
+        }
+      } catch (_) {}
+      return null;
+    };
+    let mode = "pvc";
+    try {
+      if (window.DhametMatchMode && typeof DhametMatchMode.detectMode === "function") {
+        const detected = DhametMatchMode.detectMode();
+        if (detected === DhametMatchMode.MODE_SPECTATOR) mode = "spectator";
+        else if (detected === DhametMatchMode.MODE_ONLINE) mode = "pvp";
+      }
+    } catch (_) {}
+    const topSlot = resolveSlot("top") || {};
+    const botSlot = resolveSlot("bot") || {};
+    const statusEl = qs("#statusTextMsg") || qs("#statusText");
+    return {
+      mode,
+      activeSide: Game.player === BOT ? "bot" : "top",
+      status: statusEl ? String(statusEl.textContent || "").trim() : "",
+      uiBlocked: !!(document.documentElement && document.documentElement.classList && (document.documentElement.classList.contains("ui-hold") || document.documentElement.classList.contains("role-pending"))),
+      top: {
+        name: String(topSlot.name || Game.names.top || "").trim(),
+        avatar: String(topSlot.avatar || "").trim(),
+        presence: resolvePresence("top"),
+      },
+      bot: {
+        name: String(botSlot.name || Game.names.bot || "").trim(),
+        avatar: String(botSlot.avatar || "").trim(),
+        presence: resolvePresence("bot"),
+      },
+    };
+  },
   updateAll() {
     this.updateStatus();
     this.updateAiLevelDisplay();
@@ -1594,17 +1640,21 @@ const UI = {
         const mode = DhametMatchMode.detectMode();
         const online = mode !== DhametMatchMode.MODE_PVC;
         const spectator = mode === DhametMatchMode.MODE_SPECTATOR;
-        DhametActionStateView.applyModeState({
-          online,
-          spectator,
-          uiBlocked: !!(document.documentElement && document.documentElement.classList.contains("ui-hold")),
-          postMatch: !!(window.Online && Online._inPostMatch),
-          inChain: !!Game.inChain,
-          myTurn: !online || !!(window.Online && Game.player === Online.mySide),
-          canUndo: !online ? !!(Game.history && Game.history.length) : !!(window.Online && Number(Online.moveIndex || 0) > 0),
-          canClaimSoufla: !!Game.availableSouflaForHuman,
-          isSyncing: !!(window.Online && Online._resyncInFlight),
-        });
+        if (online && window.Online && typeof Online._applyOnlineActionState === "function") {
+          Online._applyOnlineActionState(true);
+        } else {
+          DhametActionStateView.applyModeState({
+            online: false,
+            spectator: false,
+            uiBlocked: !!(document.documentElement && document.documentElement.classList.contains("ui-hold")),
+            postMatch: false,
+            inChain: !!Game.inChain,
+            myTurn: true,
+            canUndo: !!(Game.history && Game.history.length),
+            canClaimSoufla: !!Game.availableSouflaForHuman,
+            isSyncing: false,
+          });
+        }
       }
     } catch (_) {}
     try { if (window.ZGamePlayers && typeof window.ZGamePlayers.refresh === "function") window.ZGamePlayers.refresh(); } catch (_) {}
