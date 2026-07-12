@@ -72,19 +72,20 @@
   let lastLayoutKey = "";
   function mountControlLayout(state) {
     const key = `${state.online ? 1 : 0}:${state.spectator ? 1 : 0}`;
-    if (key === lastLayoutKey) return;
+    if (key === lastLayoutKey) return false;
     lastLayoutKey = key;
     try {
       if (root.ZamatControls && typeof root.ZamatControls.mount === "function") {
         root.ZamatControls.mount(!!state.online, !!state.spectator);
       }
     } catch (_) {}
+    return true;
   }
 
   function applyModeState(input) {
     const state = normalizeState(input);
     applyModeClasses(state);
-    mountControlLayout(state);
+    const layoutChanged = mountControlLayout(state);
 
     const onlinePlayer = state.online && !state.spectator;
     const localPlayer = !state.online && !state.spectator;
@@ -123,12 +124,21 @@
     const endCaptureButton = byId("btnEndKill");
     if (endCaptureButton && state.online) setAriaDisabled(endCaptureButton, !state.canEndCapture);
     const undoButton = byId("btnUndo");
-    if (undoButton && state.online) setAriaDisabled(undoButton, !state.canUndo);
+    if (undoButton && state.online) setAriaDisabled(undoButton, state.uiBlocked);
     const souflaButton = byId("btnSoufla");
-    if (souflaButton && state.online) setAriaDisabled(souflaButton, !state.canClaimSoufla);
+    if (souflaButton && state.online) setAriaDisabled(souflaButton, state.uiBlocked);
 
+    // Responsive DOM placement is only required when the match role changes.
+    // Never remount desktop controls on routine timer/status refreshes.
     try {
-      if (root.Mobile && typeof root.Mobile.scheduleLayout === "function") root.Mobile.scheduleLayout();
+      const d = doc();
+      if (
+        layoutChanged &&
+        d && d.body && d.body.classList.contains("z-mobile-on") &&
+        root.Mobile && typeof root.Mobile.syncGameLayout === "function"
+      ) {
+        root.Mobile.syncGameLayout();
+      }
     } catch (_) {}
     return state;
   }

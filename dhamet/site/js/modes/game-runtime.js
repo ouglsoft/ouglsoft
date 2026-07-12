@@ -262,6 +262,27 @@ function forcedOpeningBaseSide(seq) {
   return Game.settings && Game.settings.starter === "white" ? BOT : TOP;
 }
 
+function forcedOpeningStarterFromSnapshot(snapshot) {
+  const snap = snapshot && typeof snapshot === "object" ? snapshot : {};
+  try {
+    if (DhametRulesShared && typeof DhametRulesShared.openingStarterSide === "function") {
+      return DhametRulesShared.openingStarterSide(snap);
+    }
+  } catch (_) {}
+  const explicit = Number(
+    snap.opening && snap.opening.starter != null
+      ? snap.opening.starter
+      : snap.openingStarter != null
+        ? snap.openingStarter
+        : snap.starter
+  );
+  if (explicit === TOP || explicit === BOT) return explicit;
+  const ply = Math.max(0, Number(snap.forcedPly != null ? snap.forcedPly : snap.openingPly) || 0);
+  const mover = Number(snap.player);
+  if (mover === TOP || mover === BOT) return ply % 2 === 0 ? mover : -mover;
+  return forcedOpeningBaseSide(Game.forcedSeq);
+}
+
 function isForcedOpeningActive() {
   return !!(Game.forcedEnabled && Game.forcedPly < 10);
 }
@@ -952,6 +973,9 @@ function snapshotState(options) {
 
     forcedEnabled: Game.forcedEnabled,
     forcedPly: Game.forcedPly,
+    openingPly: Game.forcedPly,
+    opening: { starter: forcedOpeningBaseSide(Game.forcedSeq) },
+    openingStarter: forcedOpeningBaseSide(Game.forcedSeq),
     awaitingPenalty: !!Game.awaitingPenalty,
     souflaPending: serializeSouflaPending(Game.souflaPending),
     availableSouflaForHuman: serializeSouflaPending(Game.availableSouflaForHuman),
@@ -980,7 +1004,10 @@ function snapshotState(options) {
             ? ctx.snapshot.deferredPromotions.map((entry) => ({ idx: Number(entry.idx), side: Number(entry.side) }))
             : [],
           forcedEnabled: !!ctx.snapshot.forcedEnabled,
-          forcedPly: Number(ctx.snapshot.forcedPly || 0) || 0,
+          forcedPly: Number(ctx.snapshot.forcedPly != null ? ctx.snapshot.forcedPly : ctx.snapshot.openingPly) || 0,
+          openingPly: Number(ctx.snapshot.openingPly != null ? ctx.snapshot.openingPly : ctx.snapshot.forcedPly) || 0,
+          opening: { starter: forcedOpeningStarterFromSnapshot(ctx.snapshot) },
+          openingStarter: forcedOpeningStarterFromSnapshot(ctx.snapshot),
         } : null,
         longestByPiece: ctx.longestByPiece && typeof ctx.longestByPiece.forEach === "function"
           ? Array.from(ctx.longestByPiece.entries())
@@ -1051,6 +1078,8 @@ function restoreSnapshot(snap, opts) {
 
   if (typeof snap.forcedEnabled === "boolean") Game.forcedEnabled = snap.forcedEnabled;
   if (typeof snap.forcedPly === "number") Game.forcedPly = snap.forcedPly;
+  else if (typeof snap.openingPly === "number") Game.forcedPly = snap.openingPly;
+  Game.forcedSeq = forcedOpeningSeqForStarterSide(forcedOpeningStarterFromSnapshot(snap));
   Game.awaitingPenalty = !!snap.awaitingPenalty;
   Game._souflaApplying = false;
   Game.souflaPending = restoreSouflaPending(snap.souflaPending);
@@ -1080,7 +1109,10 @@ function restoreSnapshot(snap, opts) {
             ? tc.snapshot.deferredPromotions.map((entry) => ({ idx: Number(entry.idx), side: Number(entry.side) }))
             : tc.snapshot.deferredPromotion ? [{ idx: Number(tc.snapshot.deferredPromotion.idx), side: Number(tc.snapshot.deferredPromotion.side) }] : [],
           forcedEnabled: !!tc.snapshot.forcedEnabled,
-          forcedPly: Number(tc.snapshot.forcedPly || 0) || 0,
+          forcedPly: Number(tc.snapshot.forcedPly != null ? tc.snapshot.forcedPly : tc.snapshot.openingPly) || 0,
+          openingPly: Number(tc.snapshot.openingPly != null ? tc.snapshot.openingPly : tc.snapshot.forcedPly) || 0,
+          opening: { starter: forcedOpeningStarterFromSnapshot(tc.snapshot) },
+          openingStarter: forcedOpeningStarterFromSnapshot(tc.snapshot),
         } : snapshotState({ includeTurnCtx: false }),
       };
     }

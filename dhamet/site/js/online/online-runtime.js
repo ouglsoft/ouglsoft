@@ -867,6 +867,9 @@
             const board = createInitialBoard();
             const player = BOT;
     
+            if (window.DhametState && typeof window.DhametState.createInitialGameState === "function") {
+              return window.DhametState.createInitialGameState({ starter: player, forcedEnabled: true });
+            }
             return {
               board,
               player,
@@ -879,13 +882,41 @@
               moveCount: 0,
               forcedEnabled: true,
               forcedPly: 0,
+              openingPly: 0,
+              opening: { starter: player },
+              openingStarter: player,
             };
           } catch (e) {
             return null;
           }
         },
 
-    _startInviterGame: async function (gameId, entryRequest) {
+    _applyEntryOfficialState: async function (gameId, initialGame, reason) {
+          const gid = String(gameId || "").trim();
+          if (!gid) return false;
+          const access = this._lastGameAccess || null;
+          if (initialGame && typeof initialGame === "object") {
+            const version = access && access.version != null ? access.version : initialGame.__transportVersion;
+            const official = Object.assign({}, initialGame, { __transportVersion: version });
+            const applied = this._ingestOfficialGame(official, {
+              source: String(reason || "entry") + ":initial-read",
+              gameId: gid,
+              version,
+              rejectDuplicate: false,
+            });
+            if (applied) {
+              try { this._reconcilePendingMoveOutbox && this._reconcilePendingMoveOutbox(official); } catch (_) {}
+              return true;
+            }
+          }
+          return await this.syncNow({
+            reason: String(reason || "entry") + ":fallback",
+            repairPresence: false,
+            notifyFailure: false,
+          });
+        },
+
+    _startInviterGame: async function (gameId, entryRequest, initialGame) {
           if (entryRequest && !this._isEntryRequestCurrent(entryRequest)) return false;
           this._applySessionState({
             active: true,
@@ -922,18 +953,13 @@
           this._setOnlineButtonsState(true, { keepBlocked: true });
     
           try {
-            await this._runUnifiedAppPulse(true, "enter-game");
-          } catch (e) {}
-          if ((entryRequest && !this._isEntryRequestCurrent(entryRequest)) || !this._isAsyncContextCurrent(asyncContext)) return false;
-    
-          try {
             if (window.DhametMatchCoordinator) DhametMatchCoordinator.resetPresentation({ draw: true });
           } catch (e) {}
     
           this._applySessionState({ gameRef: this._makeOfficialGameRef(gameId) }); // Official /dhamet/api/game/live and /dhamet/api/game/resync endpoints provide live state.
     
           let synced = false;
-          try { synced = await this.syncNow({ repairPresence: false }); } catch (e) { synced = false; }
+          try { synced = await this._applyEntryOfficialState(gameId, initialGame, "inviter-entry"); } catch (e) { synced = false; }
           if ((entryRequest && !this._isEntryRequestCurrent(entryRequest)) || !this._isAsyncContextCurrent(asyncContext)) return false;
           if (!synced) return await this._abortOnlineEntry("inviter-sync-failed");
           this._setOnlineButtonsState(true);
@@ -1296,7 +1322,7 @@
           });
         },
 
-    _joinGame: async function (gameId, entryRequest) {
+    _joinGame: async function (gameId, entryRequest, initialGame) {
           if (entryRequest && !this._isEntryRequestCurrent(entryRequest)) return false;
           this._applySessionState({
             active: true,
@@ -1322,8 +1348,6 @@
           try {
             this._syncMyUidFromAuth && this._syncMyUidFromAuth();
           } catch (e) {}
-          await this._runUnifiedAppPulse(true, "enter-game");
-          if ((entryRequest && !this._isEntryRequestCurrent(entryRequest)) || !this._isAsyncContextCurrent(asyncContext)) return false;
           try {
             this._pendingSteps = [];
             this._cachedSouflaPlain = null;
@@ -1342,7 +1366,7 @@
           // initial board state without a separate roomList/presence refresh.
           let joinedOk = false;
           try {
-            joinedOk = await this.syncNow({ reason: "join", repairPresence: false, notifyFailure: false });
+            joinedOk = await this._applyEntryOfficialState(gameId, initialGame, "join-entry");
             try { this._syncMyUidFromOfficialResult && this._syncMyUidFromOfficialResult(this._lastGameAccess); } catch (e) {}
           } catch (e) {
             joinedOk = false;
@@ -5740,9 +5764,9 @@
           }
     
           if (accessSide === -1 || uid === wuid) {
-            await this._startInviterGame(gameId, entryRequest);
+            await this._startInviterGame(gameId, entryRequest, g);
           } else {
-            await this._joinGame(gameId, entryRequest);
+            await this._joinGame(gameId, entryRequest, g);
           }
         },
 

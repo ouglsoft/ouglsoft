@@ -8,6 +8,9 @@
   var GAME_LAYOUT_OBSERVER = null;
   var GAME_BODY_OBSERVER = null;
   var GAME_LAYOUT_MUTATING = 0;
+  // True only after the game DOM has actually been moved into a mobile layout.
+  // Routine desktop state refreshes must not remount the sidebar controls.
+  var GAME_LAYOUT_MOBILE_ACTIVE = false;
   var GAME_HOME_RECORDS = [];
   var AI_LEVEL_INTERACTION_UNTIL = 0;
   var LAST_GAME_MODE = null;
@@ -1139,7 +1142,7 @@ if (!icon) {
   }
 
   function restoreDesktopGameLayout() {
-    if (pageType() !== 'game') return;
+    if (pageType() !== 'game' || !GAME_LAYOUT_MOBILE_ACTIVE) return;
     markGameLayoutMutation(function () {
       setGameDrawer(false);
       restoreAllGameNodes();
@@ -1159,6 +1162,7 @@ if (!icon) {
         if (window.ZamatControls && typeof window.ZamatControls.mount === 'function') window.ZamatControls.mount(online, spectator);
       } catch (_) {}
       try { if (window.UI && typeof window.UI.updateAiLevelDisplay === 'function') window.UI.updateAiLevelDisplay(); } catch (_) {}
+      GAME_LAYOUT_MOBILE_ACTIVE = false;
     });
   }
 
@@ -1169,6 +1173,7 @@ if (!icon) {
       return;
     }
     markGameLayoutMutation(function () {
+      GAME_LAYOUT_MOBILE_ACTIVE = true;
       LAST_GAME_MODE = gameMode();
       document.body.setAttribute('data-mobile-game-mode', LAST_GAME_MODE);
       placeGameLayout();
