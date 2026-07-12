@@ -1416,7 +1416,7 @@ this._bindGameListeners();
               window.DhametActionStateView.applyModeState({
                 online: !!on,
                 spectator: !!this.isSpectator,
-                uiBlocked: true,
+                uiBlocked: !!(document.documentElement && document.documentElement.classList.contains("ui-hold")),
                 postMatch: !!this._inPostMatch,
                 inChain: !!(typeof Game !== "undefined" && Game.inChain),
                 myTurn: !!(typeof Game !== "undefined" && Game.player === this.mySide),
@@ -2150,26 +2150,11 @@ this._bindGameListeners();
           this._setOnlineButtonsState(false);
         },
 
-    _resetBoardAfterOnline: function () {
-          try {
-            if (window.DhametMatchCoordinator) DhametMatchCoordinator.begin(DhametMatchCoordinator.phases.PVC, "online-exit");
-            setupInitialBoard();
-            Turn.start();
-          } catch (e) {}
-        },
-
     _setPresenceMode: function (status, role, roomId, ctx) {
           this._presenceStatus = status || (S.isPvCGamePage && S.isPvCGamePage() ? "vsComputer" : "available");
           this._presenceRole = role || null;
           this._presenceRoomId = roomId || null;
           try { this._runUnifiedAppPulse && this._runUnifiedAppPulse(true); } catch (e) {}
-        },
-
-    _cleanupOnline: function () {
-          this._teardownOnlineSubscriptions();
-          this._resetOnlineRuntimeState();
-          this._resetBoardAfterOnline();
-          this._setPresenceMode(S.isPvCGamePage && S.isPvCGamePage() ? "vsComputer" : "available", null, null, "players.status");
         },
 
 
@@ -2264,6 +2249,7 @@ this._bindGameListeners();
               this._maybeRecordOpponentMoveForTraining(data);
             } catch (e) {}
     
+            try { if (typeof resetTransientGameState === "function") resetTransientGameState(); } catch (e) {}
             restoreSnapshot(snap, { redraw: false, visual: false });
     
             try {
@@ -2693,7 +2679,13 @@ this._bindGameListeners();
               window.DhametActionStateView.applyModeState({
                 online: true,
                 spectator: !!this.isSpectator,
-                uiBlocked: false,
+                uiBlocked: !!(document.documentElement && document.documentElement.classList.contains("ui-hold")),
+                postMatch: !!this._inPostMatch,
+                inChain: !!(typeof Game !== "undefined" && Game.inChain),
+                myTurn: !!(typeof Game !== "undefined" && Game.player === this.mySide),
+                canUndo: !this.isSpectator && Number(this.moveIndex || 0) > 0,
+                canClaimSoufla: !this.isSpectator && !!(typeof Game !== "undefined" && Game.availableSouflaForHuman),
+                isSyncing: !!this._resyncInFlight,
               });
             } else {
               window.ZamatControls?.mount?.(true, !!this.isSpectator);
@@ -5581,6 +5573,7 @@ this._bindGameListeners();
     _readOfficialGame: async function (gameId) {
           const gid = String(gameId || this.gameId || "").trim();
           if (!gid) return null;
+          this._lastOfficialReadError = null;
           try {
             if (window.DhametGameRoomClient && typeof window.DhametGameRoomClient.resyncGame === "function") {
               const res = await window.DhametGameRoomClient.resyncGame({ gameId: gid, baseMoveIndex: this.moveIndex || 0 });
@@ -5591,6 +5584,7 @@ this._bindGameListeners();
             }
           } catch (e) {
             try { this._lastGameAccess = e && e.data ? e.data : null; } catch (_) {}
+            try { this._lastOfficialReadError = e || new Error("official-read-failed"); } catch (_) {}
           }
           return null;
         },
@@ -5609,6 +5603,7 @@ this._bindGameListeners();
 
     _refreshStaleRoomBeforeEntry: async function (gameId) {
           const gid = String(gameId || "").trim();
+          this._lastOfficialReadError = null;
           if (!gid) return null;
           try { this._lastGameAccess = null; } catch (e) {}
           try {
@@ -5624,6 +5619,7 @@ this._bindGameListeners();
             }
           } catch (e) {
             try { this._lastGameAccess = e && e.data ? e.data : null; } catch (_) {}
+            try { this._lastOfficialReadError = e || new Error("official-entry-read-failed"); } catch (_) {}
           }
           try {
             const recent = this._getRecentAcceptedGame && this._getRecentAcceptedGame(gid);
@@ -5663,8 +5659,12 @@ this._bindGameListeners();
           let g = await this._refreshStaleRoomBeforeEntry(gameId);
           if (!this._isEntryRequestCurrent(entryRequest)) return false;
           if (!g) {
+            if (this._lastOfficialReadError) {
+              try { showOnlineNotice(window.I18N.translateArgs("status.reconnecting") || "تعذر الاتصال مؤقتًا. حاول مرة أخرى.", { allowSpectator: true }); } catch (e) {}
+              return false;
+            }
             await this._showUnavailableGameAndLeave();
-            return;
+            return false;
           }
     
           const statusText = String((g && g.status) || "").trim();
@@ -6129,7 +6129,7 @@ this._bindGameListeners();
             const key = this._captureDraftKey();
             if (!key) return false;
             sessionStorage.setItem(key, JSON.stringify(draft));
-            this._captureDraft = draft;
+            this._captureDraft = { gameId: String(this.gameId), draft };
             return true;
           } catch (e) {
             try { Logger.warn("capture_draft_save_failed", { gameId: this.gameId, err: String(e && (e.message || e)) }); } catch (_) {}
@@ -6153,13 +6153,14 @@ this._bindGameListeners();
 
     _readCaptureDraft: function () {
           try {
-            if (this._captureDraft) return this._captureDraft;
+            if (this._captureDraft && this._captureDraft.gameId === String(this.gameId || "")) return this._captureDraft.draft;
+            if (this._captureDraft && this._captureDraft.gameId !== String(this.gameId || "")) this._captureDraft = null;
             const key = this._captureDraftKey();
             if (!key) return null;
             const raw = sessionStorage.getItem(key);
             if (!raw) return null;
             const draft = JSON.parse(raw);
-            this._captureDraft = draft;
+            this._captureDraft = { gameId: String(this.gameId), draft };
             return draft;
           } catch (e) { return null; }
         },
@@ -6189,9 +6190,26 @@ this._bindGameListeners();
           if (!validation || !validation.valid) return fail(validation && validation.reason ? validation.reason : "invalid");
 
           try {
-            restoreSnapshot(draft.snapshot, { redraw: false, visual: false });
-            Game.history = Array.isArray(draft.history) ? JSON.parse(JSON.stringify(draft.history)) : [];
-            if (Visual && typeof Visual.setCapturedOrder === "function") Visual.setCapturedOrder(draft.capturedOrder || []);
+            const rebuilt = Object.assign({}, officialData.state.snapshot, {
+              board: validation.board || draft.snapshot.board,
+              inChain: true,
+              chainPos: Number(validation.steps[validation.steps.length - 1].to),
+              lastMovedFrom: Number(validation.steps[validation.steps.length - 1].from),
+              lastMovedTo: Number(validation.steps[validation.steps.length - 1].to),
+              lastMoveFrom: Number(validation.steps[0].from),
+              lastMovePath: validation.steps.map((step) => Number(step.to)),
+              turnCtx: {
+                Lmax: Number(draft.snapshot.turnCtx.Lmax || 0),
+                candidates: Array.isArray(draft.snapshot.turnCtx.candidates) ? draft.snapshot.turnCtx.candidates.slice() : [],
+                startedFrom: Number(validation.steps[0].from),
+                capturesDone: validation.steps.length,
+                longestByPiece: Array.isArray(draft.snapshot.turnCtx.longestByPiece) ? draft.snapshot.turnCtx.longestByPiece.slice() : [],
+                snapshot: officialData.state.snapshot,
+              },
+            });
+            restoreSnapshot(rebuilt, { redraw: false, visual: false });
+            Game.history = [];
+            if (Visual && typeof Visual.clearCapturedOrder === "function") Visual.clearCapturedOrder();
             if (Game.killTimer) {
               Game.killTimer.stop();
               Game.killTimer.elapsedMs = Math.max(0, Number(draft.timerElapsedMs || 0));

@@ -8,7 +8,7 @@
   const MODE_PVC = 'vs_cpu';
   const MODE_ONLINE = 'online_pvp';
   const MODE_SPECTATOR = 'spectator';
-  const ONLINE_ID_PARAMS = ['gid', 'room', 'rid', 'game', 'id', 'pvp'];
+  const ONLINE_ID_PARAMS = ['gid', 'room', 'rid', 'game', 'pvp'];
   const SPECTATOR_PARAMS = ['spectate', 'spectator', 'watch'];
 
   function getOnline(ctx) {
@@ -32,7 +32,8 @@
 
   function cleanMatchId(value) {
     const s = String(value == null ? '' : value).trim();
-    return s ? s.slice(0, 140) : null;
+    if (!s || s.length > 140) return null;
+    return /^[A-Za-z0-9_-]{6,140}$/.test(s) ? s : null;
   }
 
   function readQuery(ctx) {
@@ -67,7 +68,7 @@
 
     const mode = String(params.get('mode') || '').trim().toLowerCase();
     if (mode === 'spectator' || mode === 'watch') spectator = true;
-    const requested = !!gameId || spectator || mode === 'online' || mode === 'pvp';
+    const requested = !!gameId;
     return { requested, spectator, gameId };
   }
 

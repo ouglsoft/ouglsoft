@@ -2265,14 +2265,14 @@
       const coordinator = root.DhametMatchCoordinator;
       const taskToken = scheduledEpochToken || (coordinator && coordinator.token ? coordinator.token() : null);
       scheduledEpochToken = null;
-      if (coordinator && taskToken && !coordinator.isCurrent(taskToken)) return;
-      if (root.DhametMatchMode && typeof root.DhametMatchMode.isPvC === 'function' && !root.DhametMatchMode.isPvC()) return;
-      if (Game.gameOver || Game.awaitingPenalty) return;
-      const side = typeof aiSide === 'function' ? aiSide() : Game.player;
-      if (Game.player !== side) return;
       if (timer != null) clearTimer(timer);
       timer = null;
       scheduled = false;
+      if (coordinator && taskToken && !coordinator.isCurrent(taskToken)) { try { root.UI && root.UI.updateStatus && root.UI.updateStatus(); } catch (_) {} return; }
+      if (root.DhametMatchMode && typeof root.DhametMatchMode.isPvC === 'function' && !root.DhametMatchMode.isPvC()) { try { root.UI && root.UI.updateStatus && root.UI.updateStatus(); } catch (_) {} return; }
+      if (Game.gameOver || Game.awaitingPenalty) { try { root.UI && root.UI.updateStatus && root.UI.updateStatus(); } catch (_) {} return; }
+      const side = typeof aiSide === 'function' ? aiSide() : Game.player;
+      if (Game.player !== side) { try { root.UI && root.UI.updateStatus && root.UI.updateStatus(); } catch (_) {} return; }
       thinking = true;
       try {
         if (root.UI && root.UI.updateStatus) root.UI.updateStatus();

@@ -421,9 +421,7 @@ function setupInitialBoard() {
 
     Game.gameOver = false;
     Game.winner = null;
-    Game.awaitingPenalty = false;
-    Game.souflaPending = null;
-    Game.availableSouflaForHuman = null;
+    resetTransientGameState();
     Game.terminationReason = null;
     Game.deferredPromotion = null;
     Game.deferredPromotions = [];
@@ -799,9 +797,14 @@ const Turn = {
             if (window.UI && typeof UI.updateStatus === "function") UI.updateStatus();
           } catch {}
 
+          const souflaToken = window.DhametMatchCoordinator && DhametMatchCoordinator.token ? DhametMatchCoordinator.token() : null;
           const resolveComputerPenalty = (attempt) => {
+            if (souflaToken && window.DhametMatchCoordinator && !DhametMatchCoordinator.isCurrent(souflaToken)) return;
+            if (window.DhametMatchMode && typeof DhametMatchMode.isPvC === "function" && !DhametMatchMode.isPvC()) return;
             AI.pickSouflaDecision(pending)
               .then((decision) => {
+                if (souflaToken && window.DhametMatchCoordinator && !DhametMatchCoordinator.isCurrent(souflaToken)) return;
+                if (window.DhametMatchMode && typeof DhametMatchMode.isPvC === "function" && !DhametMatchMode.isPvC()) return;
                 if (Game.souflaPending !== pending || !Game.awaitingPenalty) return;
                 if (!applySouflaDecision(decision, pending)) {
                   throw new Error("computer/invalid-soufla-decision");
@@ -895,6 +898,43 @@ const Turn = {
 try { if (typeof window !== "undefined") window.Turn = Turn; } catch (_) {}
 
 
+
+function serializeSouflaPending(pending) {
+  if (!pending || typeof pending !== "object") return null;
+  const out = {};
+  Object.keys(pending).forEach((key) => {
+    const value = pending[key];
+    if (value instanceof Map) out[key] = { __map: Array.from(value.entries()) };
+    else if (typeof value !== "function") {
+      try { out[key] = JSON.parse(JSON.stringify(value)); } catch (_) {}
+    }
+  });
+  return out;
+}
+
+function restoreSouflaPending(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  const out = {};
+  Object.keys(raw).forEach((key) => {
+    const value = raw[key];
+    out[key] = value && typeof value === "object" && Array.isArray(value.__map)
+      ? new Map(value.__map)
+      : value;
+  });
+  return out;
+}
+
+function resetTransientGameState(options) {
+  const opts = options && typeof options === "object" ? options : {};
+  Game.awaitingPenalty = false;
+  Game._souflaApplying = false;
+  Game.souflaPending = null;
+  Game.availableSouflaForHuman = null;
+  if (!opts.keepCapture) { Game.inChain = false; Game.chainPos = null; }
+  try { if (!opts.keepTurnCtx && typeof Turn !== "undefined" && Turn) Turn.ctx = null; } catch (_) {}
+}
+try { if (typeof window !== "undefined") window.resetTransientGameState = resetTransientGameState; } catch (_) {}
+
 function snapshotState(options) {
   const opts = options && typeof options === "object" ? options : {};
   const out = {
@@ -912,6 +952,9 @@ function snapshotState(options) {
 
     forcedEnabled: Game.forcedEnabled,
     forcedPly: Game.forcedPly,
+    awaitingPenalty: !!Game.awaitingPenalty,
+    souflaPending: serializeSouflaPending(Game.souflaPending),
+    availableSouflaForHuman: serializeSouflaPending(Game.availableSouflaForHuman),
   };
 
   try {
@@ -1008,6 +1051,10 @@ function restoreSnapshot(snap, opts) {
 
   if (typeof snap.forcedEnabled === "boolean") Game.forcedEnabled = snap.forcedEnabled;
   if (typeof snap.forcedPly === "number") Game.forcedPly = snap.forcedPly;
+  Game.awaitingPenalty = !!snap.awaitingPenalty;
+  Game._souflaApplying = false;
+  Game.souflaPending = restoreSouflaPending(snap.souflaPending);
+  Game.availableSouflaForHuman = restoreSouflaPending(snap.availableSouflaForHuman);
 
   try {
     if (snap.turnCtx && typeof Turn !== "undefined" && Turn) {
@@ -1733,7 +1780,10 @@ function scheduleForcedOpeningAutoIfNeeded() {
   Game.awaitingPenalty = false;
   Game.souflaPending = null;
 
+  const openingToken = window.DhametMatchCoordinator && DhametMatchCoordinator.token ? DhametMatchCoordinator.token() : null;
   setTimeout(() => {
+    if (openingToken && window.DhametMatchCoordinator && !DhametMatchCoordinator.isCurrent(openingToken)) return;
+    if (window.DhametMatchMode && typeof DhametMatchMode.isPvC === "function" && !DhametMatchMode.isPvC()) return;
     if (!isForcedOpeningActive()) return;
     const current = getForcedOpeningInfo();
     if (!current || current.ply !== info.ply || Game.player !== current.mover) return;

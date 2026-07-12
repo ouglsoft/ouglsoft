@@ -48,7 +48,21 @@
   function isCurrent(value) { return !!value && value.epoch === epoch; }
   function getEpoch() { return epoch; }
   function getPhase() { return phase; }
-  function setPhase(nextPhase) { phase = nextPhase || phase; return phase; }
+  const allowedTransitions = Object.freeze({
+    [phases.BOOTING]: [phases.PVC, phases.ONLINE_PLAYER, phases.ONLINE_SPECTATOR, phases.LEAVING],
+    [phases.PVC]: [phases.ONLINE_PLAYER, phases.ONLINE_SPECTATOR, phases.POST_MATCH, phases.LEAVING],
+    [phases.ONLINE_PLAYER]: [phases.POST_MATCH, phases.LEAVING, phases.ONLINE_PLAYER],
+    [phases.ONLINE_SPECTATOR]: [phases.POST_MATCH, phases.LEAVING, phases.ONLINE_SPECTATOR],
+    [phases.POST_MATCH]: [phases.PVC, phases.ONLINE_PLAYER, phases.ONLINE_SPECTATOR, phases.LEAVING],
+    [phases.LEAVING]: [phases.PVC, phases.ONLINE_PLAYER, phases.ONLINE_SPECTATOR, phases.BOOTING],
+  });
+  function setPhase(nextPhase) {
+    if (!nextPhase || nextPhase === phase) return phase;
+    const allowed = allowedTransitions[phase] || [];
+    if (!allowed.includes(nextPhase)) { log('warn', 'invalid_phase_transition', { from: phase, to: nextPhase }); return phase; }
+    phase = nextPhase;
+    return phase;
+  }
 
   function normalizeCursor(input) {
     const data = input && typeof input === 'object' ? input : {};
@@ -67,7 +81,6 @@
     if (a.gameId && b.gameId && a.gameId !== b.gameId) return 0;
     if (a.rematchSeq !== b.rematchSeq) return a.rematchSeq > b.rematchSeq ? 1 : -1;
     if (a.moveIndex !== b.moveIndex) return a.moveIndex > b.moveIndex ? 1 : -1;
-    if (a.version >= 0 && b.version >= 0 && a.version !== b.version) return a.version > b.version ? 1 : -1;
     return 0;
   }
 
@@ -167,7 +180,7 @@
       previousTo = step.to;
     }
     if (!rules.boardsEqual(board, draft.snapshot.board)) return reject('result-position');
-    return { valid: true, reason: 'ok', steps: steps.map(function (step) { return Object.assign({}, step); }) };
+    return { valid: true, reason: 'ok', steps: steps.map(function (step) { return Object.assign({}, step); }), board: board.map(function (row) { return row.slice(); }) };
   }
 
   function resetPresentation(options) {
@@ -176,14 +189,14 @@
       const visual = root.Visual;
       if (visual) {
         if (!opts.keepCapturedOrder && typeof visual.clearCapturedOrder === 'function') visual.clearCapturedOrder();
-        if (typeof visual.clearSouflaFX === 'function') visual.clearSouflaFX();
+        if (typeof visual.clearSouflaFX === 'function') visual.clearSouflaFX(true);
         if (typeof visual.setHighlightCells === 'function') visual.setHighlightCells([]);
         if (typeof visual.setHintPath === 'function') visual.setHintPath(null, null);
-        if (typeof visual.clearForcedOpeningArrow === 'function') visual.clearForcedOpeningArrow();
+        if (typeof visual.clearForcedOpeningArrow === 'function') visual.clearForcedOpeningArrow(true);
         if (typeof visual.setLastMovePath === 'function') visual.setLastMovePath(null, null);
         if (typeof visual.clearPrevMove === 'function') visual.clearPrevMove();
         if (typeof visual.setLastMove === 'function') visual.setLastMove(null, null);
-        if (typeof visual.setUndoMove === 'function') visual.setUndoMove(null, null);
+        if (typeof visual.setUndoMove === 'function') visual.setUndoMove(null, null, true);
         if (typeof visual.draw === 'function' && opts.draw !== false) visual.draw();
       }
     } catch (error) { log('warn', 'presentation_reset_failed', { error: String(error) }); }
@@ -224,8 +237,9 @@
     const value = input && typeof input === 'object' ? input : {};
     const winner = value.winner == null ? null : num(value.winner, null);
     const localSide = value.localSide == null ? null : num(value.localSide, null);
-    const result = winner == null ? 'draw' : localSide == null ? 'ended' : winner === localSide ? 'win' : 'loss';
-    return Object.freeze({ winner, localSide, result, reason: value.reason || null, online: !!value.online });
+    const spectator = !!value.spectator || localSide === 0;
+    const result = winner == null ? 'draw' : spectator || localSide == null ? 'ended' : winner === localSide ? 'win' : 'loss';
+    return Object.freeze({ winner, localSide, result, reason: value.reason || null, online: !!value.online, spectator });
   }
 
   const api = Object.freeze({

@@ -385,16 +385,16 @@ const Visual = (() => {
     S.pendingTurnClear = true;
   }
 
-  function setUndoMove(fr, to) {
+  function setUndoMove(fr, to, noDraw) {
     if (fr == null || to == null) {
       S.undoMove = null;
-      draw();
+      if (!noDraw) draw();
       return;
     }
     clearAllFxExceptUndo();
     S.undoMove = { from: fr, path: [to] };
     S.pendingTurnClear = true;
-    draw();
+    if (!noDraw) draw();
   }
 
   function setUndoMovePath(fr, path) {
@@ -428,9 +428,9 @@ const Visual = (() => {
     S.forcedOpeningArrow = { from: fr, to: to };
     draw();
   }
-  function clearForcedOpeningArrow() {
+  function clearForcedOpeningArrow(noDraw) {
     S.forcedOpeningArrow = null;
-    draw();
+    if (!noDraw) draw();
   }
 
   function setHighlightCells(cells) {
@@ -1213,8 +1213,7 @@ const Input = {
           const msg = t("status.forcedChainStepByStep");
           UI.status(msg);
           showUiNotice(msg);
-          Input.selected = null;
-          Visual.setHighlightCells([]);
+          Visual.setHighlightCells([[Math.floor(Input.selected / BOARD_N), Input.selected % BOARD_N]]);
           Visual.draw();
           return;
         }
@@ -1230,8 +1229,7 @@ const Input = {
                 to: rcStr(toExp),
               }),
             );
-            Input.selected = null;
-            Visual.setHighlightCells([]);
+            Visual.setHighlightCells([[Math.floor(Input.selected / BOARD_N), Input.selected % BOARD_N]]);
             Visual.draw();
             return;
           }
@@ -1275,8 +1273,7 @@ const Input = {
               to: rcStr(toExp),
             }),
           );
-          Input.selected = null;
-          Visual.setHighlightCells([]);
+          Visual.setHighlightCells([[Math.floor(Input.selected / BOARD_N), Input.selected % BOARD_N]]);
           Visual.draw();
           return;
         }
@@ -1805,7 +1802,9 @@ const UI = {
         ? t("modals.gameOver.drawBody") || t("status.draw")
         : resultModel.result === "win"
           ? t("modals.gameOver.winBody") || t("status.win")
-          : t("modals.gameOver.loseBody") || t("status.lose");
+          : resultModel.result === "ended"
+            ? (winner === TOP ? (t("status.topWon") || "انتهت المباراة بفوز اللاعب العلوي") : (t("status.bottomWon") || "انتهت المباراة بفوز اللاعب السفلي"))
+            : t("modals.gameOver.loseBody") || t("status.lose");
 
     let goHome = true;
 
