@@ -1418,6 +1418,16 @@ try {
   window.SessionGame = SessionGame;
 } catch {}
 
+try {
+  const flushPvCSession = () => {
+    try {
+      SessionGame.saveNow();
+    } catch {}
+  };
+  window.addEventListener("pagehide", flushPvCSession, { capture: true });
+  window.addEventListener("beforeunload", flushPvCSession, { capture: true });
+} catch {}
+
 function canonicalSouflaDecision(decision, pending) {
   if (!decision || !pending || !Array.isArray(pending.options)) return null;
   const kind = decision.kind === "remove" || decision.kind === "force" ? decision.kind : null;

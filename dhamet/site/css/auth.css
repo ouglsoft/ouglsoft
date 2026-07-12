@@ -74,6 +74,8 @@
 }
 
 .z-auth-page.z-has-topbar .z-auth-lang { display: none; }
+.z-auth-page.z-auth-desktop-topbar { padding-top: var(--z-topbar-h); }
+.z-auth-page.z-auth-desktop-topbar .z-topbar { display: block !important; }
 /* ========================================================================== AUTH FOOTER ========================================================================== */
 .z-auth-foot {
   position: fixed; left: 0;

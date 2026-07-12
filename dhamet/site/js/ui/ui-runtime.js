@@ -1295,8 +1295,8 @@ const Input = {
 
         Visual.setLastMovePath(Game.lastMoveFrom, Game.lastMovePath);
 
-        Input.selected = null;
-        Visual.setHighlightCells([]);
+        Input.selected = idx;
+        Visual.setHighlightCells([[r, c]]);
         Visual.draw();
         return;
       }
@@ -1321,13 +1321,24 @@ const Input = {
       Visual.draw();
       return;
     } else {
+      if (!Game.inChain && v && pieceOwner(v) === Game.player && idx !== Input.selected) {
+        Input.selected = idx;
+        Visual.setHighlightCells([[r, c]]);
+        Visual.draw();
+        return;
+      }
+
       const fromIdx = Input.selected;
       const toIdx = idx;
       const { mask } = legalActions();
       const a = encodeAction(fromIdx, toIdx);
       if (!mask[a]) {
-        Input.selected = null;
-        Visual.setHighlightCells([]);
+        const keepIdx = Game.inChain && Game.chainPos != null ? Game.chainPos : Input.selected;
+        Input.selected = keepIdx;
+        if (keepIdx != null) {
+          const [keepR, keepC] = idxToRC(keepIdx);
+          Visual.setHighlightCells([[keepR, keepC]]);
+        }
         Visual.draw();
         return;
       }
@@ -1382,8 +1393,14 @@ const Input = {
         maybeQueueDeferredPromotion(toIdx);
         Turn.finishTurnAndSoufla();
       }
-      Input.selected = null;
-      Visual.setHighlightCells([]);
+      if (isCap) {
+        Input.selected = toIdx;
+        const [toR, toC] = idxToRC(toIdx);
+        Visual.setHighlightCells([[toR, toC]]);
+      } else {
+        Input.selected = null;
+        Visual.setHighlightCells([]);
+      }
       Visual.draw();
 
       if (
@@ -1397,6 +1414,22 @@ const Input = {
     }
   },
 };
+
+function restoreCaptureContinuationVisualState() {
+  if (!Game.inChain || Game.chainPos == null) return false;
+
+  Input.selected = Game.chainPos;
+  const [r, c] = idxToRC(Game.chainPos);
+  Visual.setHighlightCells([[r, c]]);
+  syncEndKillAvailability(true);
+
+  if (!Game.killTimer.running && Game.player === humanSide()) {
+    Game.killTimer.start();
+  }
+
+  Visual.draw();
+  return true;
+}
 
 function normalizeMobileControlIcons() {
   try {
@@ -3893,14 +3926,14 @@ function init() {
       document.body.classList.contains("z-spectator"))
   );
 
+  let restoredLocalPvC = false;
   if (!_isOnlineMode) {
-    let restored = false;
     try {
-      restored = !!SessionGame.restore();
+      restoredLocalPvC = !!SessionGame.restore();
     } catch {
-      restored = false;
+      restoredLocalPvC = false;
     }
-    if (!restored) {
+    if (!restoredLocalPvC) {
       setupInitialBoard();
       try {
         SessionGame.saveNow();
@@ -3927,15 +3960,25 @@ function init() {
 
   if (!_isOnlineMode) {
     Visual.draw();
-    Turn.start();
-    scheduleForcedOpeningAutoIfNeeded();
 
-    if (
-      !Game.gameOver &&
-      Game.player === aiSide() &&
-      !(Game.forcedEnabled && Game.forcedPly < 10)
-    ) {
-      window.AI && window.AI.scheduleMove();
+    const resumedCapture = !!(
+      restoredLocalPvC &&
+      Game.inChain &&
+      Game.chainPos != null &&
+      restoreCaptureContinuationVisualState()
+    );
+
+    if (!resumedCapture) {
+      Turn.start();
+      scheduleForcedOpeningAutoIfNeeded();
+
+      if (
+        !Game.gameOver &&
+        Game.player === aiSide() &&
+        !(Game.forcedEnabled && Game.forcedPly < 10)
+      ) {
+        window.AI && window.AI.scheduleMove();
+      }
     }
   }
 }

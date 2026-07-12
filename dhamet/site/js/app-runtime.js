@@ -1061,6 +1061,13 @@ const btnRegister = qs("#btnRegister", root);
             var href = String(a.getAttribute("href") || "");
             if (!href) return;
 
+            if (a.getAttribute("data-company-home") === "true" || (a.classList && a.classList.contains("z-nav-home"))) {
+              e.preventDefault();
+              e.stopPropagation();
+              try { location.href = "https://ouglsoft.com"; } catch (_) {}
+              return;
+            }
+
             
             if (/^https?:\/\//i.test(href) || /^mailto:/i.test(href)) return;
             if (a.target && a.target !== "" && a.target !== "_self") return;
@@ -1212,7 +1219,7 @@ function buildTopbar() {
                 '<span class="z-hamburger" aria-hidden="true"><span></span></span>' +
               '</button>' +
               '<nav class="z-nav" data-i18n-aria-label="aria.primaryNav">' +
-                '<a class="z-nav-home" href="https://ouglsoft.com/" data-i18n="buttons.home"></a>' +
+                '<a class="z-nav-home" href="https://ouglsoft.com" data-company-home="true" data-i18n="buttons.home"></a>' +
                 getPublicLinks(base).map(function (item) {
                   var attrs = item.external ? ' data-ouglsoft-link="' + item.legalKind + '"' : '';
                   return '<a href="' + item.href + '"' + attrs + ' data-i18n="' + item.key + '"></a>';
@@ -1414,6 +1421,20 @@ function buildTopbar() {
         applyCurrentShellLanguage();
       }
     
+      function ensureDesktopLoginTopbar() {
+        if (!isLoginPage() || !document.body) return;
+
+        var phoneUi = false;
+        try { phoneUi = typeof isPhoneLike === "function" && isPhoneLike(); } catch (_) { phoneUi = false; }
+        document.body.classList.toggle("z-auth-desktop-topbar", !phoneUi);
+        if (phoneUi) return;
+
+        if (!qs(".z-topbar")) {
+          document.body.insertBefore(buildTopbar(), document.body.firstChild);
+        }
+        updateAccountArea();
+      }
+
       function ensureShell() {
         applyTheme();
     
@@ -1441,6 +1462,7 @@ function buildTopbar() {
             document.body.insertBefore(buildTopbar(), document.body.firstChild);
           }
           updateAccountArea();
+          ensureDesktopLoginTopbar();
         } else {
           
           var ex = qs(".z-topbar");
@@ -1494,6 +1516,7 @@ function buildTopbar() {
       } else {
         ensureShell();
       }
+      try { window.addEventListener("pageshow", ensureDesktopLoginTopbar); } catch (_) {}
     
       
       window.ZShell = window.ZShell || {};
