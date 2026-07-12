@@ -1414,6 +1414,7 @@ const Input = {
     }
   },
 };
+try { if (typeof window !== "undefined") window.Input = Input; } catch (_) {}
 
 function restoreCaptureContinuationVisualState() {
   if (!Game.inChain || Game.chainPos == null) return false;
@@ -1662,9 +1663,28 @@ function endKillPressed() {
 
 const UI = {
   confirmMatchExit: confirmMatchExitAction,
+  restoreCaptureContinuationVisualState,
   updateAll() {
     this.updateStatus();
     this.updateAiLevelDisplay();
+    try {
+      if (window.DhametActionStateView && window.DhametMatchMode) {
+        const mode = DhametMatchMode.detectMode();
+        const online = mode !== DhametMatchMode.MODE_PVC;
+        const spectator = mode === DhametMatchMode.MODE_SPECTATOR;
+        DhametActionStateView.applyModeState({
+          online,
+          spectator,
+          uiBlocked: !!(document.documentElement && document.documentElement.classList.contains("ui-hold")),
+          postMatch: !!(window.Online && Online._inPostMatch),
+          inChain: !!Game.inChain,
+          myTurn: !online || !!(window.Online && Game.player === Online.mySide),
+          canUndo: !online ? !!(Game.history && Game.history.length) : !!(window.Online && Number(Online.moveIndex || 0) > 0),
+          canClaimSoufla: !!Game.availableSouflaForHuman,
+          isSyncing: !!(window.Online && Online._resyncInFlight),
+        });
+      }
+    } catch (_) {}
     try { if (window.ZGamePlayers && typeof window.ZGamePlayers.refresh === "function") window.ZGamePlayers.refresh(); } catch (_) {}
     try { normalizeMobileControlIcons(); } catch (_) {}
     Visual.draw();
@@ -1771,11 +1791,19 @@ const UI = {
   },
   showGameOverModal(winner) {
     const title = t("modals.gameOver.drawTitle");
+    const resultModel = window.DhametMatchCoordinator && typeof DhametMatchCoordinator.createResultModel === "function"
+      ? DhametMatchCoordinator.createResultModel({
+          winner,
+          localSide: humanSide(),
+          online: !!(window.Online && window.Online.isActive),
+          reason: Game && Game.terminationReason,
+        })
+      : { result: winner == null ? "draw" : winner === humanSide() ? "win" : "loss" };
 
     const bodyTxt =
-      winner == null
+      resultModel.result === "draw"
         ? t("modals.gameOver.drawBody") || t("status.draw")
-        : winner === humanSide()
+        : resultModel.result === "win"
           ? t("modals.gameOver.winBody") || t("status.win")
           : t("modals.gameOver.loseBody") || t("status.lose");
 
@@ -1833,14 +1861,14 @@ const UI = {
             try {
               SessionGame.clear();
             } catch (_) {}
+            try {
+              if (window.DhametMatchCoordinator) DhametMatchCoordinator.begin(DhametMatchCoordinator.phases.PVC, "new-local-game");
+            } catch (_) {}
             setupInitialBoard();
-            Visual.clearCapturedOrder();
-            Visual.clearSouflaFX();
-            Visual.setHighlightCells([]);
-            Visual.clearForcedOpeningArrow();
-            Visual.setLastMove(null, null);
-            Visual.setUndoMove(null, null);
-            Visual.draw();
+            try {
+              if (window.DhametMatchCoordinator) DhametMatchCoordinator.resetPresentation({ draw: true });
+              else Visual.draw();
+            } catch (_) {}
             try {
               Turn.start();
             } catch (_) {}
@@ -1876,8 +1904,10 @@ const UI = {
           },
         },
       ],
-      onClose: () => {
-        if (goHome) goMode();
+      priority: 100,
+      blocking: true,
+      onClose: (reason) => {
+        if (goHome && reason !== "replaced" && reason !== "state-change") goMode();
       },
     });
   },
@@ -2093,13 +2123,8 @@ const UI = {
           try { SessionGame.clear(); } catch (_) {}
           setupInitialBoard();
           try {
-            Visual.clearCapturedOrder();
-            Visual.clearSouflaFX();
-            Visual.setHighlightCells([]);
-            Visual.clearForcedOpeningArrow();
-            Visual.setLastMove(null, null);
-            Visual.setUndoMove(null, null);
-            Visual.draw();
+            if (window.DhametMatchCoordinator) DhametMatchCoordinator.resetPresentation({ draw: true });
+            else Visual.draw();
             Turn.start();
             scheduleForcedOpeningAutoIfNeeded();
           } catch (_) {}
@@ -2686,14 +2711,10 @@ function bindUI() {
           SessionGame.clear();
         } catch {}
         setupInitialBoard();
-        Visual.clearCapturedOrder();
-        Visual.clearSouflaFX();
-        Visual.setHighlightCells([]);
-        Visual.clearForcedOpeningArrow();
-        Visual.setLastMove(null, null);
-        Visual.setUndoMove(null, null);
-
-        Visual.draw();
+        try {
+          if (window.DhametMatchCoordinator) DhametMatchCoordinator.resetPresentation({ draw: true });
+          else Visual.draw();
+        } catch (_) {}
         try {
           Turn.start();
         } catch {}
@@ -3908,23 +3929,35 @@ function init() {
   loadSessionSettings();
 
   applyTheme(Game.settings.theme || AppPref.getTheme());
+  let bootMode = { online: false, spectator: false };
   try {
-    const initOnline = !!(document.body && document.body.classList && document.body.classList.contains("mode-pvp"));
-    const initSpectator = !!(document.body && document.body.classList && document.body.classList.contains("z-spectator"));
-    if (window.DhametActionStateView && typeof window.DhametActionStateView.applyModeState === "function") {
-      window.DhametActionStateView.applyModeState({ online: initOnline, spectator: initSpectator, uiBlocked: false });
+    if (window.DhametMatchMode && typeof DhametMatchMode.applyRequestedModeClasses === "function") {
+      bootMode = DhametMatchMode.applyRequestedModeClasses() || bootMode;
     } else {
-      window.ZamatControls && window.ZamatControls.mount(initOnline, initSpectator);
+      bootMode.online = !!(document.body && document.body.classList && document.body.classList.contains("mode-pvp"));
+      bootMode.spectator = !!(document.body && document.body.classList && document.body.classList.contains("z-spectator"));
+    }
+    if (window.DhametMatchCoordinator) {
+      DhametMatchCoordinator.begin(
+        bootMode.spectator ? DhametMatchCoordinator.phases.ONLINE_SPECTATOR :
+          bootMode.online ? DhametMatchCoordinator.phases.ONLINE_PLAYER : DhametMatchCoordinator.phases.PVC,
+        "ui-boot",
+      );
+    }
+    if (window.DhametActionStateView && typeof window.DhametActionStateView.applyModeState === "function") {
+      window.DhametActionStateView.applyModeState({
+        online: !!bootMode.online,
+        spectator: !!bootMode.spectator,
+        uiBlocked: !!bootMode.online,
+      });
+    } else {
+      window.ZamatControls && window.ZamatControls.mount(!!bootMode.online, !!bootMode.spectator);
     }
   } catch (e) {}
   bindUI();
   bindEndKillShortcut();
 
-  const _isOnlineMode = !!(
-    document.body &&
-    (document.body.classList.contains("mode-pvp") ||
-      document.body.classList.contains("z-spectator"))
-  );
+  const _isOnlineMode = !!bootMode.online;
 
   let restoredLocalPvC = false;
   if (!_isOnlineMode) {

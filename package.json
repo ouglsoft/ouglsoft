@@ -7,7 +7,8 @@
     "deploy:pages": "node deploy/deploy-pages.mjs",
     "deploy:worker": "node deploy/deploy-worker.mjs",
     "deploy": "npm run deploy:pages && npm run deploy:worker",
-    "preview": "npm run prepare:pages && wrangler pages dev .deploy/site --functions functions"
+    "preview": "npm run prepare:pages && wrangler pages dev .deploy/site --functions functions",
+    "test": "node --test tests/*.test.mjs"
   },
   "devDependencies": {
     "wrangler": "latest"

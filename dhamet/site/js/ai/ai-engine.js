@@ -2181,6 +2181,7 @@
     let scheduled = false;
     let timer = null;
     let lastAnalysis = null;
+    let scheduledEpochToken = null;
     let failureSignature = '';
     let failureCount = 0;
 
@@ -2261,6 +2262,11 @@
     }
 
     async function play() {
+      const coordinator = root.DhametMatchCoordinator;
+      const taskToken = scheduledEpochToken || (coordinator && coordinator.token ? coordinator.token() : null);
+      scheduledEpochToken = null;
+      if (coordinator && taskToken && !coordinator.isCurrent(taskToken)) return;
+      if (root.DhametMatchMode && typeof root.DhametMatchMode.isPvC === 'function' && !root.DhametMatchMode.isPvC()) return;
       if (Game.gameOver || Game.awaitingPenalty) return;
       const side = typeof aiSide === 'function' ? aiSide() : Game.player;
       if (Game.player !== side) return;
@@ -2272,6 +2278,8 @@
         if (root.UI && root.UI.updateStatus) root.UI.updateStatus();
         const signature = positionSignature();
         const analysis = await requestAnalysis();
+        if (coordinator && taskToken && !coordinator.isCurrent(taskToken)) return;
+        if (root.DhametMatchMode && typeof root.DhametMatchMode.isPvC === 'function' && !root.DhametMatchMode.isPvC()) return;
         if (signature !== positionSignature()) return;
         lastAnalysis = analysis;
         executeMove(analysis.move);
@@ -2291,10 +2299,12 @@
           !Game.gameOver &&
           !Game.awaitingPenalty &&
           Game.player === sideNow &&
-          failedAt === positionSignature();
+          failedAt === positionSignature() &&
+          (!coordinator || !taskToken || coordinator.isCurrent(taskToken));
         try { console.error('Dhamet computer engine failed', error); } catch (_) {}
         if (canRetry) {
           scheduled = true;
+          scheduledEpochToken = taskToken;
           timer = setTimer(play, 300);
         } else {
           try {
@@ -2310,7 +2320,13 @@
     }
 
     function scheduleMove() {
+      if (root.DhametMatchMode && typeof root.DhametMatchMode.isPvC === 'function' && !root.DhametMatchMode.isPvC()) return;
       applyPendingLevel();
+      try {
+        scheduledEpochToken = root.DhametMatchCoordinator && root.DhametMatchCoordinator.token
+          ? root.DhametMatchCoordinator.token()
+          : null;
+      } catch (_) { scheduledEpochToken = null; }
       try {
         if (thinking || (bridge && typeof bridge.isBusy === 'function' && bridge.isBusy())) bridge.cancel();
       } catch (_) {}

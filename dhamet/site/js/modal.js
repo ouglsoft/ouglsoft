@@ -54,7 +54,7 @@
         label: opts.okLabel || window.I18N.translateArgs("actions.ok"),
         className: opts.okClassName || "primary",
         onClick: function () {
-          close();
+          close("action");
         },
       },
     ];
@@ -102,17 +102,16 @@
     onClose: null,
     keyHandler: null,
     modalClassName: null,
+    priority: 0,
+    blocking: false,
+    queue: [],
   };
 
-  function safeRunOnClose() {
-    try {
-      if (typeof state.onClose === "function") state.onClose();
-    } catch (_) {}
-    state.onClose = null;
-  }
-
-  function close() {
+  function close(reason) {
     var b = ensureDom();
+    var why = reason || "programmatic";
+    var onClose = state.onClose;
+    state.onClose = null;
 
     try {
       var modalEl0 = qs(".modal", b);
@@ -121,13 +120,9 @@
     state.modalClassName = null;
 
     if (state.keyHandler) {
-      try {
-        document.removeEventListener("keydown", state.keyHandler);
-      } catch (_) {}
+      try { document.removeEventListener("keydown", state.keyHandler); } catch (_) {}
       state.keyHandler = null;
     }
-
-    safeRunOnClose();
 
     try {
       var focused = b.querySelector(":focus");
@@ -136,10 +131,32 @@
 
     b.style.display = "none";
     b.setAttribute("aria-hidden", "true");
+    try { document.body.classList.remove("modal-open"); } catch (_) {}
+    state.priority = 0;
+    state.blocking = false;
+
     try {
-      document.body.classList.remove("modal-open");
+      if (typeof onClose === "function") onClose(why);
     } catch (_) {}
+
+    if (why === "state-change") {
+      var discarded = state.queue.splice(0);
+      discarded.forEach(function (queued) {
+        try {
+          if (queued && typeof queued.onClose === "function") queued.onClose("state-change");
+        } catch (_) {}
+      });
+    }
+    if (!isOpen() && state.queue.length && why !== "state-change") {
+      state.queue.sort(function (a, b) { return Number(b.priority || 0) - Number(a.priority || 0); });
+      var next = state.queue.shift();
+      setTimeout(function () {
+        if (!isOpen() && next) open(next);
+        else if (next) state.queue.unshift(next);
+      }, 0);
+    }
   }
+
 
   function open(opts) {
     opts = opts || {};
@@ -150,13 +167,23 @@
         document.body.classList &&
         document.body.classList.contains("z-spectator")
       ) {
-        if (!opts.allowSpectator) return;
+        if (!opts.allowSpectator) return false;
       }
     } catch (_) {}
 
     var b = ensureDom();
 
-    close();
+    var nextPriority = Number(opts.priority || 0) || 0;
+    if (isOpen() && state.blocking && nextPriority < state.priority && !opts.forceReplace) {
+      if (opts.queueOnBlocked !== false) {
+        state.queue.push(opts);
+        return "queued";
+      }
+      return false;
+    }
+    if (isOpen()) close("replaced");
+    state.priority = nextPriority;
+    state.blocking = !!opts.blocking;
 
     try {
       var modalEl = qs(".modal", b);
@@ -213,7 +240,7 @@
 
     if (closeBtn) {
       closeBtn.onclick = function () {
-        close();
+        close("dismiss");
       };
     }
 
@@ -221,7 +248,7 @@
       try {
         if (e.key === "Escape") {
           if (opts.allowEsc === false) return;
-          close();
+          close("dismiss");
           return;
         }
         if (e.key === "Enter" && typeof opts.onEnter === "function") {
@@ -248,6 +275,7 @@
           }, 0);
       }
     } catch (_) {}
+    return true;
   }
 
   function getBackdrop() {
@@ -307,6 +335,10 @@
       allowEsc: cfg.allowEsc,
       focusSelector: cfg.focusSelector,
       modalClassName: cfg.modalClassName,
+      priority: cfg.priority,
+      blocking: cfg.blocking,
+      forceReplace: cfg.forceReplace,
+      queueOnBlocked: cfg.queueOnBlocked,
       onClose: cfg.onClose,
       onEnter: cfg.onEnter,
       buttons: [
@@ -314,7 +346,7 @@
           label: cfg.okLabel || window.I18N.translateArgs("actions.ok"),
           className: cfg.okClassName || "primary",
           onClick: function () {
-            if (cfg.autoClose !== false) close();
+            if (cfg.autoClose !== false) close("action");
             if (afterClose) afterClose();
           },
         },
@@ -334,6 +366,10 @@
       allowEsc: cfg.allowEsc,
       focusSelector: cfg.focusSelector,
       modalClassName: cfg.modalClassName,
+      priority: cfg.priority,
+      blocking: cfg.blocking,
+      forceReplace: cfg.forceReplace,
+      queueOnBlocked: cfg.queueOnBlocked,
       onClose: cfg.onClose,
       onEnter: cfg.onEnter,
       buttons: [
@@ -343,7 +379,7 @@
           disabled: !!cfg.firstDisabled,
           title: cfg.firstTitle,
           onClick: function () {
-            if (cfg.autoCloseFirst !== false) close();
+            if (cfg.autoCloseFirst !== false) close("action");
             if (onFirst) onFirst();
           },
         },
@@ -353,7 +389,7 @@
           disabled: !!cfg.secondDisabled,
           title: cfg.secondTitle,
           onClick: function () {
-            if (cfg.autoCloseSecond !== false) close();
+            if (cfg.autoCloseSecond !== false) close("action");
             if (onSecond) onSecond();
           },
         },
@@ -373,6 +409,10 @@
       allowEsc: cfg.allowEsc,
       focusSelector: cfg.focusSelector,
       modalClassName: cfg.modalClassName,
+      priority: cfg.priority,
+      blocking: cfg.blocking,
+      forceReplace: cfg.forceReplace,
+      queueOnBlocked: cfg.queueOnBlocked,
       onClose: cfg.onClose,
       onEnter: cfg.onEnter,
       buttons: [
@@ -382,7 +422,7 @@
           disabled: !!cfg.submitDisabled,
           title: cfg.submitTitle,
           onClick: function () {
-            if (cfg.autoCloseSubmit === true) close();
+            if (cfg.autoCloseSubmit === true) close("action");
             if (onSubmit) onSubmit();
           },
         },
@@ -392,7 +432,7 @@
           disabled: !!cfg.cancelDisabled,
           title: cfg.cancelTitle,
           onClick: function () {
-            if (cfg.autoCloseCancel !== false) close();
+            if (cfg.autoCloseCancel !== false) close("action");
             if (onCancel) onCancel();
           },
         },
@@ -400,35 +440,50 @@
     });
   }
 
-  function confirmModal(msg, title, yesLabel, noLabel) {
+  function confirmModal(msg, title, yesLabel, noLabel, options) {
     return new Promise(function (resolve) {
+      var settled = false;
+      function finish(value) {
+        if (settled) return;
+        settled = true;
+        resolve(!!value);
+      }
       var div = document.createElement("div");
       div.style.whiteSpace = "pre-wrap";
       div.textContent = String(msg == null ? "" : msg);
-      open({
+      var cfg = options && typeof options === "object" ? options : {};
+      var opened = open({
         title: title || "",
         body: div,
+        allowSpectator: cfg.allowSpectator !== false,
+        priority: cfg.priority || 20,
+        blocking: !!cfg.blocking,
+        onClose: function (reason) {
+          if (reason !== "action") finish(false);
+        },
         buttons: [
           {
             label: yesLabel || window.I18N.translateArgs("actions.ok"),
             className: "primary",
             onClick: function () {
-              close();
-              resolve(true);
+              finish(true);
+              close("action");
             },
           },
           {
             label: noLabel || window.I18N.translateArgs("actions.cancel"),
             className: "ghost",
             onClick: function () {
-              close();
-              resolve(false);
+              finish(false);
+              close("action");
             },
           },
         ],
       });
+      if (opened === false) finish(false);
     });
   }
+
 
   var Modal = (window.Modal = window.Modal || {});
   Modal.open = open;

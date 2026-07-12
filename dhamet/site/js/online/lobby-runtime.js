@@ -777,6 +777,10 @@
           allowEsc: cfg.allowEsc,
           focusSelector: cfg.focusSelector,
           modalClassName: cfg.modalClassName,
+          priority: cfg.priority,
+          blocking: cfg.blocking,
+          forceReplace: cfg.forceReplace,
+          queueOnBlocked: cfg.queueOnBlocked,
           onClick: cfg.onClick,
           onClose: cfg.onClose,
           onEnter: cfg.onEnter,
@@ -2681,9 +2685,12 @@
         },
 
     initPresence: async function () {
+          if (this._presenceInitPromise) return this._presenceInitPromise;
+          const self = this;
+          const initPromise = (async function () {
           const ok = await ensureAuthReady();
           if (!ok) return false;
-    
+
           try {
             const liveUid = auth && auth.currentUser && auth.currentUser.uid ? String(auth.currentUser.uid) : "";
             if (this._presenceInited && this.myUid && liveUid && this.myUid !== liveUid) {
@@ -2712,20 +2719,20 @@
             }
             if (this._presenceInited) return true;
           } catch (e) {}
-    
+
           if (!ok) return false;
-    
+
           try {
             this.myUid = auth.currentUser.uid;
-    
+
             this.myNick = getSavedNickOrDefault(this.myUid);
             this.myIcon = getSavedIconOrDefault();
             this._presenceRegistered = currentSessionIsRegistered();
-    
+
             this._presenceStatus = isPvCGamePage() ? "vsComputer" : "available";
             this._presenceRole = this._presenceStatus === "available" ? "lobby" : null;
             this._presenceRoomId = null;
-    
+
             const serverNow = () => nowTs();
             const payload = () => ({
               status: this._presenceStatus || (isPvCGamePage() ? "vsComputer" : "available"),
@@ -2745,7 +2752,7 @@
               acceptsInvites: this._lastAcceptsInvites === false ? false : localAcceptsInvitesPreference(),
               updatedAt: serverNow(),
             });
-    
+
             try {
               this._presenceConnInfoRef = null;
               this._presenceConnInfoHandler = null;
@@ -2753,7 +2760,7 @@
             try {
               this._rememberPresenceWrite && this._rememberPresenceWrite("lobby", payload());
             } catch (e) {}
-    
+
             this._presenceInited = true;
             try {
               this._startPresenceHeartbeat();
@@ -2767,6 +2774,14 @@
             return true;
           } catch (e) {
             return false;
+          }
+
+          }).call(this);
+          this._presenceInitPromise = initPromise;
+          try {
+            return await initPromise;
+          } finally {
+            if (self._presenceInitPromise === initPromise) self._presenceInitPromise = null;
           }
         },
 
@@ -3063,7 +3078,7 @@
           const handler = async (snap) => {
             const inv = snap.val();
             if (!inv || !inv.gameId) return;
-    
+
             try {
               const now = nowTs();
               const baseType = String((inv && (inv.type || inv.kind)) || "invite");
@@ -3072,12 +3087,12 @@
                 const expiresAt =
                   Number(inv.expiresAt || 0) ||
                   (createdAt ? createdAt + INVITE_TTL_MS : now + INVITE_TTL_MS);
-    
+
                 if (now >= expiresAt) {
                   try { await this._invalidateInviteLocally(inv, snap.ref); } catch (e) {}
                   return;
                 }
-    
+
                 try {
                   let inMatch = !!(
                     this.isActive ||
@@ -3091,20 +3106,20 @@
                 } catch (e) {}
               }
             } catch (e) {}
-    
+
             try {
               const t = inv && (inv.type || inv.kind);
-    
+
               if (t === "rematch_request") {
                 if (!this.isActive || !this.gameId || inv.gameId !== this.gameId || this.isSpectator) {
                   try { await this._invalidateInviteLocally(inv, snap.ref); } catch (e) {}
                   return;
                 }
-    
+
                 const fromName = inv.fromNick || window.I18N.translateArgs("players.player");
                 const title = window.I18N.translateArgs("online.rematch.title");
                 const body = window.I18N.translateArgs("online.rematch.body", { fromName });
-    
+
                 const canModal =
                   typeof Modal !== "undefined" && Modal && typeof Modal.open === "function";
                 const plainText = (html) => {
@@ -3117,7 +3132,7 @@
                     return String(html || "");
                   }
                 };
-    
+
                 if (!canModal) {
                   const ok = window.confirm(String(title || "") + "\n\n" + plainText(body));
                   if (ok) {
@@ -3131,16 +3146,20 @@
                   }
                   return;
                 }
-    
+
+                let rematchModalSettled = false;
                 Modal.open({
                   title,
                   body: `<div>${body}</div>`,
+                  priority: 75,
+                  blocking: true,
                   buttons: [
                     {
                       label: window.I18N.translateArgs("actions.accept"),
                       className: "ok",
                       onClick: async () => {
-                        Modal.close();
+                        rematchModalSettled = true;
+                        Modal.close("action");
                         try {
                           await this._acceptRematchInvite(inv, snap.ref);
                         } catch (e) {}
@@ -3150,28 +3169,28 @@
                       label: window.I18N.translateArgs("actions.reject"),
                       className: "ghost",
                       onClick: async () => {
-                        Modal.close();
+                        rematchModalSettled = true;
+                        Modal.close("action");
                         try {
                           await this._rejectRematchInvite(inv, snap.ref);
                         } catch (e) {}
                       },
                     },
                   ],
-    
-                  onClose: async () => {
-                    try {
-                      await this._rejectRematchInvite(inv, snap.ref);
-                    } catch (e) {}
+
+                  onClose: async (reason) => {
+                    if (rematchModalSettled || reason === "replaced" || reason === "state-change") return;
+                    try { await this._rejectRematchInvite(inv, snap.ref); } catch (e) {}
                   },
                 });
                 return;
               }
-    
+
               if (t === "rematch_accept") {
                 showOnlineNotice(window.I18N.translateArgs("online.rematch.accepted"));
                 return;
               }
-    
+
               if (t === "rematch_reject") {
                 showOnlineNotice(window.I18N.translateArgs("online.rematch.rejected"));
                 try {
@@ -3187,7 +3206,7 @@
                 return;
               }
             } catch (e) {}
-    
+
             const name = inv.fromNick || window.I18N.translateArgs("players.player");
             const title = window.I18N.translateArgs("online.newInviteTitle");
             const roomName = (inv.roomName || "").trim();
@@ -3197,7 +3216,7 @@
                   roomPart: window.I18N.translateArgs("online.newInviteRoomPart", { roomName }),
                 })
               : window.I18N.translateArgs("online.newInviteBody", { fromName: name, roomPart: "" });
-    
+
             const canModal = typeof Modal !== "undefined" && Modal && typeof Modal.open === "function";
             const plainText = (html) => {
               try {
@@ -3209,7 +3228,7 @@
                 return String(html || "");
               }
             };
-    
+
             if (!canModal) {
               const msg = plainText(body);
               const ok = window.confirm(String(title || "") + "\n\n" + String(msg || ""));
@@ -3220,7 +3239,7 @@
               }
               return;
             }
-    
+
             Modal.open({
               title,
               body: `<div>${body}</div>`,
@@ -3231,11 +3250,11 @@
                   className: "z-invite-choice z-invite-accept",
                   onClick: async () => {
                     Modal.close();
-    
+
                     try {
                       const uid =
                         this.myUid || (auth && auth.currentUser && auth.currentUser.uid) || "";
-    
+
                       if (!hasExplicitNick(uid)) {
                         const picked = ((await askNickname()) || "").trim();
                         if (picked) this.myNick = picked;
@@ -3260,7 +3279,7 @@
               ],
             });
           };
-    
+
           this._shownInviteKeys = this._shownInviteKeys || {};
           this._inviteOfficialHandler = (invites) => {
             try {

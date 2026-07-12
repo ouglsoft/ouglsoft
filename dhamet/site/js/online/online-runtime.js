@@ -134,6 +134,35 @@
   }
 
   Object.assign(Online, {
+    _captureAsyncContext: function (gameId) {
+          return {
+            gameId: String(gameId || this.gameId || ""),
+            epochToken: window.DhametMatchCoordinator ? DhametMatchCoordinator.token() : null,
+            postMatch: !!this._inPostMatch,
+          };
+        },
+
+    _isAsyncContextCurrent: function (context, options) {
+          const ctx = context && typeof context === "object" ? context : {};
+          const opts = options && typeof options === "object" ? options : {};
+          try {
+            if (ctx.epochToken && window.DhametMatchCoordinator && !DhametMatchCoordinator.isCurrent(ctx.epochToken)) return false;
+          } catch (e) { return false; }
+          if (!opts.allowInactive && !this.isActive) return false;
+          if (ctx.gameId && String(this.gameId || "") !== String(ctx.gameId)) return false;
+          if (!opts.ignorePostMatch && !!ctx.postMatch !== !!this._inPostMatch) return false;
+          return true;
+        },
+
+    _beginEntryRequest: function (gameId) {
+          this._entryRequestSeq = Number(this._entryRequestSeq || 0) + 1;
+          return Object.freeze({ id: this._entryRequestSeq, gameId: String(gameId || "") });
+        },
+
+    _isEntryRequestCurrent: function (request) {
+          return !!request && Number(request.id) === Number(this._entryRequestSeq || 0);
+        },
+
     _resolveSlotDisplayName: function (side, fallback) {
           try {
             if (window.ZGamePlayers && typeof window.ZGamePlayers.resolveSlot === "function") {
@@ -574,8 +603,9 @@
           if (!this.isActive || !this.gameId || this.isSpectator) return { ok: false, committed: false, error: "not-active" };
           if (!requireAuthUid(this.myUid)) return { ok: false, committed: false, error: "auth-required" };
 
+          const asyncContext = this._captureAsyncContext(this.gameId);
           const payload = {
-            gameId: this.gameId,
+            gameId: asyncContext.gameId,
             clientEndId: "end:" + (this.myUid || "anon") + ":" + this.gameId + ":" + Date.now() + ":" + Math.random().toString(36).slice(2, 10),
             baseMoveIndex: Number(this.moveIndex || 0) || 0,
             kind: kind || "resign",
@@ -589,6 +619,9 @@
           }
 
           const res = await window.DhametGameRoomClient.commitMatchEnd(payload);
+          if (!this._isAsyncContextCurrent(asyncContext)) {
+            return { ok: false, committed: false, ignored: true, error: "stale-context" };
+          }
           const g = res && res.game ? res.game : null;
           if (g) this._lastGameData = g;
           if (res && res.moveIndex != null) this.moveIndex = Number(res.moveIndex) || this.moveIndex || 0;
@@ -852,9 +885,19 @@
           }
         },
 
-    _startInviterGame: async function (gameId) {
+    _startInviterGame: async function (gameId, entryRequest) {
+          if (entryRequest && !this._isEntryRequestCurrent(entryRequest)) return false;
           this.mySide = -1;
           this.isActive = true;
+          this.isSpectator = false;
+          this.gameId = gameId;
+          this._inPostMatch = false;
+          this._postMatchShown = false;
+          this._lastRematchSeq = null;
+          try {
+            if (window.DhametMatchCoordinator) DhametMatchCoordinator.begin(DhametMatchCoordinator.phases.ONLINE_PLAYER, "online-inviter-enter");
+            this._bindCaptureDraftLifecycle && this._bindCaptureDraftLifecycle();
+          } catch (e) {}
           try {
             this._discardLocalInvitesOnEnterMatch && this._discardLocalInvitesOnEnterMatch();
           } catch (e) {}
@@ -869,7 +912,8 @@
             this._markLocalCommitSettled();
           } catch (e) {}
     
-          this._setOnlineButtonsState(true);
+          const asyncContext = this._captureAsyncContext(gameId);
+          this._setOnlineButtonsState(true, { keepBlocked: true });
     
           try {
             this._presenceStatus = "inPvP";
@@ -879,31 +923,31 @@
           try {
             await this._runUnifiedAppPulse(true, "enter-game");
           } catch (e) {}
+          if ((entryRequest && !this._isEntryRequestCurrent(entryRequest)) || !this._isAsyncContextCurrent(asyncContext)) return false;
     
           try {
-            Game.settings.starter = "white";
-            setupInitialBoard();
-            try {
-              Turn.start();
-            } catch (e) {}
+            if (window.DhametMatchCoordinator) DhametMatchCoordinator.resetPresentation({ draw: true });
           } catch (e) {}
     
-          this.gameId = gameId;
           this.gameRef = this._makeOfficialGameRef(gameId); // Official /dhamet/api/game/live and /dhamet/api/game/resync endpoints provide live state.
     
+          let synced = false;
+          try { synced = await this.syncNow({ repairPresence: false }); } catch (e) { synced = false; }
+          if ((entryRequest && !this._isEntryRequestCurrent(entryRequest)) || !this._isAsyncContextCurrent(asyncContext)) return false;
+          if (!synced) return await this._abortOnlineEntry("inviter-sync-failed");
+          this._setOnlineButtonsState(true);
           try {
-            await this.syncNow({ repairPresence: false });
-          } catch (e) {}
-try {
             this._bindInviteListener();
           } catch (e) {}
 this._bindGameListeners();
           try {
             await this._initRoomComms();
           } catch (e) {}
+          if ((entryRequest && !this._isEntryRequestCurrent(entryRequest)) || !this._isAsyncContextCurrent(asyncContext)) return false;
           try {
             this._persistActiveGame();
           } catch (e) {}
+          return true;
         },
 
     startOnline: async function () {
@@ -1216,7 +1260,7 @@ this._bindGameListeners();
               title: window.I18N.translateArgs("online.pvpEndTitle", "نهاية المباراة"),
               body,
               allowEsc: true,
-              onClose: () => done(false),
+              onClose: (reason) => { if (reason !== "action") done(false); },
               buttons: [
                 {
                   label: window.I18N.translateArgs("online.invites.leaveAndSend", "المغادرة والإرسال"),
@@ -1224,25 +1268,25 @@ this._bindGameListeners();
                   onClick: async () => {
                     try { if (Modal.setButtonsDisabled) Modal.setButtonsDisabled(true); } catch (e) {}
                     const ok = await this._leaveActiveMatchForInvite(gid);
-                    try { Modal.close(); } catch (e) {}
                     done(ok);
+                    try { Modal.close("action"); } catch (e) {}
                   },
                 },
                 {
                   label: window.I18N.translateArgs("online.invites.returnToMatch", "العودة إلى المباراة"),
                   className: "ok",
                   onClick: async () => {
-                    try { Modal.close(); } catch (e) {}
-                    try { await this._returnToActiveMatch(gid); } catch (e) {}
                     done(false);
+                    try { Modal.close("action"); } catch (e) {}
+                    try { await this._returnToActiveMatch(gid); } catch (e) {}
                   },
                 },
                 {
                   label: window.I18N.translateArgs("actions.cancel", "إلغاء"),
                   className: "ghost",
                   onClick: () => {
-                    try { Modal.close(); } catch (e) {}
                     done(false);
+                    try { Modal.close("action"); } catch (e) {}
                   },
                 },
               ],
@@ -1250,14 +1294,25 @@ this._bindGameListeners();
           });
         },
 
-    _joinGame: async function (gameId) {
+    _joinGame: async function (gameId, entryRequest) {
+          if (entryRequest && !this._isEntryRequestCurrent(entryRequest)) return false;
           this.mySide = +1;
           this.isActive = true;
+          this.isSpectator = false;
+          this.gameId = gameId;
+          this._inPostMatch = false;
+          this._postMatchShown = false;
+          this._lastRematchSeq = null;
+          try {
+            if (window.DhametMatchCoordinator) DhametMatchCoordinator.begin(DhametMatchCoordinator.phases.ONLINE_PLAYER, "online-join-enter");
+            this._bindCaptureDraftLifecycle && this._bindCaptureDraftLifecycle();
+          } catch (e) {}
           try {
             this._discardLocalInvitesOnEnterMatch && this._discardLocalInvitesOnEnterMatch();
           } catch (e) {}
     
-          this._setOnlineButtonsState(true);
+          const asyncContext = this._captureAsyncContext(gameId);
+          this._setOnlineButtonsState(true, { keepBlocked: true });
           try {
             this._syncMyUidFromAuth && this._syncMyUidFromAuth();
           } catch (e) {}
@@ -1267,6 +1322,7 @@ this._bindGameListeners();
             this._presenceRoomId = gameId;
           } catch (e) {}
           await this._runUnifiedAppPulse(true, "enter-game");
+          if ((entryRequest && !this._isEntryRequestCurrent(entryRequest)) || !this._isAsyncContextCurrent(asyncContext)) return false;
           try {
             this._pendingSteps = [];
             this._cachedSouflaPlain = null;
@@ -1274,38 +1330,9 @@ this._bindGameListeners();
           } catch (e) {}
     
           try {
-            Game.settings.starter = "white";
-            setupInitialBoard();
-            try {
-              Visual?.clearCapturedOrder?.();
-            } catch (e) {}
-            try {
-              Visual?.clearSouflaFX?.();
-            } catch (e) {}
-            try {
-              Visual?.setHighlightCells?.([]);
-            } catch (e) {}
-            try {
-              Visual?.setHintPath?.(null, null);
-            } catch (e) {}
-            try {
-              Visual?.clearForcedOpeningArrow?.();
-            } catch (e) {}
-            try {
-              Visual?.setLastMove?.(null, null);
-            } catch (e) {}
-            try {
-              Visual?.setUndoMove?.(null, null);
-            } catch (e) {}
-            try {
-              Visual?.draw?.();
-            } catch (e) {}
-            try {
-              Turn.start();
-            } catch (e) {}
+            if (window.DhametMatchCoordinator) DhametMatchCoordinator.resetPresentation({ draw: true });
           } catch (e) {}
     
-          this.gameId = gameId;
           this.gameRef = this._makeOfficialGameRef(gameId); // Official /dhamet/api/game/live and /dhamet/api/game/resync endpoints provide live state.
     
     
@@ -1319,22 +1346,24 @@ this._bindGameListeners();
           } catch (e) {
             joinedOk = false;
           }
-          if (!joinedOk) {
-            try { this.gameRef.off(); } catch (e) {}
-            return;
-          }
+          if ((entryRequest && !this._isEntryRequestCurrent(entryRequest)) || !this._isAsyncContextCurrent(asyncContext)) return false;
+          if (!joinedOk) return await this._abortOnlineEntry("join-sync-failed");
+          this._setOnlineButtonsState(true);
     
           this._bindGameListeners();
           try {
             await this._initRoomComms();
           } catch (e) {}
+          if ((entryRequest && !this._isEntryRequestCurrent(entryRequest)) || !this._isAsyncContextCurrent(asyncContext)) return false;
           try {
             this._persistActiveGame();
           } catch (e) {}
+          return true;
         },
 
     _applyUiHold: function (on) {
           try {
+            if (on) this._uiHoldGeneration = Number(this._uiHoldGeneration || 0) + 1;
             var root = document.documentElement;
             if (!root || !root.classList) return;
             if (on) {
@@ -1352,11 +1381,15 @@ this._bindGameListeners();
           try {
             var root = document.documentElement;
             if (!root || !root.classList) return;
+            var self = this;
+            var generation = Number(this._uiHoldGeneration || 0);
             var done = function () {
               try {
+                if (generation !== Number(self._uiHoldGeneration || 0)) return;
                 root.classList.remove("ui-hold");
                 root.classList.remove("role-pending");
                 root.classList.add("ui-ready");
+                if (window.UI && typeof UI.updateAll === "function") UI.updateAll();
               } catch (e) {}
             };
             if (window.requestAnimationFrame) {
@@ -1369,7 +1402,8 @@ this._bindGameListeners();
           } catch (e) {}
         },
 
-    _setOnlineButtonsState: function (on) {
+    _setOnlineButtonsState: function (on, options) {
+          const stateOptions = options && typeof options === "object" ? options : {};
           try {
             this._applyUiHold(true);
           } catch (e) {}
@@ -1383,6 +1417,12 @@ this._bindGameListeners();
                 online: !!on,
                 spectator: !!this.isSpectator,
                 uiBlocked: true,
+                postMatch: !!this._inPostMatch,
+                inChain: !!(typeof Game !== "undefined" && Game.inChain),
+                myTurn: !!(typeof Game !== "undefined" && Game.player === this.mySide),
+                canUndo: !!on && !this.isSpectator && Number(this.moveIndex || 0) > 0,
+                canClaimSoufla: !!on && !this.isSpectator && !!(typeof Game !== "undefined" && Game.availableSouflaForHuman),
+                isSyncing: !!this._resyncInFlight,
               });
             } else {
               document.body.classList.toggle("mode-pvp", !!on);
@@ -1419,9 +1459,10 @@ this._bindGameListeners();
                 const f = sessionStorage.getItem("zamat.forceResyncOnLoad");
                 if (f) {
                   sessionStorage.removeItem("zamat.forceResyncOnLoad");
+                  const asyncContext = this._captureAsyncContext(this.gameId);
                   setTimeout(() => {
                     try {
-                      this.syncNow();
+                      if (this._isAsyncContextCurrent(asyncContext)) this.syncNow();
                     } catch (_e) {}
                   }, 250);
                 }
@@ -1434,9 +1475,9 @@ this._bindGameListeners();
               }
             } catch (e) {}
           }
-          try {
-            this._releaseUiHoldSoon();
-          } catch (e) {}
+          if (!stateOptions.keepBlocked) {
+            try { this._releaseUiHoldSoon(); } catch (e) {}
+          }
         },
 
     _notifyMatchEndWatchers: async function (gameId, reason, fromNick) {
@@ -1446,6 +1487,7 @@ this._bindGameListeners();
         },
 
     endOnline: async function () {
+          const asyncContext = this._captureAsyncContext(this.gameId);
           try {
             this._localEndedOnline = true;
           } catch (e) {}
@@ -1453,6 +1495,7 @@ this._bindGameListeners();
           try {
             await tryFinalizeTrainingOnExit("abort", 900);
           } catch (e) {}
+          if (!this._isAsyncContextCurrent(asyncContext)) return;
 
           const who = this.myNick || window.I18N.translateArgs("players.player");
           let res = null;
@@ -1490,18 +1533,12 @@ this._bindGameListeners();
         },
 
     _clearPostMatchSession: function () {
-          try {
-            SessionGame && SessionGame.clear && SessionGame.clear();
-          } catch (e) {}
-          try {
-            sessionStorage && sessionStorage.clear && sessionStorage.clear();
-          } catch (e) {}
-          try {
-            localStorage.removeItem("zamat.activeGameId");
-          } catch (e) {}
-          try {
-            localStorage.removeItem("zamat.activeGameTs");
-          } catch (e) {}
+          try { this._clearCaptureDraft && this._clearCaptureDraft(); } catch (e) {}
+          try { this._clearPendingMoveOutbox && this._clearPendingMoveOutbox(); } catch (e) {}
+          try { sessionStorage.removeItem("zamat.forceResyncOnLoad"); } catch (e) {}
+          try { sessionStorage.removeItem("zamat.internalNavTs"); } catch (e) {}
+          try { localStorage.removeItem("zamat.activeGameId"); } catch (e) {}
+          try { localStorage.removeItem("zamat.activeGameTs"); } catch (e) {}
         },
 
     _enterPostMatch: function (meta) {
@@ -1509,9 +1546,13 @@ this._bindGameListeners();
             this._clearPostMatchSession();
           } catch (e) {}
           this._inPostMatch = true;
+          try {
+            if (window.DhametMatchCoordinator) DhametMatchCoordinator.setPhase(DhametMatchCoordinator.phases.POST_MATCH);
+          } catch (e) {}
     
           if (this._postMatchShown) return;
           this._postMatchShown = true;
+          const asyncContext = this._captureAsyncContext(this.gameId);
     
           const reason = (meta && (meta.reason || meta.endedReason)) || null;
           const endedBy = (meta && (meta.endedBy || meta.ended_by)) || null;
@@ -1565,6 +1606,7 @@ this._bindGameListeners();
     
             const go = async () => {
               try {
+                if (!this._isAsyncContextCurrent(asyncContext)) return;
                 await this.exitToMode();
               } catch (e) {}
             };
@@ -1577,9 +1619,11 @@ this._bindGameListeners();
                   okLabel: window.I18N.translateArgs("actions.ok", "OK"),
                   okClassName: "ok",
                   allowSpectator: true,
+                  priority: 90,
+                  blocking: true,
                   onClick: go,
-                  onClose: () => {
-                    go();
+                  onClose: (reason) => {
+                    if (reason === "dismiss") go();
                   },
                 });
                 return;
@@ -1607,7 +1651,7 @@ this._bindGameListeners();
             } catch (e) {}
             try {
               setTimeout(() => {
-                try { this.exitToMode(); } catch (e) {}
+                try { if (this._isAsyncContextCurrent(asyncContext)) this.exitToMode(); } catch (e) {}
               }, 900);
             } catch (e) {}
             return;
@@ -1626,66 +1670,35 @@ this._bindGameListeners();
         },
 
     _onRematchStarted: function () {
+          this._inPostMatch = false;
+          this._postMatchShown = false;
+          this._localEndedOnline = false;
+          this._rematchRequestedAt = 0;
+          this._rematchPending = false;
+          this._pendingSteps = [];
+          this._cachedSouflaPlain = null;
+          try { this._clearCaptureDraft(); } catch (e) {}
+          try { this._clearPendingMoveOutbox(); } catch (e) {}
+          try { this._markLocalCommitSettled(); } catch (e) {}
           try {
-            this._inPostMatch = false;
+            if (typeof Modal !== "undefined" && Modal && typeof Modal.close === "function") Modal.close("state-change");
           } catch (e) {}
           try {
-            this._postMatchShown = false;
-          } catch (e) {}
-          try {
-            this._localEndedOnline = false;
-          } catch (e) {}
-          try {
-            this._rematchRequestedAt = 0;
-            this._rematchPending = false;
-          } catch (e) {}
-    
-    
-          try {
-            if (typeof Modal !== "undefined" && Modal && typeof Modal.close === "function")
-              Modal.close();
-          } catch (e) {}
-    
-          try {
-            if (typeof setupInitialBoard === "function") {
-              Game.settings = Game.settings || {};
-              Game.settings.starter = "white";
-              setupInitialBoard();
-              try {
-                Visual && Visual.clearCapturedOrder && Visual.clearCapturedOrder();
-              } catch (e) {}
-              try {
-                Visual && Visual.clearSouflaFX && Visual.clearSouflaFX();
-              } catch (e) {}
-              try {
-                Visual && Visual.setHighlightCells && Visual.setHighlightCells([]);
-              } catch (e) {}
-              try {
-                Visual && Visual.setHintPath && Visual.setHintPath(null, null);
-              } catch (e) {}
-              try {
-                Visual && Visual.clearForcedOpeningArrow && Visual.clearForcedOpeningArrow();
-              } catch (e) {}
-              try {
-                Visual && Visual.setLastMove && Visual.setLastMove(null, null);
-              } catch (e) {}
-              try {
-                Visual && Visual.setUndoMove && Visual.setUndoMove(null, null);
-              } catch (e) {}
-              try {
-                Visual && Visual.draw && Visual.draw();
-              } catch (e) {}
-              try {
-                Turn && (Turn.ctx = null);
-              } catch (e) {}
-              try {
-                Turn && Turn.start && Turn.start();
-              } catch (e) {}
-              try {
-                UI && UI.updateAll && UI.updateAll();
-              } catch (e) {}
+            if (window.DhametMatchCoordinator) {
+              DhametMatchCoordinator.begin(
+                this.isSpectator ? DhametMatchCoordinator.phases.ONLINE_SPECTATOR : DhametMatchCoordinator.phases.ONLINE_PLAYER,
+                "online-rematch",
+              );
+              DhametMatchCoordinator.resetPresentation({ draw: true });
             }
           } catch (e) {}
+          try {
+            Turn && (Turn.ctx = null);
+            Game.inChain = false;
+            Game.chainPos = null;
+            Game.killTimer && Game.killTimer.hardStop && Game.killTimer.hardStop();
+          } catch (e) {}
+          try { this._setOnlineButtonsState(true, { keepBlocked: true }); } catch (e) {}
         },
 
     _getOpponentInfoFromData: function (data) {
@@ -1750,22 +1763,28 @@ this._bindGameListeners();
 
     _respondOfficialRematch: async function (accept, requestLike) {
           const req = requestLike && typeof requestLike === "object" ? requestLike : {};
+          const targetGameId = String(req.gameId || this.gameId || "");
+          const asyncContext = this._captureAsyncContext(targetGameId);
           const me = this.myNick || window.I18N.translateArgs("players.player");
           const data = await this._commitOfficialRematch("rematch-respond", {
-            gameId: req.gameId || this.gameId,
+            gameId: targetGameId,
             accept: !!accept,
             nick: me,
           });
-          try {
-            if (data && data.game) this._lastGameData = data.game;
-          } catch (e) {}
+          if (!this._isAsyncContextCurrent(asyncContext)) return data;
           try { this._noteOnlineGameTransportActivity && this._noteOnlineGameTransportActivity("rematch"); } catch (e) {}
-          if (accept) {
-            try { this._onRematchStarted(); } catch (e) {}
-            showOnlineNotice(window.I18N.translateArgs("online.rematch.accepted"));
-          } else {
-            showOnlineNotice(window.I18N.translateArgs("online.rematch.rejected"));
+          if (data && data.game) {
+            const applied = this._ingestOfficialGame(data.game, {
+              source: "rematch-response",
+              gameId: targetGameId,
+              version: data.version != null ? data.version : data.game.__transportVersion,
+              rejectDuplicate: false,
+            });
+            if (!applied) try { this._forceResync("rematch-response"); } catch (e) {}
+          } else if (accept) {
+            try { this._forceResync("rematch-response-missing-game"); } catch (e) {}
           }
+          showOnlineNotice(window.I18N.translateArgs(accept ? "online.rematch.accepted" : "online.rematch.rejected"));
           return data;
         },
 
@@ -1828,11 +1847,16 @@ this._bindGameListeners();
               Modal.open({
                 title,
                 body: `<div>${body}</div>`,
+                priority: 75,
+                blocking: true,
                 buttons: [
-                  { label: window.I18N.translateArgs("actions.accept"), className: "ok", onClick: async () => { modalSettled = true; Modal.close(); await accept(); } },
-                  { label: window.I18N.translateArgs("actions.reject"), className: "ghost", onClick: async () => { modalSettled = true; Modal.close(); await reject(); } },
+                  { label: window.I18N.translateArgs("actions.accept"), className: "ok", onClick: async () => { modalSettled = true; Modal.close("action"); await accept(); } },
+                  { label: window.I18N.translateArgs("actions.reject"), className: "ghost", onClick: async () => { modalSettled = true; Modal.close("action"); await reject(); } },
                 ],
-                onClose: async () => { if (modalSettled) return; try { await reject(); } catch (e) {} },
+                onClose: async (reason) => {
+                  if (modalSettled || reason === "replaced" || reason === "state-change") return;
+                  try { await reject(); } catch (e) {}
+                },
               });
               return;
             }
@@ -1854,9 +1878,11 @@ this._bindGameListeners();
           const now = Date.now();
           if (this._rematchRequestedAt && now - this._rematchRequestedAt < 1500) return;
           this._rematchRequestedAt = now;
+          const asyncContext = this._captureAsyncContext(this.gameId);
 
           let opp = { uid: null, nick: "" };
           try { opp = await this._getOpponentInfo(); } catch (e) {}
+          if (!this._isAsyncContextCurrent(asyncContext)) return;
           if (!opp.uid) {
             showOnlineNotice(window.I18N.translateArgs("online.noOpponent"));
             return;
@@ -1865,7 +1891,15 @@ this._bindGameListeners();
           const who = this.myNick || window.I18N.translateArgs("players.player");
           try {
             const data = await this._commitOfficialRematch("rematch-request", { nick: who });
-            try { if (data && data.game) this._lastGameData = data.game; } catch (e) {}
+            if (!this._isAsyncContextCurrent(asyncContext)) return;
+            if (data && data.game) {
+              this._ingestOfficialGame(data.game, {
+                source: "rematch-request",
+                gameId: asyncContext.gameId,
+                version: data.version != null ? data.version : data.game.__transportVersion,
+                rejectDuplicate: false,
+              });
+            }
             this._rematchPending = true;
             showOnlineNotice(window.I18N.translateArgs("online.rematch.sent"));
           } catch (e) {
@@ -1887,7 +1921,6 @@ this._bindGameListeners();
             accept: true,
             nick: actorNick || this.myNick || window.I18N.translateArgs("players.player"),
           });
-          try { if (data && data.game) this._lastGameData = data.game; } catch (e) {}
           return data;
         },
 
@@ -1895,17 +1928,31 @@ this._bindGameListeners();
           if (!this.isActive || !this.gameId || (inv && inv.gameId && inv.gameId !== this.gameId)) return;
           if (this.isSpectator) return;
 
+          const asyncContext = this._captureAsyncContext(this.gameId);
           const me = this.myNick || window.I18N.translateArgs("players.player");
           try {
-            await this._resetRoomForRematch(this.gameId, me);
-            try { this._onRematchStarted(); } catch (e) {}
+            const data = await this._resetRoomForRematch(asyncContext.gameId, me);
+            if (!this._isAsyncContextCurrent(asyncContext)) return;
+            if (data && data.game) {
+              const applied = this._ingestOfficialGame(data.game, {
+                source: "rematch-accept",
+                gameId: asyncContext.gameId,
+                version: data.version != null ? data.version : data.game.__transportVersion,
+                rejectDuplicate: false,
+              });
+              if (!applied) this._forceResync("rematch-accept");
+            } else {
+              this._forceResync("rematch-accept-missing-game");
+            }
           } catch (e) {
+            if (!this._isAsyncContextCurrent(asyncContext)) return;
             try { handleDbError(e); } catch (e2) {}
             showOnlineNotice(window.I18N.translateArgs("online.rematch.resetFail"));
           }
         },
 
     _rejectRematchInvite: async function (inv, snapRef) {
+          const asyncContext = this._captureAsyncContext((inv && inv.gameId) || this.gameId);
           try {
             if (this.isActive && this.gameId && (!inv || !inv.gameId || inv.gameId === this.gameId)) {
               await this._respondOfficialRematch(false, inv || {});
@@ -1916,58 +1963,53 @@ this._bindGameListeners();
             try { handleDbError(e); } catch (e2) {}
             showOnlineNotice(window.I18N.translateArgs("online.rematch.rejected"));
           }
+          if (!this._isAsyncContextCurrent(asyncContext)) return;
           try { await this.exitToMode(); } catch (e) {}
         },
 
     exitToMode: async function () {
           try {
-            this._clearPostMatchSession();
-          } catch (e) {}
-    
-          const gid = this.gameId || this._presenceRoomId;
-          const uid = this.myUid;
-    
-          try {
-            if (gid && uid && this.isSpectator) {
-              await this._removeSpectatorRegistration(gid, uid);
+            if (window.DhametMatchCoordinator) {
+              DhametMatchCoordinator.begin(DhametMatchCoordinator.phases.LEAVING, "online-exit-to-mode");
             }
           } catch (e) {}
-    
+          try { if (typeof Modal !== "undefined" && Modal && Modal.close) Modal.close("state-change"); } catch (e) {}
+          try { this._clearPostMatchSession(); } catch (e) {}
+
+          const gid = this.gameId || this._presenceRoomId;
+          const uid = this.myUid;
+          const wasSpectator = !!this.isSpectator;
+
           try {
-            this._teardownRoomComms && this._teardownRoomComms();
+            if (gid && uid && wasSpectator) await this._removeSpectatorRegistration(gid, uid);
           } catch (e) {}
-          try {
-            this.gameRef && this.gameRef.off && this.gameRef.off();
-          } catch (e) {}
-    
-          try {
-            this._clearPersistedActiveGame && this._clearPersistedActiveGame();
-          } catch (e) {}
-    
+          try { this._unbindGameLiveSubscription && this._unbindGameLiveSubscription(); } catch (e) {}
+          try { this._teardownRoomComms && this._teardownRoomComms(); } catch (e) {}
+          try { this.gameRef && this.gameRef.off && this.gameRef.off(); } catch (e) {}
+          try { this._clearCaptureDraft && this._clearCaptureDraft(); } catch (e) {}
+          try { this._clearPersistedActiveGame && this._clearPersistedActiveGame(); } catch (e) {}
+          try { this._markLocalCommitSettled && this._markLocalCommitSettled(); } catch (e) {}
+
           this.isActive = false;
           this.isSpectator = false;
           this.gameId = null;
           this.gameRef = null;
           this.mySide = null;
-    
+          this._presenceRoomId = null;
+
           try {
-            document.body.classList.remove("z-spectator");
+            if (typeof document !== "undefined" && document.body) document.body.classList.remove("z-spectator");
           } catch (e) {}
-    
           try {
-            setupInitialBoard();
-            try {
-              Turn.start();
-            } catch (e) {}
+            if (window.DhametMatchCoordinator) DhametMatchCoordinator.resetPresentation({ draw: false });
           } catch (e) {}
-    
-          try {
-            await this._setLobbyStatus("available");
-          } catch (e) {}
-    
+          try { await this._setLobbyStatus("available"); } catch (e) {}
+
           try {
             const inPages = (location.pathname || "").includes("/pages/");
-            location.href = inPages ? "mode.html" : "pages/mode.html";
+            const target = inPages ? "mode.html" : "pages/mode.html";
+            if (typeof location.replace === "function") location.replace(target);
+            else location.href = target;
           } catch (e) {}
         },
 
@@ -2004,18 +2046,13 @@ this._bindGameListeners();
           try {
             const gid = this.gameId || this._presenceRoomId;
             const uid = this.myUid;
+            const asyncContext = this._captureAsyncContext(gid);
     
             if (!gid || !uid) {
               try {
                 const back = (location.pathname || "").includes("/pages/")
                   ? "./loby.html"
                   : "pages/loby.html";
-                try {
-                  setupInitialBoard();
-                  try {
-                    Turn.start();
-                  } catch (e) {}
-                } catch (e) {}
                 location.href = back;
               } catch (e) {}
               return;
@@ -2025,10 +2062,12 @@ this._bindGameListeners();
               try {
                 await this._removeSpectatorRegistration(gid, uid);
               } catch (e) {}
+              if (!this._isAsyncContextCurrent(asyncContext)) return;
             } else {
               try {
                 await this.endOnline();
               } catch (e) {}
+              if (!this._isAsyncContextCurrent(asyncContext)) return;
               try {
                 await this.exitToMode();
               } catch (e) {}
@@ -2069,12 +2108,6 @@ this._bindGameListeners();
               const back = (location.pathname || "").includes("/pages/")
                 ? "./loby.html"
                 : "pages/loby.html";
-              try {
-                setupInitialBoard();
-                try {
-                  Turn.start();
-                } catch (e) {}
-              } catch (e) {}
               location.href = back;
             } catch (e) {}
           } catch (e) {}
@@ -2096,6 +2129,10 @@ this._bindGameListeners();
         },
 
     _resetOnlineRuntimeState: function () {
+          try { this._clearCaptureDraft && this._clearCaptureDraft(); } catch (e) {}
+          try {
+            if (window.DhametMatchCoordinator) DhametMatchCoordinator.begin(DhametMatchCoordinator.phases.LEAVING, "online-reset");
+          } catch (e) {}
           this._lastTrainLoggedMoveIndex = 0;
           this._localEndedOnline = false;
           this._selfConnected = true;
@@ -2115,6 +2152,7 @@ this._bindGameListeners();
 
     _resetBoardAfterOnline: function () {
           try {
+            if (window.DhametMatchCoordinator) DhametMatchCoordinator.begin(DhametMatchCoordinator.phases.PVC, "online-exit");
             setupInitialBoard();
             Turn.start();
           } catch (e) {}
@@ -2155,164 +2193,22 @@ this._bindGameListeners();
           try {
             this._startOpponentAbsenceWatcher();
           } catch (e) {}
-          const onLiveGame = (data) => {
-            try {
-              this._lastGameData = data;
-            } catch (e) {}
-    
-            try {
-              const rs = Number((data && data.rematchSeq) || 0);
-              if (this._lastRematchSeq == null) this._lastRematchSeq = rs;
-              else if (rs !== this._lastRematchSeq) {
-                this._lastRematchSeq = rs;
-                if (rs > 0) {
-                  try {
-                    this._onRematchStarted();
-                  } catch (e) {}
-                }
-              }
-            } catch (e) {}
-    
-            try {
-              this._handleOfficialRematchRequest(data);
-            } catch (e) {}
-
-    
+          const liveContext = this._captureAsyncContext(gid);
+          const onLiveGame = (data, envelope) => {
+            if (!this._isAsyncContextCurrent(liveContext, { ignorePostMatch: true })) return;
             if (!data) {
-              try {
-                if (this.isActive) {
-                  try {
-                    tryFinalizeTrainingOnExit("disconnect", 900);
-                  } catch (e) {}
-                  const title = window.I18N.translateArgs("online.pvpEndTitle");
-                  const body = window.I18N.translateArgs("online.ended.remoteOrCleaned");
-    
-                  const go = async () => {
-                    try {
-                      this._clearPersistedActiveGame();
-                    } catch (e) {}
-                    try {
-                      await this.exitToMode();
-                    } catch (e) {
-                      try {
-                        const inPages = (location.pathname || "").includes("/pages/");
-                        location.href = inPages ? "mode.html" : "pages/mode.html";
-                      } catch (_) {}
-                    }
-                  };
-    
-                  if (typeof Modal !== "undefined" && Modal && typeof Modal.alert === "function") {
-                    try { setTimeout(go, 1800); } catch (e) {}
-                    Modal.alert({
-                      title,
-                      body: `<div>${body}</div>`,
-                      okLabel: window.I18N.translateArgs("buttons.home"),
-                      okClassName: "ok",
-                      allowSpectator: true,
-                      onClick: go,
-                      onClose: () => {
-                        go();
-                      },
-                    });
-                  } else {
-                    try {
-                      showOnlineNotice(body);
-                    } catch (e) {}
-                    go();
-                  }
-                }
-              } catch (e) {}
+              try { this._verifyMissingOfficialGame(); } catch (e) {}
               return;
             }
-    
-            if (data.status && data.status !== "active") {
-              try {
-                this._enterPostMatch({
-                  reason: data.endedReason || data.status,
-                  endedBy: data.endedBy || null,
-                });
-              } catch (e) {}
-              return;
-            }
-            let __skipApply = false;
             try {
-              const remoteMi = Number(data.moveIndex || 0);
-              if (this._awaitingLocalCommit && Number.isFinite(this._expectedMoveIndex)) {
-                if (remoteMi < this._expectedMoveIndex) {
-                  __skipApply = true;
-                } else {
-                  this._markLocalCommitSettled();
-                }
-              }
-            } catch (e) {}
-            try {
-              const w = data.players && data.players.white ? data.players.white.nickname || "" : "";
-              const b = data.players && data.players.black ? data.players.black.nickname || "" : "";
-    
-              Game.names.bot = w || "";
-              Game.names.top = b || "";
-    
-              try {
-                if (window.ZGamePlayers && typeof window.ZGamePlayers.refresh === "function") {
-                  window.ZGamePlayers.refresh();
-                }
-              } catch (e) {}
-              try {
-                this._topDisplayName = this._resolveSlotDisplayName("top", Game.names.top || window.I18N.translateArgs("players.player"));
-                this._botDisplayName = this._resolveSlotDisplayName("bot", Game.names.bot || window.I18N.translateArgs("players.player"));
-                this._ensurePresenceUi();
-                this._updatePresenceUi();
-              } catch (e) {}
-            } catch (e) {}
-    
-            this.moveIndex = data.moveIndex || 0;
-            this.ply = data.ply || 0;
-    
-            try {
-              this._renderSharedLog(data.log || []);
-            } catch (e) {}
-            try {
-              this._handlePresence(data);
-            } catch (e) {}
-    
-            try {
-              if (data.soufla && data.soufla.availableFor === this.mySide) {
-                Game.availableSouflaForHuman = plainToSoufla(data.soufla.pending);
-              } else {
-                Game.availableSouflaForHuman = null;
-              }
-            } catch (e) {}
-    
-            this._handleUndoRequest(data);
-    
-            if (!__skipApply) {
-              const stateSnap =
-                (data.state && data.state.snapshot) ||
-                (data.states &&
-                  data.ply != null &&
-                  data.states[data.ply] &&
-                  data.states[data.ply].snapshot) ||
-                null;
-    
-              if (stateSnap) {
-                const stateRecord = currentStateRecord(data) || {};
-                const queue = deferredPromotionQueue(stateRecord);
-                const patched = Object.assign({}, data, {
-                  state: Object.assign({}, stateRecord, {
-                    snapshot: snapshotWithPromotionQueue(stateSnap, stateRecord),
-                    deferredPromotions: queue,
-                    deferredPromotion: queue.length ? Object.assign({}, queue[0]) : null,
-                  }),
-                });
-                this._applyRemoteState(patched);
-              } else if (typeof data.turn === "number") {
-                try {
-                  Game.player = data.turn;
-                  Turn.ctx = null;
-                  Turn.start();
-                  UI.updateAll();
-                } catch (e) {}
-              }
+              this._ingestOfficialGame(data, {
+                source: "live",
+                gameId: gid,
+                version: envelope && envelope.version,
+                rejectDuplicate: true,
+              });
+            } catch (e) {
+              try { Logger.warn("official_live_apply_failed", { gameId: gid, err: String(e && (e.message || e)) }); } catch (_) {}
             }
           };
           try {
@@ -2322,16 +2218,16 @@ this._bindGameListeners();
               onData: onLiveGame,
               onClose: () => {
                 try {
-                  if (this.isActive) this._forceResync && this._forceResync("live-closed");
+                  if (this._isAsyncContextCurrent(liveContext, { ignorePostMatch: true })) this._forceResync && this._forceResync("live-closed");
                 } catch (e) {}
               },
               onReconnect: () => {
                 try {
-                  if (this.isActive) this._forceResync && this._forceResync("live-reconnected");
+                  if (this._isAsyncContextCurrent(liveContext, { ignorePostMatch: true })) this._forceResync && this._forceResync("live-reconnected");
                 } catch (e) {}
               },
               onError: () => {
-                try { this._forceResync && this._forceResync("live-error"); } catch (e) {}
+                try { if (this._isAsyncContextCurrent(liveContext, { ignorePostMatch: true })) this._forceResync && this._forceResync("live-error"); } catch (e) {}
               },
             });
           } catch (e) {
@@ -2344,9 +2240,11 @@ this._bindGameListeners();
           } catch (e) {}
         },
 
-    _applyRemoteState: function (data) {
+    _applyRemoteState: function (data, options) {
           try {
             this._isApplyingRemote = true;
+            const applyOptions = options && typeof options === "object" ? options : {};
+            const skipFx = !!applyOptions.skipFx;
     
             try {
               const remoteMI = Number(
@@ -2475,7 +2373,7 @@ this._bindGameListeners();
             } catch (e) {}
     
             try {
-              if (!__skipFx && data.state && Array.isArray(data.state.capturedOrder)) {
+              if (!skipFx && data.state && Array.isArray(data.state.capturedOrder)) {
                 try {
                   if (
                     typeof Visual !== "undefined" &&
@@ -2628,86 +2526,43 @@ this._bindGameListeners();
     syncNow: async function (opts) {
           if (!this.isActive || !this.gameId) return false;
           const cfg = opts && typeof opts === "object" ? opts : {};
+          const epochToken = window.DhametMatchCoordinator ? DhametMatchCoordinator.token() : null;
+          const expectedGameId = String(this.gameId || "");
           try {
             const snap = await this.gameRef.once("value");
+            if (epochToken && !DhametMatchCoordinator.isCurrent(epochToken)) return false;
+            if (!this.isActive || String(this.gameId || "") !== expectedGameId) return false;
             const data = snap && snap.val ? snap.val() : null;
             if (!data) {
               await this._showUnavailableGameAndLeave();
-              return false;
-            }
-            if (data.status && data.status !== "active") {
-              try { this._lastGameData = data; } catch (e) {}
-              try {
-                this._enterPostMatch({
-                  reason: data.endedReason || data.status,
-                  endedBy: data.endedBy || null,
-                });
-              } catch (e) {}
               return false;
             }
             if (!this._isCurrentUserPlayerInGame(data) && !this.isSpectator) {
               await this._showUnavailableGameAndLeave();
               return false;
             }
-    
-            try { this._lastGameData = data; } catch (e) {}
-            try { this.moveIndex = data.moveIndex || 0; } catch (e) {}
-            try { this.ply = data.ply || 0; } catch (e) {}
-            try {
-              this._renderSharedLog(data.log || []);
-            } catch (e) {}
-            try {
-              this._handlePresence(data);
-            } catch (e) {}
+            if (cfg.force || cfg.emitSignal) {
+              try { this._pendingSteps = []; } catch (e) {}
+              try { this._cachedSouflaPlain = null; } catch (e) {}
+              try { this._clearMoveRetry(); } catch (e) {}
+              try { this._markLocalCommitSettled(); } catch (e) {}
+              if (cfg.discardCaptureDraft) try { this._clearCaptureDraft(); } catch (e) {}
+            }
+            const applied = this._ingestOfficialGame(data, {
+              source: "sync",
+              gameId: expectedGameId,
+              version: data.__transportVersion,
+              rejectDuplicate: false,
+            });
             try {
               if (cfg.repairPresence !== false && !this.isSpectator) {
                 this._writeFullGamePresence("gamePresence.syncNow", true);
                 this._touchRoomListActivity(this.gameId || this._presenceRoomId, true);
               }
             } catch (e) {}
-    
-            const stateSnap =
-              (data.state && data.state.snapshot) ||
-              (data.states &&
-                data.ply != null &&
-                data.states[data.ply] &&
-                data.states[data.ply].snapshot) ||
-              null;
-    
-            if (cfg.force || cfg.emitSignal) {
-              try { this._pendingSteps = []; } catch (e) {}
-              try { this._cachedSouflaPlain = null; } catch (e) {}
-              try { this._clearMoveRetry(); } catch (e) {}
-              try { this._markLocalCommitSettled(); } catch (e) {}
-            }
-    
-            if (stateSnap) {
-              const stateRecord = currentStateRecord(data) || {};
-              const queue = deferredPromotionQueue(stateRecord);
-              const patched = Object.assign({}, data, {
-                state: Object.assign({}, stateRecord, {
-                  snapshot: snapshotWithPromotionQueue(stateSnap, stateRecord),
-                  deferredPromotions: queue,
-                  deferredPromotion: queue.length ? Object.assign({}, queue[0]) : null,
-                }),
-              });
-              this._applyRemoteState(patched);
-            } else if (typeof data.turn === "number") {
-              try {
-                Game.player = data.turn;
-                Turn.ctx = null;
-                Turn.start();
-                UI.updateAll();
-              } catch (e) {}
-            }
-            try {
-              if (cfg.force || cfg.emitSignal) {
-                this._clearMoveRetry();
-                this._markLocalCommitSettled();
-              }
-            } catch (e) {}
-            return true;
+            return !!applied;
           } catch (e) {
+            try { Logger.warn("official_sync_failed", { gameId: expectedGameId, err: String(e && (e.message || e)) }); } catch (_) {}
             showOnlineNotice(window.I18N.translateArgs("online.syncFail"));
             return false;
           }
@@ -2729,8 +2584,10 @@ this._bindGameListeners();
               nickname: this.myNick || "",
               clientSpectatorId: [userId, gid, "leave", nowTs()].join(":"),
             });
-            this._spectatorRef = null;
-            this._spectatorJoinedAt = 0;
+            if (!this.isActive || String(this.gameId || "") === gid) {
+              this._spectatorRef = null;
+              this._spectatorJoinedAt = 0;
+            }
             return !!(result && result.ok !== false);
           } catch (e) {
             handleDbError(e, "", { ctx: "spectator.leave" });
@@ -3337,15 +3194,18 @@ this._bindGameListeners();
             this._chat._pendingReadTs = Math.max(Number(this._chat._pendingReadTs || 0) || 0, ts);
             try { lsSet(chatLastReadKey(this.gameId, this.myUid), String(ts)); } catch (e) {}
             const force = !!opts.force;
+            const asyncContext = this._captureAsyncContext(this.gameId);
+            const chatState = this._chat;
             const sendNow = async () => {
               try {
-                const pending = Number(this._chat && this._chat._pendingReadTs || 0) || 0;
+                if (!this._isAsyncContextCurrent(asyncContext, { ignorePostMatch: true }) || this._chat !== chatState) return;
+                const pending = Number(chatState && chatState._pendingReadTs || 0) || 0;
                 if (!pending) return;
                 if (!window.DhametGameRoomClient || typeof window.DhametGameRoomClient.commitChatRead !== "function") return;
-                this._chat._pendingReadTs = 0;
-                this._chat._lastReadCommitAt = Date.now();
+                chatState._pendingReadTs = 0;
+                chatState._lastReadCommitAt = Date.now();
                 await window.DhametGameRoomClient.commitChatRead({
-                  gameId: this.gameId,
+                  gameId: asyncContext.gameId,
                   lastReadTs: pending,
                   clientChatId: [this.myUid || "u", this.gameId || "g", "read", pending].join(":"),
                 });
@@ -3934,9 +3794,11 @@ this._bindGameListeners();
             this._voice.reconnectTimers = this._voice.reconnectTimers || new Map();
             if (this._voice.reconnectTimers.has(otherUid)) return;
             const delay = reason === "failed" ? 350 : 1500;
+            const asyncContext = this._captureAsyncContext(this.gameId);
             const timer = setTimeout(async () => {
               try {
                 this._voiceClearReconnect(otherUid);
+                if (!this._isAsyncContextCurrent(asyncContext)) return;
                 await this._voiceRestartPeer(otherUid, reason);
               } catch (e) {}
             }, delay);
@@ -3994,7 +3856,11 @@ this._bindGameListeners();
             } catch (e) {}
             this._voiceIceBatches = this._voiceIceBatches || new Map();
             const key = String(toUid);
-            const entry = this._voiceIceBatches.get(key) || { signals: [], timer: null };
+            const entry = this._voiceIceBatches.get(key) || {
+              signals: [],
+              timer: null,
+              asyncContext: this._captureAsyncContext(this.gameId),
+            };
             const sig = Object.assign({ ts: Date.now() }, payload || {});
             try {
               const currentCallId = sig.callId || (this._voice && this._voice.callIds && this._voice.callIds.get(key));
@@ -4007,12 +3873,13 @@ this._bindGameListeners();
                 const cur = this._voiceIceBatches && this._voiceIceBatches.get(key);
                 if (!cur) return;
                 this._voiceIceBatches.delete(key);
+                if (!this._isAsyncContextCurrent(cur.asyncContext)) return;
                 const signals = (cur.signals || []).splice(0, 16).filter(Boolean);
                 if (!signals.length) return;
                 if (!window.DhametGameRoomClient || typeof window.DhametGameRoomClient.commitRtcSignal !== "function") return;
                 window.DhametGameRoomClient.commitRtcSignal({
                   kind: "signals-batch",
-                  gameId: this.gameId,
+                  gameId: cur.asyncContext.gameId,
                   toUid: key,
                   signals: signals,
                   clientSignalId: [this.myUid || "u", key, "icebatch", Date.now(), Math.random().toString(36).slice(2, 8)].join(":"),
@@ -4463,93 +4330,21 @@ this._bindGameListeners();
           } catch (e) {}
         },
 
-    _showSouflaModalFromLastMove: function (lm) {
+    _showSouflaModalFromLastMove: function (lastMove) {
           try {
-            const mySide = this.mySide;
-            const by = lm.by;
-            const decision = lm.decision;
-            const meta = lm.souflaMeta || {};
-            const offenderIdx = decision.offenderIdx != null ? decision.offenderIdx : meta.offenderIdx;
-    
-            const Lmax = meta.longestGlobal != null ? meta.longestGlobal : 0;
-            const startedFrom = meta.startedFrom != null ? meta.startedFrom : null;
-            const lastPieceIdx = meta.lastPieceIdx != null ? meta.lastPieceIdx : null;
-    
-            const title = window.I18N.translateArgs("modals.soufla.header");
-    
-            if (mySide === by) {
-              const body = document.createElement("div");
-              body.innerHTML = `
-                <div style="font-weight:700;margin-bottom:6px;">${window.I18N.translateArgs("soufla.applied.self")}</div>
-                <div class="muted">${
-                  decision.kind === "remove" ? window.I18N.translateArgs("soufla.applied.remove") : window.I18N.translateArgs("soufla.applied.force")
-                }</div>
-              `;
-              Modal.alert({
-                title,
-                body,
-                okLabel: window.I18N.translateArgs("actions.close"),
-              });
-              return;
+            if (!window.DhametSouflaView || typeof DhametSouflaView.showAppliedSummary !== "function") {
+              throw new Error("shared-soufla-summary-missing");
             }
-    
-            const body = document.createElement("div");
-            body.className = "soufla-summary";
-    
-            const fmtCell = (idx) =>
-              idx != null ? (typeof rcStr === "function" ? rcStr(idx) : "?") : "?";
-    
-            const offenderCell = fmtCell(offenderIdx);
-            const undoFrom =
-              lastPieceIdx != null && startedFrom != null && lastPieceIdx !== startedFrom
-                ? fmtCell(lastPieceIdx)
-                : null;
-            const undoTo =
-              lastPieceIdx != null && startedFrom != null && lastPieceIdx !== startedFrom
-                ? fmtCell(startedFrom)
-                : null;
-    
-            const parts = [];
-            parts.push(
-              `<div style="font-weight:900;margin-bottom:6px;">${window.I18N.translateArgs("soufla.summary.title")}</div>`,
-            );
-            parts.push(`<div>${window.I18N.translateArgs("soufla.summary.reason")}</div>`);
-            parts.push(
-              `<div style="margin-top:10px;font-weight:800;">${window.I18N.translateArgs("soufla.summary.penaltyTitle")}</div>`,
-            );
-    
-            if (decision.kind === "force") {
-              const p = Array.isArray(decision.path) ? decision.path.slice() : [];
-              const toIdx = p.length ? p[p.length - 1] : offenderIdx;
-              const len = p.length || 0;
-    
-              parts.push(
-                `<div>${window.I18N.translateArgs("soufla.summary.force", { from: offenderCell, to: fmtCell(toIdx), len })}</div>`,
-              );
-    
-              if (undoFrom && undoTo) {
-                parts.push(
-                  `<div class="muted" style="margin-top:8px;">${window.I18N.translateArgs("soufla.summary.undo", { from: undoFrom, to: undoTo })}</div>`,
-                );
-              }
-            } else {
-              parts.push(`<div>${window.I18N.translateArgs("soufla.summary.remove", { cell: offenderCell })}</div>`);
-    
-              if (undoFrom && undoTo) {
-                parts.push(
-                  `<div class="muted" style="margin-top:8px;">${window.I18N.translateArgs("soufla.summary.undo", { from: undoFrom, to: undoTo })}</div>`,
-                );
-              }
-            }
-    
-            body.innerHTML = parts.join("");
-    
-            Modal.alert({
-              title,
-              body,
-              okLabel: window.I18N.translateArgs("actions.close"),
+            return DhametSouflaView.showAppliedSummary(lastMove, {
+              mySide: this.mySide,
+              t: (key, vars) => window.I18N.translateArgs(key, vars && typeof vars === "object" ? vars : {}),
+              rcStr: typeof rcStr === "function" ? rcStr : undefined,
+              Modal: typeof Modal !== "undefined" ? Modal : null,
             });
-          } catch (e) {}
+          } catch (e) {
+            try { Logger.warn("shared_soufla_summary_failed", { err: String(e && (e.message || e)) }); } catch (_) {}
+            return false;
+          }
         },
 
     _maybeRecordOpponentMoveForTraining: function (data) {
@@ -4720,17 +4515,11 @@ this._bindGameListeners();
               this._markLocalCommitSettled();
             }
           } catch (e) {}
+          try { this._scheduleCaptureDraftSave(); } catch (e) {}
         },
 
     recordLocalStep: function (fromIdx, toIdx, isCapture, jumpedIdx) {
           if (!this.isActive || this._isApplyingRemote) return;
-    
-          try {
-            if (!this._awaitingLocalCommit) {
-              this._beginLocalCommitWait();
-            }
-          } catch (e) {}
-    
           if (!this._pendingSteps) this._pendingSteps = [];
           this._pendingSteps.push({
             from: fromIdx,
@@ -4738,11 +4527,14 @@ this._bindGameListeners();
             capture: !!isCapture,
             jumped: jumpedIdx != null ? jumpedIdx : null,
           });
+          try { this._bindCaptureDraftLifecycle(); } catch (e) {}
+          try { this._scheduleCaptureDraftSave(); } catch (e) {}
         },
 
     clearPendingLocalMove: function () {
           this._pendingSteps = [];
           this._cachedSouflaPlain = null;
+          try { this._clearCaptureDraft(); } catch (e) {}
           try { this._clearPendingMoveOutbox(); } catch (e) {}
           try {
             this._markLocalCommitSettled();
@@ -4815,8 +4607,10 @@ this._bindGameListeners();
             outbox.replayedAfterResync = true;
             outbox.replayedAt = nowTs();
             this._savePendingMoveOutbox(outbox);
+            const asyncContext = this._captureAsyncContext(this.gameId);
             window.DhametGameRoomClient.commitMove(outbox.payload)
               .then((res) => {
+                if (!this._isAsyncContextCurrent(asyncContext)) return;
                 const g = res && res.game ? res.game : null;
                 if (res && res.committed !== false) {
                   try { if (g) this._lastGameData = g; } catch (e) {}
@@ -4841,84 +4635,72 @@ this._bindGameListeners();
           this._moveRetryDidResync = false;
         },
 
-    _forceResync: function () {
+    _forceResync: function (reason) {
           if (!this.isActive || !this.gameId) return;
+          const asyncContext = this._captureAsyncContext(this.gameId);
+          if (this._resyncInFlight && this._isAsyncContextCurrent(this._resyncInFlight.context)) return;
+          const flight = { context: asyncContext, reason: String(reason || "manual") };
+          this._resyncInFlight = flight;
+          const done = () => {
+            if (this._resyncInFlight === flight) this._resyncInFlight = null;
+          };
           try {
-            if (this._resyncInFlight) return;
-            this._resyncInFlight = true;
-
-            const applyGame = (data) => {
-              if (!data) return;
-              try { this._lastGameData = data; } catch (e) {}
-              try { this.moveIndex = data.moveIndex || 0; } catch (e) {}
-              try { this.ply = data.ply || 0; } catch (e) {}
-              try { this._applyRemoteState(data); } catch (e) {}
-            };
-
-            const authoritativeRead =
-              window.DhametGameRoomClient && typeof window.DhametGameRoomClient.resyncGame === "function"
-                ? window.DhametGameRoomClient
-                    .resyncGame({ gameId: this.gameId, baseMoveIndex: this.moveIndex || 0 })
-                    .then((res) => {
-                      const data = res && res.game ? res.game : null;
-                      if (data) {
-                        applyGame(data);
-                        try { this._reconcilePendingMoveOutbox && this._reconcilePendingMoveOutbox(data); } catch (e) {}
-                        try { this._noteOnlineGameTransportActivity && this._noteOnlineGameTransportActivity("resync"); } catch (e) {}
-                      }
-                    })
-                    .catch(() => {})
-                : Promise.resolve(false);
-
-            Promise.resolve(authoritativeRead)
-              .catch(() => {})
-              .finally(() => {
-                try {
-                  this._resyncInFlight = false;
-                } catch (e) {}
-              });
+            const client = window.DhametGameRoomClient;
+            if (!client || typeof client.resyncGame !== "function") { done(); return; }
+            Promise.resolve(client.resyncGame({ gameId: asyncContext.gameId, baseMoveIndex: this.moveIndex || 0 }))
+              .then((res) => {
+                if (!this._isAsyncContextCurrent(asyncContext)) return;
+                const data = res && res.game ? Object.assign({}, res.game, { __transportVersion: res.version }) : null;
+                if (!data) return;
+                const applied = this._ingestOfficialGame(data, {
+                  source: "resync:" + flight.reason,
+                  gameId: asyncContext.gameId,
+                  version: res && res.version,
+                  rejectDuplicate: false,
+                });
+                if (applied) {
+                  try { this._reconcilePendingMoveOutbox && this._reconcilePendingMoveOutbox(data); } catch (e) {}
+                  try { this._noteOnlineGameTransportActivity && this._noteOnlineGameTransportActivity("resync"); } catch (e) {}
+                }
+              })
+              .catch((e) => {
+                if (!this._isAsyncContextCurrent(asyncContext)) return;
+                try { Logger.warn("official_resync_failed", { gameId: asyncContext.gameId, reason: flight.reason, err: String(e && (e.message || e)) }); } catch (_) {}
+              })
+              .finally(done);
           } catch (e) {
-            try {
-              this._resyncInFlight = false;
-            } catch (e) {}
+            done();
           }
         },
 
     _scheduleMoveRetry: function (from, to, nextTurn) {
-          if (!this.isActive || !this.gameRef) return;
-    
+          if (!this.isActive || !this.gameRef || !this.gameId) return;
+          const expectedGameId = String(this.gameId || "");
+          const epochToken = window.DhametMatchCoordinator ? DhametMatchCoordinator.token() : null;
+
           this._moveRetryArgs = { from: from, to: to, nextTurn: nextTurn };
           if (typeof navigator !== "undefined" && navigator.onLine === false) {
             this._moveRetryPausedOffline = true;
             return;
           }
-    
-          try {
-            if (this._moveRetryTimer) clearTimeout(this._moveRetryTimer);
-          } catch (e) {}
-    
+          try { if (this._moveRetryTimer) clearTimeout(this._moveRetryTimer); } catch (e) {}
+
           const MAX_MOVE_SEND_RETRIES = 12;
           if (this._moveRetryGaveUp) return;
-    
           const attempt = (this._moveRetryAttempt || 0) + 1;
           this._moveRetryAttempt = attempt;
           if (attempt > MAX_MOVE_SEND_RETRIES) {
             this._moveRetryGaveUp = true;
             return;
           }
-    
           const delay = Math.min(15000, 250 * Math.pow(2, Math.min(6, attempt - 1)));
-    
+
           this._moveRetryTimer = setTimeout(() => {
-            try {
-              this._moveRetryTimer = null;
-            } catch (e) {}
-            if (!this.isActive) return;
-            if (!this._awaitingLocalCommit) return;
-            if (this._moveRetryGaveUp) return;
-            try {
-              this.sendMoveToCloudflare(from, to, nextTurn, attempt);
-            } catch (e) {}
+            try { this._moveRetryTimer = null; } catch (e) {}
+            if (epochToken && !DhametMatchCoordinator.isCurrent(epochToken)) return;
+            if (!this.isActive || String(this.gameId || "") !== expectedGameId) return;
+            if (!this._awaitingLocalCommit || this._moveRetryGaveUp) return;
+            try { this.sendMoveToCloudflare(from, to, nextTurn, attempt); } catch (e) {}
           }, delay);
         },
 
@@ -4934,7 +4716,7 @@ this._bindGameListeners();
 
     sendMoveToCloudflare: function (_from, _to, nextTurn, _attempt) {
           if (!allowOnlineWrite()) return;
-          if (!this.isActive || !this.gameRef) return;
+          if (!this.isActive || !this.gameRef || !this.gameId) return;
           if (!requireAuthUid(this.myUid)) {
             try { this.syncNow({ force: true, repairPresence: true }); } catch (e) {}
             try { showOnlineNotice(window.I18N.translateArgs("status.moveSendFail")); } catch (e) {}
@@ -4943,10 +4725,15 @@ this._bindGameListeners();
 
           const attempt = Number.isFinite(_attempt) ? _attempt : 0;
           const self = this;
-
-          try {
-            if (!this._awaitingLocalCommit) this._beginLocalCommitWait();
-          } catch (e) {}
+          const expectedGameId = String(this.gameId || "");
+          const epochToken = window.DhametMatchCoordinator ? DhametMatchCoordinator.token() : null;
+          const taskIsCurrent = function () {
+            return !!(
+              self.isActive &&
+              String(self.gameId || "") === expectedGameId &&
+              (!epochToken || DhametMatchCoordinator.isCurrent(epochToken))
+            );
+          };
 
           let steps = Array.isArray(this._pendingSteps) ? this._pendingSteps.slice() : [];
           if (window.DhametMove && typeof window.DhametMove.normalizeSteps === "function") {
@@ -4958,18 +4745,12 @@ this._bindGameListeners();
             steps = [{ from: fr, to: to, capture: false, jumped: null }];
           }
           if (!steps.length) return;
-          this._pendingSteps = [];
 
           if (!this._moveCommitClientId) {
             this._moveCommitClientId =
               window.DhametGameRoomClient && typeof window.DhametGameRoomClient.createClientMoveId === "function"
-                ? window.DhametGameRoomClient.createClientMoveId(this.myUid || "anon", this.gameId || "game", nowTs())
-                : [
-                    this.myUid || "anon",
-                    this.gameId || "game",
-                    nowTs(),
-                    Math.random().toString(36).slice(2, 10),
-                  ].join(":");
+                ? window.DhametGameRoomClient.createClientMoveId(this.myUid || "anon", expectedGameId, nowTs())
+                : [this.myUid || "anon", expectedGameId, nowTs(), Math.random().toString(36).slice(2, 10)].join(":");
             this._moveCommitBaseIndex = Number(this.moveIndex || 0) || 0;
           }
 
@@ -4991,12 +4772,6 @@ this._bindGameListeners();
                   ts: nowTs(),
                 };
           if (!move) return;
-
-          // In authoritative PvP the browser no longer sends a board snapshot or
-          // client-side soufla state. GameRoom reads the official stored game and
-          // applies the shared reducer server-side.
-          const souflaPlain = null;
-          this._cachedSouflaPlain = null;
 
           const logEntry =
             window.DhametEvents && typeof window.DhametEvents.createTurnAppliedEvent === "function"
@@ -5030,7 +4805,7 @@ this._bindGameListeners();
           const payload =
             window.DhametGameRoomClient && typeof window.DhametGameRoomClient.createCommitPayload === "function"
               ? window.DhametGameRoomClient.createCommitPayload({
-                  gameId: this.gameId,
+                  gameId: expectedGameId,
                   clientMoveId: this._moveCommitClientId,
                   baseMoveIndex: this._moveCommitBaseIndex,
                   steps: steps,
@@ -5040,7 +4815,7 @@ this._bindGameListeners();
                   logEntry: logEntry,
                 })
               : {
-                  gameId: this.gameId,
+                  gameId: expectedGameId,
                   clientMoveId: this._moveCommitClientId,
                   baseMoveIndex: this._moveCommitBaseIndex,
                   move: Object.assign({}, move, { clientMoveId: this._moveCommitClientId }),
@@ -5049,9 +4824,13 @@ this._bindGameListeners();
                 };
           if (!payload) return;
 
+          try { if (!this._awaitingLocalCommit) this._beginLocalCommitWait(); } catch (e) {}
+          this._pendingSteps = [];
+          this._cachedSouflaPlain = null;
+          try { this._clearCaptureDraft && this._clearCaptureDraft(); } catch (e) {}
           try {
             self._savePendingMoveOutbox && self._savePendingMoveOutbox({
-              gameId: self.gameId,
+              gameId: expectedGameId,
               clientMoveId: self._moveCommitClientId,
               baseMoveIndex: self._moveCommitBaseIndex,
               expectedMoveIndex: (Number(self._moveCommitBaseIndex || 0) || 0) + 1,
@@ -5064,18 +4843,21 @@ this._bindGameListeners();
           } catch (e) {}
 
           const retryOrFail = function (err, serverGame) {
+            if (!taskIsCurrent()) return;
             self._pendingSteps = steps.concat(self._pendingSteps || []);
-            try { self._cachedSouflaPlain = souflaPlain || self._cachedSouflaPlain; } catch (e) {}
-
             try {
               const remoteMi = Number((serverGame && serverGame.moveIndex) || 0);
-              if (
-                self._awaitingLocalCommit &&
-                Number.isFinite(self._expectedMoveIndex) &&
-                remoteMi >= self._expectedMoveIndex
-              ) {
+              if (serverGame) {
+                self._ingestOfficialGame(serverGame, {
+                  source: "move-commit-rejected",
+                  gameId: expectedGameId,
+                  version: serverGame.__transportVersion,
+                  rejectDuplicate: false,
+                });
+              }
+              if (self._awaitingLocalCommit && Number.isFinite(self._expectedMoveIndex) && remoteMi >= self._expectedMoveIndex) {
                 try { self._markLocalCommitSettled(); } catch (e) {}
-                try { self._forceResync(); } catch (e) {}
+                try { self._forceResync("move-already-applied"); } catch (e) {}
                 return;
               }
             } catch (e) {}
@@ -5084,19 +4866,17 @@ this._bindGameListeners();
               const RESYNC_AFTER = 2;
               if (!self._moveRetryDidResync && attempt >= RESYNC_AFTER) {
                 self._moveRetryDidResync = true;
-                try { self._forceResync(); } catch (e) {}
+                self._forceResync("move-retry");
               }
             } catch (e) {}
 
             const MAX_MOVE_SEND_RETRIES = 12;
             try { if (err) handleDbError(err, null, { ctx: "move.gameRoom" }); } catch (e) {}
-
             if (attempt >= MAX_MOVE_SEND_RETRIES || (err && (isPermissionDenied(err) || isNonRetriableGameCommitError(err)))) {
               self._moveRetryGaveUp = true;
               const nonRetriable = !!(err && (isPermissionDenied(err) || isNonRetriableGameCommitError(err)));
               if (nonRetriable) {
                 self._pendingSteps = [];
-                self._cachedSouflaPlain = null;
                 try { self._clearPendingMoveOutbox && self._clearPendingMoveOutbox(); } catch (e) {}
                 try { self._markLocalCommitSettled(); } catch (e) {}
               } else {
@@ -5110,18 +4890,16 @@ this._bindGameListeners();
                 } catch (e) {}
               }
               try { showOnlineNotice(window.I18N.translateArgs("status.moveSendFail")); } catch (e) {}
-              try { self._forceResync(); } catch (e) {}
+              try { self._forceResync("move-send-gave-up"); } catch (e) {}
               try { self.syncNow({ force: true, repairPresence: true }); } catch (e) {}
               return;
             }
-
             try {
               if (!self._moveRetryNotified) {
                 self._moveRetryNotified = true;
                 showOnlineNotice(window.I18N.translateArgs("status.moveSendFail"));
               }
             } catch (e) {}
-
             try { self._scheduleMoveRetry(_from, _to, nextTurn); } catch (e) {}
           };
 
@@ -5132,16 +4910,24 @@ this._bindGameListeners();
 
           window.DhametGameRoomClient.commitMove(payload)
             .then(function (res) {
+              if (!taskIsCurrent()) return;
               const g = res && res.game ? res.game : null;
               if (!res || res.committed === false) {
                 retryOrFail(null, g);
                 return;
               }
-              try { if (g) self._lastGameData = g; } catch (e) {}
+              try {
+                if (g) self._ingestOfficialGame(g, {
+                  source: "move-commit",
+                  gameId: expectedGameId,
+                  version: res.version,
+                  rejectDuplicate: false,
+                });
+              } catch (e) {}
               try { if (res.moveIndex) self.moveIndex = Number(res.moveIndex) || self.moveIndex || 0; } catch (e) {}
               try { self._clearPendingMoveOutbox && self._clearPendingMoveOutbox(); } catch (e) {}
               try { self._markLocalCommitSettled(); } catch (e) {}
-              try { self._touchRoomListActivity(self.gameId, true); } catch (e) {}
+              try { self._touchRoomListActivity(expectedGameId, true); } catch (e) {}
             })
             .catch(function (err) {
               retryOrFail(err, err && err.data && err.data.game ? err.data.game : null);
@@ -5150,36 +4936,45 @@ this._bindGameListeners();
 
     sendSouflaDecisionToCloudflare: function (decision, pending, nextTurn) {
           if (!allowOnlineWrite()) return;
-          if (!this.isActive || !this.gameId) return;
-          if (!decision || !pending) return;
-          if (this.isSpectator) return;
+          if (!this.isActive || !this.gameId || !decision || !pending || this.isSpectator) return;
+          const expectedGameId = String(this.gameId || "");
+          const epochToken = window.DhametMatchCoordinator ? DhametMatchCoordinator.token() : null;
+          const taskIsCurrent = () => !!(
+            this.isActive &&
+            String(this.gameId || "") === expectedGameId &&
+            (!epochToken || DhametMatchCoordinator.isCurrent(epochToken))
+          );
 
           const payload =
             window.DhametGameRoomClient && typeof window.DhametGameRoomClient.createSouflaDecisionPayload === "function"
               ? window.DhametGameRoomClient.createSouflaDecisionPayload({
-                  gameId: this.gameId,
-                  clientDecisionId:
-                    "sf:" + (this.myUid || "anon") + ":" + this.gameId + ":" + Date.now() + ":" + Math.random().toString(36).slice(2, 10),
+                  gameId: expectedGameId,
+                  clientDecisionId: "sf:" + (this.myUid || "anon") + ":" + expectedGameId + ":" + Date.now() + ":" + Math.random().toString(36).slice(2, 10),
                   baseMoveIndex: Number(this.moveIndex || 0) || 0,
                   by: pending.penalizer,
                   decision: decision,
                 })
               : {
-                  gameId: this.gameId,
-                  clientDecisionId:
-                    "sf:" + (this.myUid || "anon") + ":" + this.gameId + ":" + Date.now() + ":" + Math.random().toString(36).slice(2, 10),
+                  gameId: expectedGameId,
+                  clientDecisionId: "sf:" + (this.myUid || "anon") + ":" + expectedGameId + ":" + Date.now() + ":" + Math.random().toString(36).slice(2, 10),
                   baseMoveIndex: Number(this.moveIndex || 0) || 0,
                   by: pending.penalizer,
                   decision: decision,
                 };
-
           this._cachedSouflaPlain = null;
 
           const fail = (err, serverGame) => {
-            try { if (serverGame) this._lastGameData = serverGame; } catch (e) {}
-            try { if (serverGame && serverGame.moveIndex != null) this.moveIndex = Number(serverGame.moveIndex) || this.moveIndex || 0; } catch (e) {}
+            if (!taskIsCurrent()) return;
+            try {
+              if (serverGame) this._ingestOfficialGame(serverGame, {
+                source: "soufla-commit-rejected",
+                gameId: expectedGameId,
+                version: serverGame.__transportVersion,
+                rejectDuplicate: false,
+              });
+            } catch (e) {}
             try { handleDbError(err || new Error("soufla-not-committed"), window.I18N.translateArgs("soufla.sendFailed"), { ctx: "soufla.send" }); } catch (e) {}
-            try { this._forceResync(); } catch (e) {}
+            try { this._forceResync("soufla-commit-failed"); } catch (e) {}
           };
 
           if (!window.DhametGameRoomClient || typeof window.DhametGameRoomClient.commitSouflaDecision !== "function") {
@@ -5189,21 +4984,26 @@ this._bindGameListeners();
 
           window.DhametGameRoomClient.commitSouflaDecision(payload)
             .then((res) => {
+              if (!taskIsCurrent()) return;
               const g = res && res.game ? res.game : null;
               if (!res || res.committed === false) {
                 fail(null, g);
                 return;
               }
-              try { if (g) this._lastGameData = g; } catch (e) {}
+              try {
+                if (g) this._ingestOfficialGame(g, {
+                  source: "soufla-commit",
+                  gameId: expectedGameId,
+                  version: res.version,
+                  rejectDuplicate: false,
+                });
+              } catch (e) {}
               try { if (res.moveIndex) this.moveIndex = Number(res.moveIndex) || this.moveIndex || 0; } catch (e) {}
               try { if (res.ply) this.ply = Number(res.ply) || this.ply || 0; } catch (e) {}
-              try { this._touchRoomListActivity(this.gameId, true); } catch (e) {}
+              try { this._touchRoomListActivity(expectedGameId, true); } catch (e) {}
             })
-            .catch((err) => {
-              fail(err, err && err.data && err.data.game ? err.data.game : null);
-            });
+            .catch((err) => fail(err, err && err.data && err.data.game ? err.data.game : null));
         },
-
 
     _undoWaitKeyOf: function (ur) {
           try {
@@ -5243,14 +5043,14 @@ this._bindGameListeners();
     
             showOnlineNotice(window.I18N.translateArgs("undo.wait.body"), {
               title: window.I18N.translateArgs("modals.undo.title"),
-              onClose: () => {
+              onClose: (reason) => {
                 const k = this._undoWaitKey;
                 this._undoWaitOpen = false;
                 this._undoWaitKey = null;
     
                 if (this._undoWaitAutoClose) {
                   this._undoWaitAutoClose = false;
-                } else if (k) {
+                } else if (k && reason !== "replaced" && reason !== "state-change") {
                   this._undoWaitDismissedKey = k;
                 }
     
@@ -5324,8 +5124,9 @@ this._bindGameListeners();
             return;
           }
 
+          const asyncContext = this._captureAsyncContext(this.gameId);
           const payload = {
-            gameId: this.gameId,
+            gameId: asyncContext.gameId,
             clientActionId: "undo:req:" + (this.myUid || "anon") + ":" + this.gameId + ":" + Date.now() + ":" + Math.random().toString(36).slice(2, 10),
             baseMoveIndex: Number(this.moveIndex || 0) || 0,
             kind: "undo-request",
@@ -5340,6 +5141,7 @@ this._bindGameListeners();
 
           window.DhametGameRoomClient.commitControlAction(payload)
             .then((res) => {
+              if (!this._isAsyncContextCurrent(asyncContext)) return;
               const g = res && res.game ? res.game : null;
               if (!res || res.committed === false) {
                 try { if (g) this._lastGameData = g; } catch (e) {}
@@ -5354,6 +5156,7 @@ this._bindGameListeners();
               try { if (g && g.undoRequest) this._openUndoWaitModal(g.undoRequest); } catch (e) {}
             })
             .catch((e) => {
+              if (!this._isAsyncContextCurrent(asyncContext)) return;
               handleDbError(e, window.I18N.translateArgs("undo.requestFailed"), { ctx: "undo.request" });
               try { this._forceResync(); } catch (_) {}
             });
@@ -5415,8 +5218,9 @@ this._bindGameListeners();
           if (!this.isActive || !this.gameId) return;
           if (this.isSpectator) return;
 
+          const asyncContext = this._captureAsyncContext(this.gameId);
           const payload = {
-            gameId: this.gameId,
+            gameId: asyncContext.gameId,
             clientActionId: "undo:resp:" + (this.myUid || "anon") + ":" + this.gameId + ":" + Date.now() + ":" + Math.random().toString(36).slice(2, 10),
             baseMoveIndex: Number(this.moveIndex || 0) || 0,
             kind: "undo-respond",
@@ -5432,6 +5236,7 @@ this._bindGameListeners();
 
           window.DhametGameRoomClient.commitControlAction(payload)
             .then((res) => {
+              if (!this._isAsyncContextCurrent(asyncContext)) return;
               const g = res && res.game ? res.game : null;
               if (!res || res.committed === false) {
                 try { if (g) this._lastGameData = g; } catch (e) {}
@@ -5445,6 +5250,7 @@ this._bindGameListeners();
               try { this._touchRoomListActivity(this.gameId, true); } catch (e) {}
             })
             .catch((e) => {
+              if (!this._isAsyncContextCurrent(asyncContext)) return;
               handleDbError(e, window.I18N.translateArgs("undo.failed"), { ctx: "undo.respond" });
               try { this._forceResync(); } catch (_) {}
             });
@@ -5759,15 +5565,8 @@ this._bindGameListeners();
         },
 
     _showUnavailableGameAndLeave: async function () {
-          try { this._clearPersistedActiveGame(); } catch (e) {}
-          try { await this._setLobbyStatus("available"); } catch (e) {}
-          try { showOnlineNotice(window.I18N.translateArgs("online.errors.noGame")); } catch (e) {}
-          try {
-            if (typeof location !== "undefined" && isGamePage()) {
-              const back = (location.pathname || "").includes("/pages/") ? "./loby.html" : "pages/loby.html";
-              location.href = back;
-            }
-          } catch (e) {}
+          try { showOnlineNotice(window.I18N.translateArgs("online.errors.noGame"), { allowSpectator: true }); } catch (e) {}
+          return await this._abortOnlineEntry("official-game-unavailable");
         },
 
     _makeOfficialGameSnapshot: function (value) {
@@ -5788,7 +5587,7 @@ this._bindGameListeners();
               try { this._lastGameAccess = res || null; } catch (e) {}
               try { this._syncMyUidFromOfficialResult && this._syncMyUidFromOfficialResult(res); } catch (e) {}
               try { if (res && res.game) this._noteOnlineGameTransportActivity && this._noteOnlineGameTransportActivity("resync"); } catch (e) {}
-              return res && res.game ? res.game : null;
+              return res && res.game ? Object.assign({}, res.game, { __transportVersion: res.version }) : null;
             }
           } catch (e) {
             try { this._lastGameAccess = e && e.data ? e.data : null; } catch (_) {}
@@ -5841,23 +5640,28 @@ this._bindGameListeners();
     _autoEnterFromUrl: async function () {
           if (!isGamePage()) return;
           try {
-            const p = new URLSearchParams(location.search || "");
-            const spectateId = (p.get("spectate") || "").trim();
-            const gid = (p.get("gid") || "").trim();
-            const gameId = spectateId || gid;
+            const requested = window.DhametMatchMode && typeof DhametMatchMode.requestedOnlineInfo === "function"
+              ? DhametMatchMode.requestedOnlineInfo()
+              : null;
+            const gameId = requested && requested.gameId ? requested.gameId : "";
             if (!gameId) return;
-            await this._enterGameFromId(gameId, !!spectateId);
-          } catch (e) {}
+            await this._enterGameFromId(gameId, !!requested.spectator);
+          } catch (e) {
+            try { Logger.warn("online_auto_enter_failed", { err: String(e && (e.message || e)) }); } catch (_) {}
+          }
         },
 
     _enterGameFromId: async function (gameId, forceSpectator) {
+          const entryRequest = this._beginEntryRequest(gameId);
           const ok = await this.initPresence();
+          if (!this._isEntryRequestCurrent(entryRequest)) return false;
           if (!ok) {
             showOnlineNotice(window.I18N.translateArgs("status.onlineInitFail"));
             return;
           }
     
           let g = await this._refreshStaleRoomBeforeEntry(gameId);
+          if (!this._isEntryRequestCurrent(entryRequest)) return false;
           if (!g) {
             await this._showUnavailableGameAndLeave();
             return;
@@ -5890,7 +5694,7 @@ this._bindGameListeners();
                 await this._showUnavailableGameAndLeave();
                 return;
               }
-              await this._startSpectator(gameId);
+              await this._startSpectator(gameId, entryRequest);
               return;
             }
           }
@@ -5901,17 +5705,23 @@ this._bindGameListeners();
           }
     
           if (accessSide === -1 || uid === wuid) {
-            await this._startInviterGame(gameId);
+            await this._startInviterGame(gameId, entryRequest);
           } else {
-            await this._joinGame(gameId);
+            await this._joinGame(gameId, entryRequest);
           }
         },
 
-    _startSpectator: async function (gameId) {
+    _startSpectator: async function (gameId, entryRequest) {
+          if (entryRequest && !this._isEntryRequestCurrent(entryRequest)) return false;
           const ok = await this.initPresence();
+          if (entryRequest && !this._isEntryRequestCurrent(entryRequest)) return false;
           if (!ok) return false;
     
           const registration = await this._registerSpectatorInRoom(gameId);
+          if (entryRequest && !this._isEntryRequestCurrent(entryRequest)) {
+            try { if (registration && registration.ok) await this._removeSpectatorRegistration(gameId, this.myUid); } catch (e) {}
+            return false;
+          }
           if (!registration || !registration.ok) {
             const msg = registration && registration.reason === "full"
               ? window.I18N.translateArgs("lobby.spectatorFull")
@@ -5935,10 +5745,17 @@ this._bindGameListeners();
           this.isActive = true;
           this.mySide = 0;
           this.gameId = gameId;
+          this._inPostMatch = false;
+          this._postMatchShown = false;
+          this._lastRematchSeq = null;
+          try {
+            if (window.DhametMatchCoordinator) DhametMatchCoordinator.begin(DhametMatchCoordinator.phases.ONLINE_SPECTATOR, "online-spectator-enter");
+          } catch (e) {}
           this.gameRef = this._makeOfficialGameRef(gameId); // Official /dhamet/api/game/live and /dhamet/api/game/resync endpoints provide live state.
     
+          const asyncContext = this._captureAsyncContext(gameId);
           if (typeof document !== "undefined" && document.body) document.body.classList.add("z-spectator");
-          this._setOnlineButtonsState(true);
+          this._setOnlineButtonsState(true, { keepBlocked: true });
     
           try {
             this._presenceStatus = "spectating";
@@ -5948,16 +5765,17 @@ this._bindGameListeners();
           } catch (e) {
             handleDbError(e, "", { ctx: "presence.spectatorStatus" });
           }
+          if ((entryRequest && !this._isEntryRequestCurrent(entryRequest)) || !this._isAsyncContextCurrent(asyncContext)) return false;
     
           try {
-            Game.settings.starter = "white";
-            setupInitialBoard();
-            try {
-              Turn.start();
-            } catch (e) {}
+            if (window.DhametMatchCoordinator) DhametMatchCoordinator.resetPresentation({ draw: true });
           } catch (e) {
-            Logger.warn("spectator_board_setup_failed", { gameId, err: String(e && (e.message || e)) });
+            Logger.warn("spectator_presentation_reset_failed", { gameId, err: String(e && (e.message || e)) });
           }
+          const synced = await this.syncNow({ repairPresence: false, force: true });
+          if ((entryRequest && !this._isEntryRequestCurrent(entryRequest)) || !this._isAsyncContextCurrent(asyncContext)) return false;
+          if (!synced) return await this._abortOnlineEntry("spectator-sync-failed");
+          this._setOnlineButtonsState(true);
     
           try {
             this._bindInviteListener();
@@ -5968,11 +5786,437 @@ this._bindGameListeners();
           } catch (e) {
             handleDbError(e, "", { ctx: "rtc.initSpectator" });
           }
+          if ((entryRequest && !this._isEntryRequestCurrent(entryRequest)) || !this._isAsyncContextCurrent(asyncContext)) return false;
           try {
             this._persistActiveGame();
           } catch (e) {}
           return true;
         },
+    _abortOnlineEntry: async function (reason) {
+          const gid = String(this.gameId || this._presenceRoomId || "").trim();
+          const uid = String(this.myUid || "").trim();
+          const wasSpectator = !!this.isSpectator;
+          try {
+            if (window.DhametMatchCoordinator) {
+              DhametMatchCoordinator.begin(DhametMatchCoordinator.phases.LEAVING, reason || "online-entry-aborted");
+            }
+          } catch (e) {}
+          try { if (typeof Modal !== "undefined" && Modal && Modal.close) Modal.close("state-change"); } catch (e) {}
+          try { this._unbindGameLiveSubscription && this._unbindGameLiveSubscription(); } catch (e) {}
+          try { this.gameRef && this.gameRef.off && this.gameRef.off(); } catch (e) {}
+          try { this._teardownRoomComms && this._teardownRoomComms(); } catch (e) {}
+          try {
+            if (gid && uid && wasSpectator) await this._removeSpectatorRegistration(gid, uid);
+          } catch (e) {}
+          try { this._clearCaptureDraft && this._clearCaptureDraft(); } catch (e) {}
+          try { this._clearPendingMoveOutbox && this._clearPendingMoveOutbox(); } catch (e) {}
+          try { this._markLocalCommitSettled && this._markLocalCommitSettled(); } catch (e) {}
+          try { this._clearPersistedActiveGame && this._clearPersistedActiveGame(); } catch (e) {}
+
+          this.isActive = false;
+          this.isSpectator = false;
+          this.gameId = null;
+          this.gameRef = null;
+          this.mySide = null;
+          this._presenceRoomId = null;
+
+          try {
+            if (typeof history !== "undefined" && history.replaceState && typeof location !== "undefined") {
+              history.replaceState(null, "", (location.pathname || "") + (location.hash || ""));
+            }
+          } catch (e) {}
+          try {
+            if (typeof document !== "undefined" && document.body) document.body.classList.remove("z-spectator");
+          } catch (e) {}
+          try { this._setOnlineButtonsState(false); } catch (e) {}
+          try { await this._setLobbyStatus("available"); } catch (e) {}
+
+          try {
+            if (typeof location !== "undefined" && isGamePage()) {
+              const back = (location.pathname || "").includes("/pages/") ? "./loby.html" : "pages/loby.html";
+              if (typeof location.replace === "function") location.replace(back);
+              else location.href = back;
+            }
+          } catch (e) {}
+          return false;
+        },
+
+    _officialCursor: function (data, meta) {
+          const source = meta && typeof meta === "object" ? meta : {};
+          return {
+            gameId: String(source.gameId || this.gameId || ""),
+            rematchSeq: Number((data && data.rematchSeq) || 0) || 0,
+            moveIndex: Number((data && data.moveIndex) || 0) || 0,
+            version: Number(source.version != null ? source.version : (data && data.__transportVersion)),
+          };
+        },
+
+    _prepareOfficialState: function (data) {
+          if (!data || typeof data !== "object") return data;
+          const stateSnap =
+            (data.state && data.state.snapshot) ||
+            (data.states && data.ply != null && data.states[data.ply] && data.states[data.ply].snapshot) ||
+            null;
+          if (!stateSnap) return data;
+          const stateRecord = currentStateRecord(data) || {};
+          const queue = deferredPromotionQueue(stateRecord);
+          return Object.assign({}, data, {
+            state: Object.assign({}, stateRecord, {
+              snapshot: snapshotWithPromotionQueue(stateSnap, stateRecord),
+              deferredPromotions: queue,
+              deferredPromotion: queue.length ? Object.assign({}, queue[0]) : null,
+            }),
+          });
+        },
+
+    _verifyMissingOfficialGame: function () {
+          if (!this.isActive || !this.gameId) return;
+          const asyncContext = this._captureAsyncContext(this.gameId);
+          if (this._missingGameVerification && this._isAsyncContextCurrent(this._missingGameVerification.context, { ignorePostMatch: true })) return;
+          const verification = { context: asyncContext };
+          this._missingGameVerification = verification;
+          const client = window.DhametGameRoomClient;
+          const done = () => {
+            if (this._missingGameVerification === verification) this._missingGameVerification = null;
+          };
+          if (!client || typeof client.resyncGame !== "function") {
+            done();
+            if (this._isAsyncContextCurrent(asyncContext, { ignorePostMatch: true })) this._handleMissingOfficialGame();
+            return;
+          }
+          Promise.resolve(client.resyncGame({ gameId: asyncContext.gameId, baseMoveIndex: this.moveIndex || 0 }))
+            .then((res) => {
+              if (!this._isAsyncContextCurrent(asyncContext, { ignorePostMatch: true })) return;
+              const data = res && res.game ? Object.assign({}, res.game, { __transportVersion: res.version }) : null;
+              if (data) {
+                this._ingestOfficialGame(data, { source: "verify-missing", gameId: asyncContext.gameId, version: res.version, rejectDuplicate: false });
+              } else {
+                this._handleMissingOfficialGame();
+              }
+            })
+            .catch((error) => {
+              if (!this._isAsyncContextCurrent(asyncContext, { ignorePostMatch: true })) return;
+              const status = Number(error && error.status);
+              const code = String((error && (error.code || error.message)) || "");
+              if (status === 404 || /not-found/.test(code)) this._handleMissingOfficialGame();
+              else try { Logger.warn("official_missing_verification_failed", { gameId: asyncContext.gameId, err: code }); } catch (_) {}
+            })
+            .finally(done);
+        },
+
+    _handleMissingOfficialGame: function () {
+          if (!this.isActive) return;
+          const asyncContext = this._captureAsyncContext(this.gameId);
+          try { tryFinalizeTrainingOnExit("disconnect", 900); } catch (e) {}
+          const title = window.I18N.translateArgs("online.pvpEndTitle");
+          const body = window.I18N.translateArgs("online.ended.remoteOrCleaned");
+          let completed = false;
+          const go = async () => {
+            if (completed || !this._isAsyncContextCurrent(asyncContext, { ignorePostMatch: true })) return;
+            completed = true;
+            try { this._clearPersistedActiveGame(); } catch (e) {}
+            try { await this.exitToMode(); } catch (e) {
+              try {
+                const inPages = (location.pathname || "").includes("/pages/");
+                location.href = inPages ? "mode.html" : "pages/mode.html";
+              } catch (_) {}
+            }
+          };
+          if (typeof Modal !== "undefined" && Modal && typeof Modal.alert === "function") {
+            try { setTimeout(go, 1800); } catch (e) {}
+            Modal.alert({
+              title,
+              body: `<div>${body}</div>`,
+              okLabel: window.I18N.translateArgs("buttons.home"),
+              okClassName: "ok",
+              allowSpectator: true,
+              priority: 90,
+              blocking: true,
+              onClick: go,
+              onClose: (reason) => {
+                if (reason === "dismiss") go();
+              },
+            });
+          } else {
+            try { showOnlineNotice(body); } catch (e) {}
+            go();
+          }
+        },
+
+    _ingestOfficialGame: function (rawData, meta) {
+          if (!rawData || typeof rawData !== "object") return false;
+          const source = meta && typeof meta === "object" ? meta : {};
+          const remoteMi = Number(rawData.moveIndex || 0) || 0;
+          const localBaseMoveIndex = Number(this.moveIndex || 0) || 0;
+          const rs = Number(rawData.rematchSeq || 0) || 0;
+          const previousRematchSeq = this._lastRematchSeq;
+
+          if (previousRematchSeq != null && rs < Number(previousRematchSeq || 0)) {
+            try { Logger.info("official_state_rejected", { gameId: this.gameId, reason: "older-rematch", rematchSeq: rs, currentRematchSeq: previousRematchSeq }); } catch (_) {}
+            return false;
+          }
+          const isTerminalState = !!(rawData.status && rawData.status !== "active");
+          const isNewRematch = previousRematchSeq != null && rs > Number(previousRematchSeq || 0);
+          if (
+            this._awaitingLocalCommit &&
+            Number.isFinite(this._expectedMoveIndex) &&
+            remoteMi < this._expectedMoveIndex &&
+            !isTerminalState &&
+            !isNewRematch
+          ) {
+            try { Logger.info("official_state_held_for_local_commit", { gameId: this.gameId, remoteMi, expected: this._expectedMoveIndex, source: source.source || "" }); } catch (_) {}
+            return false;
+          }
+
+          const data = this._prepareOfficialState(rawData);
+          const stateSnap = data && data.state && data.state.snapshot;
+          if (data.status === "active" && stateSnap && stateSnap.inChain) {
+            try { Logger.warn("official_partial_turn_rejected", { gameId: this.gameId, moveIndex: remoteMi, reason: "official-snapshots-must-be-turn-boundaries" }); } catch (_) {}
+            return false;
+          }
+
+          const cursor = this._officialCursor(data, source);
+          let gate = { accepted: true };
+          try {
+            if (window.DhametMatchCoordinator && typeof DhametMatchCoordinator.acceptRemote === "function") {
+              gate = DhametMatchCoordinator.acceptRemote(cursor, {
+                expectedGameId: this.gameId,
+                allowGameChange: false,
+                rejectDuplicate: source.rejectDuplicate !== false,
+              });
+            }
+          } catch (e) {
+            try { Logger.warn("official_state_gate_failed", { gameId: this.gameId, error: String(e && (e.message || e)) }); } catch (_) {}
+          }
+          if (!gate.accepted) {
+            try { Logger.info("official_state_rejected", { gameId: this.gameId, reason: gate.reason, cursor, source: source.source || "" }); } catch (_) {}
+            return false;
+          }
+
+          if (
+            this._awaitingLocalCommit &&
+            Number.isFinite(this._expectedMoveIndex) &&
+            (remoteMi >= this._expectedMoveIndex || isTerminalState || isNewRematch)
+          ) {
+            try { this._markLocalCommitSettled(); } catch (e) {}
+          }
+
+          let rematchAdvanced = false;
+          if (previousRematchSeq == null) this._lastRematchSeq = rs;
+          else if (rs > Number(previousRematchSeq || 0)) {
+            rematchAdvanced = true;
+            this._lastRematchSeq = rs;
+            try { this._onRematchStarted(); } catch (e) {}
+            try {
+              if (window.DhametMatchCoordinator) {
+                DhametMatchCoordinator.acceptRemote(cursor, {
+                  expectedGameId: this.gameId,
+                  allowGameChange: false,
+                  rejectDuplicate: false,
+                });
+              }
+            } catch (e) {}
+          }
+
+          try { this._lastGameData = data; } catch (e) {}
+          try { this._handleOfficialRematchRequest(data); } catch (e) {}
+
+          if (data.status && data.status !== "active") {
+            try { this._enterPostMatch({ reason: data.endedReason || data.status, endedBy: data.endedBy || null }); } catch (e) {}
+            return true;
+          }
+
+          try {
+            const w = data.players && data.players.white ? data.players.white.nickname || "" : "";
+            const b = data.players && data.players.black ? data.players.black.nickname || "" : "";
+            Game.names.bot = w || "";
+            Game.names.top = b || "";
+            if (window.ZGamePlayers && typeof window.ZGamePlayers.refresh === "function") window.ZGamePlayers.refresh();
+            this._topDisplayName = this._resolveSlotDisplayName("top", Game.names.top || window.I18N.translateArgs("players.player"));
+            this._botDisplayName = this._resolveSlotDisplayName("bot", Game.names.bot || window.I18N.translateArgs("players.player"));
+            this._ensurePresenceUi();
+            this._updatePresenceUi();
+          } catch (e) {}
+
+          this.moveIndex = remoteMi;
+          this.ply = Number(data.ply || 0) || 0;
+          try { this._renderSharedLog(data.log || []); } catch (e) {}
+          try { this._handlePresence(data); } catch (e) {}
+          try {
+            Game.availableSouflaForHuman = data.soufla && data.soufla.availableFor === this.mySide
+              ? plainToSoufla(data.soufla.pending)
+              : null;
+          } catch (e) {}
+          try { this._handleUndoRequest(data); } catch (e) {}
+
+          const preserveLocalCapture = !!(
+            stateSnap &&
+            Game && Game.inChain &&
+            Array.isArray(this._pendingSteps) && this._pendingSteps.length &&
+            remoteMi === localBaseMoveIndex &&
+            rs === Number(this._lastRematchSeq || 0)
+          );
+          if (preserveLocalCapture) {
+            try { this._scheduleCaptureDraftSave(); } catch (e) {}
+          } else if (stateSnap) {
+            this._applyRemoteState(data, { skipFx: !!source.skipFx });
+            try { this._restoreCaptureDraftIfValid && this._restoreCaptureDraftIfValid(data); } catch (e) {}
+          } else if (typeof data.turn === "number") {
+            try {
+              Game.player = data.turn;
+              Turn.ctx = null;
+              Turn.start();
+              UI.updateAll();
+            } catch (e) {}
+          }
+
+          if (rematchAdvanced) {
+            try { this._setOnlineButtonsState(true); } catch (e) {}
+          }
+          return true;
+        },
+
+    _captureDraftKey: function () {
+          const gid = String(this.gameId || "").trim();
+          return gid ? "zamat.captureDraft." + gid : "";
+        },
+
+    _clearCaptureDraft: function () {
+          try {
+            const key = this._captureDraftKey();
+            if (key) sessionStorage.removeItem(key);
+          } catch (e) {}
+          this._captureDraft = null;
+        },
+
+    _captureTimerElapsed: function () {
+          try {
+            if (!Game || !Game.killTimer) return 0;
+            const timer = Game.killTimer;
+            return Math.max(0, Number(timer.elapsedMs || 0) + (timer.running ? performance.now() - Number(timer.startTs || 0) : 0));
+          } catch (e) { return 0; }
+        },
+
+    _saveCaptureDraftNow: function () {
+          if (!this.isActive || this.isSpectator || !this.gameId) return false;
+          if (!Game || !Game.inChain || Game.chainPos == null || !Turn || !Turn.ctx) {
+            this._clearCaptureDraft();
+            return false;
+          }
+          const steps = Array.isArray(this._pendingSteps) ? this._pendingSteps.slice() : [];
+          if (!steps.length || !steps.some((step) => !!step.capture)) {
+            this._clearCaptureDraft();
+            return false;
+          }
+          try {
+            const base = Turn.ctx.snapshot;
+            const coordinator = window.DhametMatchCoordinator;
+            if (!base || !coordinator || typeof coordinator.boardFingerprint !== "function") return false;
+            const draft = {
+              schema: 1,
+              gameId: String(this.gameId),
+              rematchSeq: Number(this._lastRematchSeq || (this._lastGameData && this._lastGameData.rematchSeq) || 0) || 0,
+              baseMoveIndex: Number(this.moveIndex || 0) || 0,
+              side: Number(Game.player),
+              baseFingerprint: coordinator.boardFingerprint(base),
+              steps,
+              snapshot: snapshotState(),
+              history: JSON.parse(JSON.stringify(Array.isArray(Game.history) ? Game.history : [])),
+              capturedOrder: Visual && typeof Visual.getCapturedOrder === "function" ? Visual.getCapturedOrder() : [],
+              timerElapsedMs: this._captureTimerElapsed(),
+              savedAt: Date.now(),
+            };
+            const key = this._captureDraftKey();
+            if (!key) return false;
+            sessionStorage.setItem(key, JSON.stringify(draft));
+            this._captureDraft = draft;
+            return true;
+          } catch (e) {
+            try { Logger.warn("capture_draft_save_failed", { gameId: this.gameId, err: String(e && (e.message || e)) }); } catch (_) {}
+            return false;
+          }
+        },
+
+    _scheduleCaptureDraftSave: function () {
+          if (this._captureDraftSaveQueued) return;
+          this._captureDraftSaveQueued = true;
+          const asyncContext = this._captureAsyncContext(this.gameId);
+          const run = () => {
+            this._captureDraftSaveQueued = false;
+            if (this._isAsyncContextCurrent(asyncContext)) this._saveCaptureDraftNow();
+          };
+          try {
+            if (typeof queueMicrotask === "function") queueMicrotask(run);
+            else Promise.resolve().then(run);
+          } catch (e) { setTimeout(run, 0); }
+        },
+
+    _readCaptureDraft: function () {
+          try {
+            if (this._captureDraft) return this._captureDraft;
+            const key = this._captureDraftKey();
+            if (!key) return null;
+            const raw = sessionStorage.getItem(key);
+            if (!raw) return null;
+            const draft = JSON.parse(raw);
+            this._captureDraft = draft;
+            return draft;
+          } catch (e) { return null; }
+        },
+
+    _restoreCaptureDraftIfValid: function (officialData) {
+          if (!this.isActive || this.isSpectator || !officialData || !officialData.state || !officialData.state.snapshot) return false;
+          const draft = this._readCaptureDraft();
+          if (!draft) return false;
+          const fail = (reason) => {
+            try { Logger.info("capture_draft_rejected", { gameId: this.gameId, reason }); } catch (_) {}
+            this._clearCaptureDraft();
+            return false;
+          };
+          const coordinator = window.DhametMatchCoordinator;
+          if (!coordinator || typeof coordinator.validateCaptureDraft !== "function") return fail("coordinator");
+          const validation = coordinator.validateCaptureDraft({
+            draft,
+            officialSnapshot: officialData.state.snapshot,
+            gameId: this.gameId,
+            rematchSeq: officialData.rematchSeq,
+            moveIndex: officialData.moveIndex,
+            mySide: this.mySide,
+            hasOutbox: !!(this._readPendingMoveOutbox && this._readPendingMoveOutbox()),
+            rules: window.DhametRules,
+            now: Date.now(),
+          });
+          if (!validation || !validation.valid) return fail(validation && validation.reason ? validation.reason : "invalid");
+
+          try {
+            restoreSnapshot(draft.snapshot, { redraw: false, visual: false });
+            Game.history = Array.isArray(draft.history) ? JSON.parse(JSON.stringify(draft.history)) : [];
+            if (Visual && typeof Visual.setCapturedOrder === "function") Visual.setCapturedOrder(draft.capturedOrder || []);
+            if (Game.killTimer) {
+              Game.killTimer.stop();
+              Game.killTimer.elapsedMs = Math.max(0, Number(draft.timerElapsedMs || 0));
+              if (Game.player === this.mySide) Game.killTimer.start();
+            }
+            this._pendingSteps = validation.steps;
+            if (window.UI && typeof UI.restoreCaptureContinuationVisualState === "function") UI.restoreCaptureContinuationVisualState();
+            else if (Visual && typeof Visual.draw === "function") Visual.draw();
+            try { Logger.info("capture_draft_restored", { gameId: this.gameId, steps: this._pendingSteps.length }); } catch (_) {}
+            return true;
+          } catch (e) {
+            return fail("restore");
+          }
+        },
+
+    _bindCaptureDraftLifecycle: function () {
+          if (this._captureDraftLifecycleBound) return;
+          this._captureDraftLifecycleBound = true;
+          const flush = () => {
+            try { this._saveCaptureDraftNow(); } catch (e) {}
+          };
+          window.addEventListener("pagehide", flush, { capture: true });
+          window.addEventListener("beforeunload", flush, { capture: true });
+        },
+
   });
 
   window.addEventListener("load", function () {

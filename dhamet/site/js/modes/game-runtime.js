@@ -387,22 +387,16 @@ function finishForcedOpeningAppliedTurn(mover, info) {
 
 function setupInitialBoard() {
   try {
-    Visual.clearSouflaFX && Visual.clearSouflaFX();
-  } catch {}
-  try {
-    Visual.setUndoMove && Visual.setUndoMove(null, null);
-  } catch {}
-  try {
-    Visual.setHintPath && Visual.setHintPath(null, null);
-  } catch {}
-  try {
-    Visual.setLastMovePath && Visual.setLastMovePath(null, null);
-  } catch {}
-  try {
-    Visual.setLastMove && Visual.setLastMove(null, null);
-  } catch {}
-  try {
-    Visual.clearCapturedOrder && Visual.clearCapturedOrder();
+    if (window.DhametMatchCoordinator && typeof DhametMatchCoordinator.resetPresentation === "function") {
+      DhametMatchCoordinator.resetPresentation({ draw: false, keepCaptureTimer: true });
+    } else {
+      Visual.clearSouflaFX && Visual.clearSouflaFX();
+      Visual.setUndoMove && Visual.setUndoMove(null, null);
+      Visual.setHintPath && Visual.setHintPath(null, null);
+      Visual.setLastMovePath && Visual.setLastMovePath(null, null);
+      Visual.setLastMove && Visual.setLastMove(null, null);
+      Visual.clearCapturedOrder && Visual.clearCapturedOrder();
+    }
   } catch {}
 
   const lifecycleApplied =
@@ -898,6 +892,8 @@ const Turn = {
     return pending;
   },
 };
+try { if (typeof window !== "undefined") window.Turn = Turn; } catch (_) {}
+
 
 function snapshotState(options) {
   const opts = options && typeof options === "object" ? options : {};

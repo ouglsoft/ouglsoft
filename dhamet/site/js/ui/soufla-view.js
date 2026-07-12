@@ -405,11 +405,13 @@
       title,
       body: root,
       buttons: [],
-      onClose: () => {
+      priority: 85,
+      blocking: true,
+      onClose: (reason) => {
         try {
           Modal.toggleModalClass("soufla-modal", false);
         } catch {}
-        if (applied) return;
+        if (applied || reason === "replaced" || reason === "state-change") return;
 
         Game.awaitingPenalty = false;
         try {
@@ -499,8 +501,76 @@
   
   }
 
+
+  function showAppliedSummary(lastMove, deps) {
+    const d = buildDeps(deps);
+    const Modal = d.Modal;
+    const t = d.t;
+    const rcStr = d.rcStr;
+    if (!lastMove || !lastMove.decision || !Modal || typeof Modal.alert !== "function") return false;
+
+    const decision = lastMove.decision;
+    const meta = lastMove.souflaMeta || {};
+    const mySide = deps && deps.mySide != null ? Number(deps.mySide) : null;
+    const by = Number(lastMove.by);
+    const offenderIdx = decision.offenderIdx != null ? decision.offenderIdx : meta.offenderIdx;
+    const startedFrom = meta.startedFrom != null ? meta.startedFrom : null;
+    const lastPieceIdx = meta.lastPieceIdx != null ? meta.lastPieceIdx : null;
+    const title = t("modals.soufla.header");
+
+    if (mySide != null && mySide === by) {
+      const body = document.createElement("div");
+      body.innerHTML = `
+        <div style="font-weight:700;margin-bottom:6px;">${t("soufla.applied.self")}</div>
+        <div class="muted">${decision.kind === "remove" ? t("soufla.applied.remove") : t("soufla.applied.force")}</div>
+      `;
+      Modal.alert({
+        title,
+        body,
+        okLabel: t("actions.close"),
+        allowSpectator: true,
+        priority: 70,
+      });
+      return true;
+    }
+
+    const body = document.createElement("div");
+    body.className = "soufla-summary";
+    const fmtCell = (idx) => idx != null ? rcStr(idx) : "?";
+    const offenderCell = fmtCell(offenderIdx);
+    const hasUndo = lastPieceIdx != null && startedFrom != null && lastPieceIdx !== startedFrom;
+    const undoFrom = hasUndo ? fmtCell(lastPieceIdx) : null;
+    const undoTo = hasUndo ? fmtCell(startedFrom) : null;
+    const parts = [
+      `<div style="font-weight:900;margin-bottom:6px;">${t("soufla.summary.title")}</div>`,
+      `<div>${t("soufla.summary.reason")}</div>`,
+      `<div style="margin-top:10px;font-weight:800;">${t("soufla.summary.penaltyTitle")}</div>`,
+    ];
+
+    if (decision.kind === "force") {
+      const path = Array.isArray(decision.path) ? decision.path.slice() : [];
+      const toIdx = path.length ? path[path.length - 1] : offenderIdx;
+      parts.push(`<div>${t("soufla.summary.force", { from: offenderCell, to: fmtCell(toIdx), len: path.length })}</div>`);
+    } else {
+      parts.push(`<div>${t("soufla.summary.remove", { cell: offenderCell })}</div>`);
+    }
+    if (undoFrom && undoTo) {
+      parts.push(`<div class="muted" style="margin-top:8px;">${t("soufla.summary.undo", { from: undoFrom, to: undoTo })}</div>`);
+    }
+    body.innerHTML = parts.join("");
+    Modal.alert({
+      title,
+      body,
+      okLabel: t("actions.close"),
+      allowSpectator: true,
+      priority: 70,
+    });
+    return true;
+  }
+
   root.DhametSouflaView = {
     showSouflaModal,
     showSouflaAgainstHuman,
+    showAppliedSummary,
   };
 })();

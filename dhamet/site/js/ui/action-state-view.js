@@ -38,11 +38,21 @@
 
   function normalizeState(input) {
     const state = input && typeof input === "object" ? input : {};
+    const derived = root.DhametMatchCoordinator && typeof root.DhametMatchCoordinator.deriveActionState === "function"
+      ? root.DhametMatchCoordinator.deriveActionState(state)
+      : state;
     return {
-      online: !!state.online,
-      spectator: !!state.spectator,
-      uiBlocked: !!state.uiBlocked,
-      postMatch: !!state.postMatch,
+      online: !!derived.online,
+      spectator: !!derived.spectator,
+      uiBlocked: !!derived.uiBlocked,
+      postMatch: !!derived.postMatch,
+      canMove: derived.canMove !== false,
+      canEndCapture: !!derived.canEndCapture,
+      canUndo: derived.canUndo !== false,
+      canClaimSoufla: derived.canClaimSoufla !== false,
+      canSync: !!derived.canSync,
+      isSyncing: !!derived.isSyncing,
+      isWaitingOpponent: !!derived.isWaitingOpponent,
     };
   }
 
@@ -59,7 +69,11 @@
     });
   }
 
+  let lastLayoutKey = "";
   function mountControlLayout(state) {
+    const key = `${state.online ? 1 : 0}:${state.spectator ? 1 : 0}`;
+    if (key === lastLayoutKey) return;
+    lastLayoutKey = key;
     try {
       if (root.ZamatControls && typeof root.ZamatControls.mount === "function") {
         root.ZamatControls.mount(!!state.online, !!state.spectator);
@@ -100,10 +114,18 @@
     // Visual disable is intentionally conservative. It never turns a hidden
     // control into a visible one, and gameplay handlers still perform the
     // authoritative checks before applying any action.
-    ["btnEndOnline", "btnSync", "btnSpk", "btnMic"].forEach((id) => {
+    ["btnEndOnline", "btnSpk", "btnMic"].forEach((id) => {
       const el = byId(id);
       if (el) setAriaDisabled(el, state.uiBlocked && state.online);
     });
+    const syncButton = byId("btnSync");
+    if (syncButton) setAriaDisabled(syncButton, !state.canSync || state.isSyncing || state.uiBlocked);
+    const endCaptureButton = byId("btnEndKill");
+    if (endCaptureButton && state.online) setAriaDisabled(endCaptureButton, !state.canEndCapture);
+    const undoButton = byId("btnUndo");
+    if (undoButton && state.online) setAriaDisabled(undoButton, !state.canUndo);
+    const souflaButton = byId("btnSoufla");
+    if (souflaButton && state.online) setAriaDisabled(souflaButton, !state.canClaimSoufla);
 
     return state;
   }

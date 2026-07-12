@@ -1301,6 +1301,7 @@ export class RealtimeObject {
       viewerUid: uid,
       gameId,
       game: responseGame,
+      version: this.versions[path] || this.versions[''] || 0,
       moveIndex: serverMoveIndex,
       ply: Number(responseGame.ply || 0) || 0,
       side: side || null,
