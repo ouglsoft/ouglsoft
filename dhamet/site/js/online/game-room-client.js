@@ -14,12 +14,20 @@
     try { return JSON.parse(text); } catch (_) { return null; }
   }
 
-  function fetchJson(path, payload) {
+  function fetchJson(path, payload, options) {
+    var opts = options && typeof options === 'object' ? options : {};
+    var timeoutMs = Number(opts.timeoutMs || 12000) || 12000;
+    var controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    var timer = null;
+    if (controller && timeoutMs > 0) {
+      timer = setTimeout(function () { try { controller.abort(); } catch (_) {} }, timeoutMs);
+    }
     return fetch(path, {
       method: 'POST',
       credentials: 'include',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(payload || {}),
+      signal: controller ? controller.signal : undefined,
     }).then(function (res) {
       return res.text().then(function (txt) {
         var data = txt ? safeJson(txt) : {};
@@ -32,6 +40,16 @@
         }
         return data || {};
       });
+    }).catch(function (err) {
+      if (err && err.name === 'AbortError') {
+        var timeoutErr = new Error('request-timeout');
+        timeoutErr.code = 'request-timeout';
+        timeoutErr.status = 0;
+        throw timeoutErr;
+      }
+      throw err;
+    }).finally(function () {
+      if (timer) clearTimeout(timer);
     });
   }
 

@@ -525,10 +525,7 @@
             if (!this._moveCommitEscalatedAt && elapsed >= MOVE_SYNC_STALL_MS) {
               this._moveCommitEscalatedAt = now;
               try {
-                this._forceResync();
-              } catch (e) {}
-              try {
-                this.syncNow();
+                this._requestOfficialSync({ reason: "commit-watchdog", preservePendingCommit: true });
               } catch (e) {}
               try {
                 const browserOffline = typeof navigator !== "undefined" && navigator.onLine === false;
@@ -909,7 +906,9 @@
           try {
             this._pendingSteps = [];
             this._cachedSouflaPlain = null;
-            this._markLocalCommitSettled();
+            this._awaitingLocalCommit = false;
+            this._expectedMoveIndex = null;
+            this._clearMoveRetry();
           } catch (e) {}
     
           const asyncContext = this._captureAsyncContext(gameId);
@@ -1341,7 +1340,7 @@ this._bindGameListeners();
           // initial board state without a separate roomList/presence refresh.
           let joinedOk = false;
           try {
-            joinedOk = await this.syncNow({ repairPresence: false, force: true });
+            joinedOk = await this.syncNow({ reason: "join", repairPresence: false, notifyFailure: false });
             try { this._syncMyUidFromOfficialResult && this._syncMyUidFromOfficialResult(this._lastGameAccess); } catch (e) {}
           } catch (e) {
             joinedOk = false;
@@ -1454,20 +1453,6 @@ this._bindGameListeners();
             try {
               this.refreshPvpControls();
             } catch (e) {}
-            try {
-              if (on && !this.isSpectator) {
-                const f = sessionStorage.getItem("zamat.forceResyncOnLoad");
-                if (f) {
-                  sessionStorage.removeItem("zamat.forceResyncOnLoad");
-                  const asyncContext = this._captureAsyncContext(this.gameId);
-                  setTimeout(() => {
-                    try {
-                      if (this._isAsyncContextCurrent(asyncContext)) this.syncNow();
-                    } catch (_e) {}
-                  }, 250);
-                }
-              }
-            } catch (e) {}
           } else {
             try {
               if (typeof applyLanguage === "function") {
@@ -1535,7 +1520,6 @@ this._bindGameListeners();
     _clearPostMatchSession: function () {
           try { this._clearCaptureDraft && this._clearCaptureDraft(); } catch (e) {}
           try { this._clearPendingMoveOutbox && this._clearPendingMoveOutbox(); } catch (e) {}
-          try { sessionStorage.removeItem("zamat.forceResyncOnLoad"); } catch (e) {}
           try { sessionStorage.removeItem("zamat.internalNavTs"); } catch (e) {}
           try { localStorage.removeItem("zamat.activeGameId"); } catch (e) {}
           try { localStorage.removeItem("zamat.activeGameTs"); } catch (e) {}
@@ -2509,49 +2493,81 @@ this._bindGameListeners();
           }
         },
 
-    syncNow: async function (opts) {
-          if (!this.isActive || !this.gameId) return false;
+    _isMissingGameError: function (error) {
+          const status = Number(error && error.status || 0) || 0;
+          const code = String(error && (error.code || error.message) || "").toLowerCase();
+          return status === 404 || code.includes("not-found") || code.includes("game-not-found");
+        },
+
+    _requestOfficialSync: function (opts) {
           const cfg = opts && typeof opts === "object" ? opts : {};
-          const epochToken = window.DhametMatchCoordinator ? DhametMatchCoordinator.token() : null;
+          if (!this.isActive || !this.gameId) return Promise.resolve(false);
           const expectedGameId = String(this.gameId || "");
-          try {
-            const snap = await this.gameRef.once("value");
-            if (epochToken && !DhametMatchCoordinator.isCurrent(epochToken)) return false;
-            if (!this.isActive || String(this.gameId || "") !== expectedGameId) return false;
-            const data = snap && snap.val ? snap.val() : null;
-            if (!data) {
-              await this._showUnavailableGameAndLeave();
-              return false;
-            }
+          const existing = this._resyncInFlight;
+          if (existing && this._isAsyncContextCurrent(existing.context) && existing.promise) return existing.promise;
+
+          const asyncContext = this._captureAsyncContext(expectedGameId);
+          const flight = { context: asyncContext, reason: String(cfg.reason || "sync"), promise: null };
+          const client = window.DhametGameRoomClient;
+          if (!client || typeof client.resyncGame !== "function") return Promise.resolve(false);
+
+          const promise = Promise.resolve(client.resyncGame({
+            gameId: expectedGameId,
+            baseMoveIndex: Number(this.moveIndex || 0) || 0,
+          })).then(async (res) => {
+            if (!this._isAsyncContextCurrent(asyncContext, { ignorePostMatch: true })) return false;
+            const data = res && res.game ? Object.assign({}, res.game, { __transportVersion: res.version }) : null;
+            if (!data) return false;
             if (!this._isCurrentUserPlayerInGame(data) && !this.isSpectator) {
               await this._showUnavailableGameAndLeave();
               return false;
             }
-            if (cfg.force || cfg.emitSignal) {
-              try { this._pendingSteps = []; } catch (e) {}
-              try { this._cachedSouflaPlain = null; } catch (e) {}
-              try { this._clearMoveRetry(); } catch (e) {}
-              try { this._markLocalCommitSettled(); } catch (e) {}
-              if (cfg.discardCaptureDraft) try { this._clearCaptureDraft(); } catch (e) {}
-            }
+
             const applied = this._ingestOfficialGame(data, {
-              source: "sync",
+              source: "sync:" + flight.reason,
               gameId: expectedGameId,
-              version: data.__transportVersion,
+              version: res && res.version,
               rejectDuplicate: false,
             });
-            try {
-              if (cfg.repairPresence !== false && !this.isSpectator) {
-                this._writeFullGamePresence("gamePresence.syncNow", true);
-                this._touchRoomListActivity(this.gameId || this._presenceRoomId, true);
+
+            try { this._reconcilePendingMoveOutbox && this._reconcilePendingMoveOutbox(data); } catch (e) {}
+            if (cfg.discardCaptureDraft) try { this._clearCaptureDraft(); } catch (e) {}
+            if (applied) {
+              try { this._noteOnlineGameTransportActivity && this._noteOnlineGameTransportActivity("resync"); } catch (e) {}
+              if (cfg.repairPresence === true && !this.isSpectator) {
+                try { this._writeFullGamePresence("gamePresence.sync", false); } catch (e) {}
               }
-            } catch (e) {}
+            }
             return !!applied;
-          } catch (e) {
-            try { Logger.warn("official_sync_failed", { gameId: expectedGameId, err: String(e && (e.message || e)) }); } catch (_) {}
-            showOnlineNotice(window.I18N.translateArgs("online.syncFail"));
+          }).catch(async (error) => {
+            if (!this._isAsyncContextCurrent(asyncContext, { ignorePostMatch: true })) return false;
+            if (this._isMissingGameError(error)) {
+              await this._showUnavailableGameAndLeave();
+              return false;
+            }
+            try { Logger.warn("official_sync_failed", { gameId: expectedGameId, reason: flight.reason, err: String(error && (error.message || error)) }); } catch (_) {}
+            if (cfg.notifyFailure !== false) showOnlineNotice(window.I18N.translateArgs("online.syncFail"));
             return false;
-          }
+          }).finally(() => {
+            if (this._resyncInFlight === flight) this._resyncInFlight = null;
+            try { this.refreshPvpControls && this.refreshPvpControls(); } catch (e) {}
+          });
+
+          flight.promise = promise;
+          this._resyncInFlight = flight;
+          try { this.refreshPvpControls && this.refreshPvpControls(); } catch (e) {}
+          return promise;
+        },
+
+    syncNow: function (opts) {
+          const cfg = opts && typeof opts === "object" ? opts : {};
+          return this._requestOfficialSync({
+            reason: cfg.reason || (cfg.manual ? "manual" : "sync-now"),
+            preservePendingCommit: true,
+            discardCaptureDraft: !!cfg.discardCaptureDraft,
+            repairPresence: cfg.repairPresence === true,
+            notifyFailure: cfg.notifyFailure !== false,
+          });
         },
 
     _removeSpectatorRegistration: async function (gameId, uid) {
@@ -4628,41 +4644,14 @@ this._bindGameListeners();
         },
 
     _forceResync: function (reason) {
-          if (!this.isActive || !this.gameId) return;
           const asyncContext = this._captureAsyncContext(this.gameId);
-          if (this._resyncInFlight && this._isAsyncContextCurrent(this._resyncInFlight.context)) return;
-          const flight = { context: asyncContext, reason: String(reason || "manual") };
-          this._resyncInFlight = flight;
-          const done = () => {
-            if (this._resyncInFlight === flight) this._resyncInFlight = null;
-          };
-          try {
-            const client = window.DhametGameRoomClient;
-            if (!client || typeof client.resyncGame !== "function") { done(); return; }
-            Promise.resolve(client.resyncGame({ gameId: asyncContext.gameId, baseMoveIndex: this.moveIndex || 0 }))
-              .then((res) => {
-                if (!this._isAsyncContextCurrent(asyncContext)) return;
-                const data = res && res.game ? Object.assign({}, res.game, { __transportVersion: res.version }) : null;
-                if (!data) return;
-                const applied = this._ingestOfficialGame(data, {
-                  source: "resync:" + flight.reason,
-                  gameId: asyncContext.gameId,
-                  version: res && res.version,
-                  rejectDuplicate: false,
-                });
-                if (applied) {
-                  try { this._reconcilePendingMoveOutbox && this._reconcilePendingMoveOutbox(data); } catch (e) {}
-                  try { this._noteOnlineGameTransportActivity && this._noteOnlineGameTransportActivity("resync"); } catch (e) {}
-                }
-              })
-              .catch((e) => {
-                if (!this._isAsyncContextCurrent(asyncContext)) return;
-                try { Logger.warn("official_resync_failed", { gameId: asyncContext.gameId, reason: flight.reason, err: String(e && (e.message || e)) }); } catch (_) {}
-              })
-              .finally(done);
-          } catch (e) {
-            done();
-          }
+          if (!this._isAsyncContextCurrent(asyncContext, { ignorePostMatch: true })) return Promise.resolve(false);
+          return this._requestOfficialSync({
+            reason: reason || "automatic",
+            preservePendingCommit: true,
+            repairPresence: false,
+            notifyFailure: false,
+          });
         },
 
     _scheduleMoveRetry: function (from, to, nextTurn) {
@@ -4710,7 +4699,7 @@ this._bindGameListeners();
           if (!allowOnlineWrite()) return;
           if (!this.isActive || !this.gameRef || !this.gameId) return;
           if (!requireAuthUid(this.myUid)) {
-            try { this.syncNow({ force: true, repairPresence: true }); } catch (e) {}
+            try { this.syncNow({ reason: "auth-recovery", repairPresence: false, notifyFailure: false }); } catch (e) {}
             try { showOnlineNotice(window.I18N.translateArgs("status.moveSendFail")); } catch (e) {}
             return;
           }
@@ -4883,7 +4872,6 @@ this._bindGameListeners();
               }
               try { showOnlineNotice(window.I18N.translateArgs("status.moveSendFail")); } catch (e) {}
               try { self._forceResync("move-send-gave-up"); } catch (e) {}
-              try { self.syncNow({ force: true, repairPresence: true }); } catch (e) {}
               return;
             }
             try {
@@ -5585,6 +5573,7 @@ this._bindGameListeners();
           } catch (e) {
             try { this._lastGameAccess = e && e.data ? e.data : null; } catch (_) {}
             try { this._lastOfficialReadError = e || new Error("official-read-failed"); } catch (_) {}
+            throw e;
           }
           return null;
         },

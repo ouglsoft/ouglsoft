@@ -1790,20 +1790,8 @@
             if (!downtimeMs) return "none";
     
             this._autoReconnectActionAt = now;
-            if (downtimeMs >= 40 * 1000) {
-              try {
-                sessionStorage.setItem("zamat.forceResyncOnLoad", "1");
-              } catch (e) {}
-              setTimeout(() => {
-                try {
-                  location.reload();
-                } catch (e) {}
-              }, 180);
-              return "reload";
-            }
-    
             try {
-              this.syncNow();
+              this.syncNow({ reason: downtimeMs >= 40 * 1000 ? "long-reconnect" : "reconnect", repairPresence: false, notifyFailure: false });
             } catch (e) {}
             try {
               if (this._moveRetryPausedOffline && this._moveRetryArgs && this.isActive) {
@@ -2836,6 +2824,13 @@
     
             window.addEventListener("pagehide", cleanup, { capture: true });
             window.addEventListener("beforeunload", cleanup, { capture: true });
+            window.addEventListener("pageshow", (event) => {
+              try {
+                if (!event || !event.persisted) return;
+                this._ensureUnifiedAppPulse("bfcache-restore", false);
+                if (this.isActive && this.gameId) this.syncNow({ reason: "bfcache", repairPresence: false, notifyFailure: false });
+              } catch (e) {}
+            }, { capture: true });
             try {
               this._bindReconnectRecovery();
             } catch (e) {}

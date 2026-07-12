@@ -81,6 +81,7 @@
     if (a.gameId && b.gameId && a.gameId !== b.gameId) return 0;
     if (a.rematchSeq !== b.rematchSeq) return a.rematchSeq > b.rematchSeq ? 1 : -1;
     if (a.moveIndex !== b.moveIndex) return a.moveIndex > b.moveIndex ? 1 : -1;
+    if (a.version !== b.version) return a.version > b.version ? 1 : -1;
     return 0;
   }
 

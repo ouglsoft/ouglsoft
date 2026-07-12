@@ -1283,6 +1283,9 @@ const SessionGame = (() => {
       try {
         UI.updateAll();
       } catch {}
+      try {
+        setTimeout(() => resumePendingGameWorkAfterRestore(), 0);
+      } catch {}
 
       return true;
     } catch {
@@ -1676,34 +1679,35 @@ function applySouflaDecision(requestedDecision, pending) {
     } catch {}
   }
 
+  // Commit the logical result synchronously. Rendering effects are deferred,
+  // but page persistence can no longer observe a half-applied Soufla state.
+  Game.awaitingPenalty = false;
+  Game.souflaPending = null;
+  Game.availableSouflaForHuman = null;
+  try {
+    Turn.start();
+    if (!DhametRulesShared.boardsEqual(Game.board, prepared.board)) {
+      throw new Error("soufla/resolved-board-mismatch");
+    }
+    scheduleForcedOpeningAutoIfNeeded();
+    UI.updateAll();
+  } catch (error) {
+    try { restoreSnapshotSilent(stateBeforePenalty); } catch (_) {}
+    Game._souflaApplying = false;
+    try { Board3D.setSuspended(false); Visual.setSuspended(false); UI.updateAll(); } catch (_) {}
+    console.error("Soufla finalization failed atomically", error);
+    return false;
+  }
+
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
       try {
         Visual.applySouflaFXBatch(
-          {
-            redSegments: fxRedSegments,
-            removeIdx: fxRemoveIdx,
-            forcePath: fxForcePath,
-            undoArrow: fxUndoArrow,
-          },
+          { redSegments: fxRedSegments, removeIdx: fxRemoveIdx, forcePath: fxForcePath, undoArrow: fxUndoArrow },
           { noDraw: true },
         );
-      } catch {}
-
-      Game.awaitingPenalty = false;
-      Game.souflaPending = null;
-      Game.availableSouflaForHuman = null;
-      try {
-        Turn.start();
-        if (!DhametRulesShared.boardsEqual(Game.board, prepared.board)) {
-          throw new Error("soufla/resolved-board-mismatch");
-        }
-        scheduleForcedOpeningAutoIfNeeded();
-        UI.updateAll();
-        Board3D.setSuspended(false);
-        Board3D.invalidate();
-        Visual.setSuspended(false);
-      } catch {}
+      } catch (_) {}
+      try { Board3D.setSuspended(false); Board3D.invalidate(); Visual.setSuspended(false); } catch (_) {}
       Game._souflaApplying = false;
       scheduleComputerMoveIfNeeded();
     });
@@ -1876,6 +1880,31 @@ function scheduleComputerMoveIfNeeded() {
     } catch (_) {}
   }
   return false;
+}
+
+
+function resumePendingGameWorkAfterRestore() {
+  try {
+    if (window.DhametMatchMode && typeof DhametMatchMode.isPvC === "function" && !DhametMatchMode.isPvC()) return false;
+    if (Game.gameOver) return false;
+    if (Game.inChain) return true;
+    const pending = Game.awaitingPenalty && Game.souflaPending ? Game.souflaPending : null;
+    if (pending && pending.penalizer !== humanSide()) {
+      const token = window.DhametMatchCoordinator && DhametMatchCoordinator.token ? DhametMatchCoordinator.token() : null;
+      Promise.resolve(AI.pickSouflaDecision(pending)).then((decision) => {
+        if (token && window.DhametMatchCoordinator && !DhametMatchCoordinator.isCurrent(token)) return;
+        if (Game.souflaPending !== pending || !Game.awaitingPenalty || Game.gameOver) return;
+        if (window.DhametMatchMode && typeof DhametMatchMode.isPvC === "function" && !DhametMatchMode.isPvC()) return;
+        if (!applySouflaDecision(decision, pending)) throw new Error("computer/invalid-restored-soufla-decision");
+        try { UI.showSouflaAgainstHuman(decision, pending); } catch (_) {}
+      }).catch((error) => {
+        try { console.error("Restored computer soufla analysis failed", error); UI.updateAll(); } catch (_) {}
+      });
+      return true;
+    }
+    scheduleComputerMoveIfNeeded();
+    return true;
+  } catch (_) { return false; }
 }
 
 

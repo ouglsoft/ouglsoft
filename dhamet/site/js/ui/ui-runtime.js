@@ -2667,19 +2667,8 @@ function bindUI() {
   qs("#btnSync")?.addEventListener("click", async () => {
     try {
       if (!(window.Online && window.Online.isActive) || window.Online.isSpectator) return;
-    } catch (e) { return; }
-    try {
-      const ok = await window.Online?.syncNow?.({ force: true, emitSignal: true, repairPresence: true });
-      if (ok !== false) return;
+      await window.Online.syncNow({ reason: "manual", repairPresence: false, notifyFailure: true });
     } catch (e) {}
-    try {
-      sessionStorage.setItem("zamat.forceResyncOnLoad", "1");
-    } catch (e) {}
-    setTimeout(() => {
-      try {
-        location.reload();
-      } catch (e) {}
-    }, 120);
   });
   qs("#btnChat")?.addEventListener("click", () => {
     if (!(window.Online && window.Online.isActive)) return;
