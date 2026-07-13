@@ -353,6 +353,35 @@ export async function exportTrainingBatch(env, options = {}) {
   };
 }
 
+
+export async function consumeTrainingRecords(env, roundIds) {
+  const db = trainingDb(env);
+  if (!db) throw new Error('D1 binding DB is missing');
+  const clean = [];
+  const seen = new Set();
+  for (const value of Array.isArray(roundIds) ? roundIds : []) {
+    const raw = String(value || '').trim();
+    if (!raw) continue;
+    const roundId = safeTrainingId(raw);
+    if (!roundId || roundId === 'unknown' || seen.has(roundId)) continue;
+    seen.add(roundId);
+    clean.push(roundId);
+    if (clean.length >= TRAINING_REPLAY_MAX_GAMES) break;
+  }
+  if (!clean.length) return { ok: true, requested: 0, deleted: 0 };
+
+  let deleted = 0;
+  const chunkSize = 100;
+  for (let offset = 0; offset < clean.length; offset += chunkSize) {
+    const chunk = clean.slice(offset, offset + chunkSize);
+    const placeholders = chunk.map((_, index) => `?${index + 1}`).join(', ');
+    const response = await db.prepare(`DELETE FROM training_records WHERE round_id IN (${placeholders})`)
+      .bind(...chunk).run();
+    deleted += Number(response && response.meta && response.meta.changes || 0) || 0;
+  }
+  return { ok: true, requested: clean.length, deleted };
+}
+
 export async function pruneTrainingRecords(env, keep = TRAINING_REPLAY_MAX_GAMES) {
   const db = trainingDb(env);
   if (!db) throw new Error('D1 binding DB is missing');

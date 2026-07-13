@@ -4,6 +4,7 @@ import argparse
 import hashlib
 import io
 import json
+import math
 import os
 import random
 import tempfile
@@ -24,18 +25,45 @@ from storage import ApiConfig, LocalModelStore, TrainingApiStore
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--force", action="store_true", help="Allow a test training run below the normal data threshold")
-    parser.add_argument("--max-games", type=int, default=int(os.environ.get("TRAINING_MAX_GAMES", "20000")))
-    parser.add_argument("--epochs", type=int, default=int(os.environ.get("TRAINING_EPOCHS", "4")))
+    parser.add_argument("--max-games", type=int, default=int(os.environ.get("TRAINING_MAX_GAMES", "5000")))
+    parser.add_argument("--epochs", type=int, default=int(os.environ.get("TRAINING_EPOCHS", "1")))
     parser.add_argument("--batch-size", type=int, default=int(os.environ.get("TRAINING_BATCH_SIZE", "128")))
     parser.add_argument("--model-store", default=os.environ.get("TRAINING_MODEL_STORE", "private-model-store"))
+    parser.add_argument("--receipt", required=True)
     return parser.parse_args()
 
 
 def seed_everything(seed: int = 20260713) -> None:
+    threads = max(1, min(4, int(os.environ.get("TRAINING_CPU_THREADS", "2") or 2)))
+    torch.set_num_threads(threads)
+    try:
+        torch.set_num_interop_threads(1)
+    except RuntimeError:
+        pass
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
+
+
+def github_outputs(model_changed: bool, consume_ready: bool) -> None:
+    output = os.environ.get("GITHUB_OUTPUT", "").strip()
+    if not output:
+        return
+    with open(output, "a", encoding="utf-8") as handle:
+        handle.write(f"model_changed={'true' if model_changed else 'false'}\n")
+        handle.write(f"consume_ready={'true' if consume_ready else 'false'}\n")
+
+
+def write_receipt(path: str | Path, round_ids: list[str], model_version: str | None, model_changed: bool, reason: str) -> None:
+    destination = Path(path)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_text(json.dumps({
+        "roundIds": round_ids,
+        "modelVersion": model_version,
+        "modelChanged": model_changed,
+        "reason": reason,
+        "createdAt": datetime.now(timezone.utc).isoformat(),
+    }, ensure_ascii=False, sort_keys=True, indent=2), encoding="utf-8")
 
 
 def run_epoch(model, loader, optimizer=None) -> dict[str, float]:
@@ -87,17 +115,10 @@ def export_onnx(model: DhametPolicyValueNet, path: Path) -> float:
     with torch.no_grad():
         expected = model(sample)
     actual = session.run(None, {"state": sample.numpy()})
-    return max(float(np.max(np.abs(actual[0] - expected[0].numpy()))), float(np.max(np.abs(actual[1] - expected[1].numpy()))))
-
-
-def accepted(metrics: dict[str, Any], previous: dict[str, Any] | None) -> bool:
-    if not previous:
-        return True
-    old = previous.get("validation") if isinstance(previous.get("validation"), dict) else previous
-    old_loss = float(old.get("loss", float("inf")))
-    old_accuracy = float(old.get("policyAccuracy", 0.0))
-    new = metrics["validation"]
-    return new["loss"] <= old_loss * 1.02 and new["policyAccuracy"] + 0.005 >= old_accuracy
+    return max(
+        float(np.max(np.abs(actual[0] - expected[0].numpy()))),
+        float(np.max(np.abs(actual[1] - expected[1].numpy()))),
+    )
 
 
 def sha256(payload: bytes) -> str:
@@ -116,37 +137,34 @@ def _compatible_checkpoint(metrics: dict[str, Any] | None) -> bool:
     )
 
 
+def _finite_metrics(value: dict[str, Any]) -> bool:
+    for key in ("loss", "policyLoss", "valueMse", "policyAccuracy"):
+        number = float(value.get(key, float("nan")))
+        if not math.isfinite(number):
+            return False
+    return True
+
+
+def _fallback_split(samples):
+    rows = list(samples)
+    if not rows:
+        return [], []
+    if len(rows) == 1:
+        return rows, rows
+    validation_count = max(1, min(len(rows) // 5, 256))
+    validation = rows[:validation_count]
+    training = rows[validation_count:]
+    if not training:
+        training = rows[:-1]
+        validation = rows[-1:]
+    return training, validation
+
+
 def main() -> None:
     args = parse_args()
     seed_everything()
     api_store = TrainingApiStore(ApiConfig.from_env())
     store = LocalModelStore(args.model_store)
-    records = load_records(api_store, args.max_games)
-    try:
-        maintenance = api_store.prune(args.max_games)
-        print(json.dumps({"trainingQueueMaintenance": maintenance}, sort_keys=True))
-    except Exception as exc:
-        print(json.dumps({"warning": "training-queue-prune-failed", "detail": str(exc)[:240]}))
-    train_samples = []
-    validation_samples = []
-    usable_round_ids: list[str] = []
-    usable_records: list[tuple[dict[str, Any], int, int]] = []
-    for record in records:
-        samples = samples_from_record(record)
-        if not samples:
-            continue
-        round_id = str(record.get("roundId", "")).strip()
-        if not round_id:
-            continue
-        usable_round_ids.append(round_id)
-        ended_at = max(0, int(record.get("endedAt", 0) or 0))
-        usable_records.append((record, ended_at, len(samples)))
-        target = validation_samples if stable_validation_round(round_id) else train_samples
-        target.extend(samples)
-
-    usable_games = len(usable_round_ids)
-    total_samples = len(train_samples) + len(validation_samples)
-    dataset_fingerprint = sha256("\n".join(sorted(usable_round_ids)).encode("utf-8"))
 
     current_pointer = store.get_json("models/current.json")
     current_metrics = None
@@ -155,49 +173,79 @@ def main() -> None:
         current_version = str(current_pointer["version"])
         current_metrics = store.get_json(f"models/{current_version}/metrics.json")
 
-    if current_metrics and current_metrics.get("datasetFingerprint") == dataset_fingerprint:
+    records = load_records(api_store, args.max_games)
+    record_map: dict[str, dict[str, Any]] = {}
+    for record in records:
+        if not isinstance(record, dict):
+            continue
+        round_id = str(record.get("roundId", "")).strip()
+        if round_id:
+            record_map[round_id] = record
+    if not record_map:
+        github_outputs(False, False)
+        print(json.dumps({"trained": False, "reason": "no-saved-records"}, sort_keys=True))
+        return
+
+    already_processed = {
+        str(value).strip()
+        for value in ((current_metrics or {}).get("processedRoundIds") or [])
+        if str(value).strip()
+    }
+    pending_cleanup = sorted(round_id for round_id in record_map if round_id in already_processed)
+    new_records = [record for round_id, record in record_map.items() if round_id not in already_processed]
+
+    if not new_records:
+        write_receipt(args.receipt, pending_cleanup, current_version, False, "previously-trained-pending-deletion")
+        github_outputs(False, bool(pending_cleanup))
         print(json.dumps({
             "trained": False,
-            "reason": "no-new-data",
-            "games": usable_games,
-            "samples": total_samples,
+            "reason": "previously-trained-pending-deletion",
+            "records": len(pending_cleanup),
         }, sort_keys=True))
         return
 
-    previous_max_ended_at = int((current_metrics or {}).get("maxEndedAt", 0) or 0)
-    if current_metrics and previous_max_ended_at > 0:
-        new_round_ids = {
-            str(record.get("roundId", ""))
-            for record, ended_at, _ in usable_records
-            if ended_at > previous_max_ended_at
-        }
-        new_games = len(new_round_ids)
-        new_samples = sum(sample_count for _, ended_at, sample_count in usable_records if ended_at > previous_max_ended_at)
-    else:
-        new_games = usable_games
-        new_samples = total_samples
-    max_ended_at = max((ended_at for _, ended_at, _ in usable_records), default=0)
-    initial_threshold_met = usable_games >= 500 or total_samples >= 50_000
-    update_threshold_met = new_games >= 500 or new_samples >= 50_000
-    threshold_met = initial_threshold_met if not current_metrics else update_threshold_met
-    promotion_eligible = threshold_met and not args.force
+    train_samples = []
+    validation_samples = []
+    batch_round_ids: list[str] = []
+    batch_sample_count = 0
+    for record in new_records:
+        round_id = str(record.get("roundId", "")).strip()
+        samples = samples_from_record(record)
+        batch_round_ids.append(round_id)
+        batch_sample_count += len(samples)
+        target = validation_samples if stable_validation_round(round_id) else train_samples
+        target.extend(samples)
 
-    if not threshold_met and not args.force:
+    all_samples = train_samples + validation_samples
+    consume_round_ids = sorted(set(pending_cleanup + batch_round_ids))
+    if not all_samples:
+        write_receipt(args.receipt, consume_round_ids, current_version, False, "records-contained-no-usable-samples")
+        github_outputs(False, True)
         print(json.dumps({
             "trained": False,
-            "reason": "insufficient-new-data" if current_metrics else "insufficient-data",
-            "games": usable_games,
-            "samples": total_samples,
-            "newGames": new_games,
-            "newSamples": new_samples,
+            "reason": "records-contained-no-usable-samples",
+            "records": len(batch_round_ids),
         }, sort_keys=True))
         return
-    if len(train_samples) < 64 or len(validation_samples) < 16:
-        raise RuntimeError(f"Insufficient train/validation split: {len(train_samples)}/{len(validation_samples)}")
 
-    train_loader = DataLoader(DhametDataset(train_samples), batch_size=args.batch_size, shuffle=True, num_workers=0)
-    validation_loader = DataLoader(DhametDataset(validation_samples), batch_size=args.batch_size, shuffle=False, num_workers=0)
+    if not train_samples or not validation_samples:
+        train_samples, validation_samples = _fallback_split(all_samples)
+
+    train_loader = DataLoader(
+        DhametDataset(train_samples),
+        batch_size=max(1, args.batch_size),
+        shuffle=True,
+        num_workers=0,
+    )
+    validation_loader = DataLoader(
+        DhametDataset(validation_samples),
+        batch_size=max(1, args.batch_size),
+        shuffle=False,
+        num_workers=0,
+    )
+
     model = DhametPolicyValueNet()
+    optimizer = torch.optim.AdamW(model.parameters(), lr=2e-4, weight_decay=1e-4)
     base_version = None
     if current_version and _compatible_checkpoint(current_metrics):
         try:
@@ -207,34 +255,42 @@ def main() -> None:
             if isinstance(state_dict, dict):
                 model.load_state_dict(state_dict, strict=True)
                 base_version = current_version
+            optimizer_state = checkpoint.get("optimizer") if isinstance(checkpoint, dict) else None
+            if isinstance(optimizer_state, dict):
+                optimizer.load_state_dict(optimizer_state)
+                for group in optimizer.param_groups:
+                    group["lr"] = 2e-4
         except Exception as exc:
-            print(json.dumps({"warning": "checkpoint-not-reused", "version": current_version, "detail": str(exc)[:240]}))
+            print(json.dumps({
+                "warning": "checkpoint-not-reused",
+                "version": current_version,
+                "detail": str(exc)[:240],
+            }))
 
     baseline_validation = run_epoch(model, validation_loader) if base_version else None
-    optimizer = torch.optim.AdamW(model.parameters(), lr=8e-4, weight_decay=1e-4)
     history = []
     for epoch in range(max(1, args.epochs)):
         train_metrics = run_epoch(model, train_loader, optimizer)
         validation_metrics = run_epoch(model, validation_loader)
+        if not _finite_metrics(train_metrics) or not _finite_metrics(validation_metrics):
+            raise RuntimeError("Training produced non-finite metrics")
         history.append({"epoch": epoch + 1, "train": train_metrics, "validation": validation_metrics})
         print(json.dumps(history[-1], sort_keys=True))
 
     generated = datetime.now(timezone.utc)
     version = generated.strftime("model-%Y%m%dT%H%M%SZ")
+    dataset_fingerprint = sha256("\n".join(sorted(batch_round_ids)).encode("utf-8"))
     metrics: dict[str, Any] = {
         "version": version,
         "generatedAt": generated.isoformat(),
-        "games": usable_games,
-        "samples": total_samples,
-        "newGames": new_games,
-        "newSamples": new_samples,
+        "batchGames": len(batch_round_ids),
+        "batchSamples": batch_sample_count,
         "trainSamples": len(train_samples),
         "validationSamples": len(validation_samples),
         "datasetFingerprint": dataset_fingerprint,
-        "maxEndedAt": max_ended_at,
+        "processedRoundIds": consume_round_ids,
         "baseVersion": base_version,
         "baselineValidation": baseline_validation,
-        "promotionEligible": promotion_eligible,
         "validation": history[-1]["validation"],
         "history": history,
         "recordSchema": 4,
@@ -248,14 +304,15 @@ def main() -> None:
         tmp_path = Path(tmp)
         checkpoint_path = tmp_path / "checkpoint.pt"
         onnx_path = tmp_path / "model.onnx"
-        torch.save({"model": model.state_dict(), "metrics": metrics}, checkpoint_path)
+        torch.save({
+            "model": model.state_dict(),
+            "optimizer": optimizer.state_dict(),
+            "metrics": metrics,
+        }, checkpoint_path)
         parity = export_onnx(model, onnx_path)
         metrics["onnxMaxAbsError"] = parity
-        comparison = {"validation": baseline_validation} if baseline_validation else current_metrics
-        metrics["accepted"] = promotion_eligible and parity <= 1e-4 and accepted(metrics, comparison)
-        if not metrics["accepted"]:
-            print(json.dumps({"trained": True, "promoted": False, "metrics": metrics}, sort_keys=True))
-            return
+        if not math.isfinite(parity) or parity > 1e-4:
+            raise RuntimeError(f"ONNX parity check failed: {parity}")
 
         checkpoint = checkpoint_path.read_bytes()
         onnx_model = onnx_path.read_bytes()
@@ -281,8 +338,15 @@ def main() -> None:
 
         previous_version = current_version
         if previous_version:
-            store.put_json("models/previous.json", {"version": previous_version, "replacedAt": metrics["generatedAt"]})
-        store.put_json("models/current.json", {"version": version, "promotedAt": metrics["generatedAt"], "manifest": prefix + "manifest.json"})
+            store.put_json("models/previous.json", {
+                "version": previous_version,
+                "replacedAt": metrics["generatedAt"],
+            })
+        store.put_json("models/current.json", {
+            "version": version,
+            "promotedAt": metrics["generatedAt"],
+            "manifest": prefix + "manifest.json",
+        })
 
         keep = {version}
         if previous_version:
@@ -293,7 +357,17 @@ def main() -> None:
             if len(parts) >= 3 and parts[1].startswith("model-") and parts[1] not in keep:
                 obsolete.append(key)
         store.delete_keys(obsolete)
-        print(json.dumps({"trained": True, "promoted": True, "version": version, "deletedObjects": len(obsolete), "metrics": metrics}, sort_keys=True))
+
+    write_receipt(args.receipt, consume_round_ids, version, True, "training-completed")
+    github_outputs(True, True)
+    print(json.dumps({
+        "trained": True,
+        "promoted": True,
+        "version": version,
+        "consumableRecords": len(consume_round_ids),
+        "deletedModelFiles": len(obsolete),
+        "metrics": metrics,
+    }, sort_keys=True))
 
 
 if __name__ == "__main__":

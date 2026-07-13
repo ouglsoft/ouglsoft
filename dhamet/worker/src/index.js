@@ -1172,6 +1172,7 @@ export default {
       if (url.pathname === '/api/lobby/view' && (request.method === 'GET' || request.method === 'POST')) return lobbyViewEndpoint(request, env);
       if (url.pathname === '/api/internal/training/export' && request.method === 'POST') return trainingRoutes.exportEndpoint(request, env);
       if (url.pathname === '/api/internal/training/status' && request.method === 'POST') return trainingRoutes.statusEndpoint(request, env);
+      if (url.pathname === '/api/internal/training/consume' && request.method === 'POST') return trainingRoutes.consumeEndpoint(request, env);
       if (url.pathname === '/api/internal/training/prune' && request.method === 'POST') return trainingRoutes.pruneEndpoint(request, env);
       if (url.pathname === '/api/training/upload' && request.method === 'POST') return trainingUpload(request, env);
       if (url.pathname.startsWith('/api/rtdb/')) return json({ ok: false, error: 'realtime/generic-api-removed' }, 410);

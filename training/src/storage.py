@@ -82,6 +82,20 @@ class TrainingApiStore:
         prune_url = self.config.export_url.rsplit("/", 1)[0] + "/prune"
         return self._post(prune_url, {"keep": max(500, int(keep))})
 
+    def consume(self, round_ids: Iterable[str]) -> dict[str, Any]:
+        consume_url = self.config.export_url.rsplit("/", 1)[0] + "/consume"
+        clean = []
+        seen = set()
+        for value in round_ids:
+            round_id = str(value or "").strip()
+            if not round_id or round_id in seen:
+                continue
+            seen.add(round_id)
+            clean.append(round_id)
+        if not clean:
+            return {"ok": True, "requested": 0, "deleted": 0}
+        return self._post(consume_url, {"roundIds": clean})
+
 
 class LocalModelStore:
     def __init__(self, root: str | Path):

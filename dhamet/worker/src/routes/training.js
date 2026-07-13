@@ -1,4 +1,10 @@
-import { exportTrainingBatch, pruneTrainingRecords, trainingQueueStatus, TRAINING_REPLAY_MAX_GAMES } from '../lib/training-store.js';
+import {
+  consumeTrainingRecords,
+  exportTrainingBatch,
+  pruneTrainingRecords,
+  trainingQueueStatus,
+  TRAINING_REPLAY_MAX_GAMES,
+} from '../lib/training-store.js';
 
 function bearerToken(request) {
   const value = String(request.headers.get('authorization') || '').trim();
@@ -32,23 +38,30 @@ export function createTrainingRouteHandlers(deps) {
 
   async function exportEndpoint(request, env) {
     if (!(await authorize(request, env))) return json({ ok: false, error: 'training/unauthorized' }, 401);
-    const body = await requestBody(request, 32_000);
+    const body = await requestBody(request);
     const batch = await exportTrainingBatch(env, { cursor: body && body.cursor, limit: body && body.limit });
     return json({ ok: true, ...batch });
   }
 
   async function statusEndpoint(request, env) {
     if (!(await authorize(request, env))) return json({ ok: false, error: 'training/unauthorized' }, 401);
-    const body = await requestBody(request, 8_000);
+    const body = await requestBody(request);
     return json(await trainingQueueStatus(env, body && body.afterEndedAt));
+  }
+
+  async function consumeEndpoint(request, env) {
+    if (!(await authorize(request, env))) return json({ ok: false, error: 'training/unauthorized' }, 401);
+    const body = await requestBody(request);
+    const result = await consumeTrainingRecords(env, body && body.roundIds);
+    return json(result);
   }
 
   async function pruneEndpoint(request, env) {
     if (!(await authorize(request, env))) return json({ ok: false, error: 'training/unauthorized' }, 401);
-    const body = await requestBody(request, 8_000);
+    const body = await requestBody(request);
     const result = await pruneTrainingRecords(env, body && body.keep || TRAINING_REPLAY_MAX_GAMES);
     return json(result);
   }
 
-  return { exportEndpoint, statusEndpoint, pruneEndpoint };
+  return { exportEndpoint, statusEndpoint, consumeEndpoint, pruneEndpoint };
 }
