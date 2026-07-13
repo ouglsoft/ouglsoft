@@ -8,7 +8,7 @@ const dhametSiteDir = path.join(root, 'dhamet', 'site');
 const dhametSharedDir = path.join(root, 'dhamet', 'shared');
 const outDir = path.join(root, '.deploy', 'site');
 
-const dhametPublishedEntries = new Set(['index.html', 'assets', 'css', 'js', 'pages', 'training']);
+const dhametPublishedEntries = new Set(['index.html', 'assets', 'css', 'js', 'pages']);
 
 
 function readDhametBuild() {
