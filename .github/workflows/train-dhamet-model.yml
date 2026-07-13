@@ -23,25 +23,64 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 180
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout application
+        uses: actions/checkout@v4
+        with:
+          path: app
+
+      - name: Checkout private model store
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ secrets.TRAINING_MODEL_REPOSITORY }}
+          token: ${{ secrets.TRAINING_MODEL_TOKEN }}
+          path: private-model-store
+          fetch-depth: 1
+
+      - name: Check whether training is needed
+        id: precheck
+        env:
+          TRAINING_EXPORT_URL: "https://ouglsoft.com/dhamet/api/internal/training/export"
+          TRAINING_EXPORT_SECRET: ${{ secrets.TRAINING_EXPORT_SECRET }}
+        run: |
+          EXTRA=""
+          if [ "${{ inputs.force_test_run || false }}" = "true" ]; then EXTRA="--force"; fi
+          python3 app/training/src/check_data.py --model-store private-model-store $EXTRA
+
       - uses: actions/setup-python@v5
+        if: steps.precheck.outputs.run_training == 'true'
         with:
           python-version: "3.12"
           cache: pip
-          cache-dependency-path: training/requirements.txt
+          cache-dependency-path: app/training/requirements.txt
+
       - name: Install training dependencies
-        run: python -m pip install --requirement training/requirements.txt
+        if: steps.precheck.outputs.run_training == 'true'
+        run: python -m pip install --requirement app/training/requirements.txt
+
       - name: Train, validate, and promote privately
-        working-directory: training/src
+        if: steps.precheck.outputs.run_training == 'true'
         env:
-          R2_ENDPOINT_URL: ${{ secrets.R2_ENDPOINT_URL }}
-          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-          R2_BUCKET: ${{ secrets.R2_BUCKET }}
-          TRAINING_MAX_GAMES: "20000"
+          TRAINING_EXPORT_URL: "https://ouglsoft.com/dhamet/api/internal/training/export"
+          TRAINING_EXPORT_SECRET: ${{ secrets.TRAINING_EXPORT_SECRET }}
+          TRAINING_MAX_GAMES: "5000"
           TRAINING_EPOCHS: "4"
           TRAINING_BATCH_SIZE: "128"
         run: |
           EXTRA=""
           if [ "${{ inputs.force_test_run || false }}" = "true" ]; then EXTRA="--force"; fi
-          python train.py $EXTRA
+          python app/training/src/train.py --model-store private-model-store $EXTRA
+
+      - name: Replace private model snapshot
+        if: steps.precheck.outputs.run_training == 'true'
+        working-directory: private-model-store
+        run: |
+          git config user.name "dhamet-training-bot"
+          git config user.email "dhamet-training-bot@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No accepted model change to store."
+            exit 0
+          fi
+          TREE=$(git write-tree)
+          COMMIT=$(printf 'Update private Dhamet model snapshot\n' | git commit-tree "$TREE")
+          git push origin "$COMMIT:refs/heads/main" --force
