@@ -1,0 +1,20 @@
+{
+  "apps": {
+    "almoathen-shinqiti": {
+      "url": "/download/almoathen-shinqiti",
+      "file": "assets/downloads/apps/almoathen-shinqiti.apk",
+      "version": "1.0.0",
+      "updated": "2026-06-29",
+      "size": "14.1 MB",
+      "sha256": "3ef6058882c778c5e209ed11e48240534acd1a21562565d84cab7ec91d910f5f"
+    },
+    "safe-to-spend": {
+      "url": "/download/safe-to-spend",
+      "file": "assets/downloads/apps/safe-to-spend.apk",
+      "version": "1.1.3",
+      "updated": "2026-07-03",
+      "size": "0.9 MB",
+      "sha256": ""
+    }
+  }
+}
