@@ -2455,200 +2455,33 @@ const TrainRecorder = (() => {
     return out;
   }
 
-  function _sideHasAnyMove(side) {
-    try {
-      return !!DhametRulesShared.hasAnyLegalMove(Game.board, side);
-    } catch (_) {
-      return true;
-    }
-  }
-
-  function _anyImmediateCrownStep(side) {
-    try {
-      for (let r = 0; r < BOARD_N; r++) {
-        for (let c = 0; c < BOARD_N; c++) {
-          const v = Game.board[r][c];
-          if (!v) continue;
-          if (pieceOwner(v) !== side) continue;
-          if (pieceKind(v) !== MAN) continue;
-          const from = r * BOARD_N + c;
-          const steps = generateStepsFrom(from);
-          for (const to of steps) {
-            if (isBackRank(to, side)) return true;
-          }
-        }
-      }
-    } catch (_) {}
-    return false;
-  }
-
-  function _isIdxCapturableBySide(targetIdx, bySide) {
-    try {
-      for (let r = 0; r < BOARD_N; r++) {
-        for (let c = 0; c < BOARD_N; c++) {
-          const v = Game.board[r][c];
-          if (!v) continue;
-          if (pieceOwner(v) !== bySide) continue;
-          const fromIdx = r * BOARD_N + c;
-          const caps = generateCapturesFrom(fromIdx);
-          for (const cap of caps) {
-            if ((cap[1] | 0) === (targetIdx | 0)) return true;
-          }
-        }
-      }
-    } catch (_) {}
-    return false;
-  }
-
-  function _isFullyTrapped(side) {
-    try {
-      const generated = DhametRulesShared.generateLegalMoves(Game.board, side, { policy: "strict" });
-      const legal = generated && Array.isArray(generated.moves) ? generated.moves : [];
-      if (!legal.length) return true;
-      const opp = -side;
-      for (const move of legal) {
-        const applied = DhametRulesShared.applyMovePath(Game.board, move, side);
-        if (!applied || !applied.ok) continue;
-        const landing = Number(applied.to);
-        let capturable = false;
-        for (let from = 0; from < N_CELLS && !capturable; from++) {
-          const v = applied.board[Math.floor(from / BOARD_N)][from % BOARD_N];
-          if (!v || pieceOwner(v) !== opp) continue;
-          const caps = DhametRulesShared.captureOptions(applied.board, from);
-          capturable = caps.some((cap) => Number(cap.jumped) === landing);
-        }
-        if (!capturable) return false;
-      }
-      return true;
-    } catch (_) {
-      return false;
-    }
-  }
-
   function _inferLateExitOutcome(expectedLoserSide = null) {
     try {
-      const board = window.Game && Game.board ? Game.board : null;
-      const finalCounts = _finalCountsFromBoard(board);
-      const topTotal = finalCounts.topTotal | 0;
-      const botTotal = finalCounts.botTotal | 0;
-      const totalPieces = topTotal + botTotal;
-      const totalKings = (finalCounts.topKings | 0) + (finalCounts.botKings | 0);
-      const moveCount = Math.max(0, Number(Game.moveCount || 0) || 0);
-      const captured = Math.max(0, 80 - totalPieces);
-      const advanced = moveCount >= 48 || (moveCount >= 32 && (captured >= 8 || totalPieces <= 24 || totalKings > 0));
-      if (!advanced) {
+      const loser = expectedLoserSide === TOP || expectedLoserSide === BOT ? expectedLoserSide : null;
+      const shared = window.DhametMatchEnd;
+      if (loser == null || !shared || typeof shared.assessAdministrativeEnd !== "function") {
         return {
           lateFinished: false,
           winner: null,
-          terminalType: "early_or_midgame",
-          terminalConfidence: "high",
-          finalCounts,
-        };
-      }
-
-      const topHasMove = _sideHasAnyMove(TOP);
-      const botHasMove = _sideHasAnyMove(BOT);
-      const losing = { TOP: null, BOT: null };
-      if (!topHasMove && botHasMove) losing.TOP = { confidence: "high", tag: "no_moves" };
-      if (!botHasMove && topHasMove) losing.BOT = { confidence: "high", tag: "no_moves" };
-
-      function considerSide(side) {
-        const opp = -side;
-        const myTotal = side === TOP ? topTotal : botTotal;
-        const myKings = side === TOP ? finalCounts.topKings | 0 : finalCounts.botKings | 0;
-        const oppTotal = opp === TOP ? topTotal : botTotal;
-        const oppKings = opp === TOP ? finalCounts.topKings | 0 : finalCounts.botKings | 0;
-
-        if (myTotal <= 0) return { confidence: "high", tag: "no_pieces" };
-
-        if (myTotal < 4 && myKings === 0) {
-          const condA = oppKings > 0;
-          const condB = _anyImmediateCrownStep(opp);
-          const condC = oppTotal - myTotal >= 8;
-          if (condA || condB || condC) {
-            return {
-              confidence: condC || myTotal <= 1 ? "high" : "medium",
-              tag: "few_no_kings",
-            };
-          }
-        }
-
-        if (myTotal < 4 && myKings > 0) {
-          for (let r = 0; r < BOARD_N; r++) {
-            for (let c = 0; c < BOARD_N; c++) {
-              const v = Game.board[r][c];
-              if (!v) continue;
-              if (pieceOwner(v) !== side) continue;
-              if (pieceKind(v) !== KING) continue;
-              const idx = r * BOARD_N + c;
-              if (_isIdxCapturableBySide(idx, opp)) {
-                return { confidence: "medium", tag: "king_threat" };
-              }
-            }
-          }
-        }
-
-        if (myTotal < 4) {
-          if (_isFullyTrapped(side)) {
-            return { confidence: "medium", tag: "fully_trapped" };
-          }
-        }
-
-        if (myTotal < 8 && oppKings > 0) {
-          let lmax = 0;
-          try {
-            lmax = DhametRulesShared.mandatoryCaptureInfo(Game.board, opp, { includePaths: false }).longestGlobal | 0;
-          } catch (_) {}
-          if (lmax >= 3) return { confidence: "low", tag: "king_chain_threat" };
-        }
-
-        return null;
-      }
-
-      if (!losing.TOP) losing.TOP = considerSide(TOP);
-      if (!losing.BOT) losing.BOT = considerSide(BOT);
-
-      const expected = expectedLoserSide === TOP || expectedLoserSide === BOT ? expectedLoserSide : null;
-      const topLose = !!losing.TOP;
-      const botLose = !!losing.BOT;
-      if (expected != null) {
-        const candidate = expected === TOP ? losing.TOP : losing.BOT;
-        if (!candidate) {
-          return {
-            lateFinished: false,
-            winner: null,
-            terminalType: "position_not_clear",
-            terminalConfidence: "medium",
-            finalCounts,
-          };
-        }
-        return {
-          lateFinished: true,
-          winner: -expected,
-          terminalType: "adjudicated",
-          terminalConfidence: candidate.confidence || "medium",
-          finalCounts,
-        };
-      }
-      if (topLose === botLose) {
-        return {
-          lateFinished: false,
-          winner: null,
-          terminalType: "unknown",
+          terminalType: "position_unavailable",
           terminalConfidence: "low",
-          finalCounts,
+          finalCounts: _finalCountsFromBoard(window.Game && Game.board ? Game.board : null),
         };
       }
-
-      const loserSide = topLose ? TOP : BOT;
-      const winner = -loserSide;
-      const conf = (topLose ? losing.TOP : losing.BOT).confidence || "low";
+      const board = window.Game && Game.board ? Game.board : null;
+      const moveCount = Math.max(0, Number(Game.moveCount || 0) || 0);
+      const adaptedGame = {
+        ply: moveCount,
+        state: { snapshot: { board, moveCount } },
+        states: {},
+      };
+      const assessment = shared.assessAdministrativeEnd(adaptedGame, loser);
       return {
-        lateFinished: true,
-        winner,
-        terminalType: "adjudicated",
-        terminalConfidence: conf,
-        finalCounts,
+        lateFinished: !!(assessment && assessment.count),
+        winner: assessment && assessment.count ? -loser : null,
+        terminalType: assessment && assessment.reason ? assessment.reason : "position_not_clear",
+        terminalConfidence: assessment && assessment.confidence ? assessment.confidence : "low",
+        finalCounts: _finalCountsFromBoard(board),
       };
     } catch (_) {
       return {

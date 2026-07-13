@@ -148,9 +148,10 @@ export function createGameRouteHandlers(deps) {
     if (forwarded.res && forwarded.res.ok && data && data.ok !== false && data.committed !== false) {
       const officialStats = await recordOfficialPvpResult(env, Object.assign({ gameId: forwarded.gameId }, data), triggerKind);
       if (officialStats) data.officialStats = officialStats;
+      if (officialStats && officialStats.ok === false) data.statsPending = true;
 
       const game = data && data.game && typeof data.game === 'object' ? data.game : null;
-      if (game && String(game.status || '') === 'ended' && !data.duplicate && triggerKind !== 'resync') {
+      if (game && String(game.status || '') === 'ended' && !data.duplicate && triggerKind !== 'resync' && (!officialStats || officialStats.ok !== false)) {
         const roundId = StatsCore.roundIdForGame(game);
         const task = queueTrainingRecord(env, buildPvpTrainingRecord(game, (data && data.result) || game.result, roundId));
         if (ctx && typeof ctx.waitUntil === 'function') {
@@ -166,8 +167,11 @@ export function createGameRouteHandlers(deps) {
     }
     if (options && options.removeRoomOnEnd && forwarded.res && forwarded.res.ok && data && data.ok !== false) {
       const game = data && data.game && typeof data.game === 'object' ? data.game : null;
-      if (game && String(game.status || '') === 'ended') {
+      if (game && String(game.status || '') === 'ended' && !(data.officialStats && data.officialStats.ok === false)) {
         data.roomListRemoved = await removeGlobalRoomListEntry(env, forwarded.gameId || (body && body.gameId), game.endedReason || triggerKind || 'ended');
+      } else if (game && String(game.status || '') === 'ended') {
+        data.roomListRemoved = false;
+        data.statsPending = true;
       }
     }
     return json(data, forwarded.status || 200);
@@ -211,16 +215,13 @@ export function createGameRouteHandlers(deps) {
   async function readRegisteredUsers(env, uids) {
     const ids = Array.from(new Set((uids || []).map((u) => String(u || '').trim()).filter(Boolean)));
     const out = Object.create(null);
-    if (!ids.length || typeof requireDb !== 'function') return out;
-    try {
-      const db = requireDb(env);
-      for (const uid of ids) {
-        try {
-          const row = await db.prepare('SELECT id, kind, nickname, display_name, icon, email, deleted_at FROM users WHERE id = ?1 AND deleted_at IS NULL').bind(uid).first();
-          if (row && row.kind === 'registered') out[uid] = row;
-        } catch (_) {}
-      }
-    } catch (_) {}
+    if (!ids.length) return out;
+    if (typeof requireDb !== 'function') throw new Error('stats/database-unavailable');
+    const db = requireDb(env);
+    for (const uid of ids) {
+      const row = await db.prepare('SELECT id, kind, nickname, display_name, icon, deleted_at FROM users WHERE id = ?1 AND deleted_at IS NULL').bind(uid).first();
+      if (row && row.kind === 'registered') out[uid] = row;
+    }
     return out;
   }
 

@@ -145,19 +145,18 @@ def _finite_metrics(value: dict[str, Any]) -> bool:
     return True
 
 
-def _fallback_split(samples):
-    rows = list(samples)
-    if not rows:
-        return [], []
-    if len(rows) == 1:
-        return rows, rows
-    validation_count = max(1, min(len(rows) // 5, 256))
-    validation = rows[:validation_count]
-    training = rows[validation_count:]
-    if not training:
-        training = rows[:-1]
-        validation = rows[-1:]
-    return training, validation
+def _promotion_allowed(baseline: dict[str, Any] | None, candidate: dict[str, Any]) -> bool:
+    if baseline is None:
+        return True
+    baseline_loss = float(baseline.get("loss", float("inf")))
+    candidate_loss = float(candidate.get("loss", float("inf")))
+    baseline_accuracy = float(baseline.get("policyAccuracy", 0.0))
+    candidate_accuracy = float(candidate.get("policyAccuracy", 0.0))
+    return (
+        math.isfinite(candidate_loss)
+        and candidate_loss <= baseline_loss * 1.02
+        and candidate_accuracy + 0.02 >= baseline_accuracy
+    )
 
 
 def main() -> None:
@@ -204,23 +203,24 @@ def main() -> None:
         }, sort_keys=True))
         return
 
-    train_samples = []
-    validation_samples = []
+    samples_by_round: dict[str, list[Any]] = {}
     batch_round_ids: list[str] = []
     batch_sample_count = 0
+    unusable_round_ids: list[str] = []
     for record in new_records:
         round_id = str(record.get("roundId", "")).strip()
         samples = samples_from_record(record)
         batch_round_ids.append(round_id)
         batch_sample_count += len(samples)
-        target = validation_samples if stable_validation_round(round_id) else train_samples
-        target.extend(samples)
+        if samples:
+            samples_by_round[round_id] = samples
+        else:
+            unusable_round_ids.append(round_id)
 
-    all_samples = train_samples + validation_samples
-    consume_round_ids = sorted(set(pending_cleanup + batch_round_ids))
-    if not all_samples:
+    if not samples_by_round:
+        consume_round_ids = sorted(set(pending_cleanup + unusable_round_ids))
         write_receipt(args.receipt, consume_round_ids, current_version, False, "records-contained-no-usable-samples")
-        github_outputs(False, True)
+        github_outputs(False, bool(consume_round_ids))
         print(json.dumps({
             "trained": False,
             "reason": "records-contained-no-usable-samples",
@@ -228,8 +228,27 @@ def main() -> None:
         }, sort_keys=True))
         return
 
+    train_rounds = [rid for rid in samples_by_round if not stable_validation_round(rid)]
+    validation_rounds = [rid for rid in samples_by_round if stable_validation_round(rid)]
+    if not train_rounds or not validation_rounds:
+        ordered = sorted(samples_by_round)
+        if len(ordered) < 2:
+            write_receipt(args.receipt, pending_cleanup, current_version, False, "waiting-for-independent-validation-round")
+            github_outputs(False, bool(pending_cleanup))
+            print(json.dumps({"trained": False, "reason": "waiting-for-independent-validation-round"}, sort_keys=True))
+            return
+        validation_rounds = [ordered[-1]]
+        train_rounds = ordered[:-1]
+
+    train_samples = [sample for rid in train_rounds for sample in samples_by_round[rid]]
+    validation_samples = [sample for rid in validation_rounds for sample in samples_by_round[rid]]
     if not train_samples or not validation_samples:
-        train_samples, validation_samples = _fallback_split(all_samples)
+        write_receipt(args.receipt, pending_cleanup, current_version, False, "waiting-for-independent-validation-round")
+        github_outputs(False, bool(pending_cleanup))
+        print(json.dumps({"trained": False, "reason": "waiting-for-independent-validation-round"}, sort_keys=True))
+        return
+
+    consume_round_ids = sorted(set(pending_cleanup + batch_round_ids))
 
     train_loader = DataLoader(
         DhametDataset(train_samples),
@@ -276,6 +295,21 @@ def main() -> None:
             raise RuntimeError("Training produced non-finite metrics")
         history.append({"epoch": epoch + 1, "train": train_metrics, "validation": validation_metrics})
         print(json.dumps(history[-1], sort_keys=True))
+
+    candidate_validation = history[-1]["validation"]
+    promoted = _promotion_allowed(baseline_validation, candidate_validation)
+    if not promoted:
+        write_receipt(args.receipt, consume_round_ids, current_version, False, "candidate-did-not-pass-quality-gate")
+        github_outputs(False, True)
+        print(json.dumps({
+            "trained": True,
+            "promoted": False,
+            "reason": "candidate-did-not-pass-quality-gate",
+            "baseline": baseline_validation,
+            "candidate": candidate_validation,
+            "consumableRecords": len(consume_round_ids),
+        }, sort_keys=True))
+        return
 
     generated = datetime.now(timezone.utc)
     version = generated.strftime("model-%Y%m%dT%H%M%SZ")

@@ -1,9 +1,7 @@
 import {
   consumeTrainingRecords,
   exportTrainingBatch,
-  pruneTrainingRecords,
   trainingQueueStatus,
-  TRAINING_REPLAY_MAX_GAMES,
 } from '../lib/training-store.js';
 
 function bearerToken(request) {
@@ -56,12 +54,7 @@ export function createTrainingRouteHandlers(deps) {
     return json(result);
   }
 
-  async function pruneEndpoint(request, env) {
-    if (!(await authorize(request, env))) return json({ ok: false, error: 'training/unauthorized' }, 401);
-    const body = await requestBody(request);
-    const result = await pruneTrainingRecords(env, body && body.keep || TRAINING_REPLAY_MAX_GAMES);
-    return json(result);
-  }
 
-  return { exportEndpoint, statusEndpoint, consumeEndpoint, pruneEndpoint };
+
+  return { exportEndpoint, statusEndpoint, consumeEndpoint };
 }

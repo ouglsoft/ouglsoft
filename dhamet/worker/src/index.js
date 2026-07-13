@@ -5,7 +5,6 @@ import { base64url, fromBase64url, randomToken } from './lib/security.js';
 import { createGameRouteHandlers } from './routes/game.js';
 import { createLobbyRouteHandlers } from './routes/lobby.js';
 import { createTrainingRouteHandlers } from './routes/training.js';
-import { buildPvcTrainingRecord, queueTrainingRecord } from './lib/training-store.js';
 import '../shared/dhamet-privacy.js';
 import '../shared/dhamet-stats.js';
 export { RealtimeObject } from './durable/realtime-object.js';
@@ -986,26 +985,9 @@ async function accountPvcResultEndpoint(request, env, ctx) {
 
   const recorded = Array.isArray(stats.recorded) && stats.recorded.length ? stats.recorded[0] : null;
   const duplicate = !recorded && Array.isArray(stats.ignored) && stats.ignored.some((row) => row && row.reason === 'already-recorded');
-  const trainingRecord = buildPvcTrainingRecord({
-    roundId,
-    aiLevel,
-    engineVersion: body && body.engineVersion,
-    rulesVersion: body && body.rulesVersion,
-    humanSide,
-    startedAt,
-    endedAt,
-    durationMs,
-    undoCount,
-    restoredFromSave,
-    result,
-    samples,
-    steps,
-  });
-  if (!duplicate) {
-    const task = queueTrainingRecord(env, trainingRecord);
-    if (ctx && typeof ctx.waitUntil === 'function') ctx.waitUntil(task);
-    else await task;
-  }
+  // PvC results are intentionally lightweight and client-reported. They affect
+  // the secondary ranking, but are not admitted to model training because the
+  // client cannot be treated as an authoritative source of policy samples.
 
   return json({
     ok: true,
@@ -1021,7 +1003,8 @@ async function accountPvcResultEndpoint(request, env, ctx) {
     pvcPoints: recorded ? Number(recorded.pvcPoints || 0) || 0 : null,
     rewardTier: recorded ? recorded.rewardTier || null : null,
     rank: recorded && stats.ranks ? Number(stats.ranks[user.id] || 0) || null : null,
-    trainingQueued: !duplicate && !!(env && env.DB),
+    trainingQueued: false,
+    trainingReason: 'pvc-client-samples-not-authoritative',
   });
 }
 
@@ -1136,6 +1119,10 @@ export default {
         const limited = await durableRateLimitResponse(request, env, 'leaderboard', 60, 60 * 1000);
         if (limited) return limited;
       }
+      if (url.pathname === '/api/account/pvc-result' && request.method === 'POST') {
+        const limited = await durableRateLimitResponse(request, env, 'pvc-result', 30, 60 * 1000);
+        if (limited) return limited;
+      }
       if (url.pathname === '/api/health') return healthEndpoint(request, env);
       if (url.pathname === '/api/auth/me') return authMe(request, env);
       if (url.pathname === '/api/auth/guest' && request.method === 'POST') return authGuest(request, env);
@@ -1173,7 +1160,6 @@ export default {
       if (url.pathname === '/api/internal/training/export' && request.method === 'POST') return trainingRoutes.exportEndpoint(request, env);
       if (url.pathname === '/api/internal/training/status' && request.method === 'POST') return trainingRoutes.statusEndpoint(request, env);
       if (url.pathname === '/api/internal/training/consume' && request.method === 'POST') return trainingRoutes.consumeEndpoint(request, env);
-      if (url.pathname === '/api/internal/training/prune' && request.method === 'POST') return trainingRoutes.pruneEndpoint(request, env);
       if (url.pathname === '/api/training/upload' && request.method === 'POST') return trainingUpload(request, env);
       if (url.pathname.startsWith('/api/rtdb/')) return json({ ok: false, error: 'realtime/generic-api-removed' }, 410);
       return json({ ok: false, error: 'not-found' }, 404);

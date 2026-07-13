@@ -156,22 +156,9 @@ def _target_value(result: dict[str, Any], actor: int) -> tuple[float, float]:
 
 
 def samples_from_pvc(record: dict[str, Any]) -> list[Sample]:
-    result = record.get("result") if isinstance(record.get("result"), dict) else {}
-    round_id = str(record.get("roundId", ""))
-    out: list[Sample] = []
-    for row in record.get("samples", []):
-        if not isinstance(row, dict):
-            continue
-        action = int(row.get("a", -1) or -1)
-        actor = int(row.get("actor", 0) or 0)
-        if not 0 <= action < N_ACTIONS or actor not in (-1, 1):
-            continue
-        state = encode_state(row.get("s") if isinstance(row.get("s"), dict) else {}, actor)
-        if state is None:
-            continue
-        value, weight = _target_value(result, actor)
-        out.append(Sample(state, action, value, weight, round_id))
-    return out
+    # PvC records are client-reported and therefore are not authoritative
+    # enough for policy/value training. They remain available only for ranking.
+    return []
 
 
 def samples_from_pvp(record: dict[str, Any]) -> list[Sample]:
@@ -190,21 +177,32 @@ def samples_from_pvp(record: dict[str, Any]) -> list[Sample]:
         actor = -next_player if next_player in (-1, 1) else 0
         from_idx = snapshot.get("lastMoveFrom", snapshot.get("lastMovedFrom"))
         path = snapshot.get("lastMovePath")
-        if actor not in (-1, 1) or from_idx is None or not isinstance(path, list) or not path:
+        # Multi-capture turns need intermediate authoritative states. Until the
+        # server stores those states explicitly, skip them rather than assign a
+        # different action meaning from PvC.
+        if actor not in (-1, 1) or from_idx is None or not isinstance(path, list) or len(path) != 1:
             continue
         try:
             from_idx = int(from_idx)
-            to_idx = int(path[-1])
+            to_idx = int(path[0])
         except (TypeError, ValueError):
             continue
-        action = from_idx * N_CELLS + to_idx
-        if not 0 <= action < ACTION_END_CHAIN:
+        if not (0 <= from_idx < N_CELLS and 0 <= to_idx < N_CELLS and from_idx != to_idx):
             continue
-        # The state stored at ply N is after the move. Use the previous state as
-        # the policy input; it contains the exact authoritative position.
         previous = states.get(str(int(key) - 1))
         if not isinstance(previous, dict):
             continue
+        previous_snapshot = previous.get("snapshot") if isinstance(previous.get("snapshot"), dict) else previous
+        previous_board = _board_from_state(previous_snapshot)
+        current_board = _board_from_state(snapshot)
+        if previous_board is None or current_board is None:
+            continue
+        piece = int(previous_board[from_idx // BOARD_N, from_idx % BOARD_N])
+        if piece == 0 or (1 if piece > 0 else -1) != actor:
+            continue
+        if int(current_board[to_idx // BOARD_N, to_idx % BOARD_N]) == 0:
+            continue
+        action = from_idx * N_CELLS + to_idx
         state = encode_state(previous, actor)
         if state is None:
             continue
