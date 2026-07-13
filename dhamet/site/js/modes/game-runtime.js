@@ -720,7 +720,8 @@ const Turn = {
       candidates,
       startedFrom: null,
       capturesDone: 0,
-      snapshot: snapshotState(),
+      historyPushed: false,
+      snapshot: snapshotState({ includeTurnCtx: false }),
     };
     try {
       if (typeof Visual !== "undefined" && Visual && typeof Visual.markTurnBoundary === "function")
@@ -989,6 +990,7 @@ function snapshotState(options) {
         candidates: Array.isArray(ctx.candidates) ? ctx.candidates.slice() : [],
         startedFrom: ctx.startedFrom != null ? ctx.startedFrom : null,
         capturesDone: Number(ctx.capturesDone || 0) || 0,
+        historyPushed: !!ctx.historyPushed,
         snapshot: ctx.snapshot ? {
           board: cloneBoard(ctx.snapshot.board),
           player: ctx.snapshot.player,
@@ -1020,6 +1022,9 @@ function snapshotState(options) {
 }
 
 function pushHistoryBeforeMove(fromIdx, toIdx) {
+  const ctx = typeof Turn !== "undefined" && Turn ? Turn.ctx : null;
+  if (ctx && ctx.historyPushed) return false;
+
   try {
     const onlineActive = !!(window.Online && window.Online.isActive);
     if (
@@ -1037,11 +1042,15 @@ function pushHistoryBeforeMove(fromIdx, toIdx) {
     }
   } catch (_) {}
 
-  const snap = snapshotState();
-  snap.lastMovedFrom = fromIdx;
-  snap.lastMovedTo = toIdx;
+  // One history entry represents one complete player turn, not each segment of
+  // a capture chain.  The turn-start snapshot is the exact rollback target.
+  const snap = ctx && ctx.snapshot
+    ? JSON.parse(JSON.stringify(ctx.snapshot))
+    : snapshotState({ includeTurnCtx: false });
   Game.history.push(snap);
   if (Game.history.length > 10) Game.history.splice(0, Game.history.length - 10);
+  if (ctx) ctx.historyPushed = true;
+  return true;
 }
 
 function restoreSnapshot(snap, opts) {
@@ -1094,6 +1103,7 @@ function restoreSnapshot(snap, opts) {
         candidates: Array.isArray(tc.candidates) ? tc.candidates.slice() : [],
         startedFrom: tc.startedFrom != null ? tc.startedFrom : null,
         capturesDone: Number(tc.capturesDone || 0) || 0,
+        historyPushed: !!tc.historyPushed,
         snapshot: tc.snapshot ? {
           board: cloneBoard(tc.snapshot.board),
           player: tc.snapshot.player,

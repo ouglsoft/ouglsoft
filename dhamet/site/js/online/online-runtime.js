@@ -5156,6 +5156,15 @@
           if (!allowOnlineWrite()) return;
 
           try {
+            const turnSide = Game && Number(Game.player);
+            const lastMoverSide = turnSide === TOP || turnSide === BOT ? -turnSide : null;
+            if (lastMoverSide == null || Number(this.mySide) !== lastMoverSide) {
+              showOnlineNotice(window.I18N.translateArgs("ui.undoOwnLastOnly"), { title: window.I18N.translateArgs("modals.undo.title") });
+              return;
+            }
+          } catch (e) {}
+
+          try {
             if (Game && Game.inChain) {
               showOnlineNotice(window.I18N.translateArgs("ui.noUndo"), { title: window.I18N.translateArgs("modals.undo.title") });
               return;
@@ -6100,11 +6109,6 @@
           this.ply = Number(data.ply || 0) || 0;
           try { this._renderSharedLog(data.log || []); } catch (e) {}
           try { this._handlePresence(data); } catch (e) {}
-          try {
-            Game.availableSouflaForHuman = data.soufla && data.soufla.availableFor === this.mySide
-              ? plainToSoufla(data.soufla.pending)
-              : null;
-          } catch (e) {}
           try { this._handleUndoRequest(data); } catch (e) {}
 
           const preserveLocalCapture = !!(
@@ -6126,6 +6130,20 @@
               try { Logger.warn("official_turn_only_resume_failed", { gameId: this.gameId, error: String(error && (error.message || error)) }); } catch (_) {}
             }
           }
+
+          // _applyRemoteState resets transient local state before restoring the
+          // official snapshot.  Apply the authoritative soufla right only after
+          // that reset; doing it before the snapshot silently erased a valid
+          // claim and made the client report that the last move was legal.
+          try {
+            Game.availableSouflaForHuman = data.soufla && Number(data.soufla.availableFor) === Number(this.mySide)
+              ? plainToSoufla(data.soufla.pending)
+              : null;
+            if (!Game.availableSouflaForHuman && !Game._souflaApplying) {
+              if (Game.souflaPending && Number(Game.souflaPending.penalizer) === Number(this.mySide)) Game.souflaPending = null;
+              if (!Game.souflaPending) Game.awaitingPenalty = false;
+            }
+          } catch (e) {}
 
           if (rematchAdvanced) {
             try { this._setOnlineButtonsState(true); } catch (e) {}

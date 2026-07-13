@@ -93,7 +93,7 @@
     };
   }
 
-  function canRequestUndo(game) {
+  function canRequestUndo(game, requesterSide, options) {
     const g = game && typeof game === 'object' ? game : {};
     if (g.status && g.status !== 'active') return { ok: false, error: 'control/not-active' };
     const state = State && typeof State.normalizeStatePayload === 'function' ? State.normalizeStatePayload(g.state || {}) : g.state;
@@ -104,8 +104,22 @@
     if (Number(g.ply || 0) <= 0) return { ok: false, error: 'control/no-undo' };
     if (!g.states || !g.states[String(Math.max(0, Number(g.ply || 0) - 1))]) return { ok: false, error: 'control/missing-previous-state' };
     const ur = normalizeUndoRequest(g.undoRequest);
-    if (ur && (ur.status === 'pending' || ur.status === 'active')) return { ok: false, error: 'control/undo-already-pending', undoRequest: ur };
-    return { ok: true, state, snapshot: snap };
+    const opts = options && typeof options === 'object' ? options : {};
+    if (!opts.ignorePending && ur && (ur.status === 'pending' || ur.status === 'active')) return { ok: false, error: 'control/undo-already-pending', undoRequest: ur };
+
+    const turnSide = side(snap.player, null);
+    const lastMoverSide = turnSide == null ? null : -turnSide;
+    const from = Number(snap.lastMoveFrom != null ? snap.lastMoveFrom : snap.lastMovedFrom);
+    const path = Array.isArray(snap.lastMovePath) && snap.lastMovePath.length
+      ? snap.lastMovePath.map(Number).filter(Number.isFinite)
+      : (snap.lastMovedTo != null ? [Number(snap.lastMovedTo)] : []);
+    if (lastMoverSide == null || !Number.isFinite(from) || !path.length) return { ok: false, error: 'control/no-undo-target' };
+
+    const requested = side(requesterSide, null);
+    if (requested != null && requested !== lastMoverSide) {
+      return { ok: false, error: 'control/not-last-mover', lastMoverSide };
+    }
+    return { ok: true, state, snapshot: snap, lastMoverSide, undoFx: { undoneFrom: from, undonePath: path, undoneTo: path[path.length - 1] } };
   }
 
   function previousStateForUndo(game) {
@@ -120,17 +134,24 @@
     return { ply: prevPly, state: payload };
   }
 
+  function undoFxFromSnapshot(snapshot) {
+    const snap = snapshot && typeof snapshot === 'object' ? snapshot : null;
+    if (!snap) return { undoneFrom: null, undonePath: null, undoneTo: null };
+    const from = snap.lastMoveFrom != null ? Number(snap.lastMoveFrom) : (snap.lastMovedFrom != null ? Number(snap.lastMovedFrom) : null);
+    const path = Array.isArray(snap.lastMovePath) && snap.lastMovePath.length
+      ? snap.lastMovePath.map(Number).filter(Number.isFinite)
+      : (snap.lastMovedTo != null ? [Number(snap.lastMovedTo)] : null);
+    return {
+      undoneFrom: Number.isFinite(from) ? from : null,
+      undonePath: path && path.length ? path : null,
+      undoneTo: path && path.length ? path[path.length - 1] : null,
+    };
+  }
+
   function undoFxFromLastMove(lastMove) {
     const lm = lastMove && typeof lastMove === 'object' ? lastMove : null;
     if (!lm || lm.kind !== 'move') return { undoneFrom: null, undonePath: null, undoneTo: null };
-    const path = Array.isArray(lm.path) && lm.path.length
-      ? lm.path.map(Number).filter(Number.isFinite)
-      : (lm.to != null ? [Number(lm.to)] : null);
-    return {
-      undoneFrom: lm.from != null ? Number(lm.from) : null,
-      undonePath: path && path.length ? path : null,
-      undoneTo: path && path.length ? path[path.length - 1] : (lm.to != null ? Number(lm.to) : null),
-    };
+    return undoFxFromSnapshot({ lastMoveFrom: lm.from, lastMovePath: lm.path, lastMovedTo: lm.to });
   }
 
   root.DhametControl = Object.freeze({
@@ -141,6 +162,7 @@
     normalizeUndoRequest,
     canRequestUndo,
     previousStateForUndo,
+    undoFxFromSnapshot,
     undoFxFromLastMove,
   });
 })(typeof globalThis !== 'undefined' ? globalThis : this);

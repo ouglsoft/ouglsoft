@@ -2283,3 +2283,31 @@ body[dir="rtl"] .settings-control {
     overflow: visible;
   }
 }
+
+/* Desktop game sidebar stability.
+ * Avoid backdrop-filter/transform compositing inside the scroll container:
+ * on Chromium/Windows touch-capable desktops it can continuously rebuild the
+ * hit-test layer while hovering a button or the scrollbar. */
+body.z-game-page:not(.z-mobile-on) .side {
+  background: var(--panel-strong) !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+  scrollbar-gutter: stable;
+  overscroll-behavior: contain;
+}
+body.z-game-page:not(.z-mobile-on) .side * {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+body.z-game-page:not(.z-mobile-on) .side .btn:hover,
+body.z-game-page:not(.z-mobile-on) .side .btn:hover:not(:disabled),
+body.z-game-page:not(.z-mobile-on) .side button:hover,
+body.z-game-page:not(.z-mobile-on) .side select:hover,
+body.z-game-page:not(.z-mobile-on) .side input:hover {
+  transform: none !important;
+  filter: none !important;
+}
+body.z-game-page:not(.z-mobile-on) .side::-webkit-scrollbar-thumb,
+body.z-game-page:not(.z-mobile-on) .side::-webkit-scrollbar-thumb:hover {
+  background: var(--accent) !important;
+}

@@ -1406,7 +1406,7 @@ export class RealtimeObject {
       const err = String((reduced && reduced.error) || '');
       const status = /not-active|stale|forced-opening|no-undo|in-chain|soufla-pending|missing-previous/.test(err)
         ? 409
-        : (/not-player|requester-cannot-respond|invalid-side/.test(err) ? 403 : 400);
+        : (/not-player|not-last-mover|requester-cannot-respond|invalid-side/.test(err) ? 403 : 400);
       return json(Object.assign({ ok: false, error: 'control/validation-failed', game: current }, reduced || {}), status);
     }
     if (reduced.committed === false) {
@@ -1468,7 +1468,7 @@ export class RealtimeObject {
       const err = String((reduced && reduced.error) || '');
       const status = /not-ended|match-not-ended|already-pending|stale|missing-player/.test(err)
         ? 409
-        : (/not-player|requester-cannot-respond|invalid-side/.test(err) ? 403 : 400);
+        : (/not-player|not-last-mover|requester-cannot-respond|invalid-side/.test(err) ? 403 : 400);
       return json(Object.assign({ ok: false, error: 'rematch/validation-failed', game: current }, reduced || {}), status);
     }
     if (reduced.committed === false) {

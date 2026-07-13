@@ -36,7 +36,8 @@
       btn.hidden = false;
       btn.removeAttribute("hidden");
       btn.setAttribute("data-chain-active", state ? "true" : "false");
-      btn.setAttribute("aria-disabled", state ? "false" : "true");
+      btn.setAttribute("aria-disabled", "false");
+      btn.setAttribute("data-action-available", state ? "true" : "false");
       syncVisualState();
     } catch (_) {}
   }

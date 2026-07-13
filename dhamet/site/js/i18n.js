@@ -390,6 +390,7 @@
     "ui": {
       "stats": "الإحصائيات",
       "noUndo": "لا توجد حركة سابقة للتراجع عنها",
+      "undoOwnLastOnly": "لا يمكن التراجع إلا عن آخر نقلة إذا كنت أنت من نفذها.",
       "language": "اللغة"
     },
     "meta_keywords": "ظامت, زامت, لعبة موريتانية, داما, لعب ضد الحاسوب, لعب عبر الإنترنت",
@@ -957,6 +958,7 @@
     "ui": {
       "stats": "Stats",
       "noUndo": "Nothing to undo.",
+      "undoOwnLastOnly": "You can undo the last move only if you made it.",
       "language": "Language"
     },
     "meta_keywords": "zamat, zamet, mauritanian game, board game, checkers, draughts, computer play, online multiplayer",
@@ -1524,6 +1526,7 @@
     "ui": {
       "stats": "Statistiques",
       "noUndo": "Rien à annuler.",
+      "undoOwnLastOnly": "Vous ne pouvez annuler le dernier coup que si vous l’avez joué.",
       "language": "Langue"
     },
     "meta_keywords": "zamat, zamet, jeu mauritanien, jeu de plateau, dames, jeu contre ordinateur, multijoueur en ligne",

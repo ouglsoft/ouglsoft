@@ -46,13 +46,20 @@ function readStoredTheme() {
 function isPhoneLike() {
   var w = Math.max(0, window.innerWidth || 0), h = Math.max(0, window.innerHeight || 0);
   var sw = Math.max(0, window.screen && window.screen.width || 0), sh = Math.max(0, window.screen && window.screen.height || 0);
-  var shortSide = Math.min(w || sw, h || sh, sw || w || 0, sh || h || 0) || Math.min(w, h);
-  var longSide = Math.max(w, h, sw, sh), coarse = false, touch = 0, ua = "";
-  try { coarse = window.matchMedia("(pointer: coarse)").matches || window.matchMedia("(hover: none)").matches; } catch (_) {}
+  var screenShort = Math.min(sw || w, sh || h) || Math.min(w, h);
+  var ua = "", touch = 0;
   try { touch = Math.max(0, navigator.maxTouchPoints || 0); ua = String(navigator.userAgent || navigator.vendor || ""); } catch (_) {}
+
+  // Device classification must be stable while hovering, scrolling, opening a
+  // scrollbar, or resizing a desktop window.  Generic touch capability is not
+  // sufficient: many Windows laptops and large monitors expose touch input.
   if (/Android.+Mobile|iPhone|iPod|Windows Phone|Opera Mini|IEMobile|Mobile Safari/i.test(ua)) return true;
-  if (shortSide > 820 || (w > 1024 && h > 700)) return false;
-  return (coarse || touch > 0) && ((shortSide <= 600 && longSide <= 1600) || (shortSide <= 720 && longSide <= 1366 && !/Android|iPad|Tablet|Silk/i.test(ua)));
+  if (/iPad|Tablet|Silk|Android(?!.*Mobile)/i.test(ua)) return screenShort <= 1024;
+
+  // A desktop-class UA stays in the desktop layout even when it has a coarse
+  // pointer.  Only genuinely phone-sized physical screens use the mobile DOM.
+  if (/Windows NT|Macintosh|X11|CrOS|Linux x86_64/i.test(ua)) return touch > 0 && screenShort > 0 && screenShort <= 600;
+  return touch > 0 && screenShort > 0 && screenShort <= 600;
 }
 
 try { document.documentElement.classList.toggle("dark", readStoredTheme() === "dark"); } catch (_) {}

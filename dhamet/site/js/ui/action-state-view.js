@@ -112,21 +112,31 @@
     setShown(one(".timer-row"), !state.spectator);
     setShown(one(".soufla-row"), !state.spectator);
 
-    // Visual disable is intentionally conservative. It never turns a hidden
-    // control into a visible one, and gameplay handlers still perform the
-    // authoritative checks before applying any action.
-    ["btnEndOnline", "btnSpk", "btnMic"].forEach((id) => {
+    // Gameplay controls never reveal hidden rule state by becoming disabled.
+    // Availability is recorded as data only; each handler and, in PvP, the
+    // authoritative server still validates the requested action.  The global
+    // ui-hold layer may block the entire surface during initial boot, but no
+    // individual action button is visually or natively disabled.
+    const availability = {
+      btnEndOnline: !state.uiBlocked,
+      btnSpk: !state.uiBlocked,
+      btnMic: !state.uiBlocked,
+      btnSync: state.canSync && !state.isSyncing && !state.uiBlocked,
+      btnEndKill: state.canEndCapture,
+      btnUndo: state.canUndo,
+      btnSoufla: state.canClaimSoufla,
+      btnSettings: !state.uiBlocked,
+      btnSave: !state.uiBlocked,
+      btnResume: !state.uiBlocked,
+      btnNew: !state.uiBlocked,
+      btnEndLocalMatch: !state.uiBlocked,
+    };
+    Object.keys(availability).forEach((id) => {
       const el = byId(id);
-      if (el) setAriaDisabled(el, state.uiBlocked && state.online);
+      if (!el) return;
+      setAriaDisabled(el, false);
+      try { el.dataset.actionAvailable = availability[id] ? "true" : "false"; } catch (_) {}
     });
-    const syncButton = byId("btnSync");
-    if (syncButton) setAriaDisabled(syncButton, !state.canSync || state.isSyncing || state.uiBlocked);
-    const endCaptureButton = byId("btnEndKill");
-    if (endCaptureButton && state.online) setAriaDisabled(endCaptureButton, !state.canEndCapture);
-    const undoButton = byId("btnUndo");
-    if (undoButton && state.online) setAriaDisabled(undoButton, state.uiBlocked);
-    const souflaButton = byId("btnSoufla");
-    if (souflaButton && state.online) setAriaDisabled(souflaButton, state.uiBlocked);
 
     // Responsive DOM placement is only required when the match role changes.
     // Never remount desktop controls on routine timer/status refreshes.

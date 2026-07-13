@@ -757,13 +757,16 @@ if (!icon) {
   }
 
   function rememberGameHome(node) {
-    if (!node || node.__zMobileHomeMarker) return;
+    if (!node) return;
+    var currentMarker = node.__zMobileHomeMarker;
+    if (currentMarker && currentMarker.parentNode) return;
+    if (currentMarker && !currentMarker.parentNode) node.__zMobileHomeMarker = null;
     var parent = node.parentNode;
     if (!parent) return;
     var marker = document.createComment('z-mobile-home:' + (node.id || node.className || node.nodeName));
     parent.insertBefore(marker, node);
     node.__zMobileHomeMarker = marker;
-    GAME_HOME_RECORDS.push(node);
+    if (GAME_HOME_RECORDS.indexOf(node) === -1) GAME_HOME_RECORDS.push(node);
   }
 
   function moveGameNode(node, parent, before) {
@@ -777,12 +780,17 @@ if (!icon) {
   function restoreGameNode(node) {
     if (!node) return;
     var marker = node.__zMobileHomeMarker;
-    if (!marker || !marker.parentNode) return;
-    marker.parentNode.insertBefore(node, marker.nextSibling);
+    if (marker && marker.parentNode) {
+      marker.parentNode.insertBefore(node, marker.nextSibling);
+      marker.parentNode.removeChild(marker);
+    }
+    node.__zMobileHomeMarker = null;
   }
 
   function restoreAllGameNodes() {
-    GAME_HOME_RECORDS.forEach(restoreGameNode);
+    var records = GAME_HOME_RECORDS.slice();
+    GAME_HOME_RECORDS.length = 0;
+    records.forEach(restoreGameNode);
   }
 
   function ensureGameSideLane() {

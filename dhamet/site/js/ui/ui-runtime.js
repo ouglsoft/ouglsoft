@@ -1935,7 +1935,7 @@ const UI = {
     const normalizeLevel = (value) => typeof normalizeAILevel === "function"
       ? normalizeAILevel(value || "medium")
       : String(value || "medium");
-    const selectedLevel = normalizeLevel(Game.pendingAILevel || adv.aiLevel || "medium");
+    const selectedLevel = normalizeLevel(adv.aiLevel || Game.pendingAILevel || "medium");
 
     const esc = (value) => String(value == null ? "" : value)
       .replace(/&/g, "&amp;")
@@ -2044,7 +2044,7 @@ const UI = {
       };
 
       const starterBefore = Game.settings.starter;
-      const levelBefore = normalizeLevel(Game.pendingAILevel || adv.aiLevel || "medium");
+      const levelBefore = normalizeLevel(adv.aiLevel || Game.pendingAILevel || "medium");
       const themeBefore = Game.settings.theme === "dark" ? "dark" : "light";
       const boardBefore = (Game.settings.boardStyle || "2d") === "3d" ? "3d" : "2d";
       const coordsBefore = !!Game.settings.showCoords;
@@ -2055,7 +2055,13 @@ const UI = {
       if (!onlineNow()) {
         const level = normalizeLevel(qs("#advAILevel", wrap)?.value || "medium");
         if (level !== levelBefore) {
-          Game.pendingAILevel = level;
+          if (!Game.settings) Game.settings = {};
+          if (window.DhametAIConfig && typeof DhametAIConfig.createDefaultAdvancedSettings === "function") {
+            Game.settings.advanced = DhametAIConfig.createDefaultAdvancedSettings(level);
+          } else {
+            Game.settings.advanced = Object.assign({}, Game.settings.advanced || {}, { aiLevel: level });
+          }
+          Game.pendingAILevel = null;
           addChange(t("settings.aiLevel"), levelLabel(levelBefore), levelLabel(level), t("settings.aiLevelNextMoveNote"));
         }
 
@@ -2224,6 +2230,16 @@ function performLocalUndo(options) {
   }
 
   const candidate = Game.history[Game.history.length - 1];
+  const candidateMover = candidate && Number(candidate.player);
+  const localSide = Number(humanSide());
+  if ((candidateMover === TOP || candidateMover === BOT) && candidateMover !== localSide) {
+    Modal.alert({
+      title: t("modals.undo.title"),
+      body: `<div>${t("ui.undoOwnLastOnly")}</div>`,
+      okLabel: t("actions.close"),
+    });
+    return false;
+  }
 
   if (!opts.allowForcedOpening && candidate && candidate.forcedEnabled && candidate.forcedPly < 10) {
     Modal.alert({
@@ -2494,7 +2510,7 @@ function resumeGame() {
   return true;
 }
 
-function souflaPressed() {
+async function souflaPressed() {
   try {
     var root = document.documentElement;
     if (
@@ -2530,6 +2546,15 @@ function souflaPressed() {
     showUiNotice(t("modals.soufla.forcedOpeningWarning"));
     return;
   }
+  if (!Game.availableSouflaForHuman && window.Online && Online.isActive && typeof Online.syncNow === "function") {
+    // WebSocket remains the normal zero-request path.  A manual claim is the
+    // one situation where a single explicit resync is justified: it prevents a
+    // delayed live event from causing a false "legal move" response.
+    try {
+      await Online.syncNow({ reason: "soufla-claim-check", notifyFailure: true, repairPresence: false });
+    } catch (_) {}
+  }
+
   if (Game.availableSouflaForHuman) {
     Game.awaitingPenalty = true;
     Game.souflaPending = Game.availableSouflaForHuman;

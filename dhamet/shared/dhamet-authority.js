@@ -275,7 +275,9 @@
     if (!statePayload) return { ok: false, error: 'authority/state-build-failed' };
 
     const mi = Number(record.moveIndex || 0) + 1;
-    const ply = Number(record.ply || 0) + 1;
+    // Resolving a soufla settles/replaces the already-counted offending turn.
+    // It is a new authoritative action (moveIndex) but never a second game ply.
+    const ply = Math.max(0, Number(record.ply || 0) || 0);
     const ts = nowMs();
     const fx = Soufla.buildFx(pending, decision);
     const souflaMeta = {
@@ -373,10 +375,10 @@
   }
 
   function applyUndoRequest(record, normalized, ctx) {
-    const check = Control.canRequestUndo(record);
-    if (!check.ok) return Object.assign({ game: record }, check);
     const actorSide = side(normalized.by != null ? normalized.by : ctx.side);
     if (actorSide == null) return { ok: false, error: 'control/invalid-side', game: record };
+    const check = Control.canRequestUndo(record, actorSide);
+    if (!check.ok) return Object.assign({ game: record }, check);
     const baseMoveIndex = Number(normalized.baseMoveIndex);
     if (Number.isFinite(baseMoveIndex) && baseMoveIndex >= 0 && Number(record.moveIndex || 0) !== baseMoveIndex) {
       return { ok: true, committed: false, reason: 'stale-base', game: record };
@@ -460,9 +462,11 @@
       return { ok: true, committed: true, controlOnly: true, game: nextGame, undoRequest: nextGame.undoRequest, moveIndex: nextGame.moveIndex, ply: nextGame.ply, events: ev ? [ev] : [] };
     }
 
+    const currentCheck = Control.canRequestUndo(record, ur.requesterSide, { ignorePending: true });
+    if (!currentCheck.ok) return Object.assign({ game: record }, currentCheck);
     const prev = Control.previousStateForUndo(record);
     if (!prev || !prev.state || !prev.state.snapshot) return { ok: false, error: 'control/missing-previous-state', game: record };
-    const fx = Control.undoFxFromLastMove(record.lastMove);
+    const fx = currentCheck.undoFx || Control.undoFxFromSnapshot(currentCheck.snapshot);
     const mi = Number(record.moveIndex || 0) + 1;
     const nextGame = clone(record);
     nextGame.moveIndex = mi;

@@ -164,10 +164,16 @@
       const nextLevel = normalizeLevel(select.value);
       const actualBefore = normalizeLevel(select.dataset.actualLevel || actualLevel);
       try {
-        game.pendingAILevel = nextLevel === actualBefore ? null : nextLevel;
+        if (!game.settings) game.settings = {};
+        if (global.DhametAIConfig && typeof global.DhametAIConfig.createDefaultAdvancedSettings === "function") {
+          game.settings.advanced = global.DhametAIConfig.createDefaultAdvancedSettings(nextLevel);
+        } else {
+          game.settings.advanced = Object.assign({}, game.settings.advanced || {}, { aiLevel: nextLevel });
+        }
+        game.pendingAILevel = null;
         select.value = nextLevel;
         select.dataset.currentLevel = nextLevel;
-        select.dataset.actualLevel = actualBefore;
+        select.dataset.actualLevel = nextLevel;
         if (typeof opts.onChange === "function") opts.onChange({ nextLevel, actualBefore, select });
         setTimeout(function () { try { select.blur(); } catch (_) {} }, 0);
       } catch (_) {}
