@@ -2,14 +2,8 @@ name: Train private Dhamet model
 
 on:
   workflow_dispatch:
-    inputs:
-      force_test_run:
-        description: "Run a private test below the normal data threshold (never promotes the model)"
-        required: false
-        type: boolean
-        default: false
   schedule:
-    - cron: "37 2 * * 0"
+    - cron: "37 2 * * *"
 
 permissions:
   contents: read
@@ -28,23 +22,21 @@ jobs:
         with:
           path: app
 
+      - name: Check whether saved training records exist
+        id: precheck
+        env:
+          TRAINING_EXPORT_URL: "https://ouglsoft.com/dhamet/api/internal/training/export"
+          TRAINING_EXPORT_SECRET: ${{ secrets.TRAINING_EXPORT_SECRET }}
+        run: python3 app/training/src/check_data.py
+
       - name: Checkout private model store
+        if: steps.precheck.outputs.run_training == 'true'
         uses: actions/checkout@v4
         with:
           repository: ${{ secrets.TRAINING_MODEL_REPOSITORY }}
           token: ${{ secrets.TRAINING_MODEL_TOKEN }}
           path: private-model-store
           fetch-depth: 1
-
-      - name: Check whether training is needed
-        id: precheck
-        env:
-          TRAINING_EXPORT_URL: "https://ouglsoft.com/dhamet/api/internal/training/export"
-          TRAINING_EXPORT_SECRET: ${{ secrets.TRAINING_EXPORT_SECRET }}
-        run: |
-          EXTRA=""
-          if [ "${{ inputs.force_test_run || false }}" = "true" ]; then EXTRA="--force"; fi
-          python3 app/training/src/check_data.py --model-store private-model-store $EXTRA
 
       - uses: actions/setup-python@v5
         if: steps.precheck.outputs.run_training == 'true'
@@ -57,30 +49,41 @@ jobs:
         if: steps.precheck.outputs.run_training == 'true'
         run: python -m pip install --requirement app/training/requirements.txt
 
-      - name: Train, validate, and promote privately
+      - name: Train and prepare one-time consumption receipt
+        id: training
         if: steps.precheck.outputs.run_training == 'true'
         env:
           TRAINING_EXPORT_URL: "https://ouglsoft.com/dhamet/api/internal/training/export"
           TRAINING_EXPORT_SECRET: ${{ secrets.TRAINING_EXPORT_SECRET }}
           TRAINING_MAX_GAMES: "5000"
-          TRAINING_EPOCHS: "4"
+          TRAINING_EPOCHS: "1"
           TRAINING_BATCH_SIZE: "128"
+          TRAINING_CPU_THREADS: "2"
+          OMP_NUM_THREADS: "2"
+          MKL_NUM_THREADS: "2"
         run: |
-          EXTRA=""
-          if [ "${{ inputs.force_test_run || false }}" = "true" ]; then EXTRA="--force"; fi
-          python app/training/src/train.py --model-store private-model-store $EXTRA
+          python app/training/src/train.py \
+            --model-store private-model-store \
+            --receipt app/training-consume-receipt.json
 
       - name: Replace private model snapshot
-        if: steps.precheck.outputs.run_training == 'true'
+        if: steps.training.outputs.model_changed == 'true'
         working-directory: private-model-store
         run: |
           git config user.name "dhamet-training-bot"
           git config user.email "dhamet-training-bot@users.noreply.github.com"
           git add -A
           if git diff --cached --quiet; then
-            echo "No accepted model change to store."
-            exit 0
+            echo "Training reported a model change but no files changed." >&2
+            exit 1
           fi
           TREE=$(git write-tree)
           COMMIT=$(printf 'Update private Dhamet model snapshot\n' | git commit-tree "$TREE")
           git push origin "$COMMIT:refs/heads/main" --force
+
+      - name: Delete records consumed by the completed training run
+        if: steps.training.outputs.consume_ready == 'true'
+        env:
+          TRAINING_EXPORT_URL: "https://ouglsoft.com/dhamet/api/internal/training/export"
+          TRAINING_EXPORT_SECRET: ${{ secrets.TRAINING_EXPORT_SECRET }}
+        run: python3 app/training/src/consume_data.py --receipt app/training-consume-receipt.json
