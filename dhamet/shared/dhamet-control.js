@@ -100,7 +100,6 @@
     const snap = state && state.snapshot ? state.snapshot : null;
     if (!snap) return { ok: false, error: 'control/invalid-state' };
     if (snap.inChain) return { ok: false, error: 'control/in-chain' };
-    if (snap.forcedEnabled && Number(snap.forcedPly || 0) < 10) return { ok: false, error: 'control/forced-opening' };
     if (Number(g.ply || 0) <= 0) return { ok: false, error: 'control/no-undo' };
     if (!g.states || !g.states[String(Math.max(0, Number(g.ply || 0) - 1))]) return { ok: false, error: 'control/missing-previous-state' };
     const ur = normalizeUndoRequest(g.undoRequest);

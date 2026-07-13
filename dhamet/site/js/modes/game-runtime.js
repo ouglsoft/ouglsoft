@@ -698,16 +698,17 @@ const Turn = {
       UI.log({ kind: "promote", idx: promoted.idx, side: promoted.side, ts: Date.now() });
     }
 
-    // Promotion becomes active at the start of this turn, so terminal rules
-    // (including one king versus one king) must be reevaluated afterwards.
-    if (!Game.gameOver) checkEndConditions();
-    if (Game.gameOver) {
-      UI.updateStatus();
-      return;
-    }
+    // Promotion becomes active at the start of this turn. A pending soufla
+    // right must be resolved before any terminal result is evaluated, because
+    // the violating position is not yet the final legal consequence of the turn.
     if (hasUnresolvedSoufla()) {
       this.ctx = null;
       Game.killTimer.hardStop();
+      UI.updateStatus();
+      return;
+    }
+    if (!Game.gameOver) checkEndConditions();
+    if (Game.gameOver) {
       UI.updateStatus();
       return;
     }
@@ -1246,13 +1247,11 @@ const SessionGame = (() => {
   function _restoreData(data) {
     try {
       if (DhametPvCSession && typeof DhametPvCSession.validateRestoreRecord === "function") {
-        data = DhametPvCSession.validateRestoreRecord(data) || data;
+        data = DhametPvCSession.validateRestoreRecord(data, { allowGameOver: true }) || data;
       }
     } catch {}
 
     if (!data || typeof data !== "object") return false;
-
-    if (data.gameOver) return false;
 
     const snap = data.snapshot || (data.sharedState && data.sharedState.snapshot);
     if (!snap || !snap.board || !Array.isArray(snap.board)) return false;
@@ -1269,10 +1268,7 @@ const SessionGame = (() => {
       else if (data.forcedSeqKey === "FO_BOT") Game.forcedSeq = FO_BOT;
       else {
         try {
-          const fp = typeof snap.forcedPly === "number" ? snap.forcedPly | 0 : 0;
-          const cur = snap.player;
-          const base = fp % 2 === 0 ? cur : -cur;
-          Game.forcedSeq = base === TOP ? FO_TOP : FO_BOT;
+          Game.forcedSeq = forcedOpeningSeqForStarterSide(forcedOpeningStarterFromSnapshot(snap));
         } catch {
           Game.forcedSeq = FO_BOT;
         }
@@ -1280,9 +1276,9 @@ const SessionGame = (() => {
 
       restoreSnapshot(snap, { redraw: false, visual: true });
 
-      Game.gameOver = false;
-      Game.winner = null;
-      Game.terminationReason = null;
+      Game.gameOver = !!data.gameOver;
+      Game.winner = data.winner == null ? null : Number(data.winner) || 0;
+      Game.terminationReason = data.terminationReason == null ? null : String(data.terminationReason);
 
       Game.history = Array.isArray(data.history) ? data.history : [];
 
@@ -1304,19 +1300,19 @@ const SessionGame = (() => {
         try {
           UI.updateKillClock(Game.killTimer.elapsedMs | 0);
         } catch {}
-        if (Game.inChain) {
+        if (Game.inChain && !Game.gameOver) {
           try {
             Game.killTimer.start();
           } catch {}
         }
         try {
-          if (typeof syncEndKillAvailability === "function") syncEndKillAvailability(Game.inChain);
+          if (typeof syncEndKillAvailability === "function") syncEndKillAvailability(Game.inChain && !Game.gameOver);
           else {
             const btn = typeof qs === "function" ? qs("#btnEndKill") : null;
             if (btn) {
               btn.disabled = false;
-              btn.setAttribute("data-chain-active", Game.inChain ? "true" : "false");
-              btn.setAttribute("aria-disabled", Game.inChain ? "false" : "true");
+              btn.setAttribute("data-chain-active", Game.inChain && !Game.gameOver ? "true" : "false");
+              btn.setAttribute("aria-disabled", Game.inChain && !Game.gameOver ? "false" : "true");
             }
           }
         } catch {}
@@ -1325,9 +1321,16 @@ const SessionGame = (() => {
       try {
         UI.updateAll();
       } catch {}
-      try {
-        setTimeout(() => resumePendingGameWorkAfterRestore(), 0);
-      } catch {}
+
+      if (Game.gameOver) {
+        try {
+          setTimeout(() => UI.showGameOverModal?.(Game.winner), 0);
+        } catch {}
+      } else {
+        try {
+          setTimeout(() => resumePendingGameWorkAfterRestore(), 0);
+        } catch {}
+      }
 
       return true;
     } catch {
@@ -1345,6 +1348,7 @@ const SessionGame = (() => {
           context: { Online: window.Online, document },
           shouldSkipSave: () => !_isPvCSession(),
           isGameOver: () => !!Game.gameOver,
+          persistGameOver: true,
         })
       : null;
 
@@ -1358,10 +1362,6 @@ const SessionGame = (() => {
   function saveNow() {
     if (!_isPvCSession()) return;
     if (_storageAdapter) return _storageAdapter.saveNow();
-      if (Game.gameOver) {
-      clear();
-      return;
-    }
 
     try {
       const data = _capture();
@@ -1408,7 +1408,7 @@ const SessionGame = (() => {
     return restored;
   }
 
-  return { KEY: KEY_PVC, KEY_PVC, getKey: _getKey, saveNow, saveSoon, restore, clear };
+  return { KEY: KEY_PVC, KEY_PVC, getKey: _getKey, saveNow, saveSoon, restore, restoreRecord: _restoreData, clear };
 })();
 
 try {
@@ -1711,7 +1711,7 @@ function checkEndConditions() {
   Game.gameOver = true;
   Game.winner = outcome.status === DhametRulesShared.RESULT_DRAW ? null : Number(outcome.winner);
   Game.terminationReason = outcome.reason || (Game.winner == null ? "draw" : "natural_win");
-  try { SessionGame.clear(); } catch {}
+  try { SessionGame.saveNow(); } catch {}
   try { UI.showGameOverModal?.(Game.winner); } catch {}
   try {
     Promise.resolve(

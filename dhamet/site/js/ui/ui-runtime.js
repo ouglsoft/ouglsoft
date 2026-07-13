@@ -2241,15 +2241,6 @@ function performLocalUndo(options) {
     return false;
   }
 
-  if (!opts.allowForcedOpening && candidate && candidate.forcedEnabled && candidate.forcedPly < 10) {
-    Modal.alert({
-      title: t("modals.undo.notAllowedTitle"),
-      body: `<div>${t("modals.undo.notAllowedBody")}</div>`,
-      okLabel: t("actions.close"),
-    });
-    return false;
-  }
-
   const snap = Game.history.pop();
   let __beforeUndoSnap = null;
   try {
@@ -2420,67 +2411,28 @@ function resumeGame() {
       const parsed = JSON.parse(raw);
       const data = validateManualPvCSaveRecord(parsed);
       if (!data) throw new Error("invalid-pvc-save");
-      const snap = data.snapshot || (data.sharedState && data.sharedState.snapshot) || data;
-      if (!snap || !Array.isArray(snap.board)) throw new Error("invalid-pvc-snapshot");
-
-      Game.board = snap.board;
-      Game.player = snap.player;
-      Game.inChain = !!snap.inChain;
-      Game.chainPos = snap.chainPos ?? null;
-      Game.lastMovedTo = snap.lastMovedTo ?? null;
-      Game.lastMovedFrom = snap.lastMovedFrom ?? null;
-      Game.moveCount = snap.moveCount ?? 0;
-      Game.deferredPromotions = Array.isArray(snap.deferredPromotions)
-        ? snap.deferredPromotions.map((entry) => ({ idx: Number(entry.idx), side: Number(entry.side) }))
-        : snap.deferredPromotion ? [{ idx: Number(snap.deferredPromotion.idx), side: Number(snap.deferredPromotion.side) }] : [];
-      Game.deferredPromotion = Game.deferredPromotions.length ? { ...Game.deferredPromotions[0] } : null;
-      Game.forcedEnabled = typeof snap.forcedEnabled === "boolean" ? snap.forcedEnabled : true;
-      Game.forcedPly = typeof snap.forcedPly === "number" ? snap.forcedPly : 0;
-
-      Game.settings = data.settings || snap.settings || Game.settings;
-      Game.normalizeAdvancedSettings();
-      Game.history = Array.isArray(data.history) ? data.history : [];
-
-      if (data.forcedSeqKey === "FO_TOP") Game.forcedSeq = FO_TOP;
-      else if (data.forcedSeqKey === "FO_BOT") Game.forcedSeq = FO_BOT;
-      else {
-        try {
-          const fp = typeof snap.forcedPly === "number" ? snap.forcedPly | 0 : 0;
-          const cur = snap.player;
-          const base = fp % 2 === 0 ? cur : -cur;
-          Game.forcedSeq = base === TOP ? FO_TOP : FO_BOT;
-        } catch {
-          Game.forcedSeq = FO_BOT;
-        }
+      if (!SessionGame || typeof SessionGame.restoreRecord !== "function") {
+        throw new Error("pvc-restore-unavailable");
       }
+      if (!SessionGame.restoreRecord(data)) throw new Error("invalid-pvc-snapshot");
+      try { SessionGame.saveNow(); } catch (_) {}
 
-      if (qs("#log") && typeof data.logHtml === "string") {
-        qs("#log").innerHTML = data.logHtml;
+      const resumedCapture = !!(
+        Game.inChain &&
+        Game.chainPos != null &&
+        restoreCaptureContinuationVisualState()
+      );
+      if (
+        !Game.gameOver &&
+        !resumedCapture &&
+        !Game.awaitingPenalty &&
+        !Game.souflaPending &&
+        !Game.availableSouflaForHuman
+      ) {
+        if (!Turn.ctx) Turn.start();
+        scheduleForcedOpeningAutoIfNeeded();
       }
-
-      Game.gameOver = false;
-      Game.winner = null;
-      Game.terminationReason = null;
-
-      Game.killTimer.hardStop();
-      Game.killTimer.elapsedMs = typeof data.killTimerMs === "number" ? data.killTimerMs : 0;
-      UI.updateKillClock(Game.killTimer.elapsedMs | 0);
-      if (Game.inChain) Game.killTimer.start();
-
-      syncEndKillAvailability(Game.inChain);
-
-      Turn.start();
-      scheduleForcedOpeningAutoIfNeeded();
       UI.updateAll();
-      try {
-        if (
-          !Game.gameOver &&
-          Game.player === aiSide() &&
-          !(Game.forcedEnabled && Game.forcedPly < 10)
-        ) {
-          window.AI && window.AI.scheduleMove();
-        }
-      } catch (_) {}
 
       Modal.alert({
         title: t("buttons.resume"),
@@ -3922,10 +3874,12 @@ function init() {
   } catch {}
 
   try {
-    if (window.Online && typeof Online.initPresence === "function") {
+    // Online match entry owns its bootstrap order: authenticate without a
+    // heartbeat, apply the first official board, then start presence/live hooks.
+    if (!_isOnlineMode && window.Online && typeof Online.initPresence === "function") {
       Online.initPresence();
     }
-    if (window.Online && typeof Online.initInvitesPassive === "function") {
+    if (!_isOnlineMode && window.Online && typeof Online.initInvitesPassive === "function") {
       Online.initInvitesPassive();
     }
   } catch {}
@@ -3940,7 +3894,7 @@ function init() {
       restoreCaptureContinuationVisualState()
     );
 
-    if (!resumedCapture) {
+    if (!Game.gameOver && !resumedCapture) {
       Turn.start();
       scheduleForcedOpeningAutoIfNeeded();
 

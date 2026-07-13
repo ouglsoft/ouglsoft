@@ -962,6 +962,7 @@
           try { synced = await this._applyEntryOfficialState(gameId, initialGame, "inviter-entry"); } catch (e) { synced = false; }
           if ((entryRequest && !this._isEntryRequestCurrent(entryRequest)) || !this._isAsyncContextCurrent(asyncContext)) return false;
           if (!synced) return await this._abortOnlineEntry("inviter-sync-failed");
+          try { this._startPresenceHeartbeat(); } catch (e) {}
           this._setOnlineButtonsState(true);
           try {
             this._bindInviteListener();
@@ -1373,7 +1374,9 @@
           }
           if ((entryRequest && !this._isEntryRequestCurrent(entryRequest)) || !this._isAsyncContextCurrent(asyncContext)) return false;
           if (!joinedOk) return await this._abortOnlineEntry("join-sync-failed");
+          try { this._startPresenceHeartbeat(); } catch (e) {}
           this._setOnlineButtonsState(true);
+          try { this._bindInviteListener(); } catch (e) {}
     
           this._bindGameListeners();
           try {
@@ -2257,6 +2260,27 @@
           if (typeof UI !== "undefined" && UI && typeof UI.updateAll === "function") UI.updateAll();
         },
 
+    _installOfficialSouflaState: function (data) {
+          const official = data && data.soufla && typeof data.soufla === "object" ? data.soufla : null;
+          const rawPending = official && official.pending && typeof official.pending === "object"
+            ? official.pending
+            : official && Array.isArray(official.offenders)
+              ? official
+              : null;
+          const pending = rawPending ? plainToSoufla(rawPending) : null;
+          const availableFor = official && official.availableFor != null
+            ? Number(official.availableFor)
+            : pending && pending.penalizer != null
+              ? Number(pending.penalizer)
+              : null;
+          Game.awaitingPenalty = !!pending;
+          Game.souflaPending = pending;
+          Game.availableSouflaForHuman = pending && !this.isSpectator && availableFor === Number(this.mySide)
+            ? pending
+            : null;
+          return pending;
+        },
+
     _applyRemoteState: function (data, options) {
           try {
             this._isApplyingRemote = true;
@@ -2403,6 +2427,11 @@
               }
             } catch (e) {}
             try {
+              // Install the official unresolved soufla before starting the
+              // turn. The turn-start routine must see it so it cannot run terminal checks
+              // or create a normal turn context on a position that is still
+              // subject to the entitled player's penalty decision.
+              this._installOfficialSouflaState(data);
               this._resumeOfficialTurn();
             } catch (error) {
               try { Logger.warn("official_turn_resume_failed", { gameId: this.gameId, error: String(error && (error.message || error)) }); } catch (_) {}
@@ -5171,13 +5200,6 @@
             }
           } catch (e) {}
 
-          try {
-            if (Game && Game.forcedEnabled && Game.forcedPly < 10) {
-              showOnlineNotice(window.I18N.translateArgs("modals.undo.notAllowedBody"), { title: window.I18N.translateArgs("modals.undo.notAllowedTitle") });
-              return;
-            }
-          } catch (e) {}
-
           if ((this.ply || 0) <= 0) {
             showOnlineNotice(window.I18N.translateArgs("ui.noUndo"), { title: window.I18N.translateArgs("modals.undo.title") });
             return;
@@ -5689,10 +5711,9 @@
             try { this._lastGameAccess = e && e.data ? e.data : null; } catch (_) {}
             try { this._lastOfficialReadError = e || new Error("official-entry-read-failed"); } catch (_) {}
           }
-          try {
-            const recent = this._getRecentAcceptedGame && this._getRecentAcceptedGame(gid);
-            if (recent && String(recent.status || "") === "active") return recent;
-          } catch (e) {}
+          // Entry must never promote a cached lobby/game copy to official state
+          // after a failed authoritative read. Keep the page blocked and retry
+          // instead of applying a potentially stale or incomplete board.
           return null;
         },
 
@@ -5717,7 +5738,7 @@
 
     _enterGameFromId: async function (gameId, forceSpectator) {
           const entryRequest = this._beginEntryRequest(gameId);
-          const ok = await this.initPresence();
+          const ok = await this.initPresence({ deferHeartbeat: true });
           if (!this._isEntryRequestCurrent(entryRequest)) return false;
           if (!ok) {
             showOnlineNotice(window.I18N.translateArgs("status.onlineInitFail"));
@@ -5762,7 +5783,7 @@
                 await this._showUnavailableGameAndLeave();
                 return;
               }
-              await this._startSpectator(gameId, entryRequest);
+              await this._startSpectator(gameId, entryRequest, g);
               return;
             }
           }
@@ -5779,9 +5800,9 @@
           }
         },
 
-    _startSpectator: async function (gameId, entryRequest) {
+    _startSpectator: async function (gameId, entryRequest, initialGame) {
           if (entryRequest && !this._isEntryRequestCurrent(entryRequest)) return false;
-          const ok = await this.initPresence();
+          const ok = await this.initPresence({ deferHeartbeat: true });
           if (entryRequest && !this._isEntryRequestCurrent(entryRequest)) return false;
           if (!ok) return false;
     
@@ -5830,20 +5851,14 @@
           this._setOnlineButtonsState(true, { keepBlocked: true });
     
           try {
-            await this._runUnifiedAppPulse(true);
-          } catch (e) {
-            handleDbError(e, "", { ctx: "presence.spectatorStatus" });
-          }
-          if ((entryRequest && !this._isEntryRequestCurrent(entryRequest)) || !this._isAsyncContextCurrent(asyncContext)) return false;
-    
-          try {
             if (window.DhametMatchCoordinator) DhametMatchCoordinator.resetPresentation({ draw: true });
           } catch (e) {
             Logger.warn("spectator_presentation_reset_failed", { gameId, err: String(e && (e.message || e)) });
           }
-          const synced = await this.syncNow({ reason: "spectator-entry", repairPresence: false, notifyFailure: false });
+          const synced = await this._applyEntryOfficialState(gameId, initialGame, "spectator-entry");
           if ((entryRequest && !this._isEntryRequestCurrent(entryRequest)) || !this._isAsyncContextCurrent(asyncContext)) return false;
           if (!synced) return await this._abortOnlineEntry("spectator-sync-failed");
+          try { this._startPresenceHeartbeat(); } catch (e) {}
           this._setOnlineButtonsState(true);
     
           try {
@@ -6125,25 +6140,12 @@
             try { this._restoreCaptureDraftIfValid && this._restoreCaptureDraftIfValid(data); } catch (e) {}
           } else if (typeof data.turn === "number") {
             try {
+              this._installOfficialSouflaState(data);
               this._resumeOfficialTurn(data.turn);
             } catch (error) {
               try { Logger.warn("official_turn_only_resume_failed", { gameId: this.gameId, error: String(error && (error.message || error)) }); } catch (_) {}
             }
           }
-
-          // _applyRemoteState resets transient local state before restoring the
-          // official snapshot.  Apply the authoritative soufla right only after
-          // that reset; doing it before the snapshot silently erased a valid
-          // claim and made the client report that the last move was legal.
-          try {
-            Game.availableSouflaForHuman = data.soufla && Number(data.soufla.availableFor) === Number(this.mySide)
-              ? plainToSoufla(data.soufla.pending)
-              : null;
-            if (!Game.availableSouflaForHuman && !Game._souflaApplying) {
-              if (Game.souflaPending && Number(Game.souflaPending.penalizer) === Number(this.mySide)) Game.souflaPending = null;
-              if (!Game.souflaPending) Game.awaitingPenalty = false;
-            }
-          } catch (e) {}
 
           if (rematchAdvanced) {
             try { this._setOnlineButtonsState(true); } catch (e) {}
@@ -6314,9 +6316,22 @@
 
   window.addEventListener("load", function () {
     try { Online._restoreInviteToggleFromCache(); } catch (_) {}
-    try { Online._autoEnterFromUrl(); } catch (_) {}
+    if (isGamePage()) {
+      let requestedOnline = false;
+      try {
+        const info = window.DhametMatchMode && typeof DhametMatchMode.requestedOnlineInfo === "function"
+          ? DhametMatchMode.requestedOnlineInfo()
+          : null;
+        requestedOnline = !!(info && info.gameId);
+      } catch (_) {}
+      if (requestedOnline) {
+        try { Online._autoEnterFromUrl(); } catch (_) {}
+      } else {
+        try { Online.initInvitesPassive(); } catch (_) {}
+      }
+      return;
+    }
     try { Online.initInvitesPassive(); } catch (_) {}
-    if (isGamePage()) return;
 
     if (document.getElementById("roomsList") && document.getElementById("playersList")) {
       Online.initLobbyPage({ roomsListId: "roomsList", playersListId: "playersList" }).catch(function () {

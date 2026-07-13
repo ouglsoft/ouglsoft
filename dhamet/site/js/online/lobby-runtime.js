@@ -2768,8 +2768,16 @@
           return false;
         },
 
-    initPresence: async function () {
-          if (this._presenceInitPromise) return this._presenceInitPromise;
+    initPresence: async function (options) {
+          const cfg = options && typeof options === "object" ? options : {};
+          const deferHeartbeat = !!cfg.deferHeartbeat;
+          if (this._presenceInitPromise) {
+            const pendingResult = await this._presenceInitPromise;
+            if (pendingResult && !deferHeartbeat) {
+              try { this._startPresenceHeartbeat(); } catch (e) {}
+            }
+            return pendingResult;
+          }
           const self = this;
           const initPromise = (async function () {
           const ok = await ensureAuthReady();
@@ -2801,7 +2809,12 @@
                 this._sendUnifiedAppLeaveBeacon && this._sendUnifiedAppLeaveBeacon("user-switch");
               } catch (e) {}
             }
-            if (this._presenceInited) return true;
+            if (this._presenceInited) {
+              if (!deferHeartbeat) {
+                try { this._startPresenceHeartbeat(); } catch (e) {}
+              }
+              return true;
+            }
           } catch (e) {}
 
           if (!ok) return false;
@@ -2849,9 +2862,11 @@
             } catch (e) {}
 
             this._presenceInited = true;
-            try {
-              this._startPresenceHeartbeat();
-            } catch (e) {}
+            if (!deferHeartbeat) {
+              try {
+                this._startPresenceHeartbeat();
+              } catch (e) {}
+            }
             try {
               this._bindLifecycleCleanup();
             } catch (e) {}

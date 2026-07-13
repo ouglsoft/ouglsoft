@@ -84,15 +84,20 @@
     };
   }
 
-  function validateForcedOpening(startSnapshot, move) {
+  function validateForcedOpening(startSnapshot, move, mover) {
     const forced = Rules.forcedOpeningPath(startSnapshot);
     if (!forced) return { ok: true, forced: null };
+    const starter = Rules.openingStarterSide(startSnapshot);
+    const expected = Rules.forcedOpeningExpected(starter, Number(startSnapshot.forcedPly || 0));
+    if (!expected || Number(expected.mover) !== Number(mover)) {
+      return { ok: false, error: 'game/forced-opening-turn-mismatch', expected };
+    }
     const expectedFrom = forced[0];
     const expectedPath = forced.slice(1);
     if (Number(move.from) !== expectedFrom || !Rules.samePath(move.path || [], expectedPath)) {
-      return { ok: false, error: 'game/forced-opening-mismatch', expected: { from: expectedFrom, path: expectedPath } };
+      return { ok: false, error: 'game/forced-opening-mismatch', expected: { from: expectedFrom, path: expectedPath, mover: expected.mover } };
     }
-    return { ok: true, forced };
+    return { ok: true, forced, expected };
   }
 
   function validateJumps(move, applied) {
@@ -140,9 +145,15 @@
 
 
   function getSouflaPendingFromGame(game, normalizedRecord) {
-    const raw = game && game.soufla && typeof game.soufla === 'object'
-      ? (game.soufla.pending || game.soufla)
-      : normalizedRecord && normalizedRecord.soufla;
+    const rawGameSoufla = game && game.soufla && typeof game.soufla === 'object' ? game.soufla : null;
+    const normalizedSoufla = normalizedRecord && normalizedRecord.soufla && typeof normalizedRecord.soufla === 'object'
+      ? normalizedRecord.soufla
+      : null;
+    const raw = rawGameSoufla
+      ? (rawGameSoufla.pending || rawGameSoufla)
+      : normalizedSoufla
+        ? (normalizedSoufla.pending || normalizedSoufla)
+        : null;
     if (!raw) return null;
     return Soufla.normalizePending(raw);
   }
@@ -223,7 +234,8 @@
     if (!pending) return { ok: false, error: 'soufla/not-pending', game: record };
     const penalizer = side(pending.penalizer);
     if (penalizer == null) return { ok: false, error: 'soufla/invalid-penalizer', game: record };
-    if (actorSide != null && actorSide !== penalizer) return { ok: false, error: 'soufla/not-owner', game: record };
+    if (actorSide == null) return { ok: false, error: 'soufla/invalid-side', game: record };
+    if (actorSide !== penalizer) return { ok: false, error: 'soufla/not-owner', game: record };
     if (side(record.turn) !== penalizer) return { ok: false, error: 'soufla/not-claim-turn', game: record };
 
     const baseMoveIndex = Number(normalized.baseMoveIndex);
@@ -821,6 +833,8 @@
     if (!move) return { ok: false, error: 'game/invalid-move-path' };
     const mover = side(move.by);
     if (mover == null) return { ok: false, error: 'game/invalid-side' };
+    const contextSide = side(ctx.side);
+    if (contextSide != null && contextSide !== mover) return { ok: false, error: 'game/player-side-mismatch', game: record };
     if (side(record.turn) !== mover) return { ok: false, error: 'game/turn-mismatch', game: record };
     if (side(record.state.snapshot.player) !== mover) return { ok: false, error: 'game/snapshot-turn-mismatch', game: record };
 
@@ -835,7 +849,7 @@
     const startBoard = Rules.normalizeBoard(startSnapshot.board);
     if (!startBoard) return { ok: false, error: 'game/invalid-current-board' };
 
-    const forcedCheck = validateForcedOpening(startSnapshot, move);
+    const forcedCheck = validateForcedOpening(startSnapshot, move, mover);
     if (!forcedCheck.ok) return forcedCheck;
 
     const applied = Rules.applyMovePath(startBoard, move, mover);

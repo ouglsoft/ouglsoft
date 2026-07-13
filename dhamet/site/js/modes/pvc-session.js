@@ -87,13 +87,15 @@
     return out;
   }
 
-  function validateRestoreRecord(input) {
+  function validateRestoreRecord(input, options) {
     const src = safeObject(input);
-    if (!src || src.gameOver) return null;
+    const opts = options && typeof options === 'object' ? options : {};
+    if (!src || (src.gameOver && !opts.allowGameOver)) return null;
     const snapshot = normalizeSnapshot(src.snapshot || (src.sharedState && src.sharedState.snapshot));
     if (!snapshot) return null;
     const out = normalizeSaveRecord(Object.assign({}, src, { snapshot }));
-    return out && !out.gameOver ? out : null;
+    if (!out) return null;
+    return out.gameOver && !opts.allowGameOver ? null : out;
   }
 
   function captureFromRuntime(input) {
@@ -121,7 +123,7 @@
       try {
         if (!isPvC(config.context || null)) return;
         if (typeof config.shouldSkipSave === 'function' && config.shouldSkipSave()) return;
-        if (typeof config.isGameOver === 'function' && config.isGameOver()) {
+        if (typeof config.isGameOver === 'function' && config.isGameOver() && !config.persistGameOver) {
           clear();
           return;
         }
@@ -154,7 +156,7 @@
       if (!raw) return false;
       let data = null;
       try { data = JSON.parse(raw); } catch (_) { clear(); return false; }
-      const normalized = validateRestoreRecord(data);
+      const normalized = validateRestoreRecord(data, { allowGameOver: !!config.persistGameOver });
       if (!normalized) { clear(); return false; }
       try {
         return !!config.restore(normalized, { clear });

@@ -283,7 +283,14 @@
     out.moveIndex = Math.max(0, Number(src.moveIndex || 0) || 0);
     out.ply = Math.max(0, Number(src.ply || 0) || 0);
     out.status = src.status ? String(src.status).slice(0, 40) : 'active';
-    out.soufla = normalizeSouflaRight(src.soufla && src.soufla.pending ? src.soufla.pending : src.soufla);
+    const rawSoufla = src.soufla && typeof src.soufla === 'object' ? src.soufla : null;
+    const pendingSoufla = normalizeSouflaRight(rawSoufla && rawSoufla.pending ? rawSoufla.pending : rawSoufla);
+    out.soufla = pendingSoufla
+      ? {
+          availableFor: normalizeSide(rawSoufla && rawSoufla.availableFor, pendingSoufla.penalizer),
+          pending: pendingSoufla,
+        }
+      : null;
     return out;
   }
 
