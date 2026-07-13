@@ -299,7 +299,18 @@
       "results": {
         "savedOk": "تمت إضافة النتيجة إلى السجل بنجاح",
         "savedFail": "فشل إضافة النتيجة إلى السجل",
-        "skipped": "تم تخطي إضافة النتيجة إلى السجل"
+        "skipped": "تم تخطي إضافة النتيجة إلى السجل",
+        "pvcCounted": "تمت إضافة نتيجة المباراة إلى الترتيب (${points} نقطة).",
+        "pvcCountedCapped": "سُجّلت المباراة في الإحصاءات، لكن هذا المستوى بلغ الحد الأقصى للنقاط.",
+        "pvcRejected": {
+          "restored_from_save": "لم تُضف المباراة إلى النتائج لأنها استُكملت من مباراة محفوظة.",
+          "incomplete_record": "لم تُضف المباراة إلى النتائج لأن سجلها غير مكتمل.",
+          "too_many_undos": "لم تُضف المباراة إلى النتائج بسبب تجاوز الحد المسموح به للتراجع.",
+          "non_counted_ending": "لم تُضف المباراة إلى النتائج لأن نهايتها لا تستوفي شروط الاحتساب.",
+          "already_recorded": "سبق تسجيل نتيجة هذه المباراة.",
+          "network_error": "تعذر تسجيل النتيجة بسبب مشكلة في الاتصال.",
+          "unknown": "انتهت المباراة، لكن تعذر إضافتها إلى النتائج."
+        }
       },
       "promote": "تتويج: ${cell} أصبح ظائم (${side})",
       "soufla": {
@@ -439,6 +450,12 @@
         "disconnect": " بسبب انقطاع الخصم"
       },
       "pvpEndTitle": "نهاية المباراة",
+      "resultNotCounted": {
+        "early": "انتهت المباراة دون إضافتها إلى النتائج لأن الانسحاب أو الغياب وقع قبل المرحلة المتقدمة.",
+        "unclear": "انتهت المباراة دون إضافتها إلى النتائج لأن وضعها لم يكن حاسمًا بما يكفي.",
+        "cancelled": "أُلغيت المباراة ولم تُضف إلى النتائج.",
+        "generic": "انتهت المباراة دون إضافتها إلى النتائج."
+      },
       "newInviteBody": "يدعوك اللاعب <strong>${fromName}</strong> للعب${roomPart}.",
       "newInviteRoomPart": " في غرفة <strong>${roomName}</strong>",
       "newInviteTitle": "دعوة جديدة",
@@ -867,7 +884,18 @@
       "results": {
         "savedOk": "Result added to history successfully.",
         "savedFail": "Failed to add result to history.",
-        "skipped": "Skipped adding the result to the log"
+        "skipped": "Skipped adding the result to the log",
+        "pvcCounted": "The match was added to the ranking (${points} points).",
+        "pvcCountedCapped": "The match was recorded in statistics, but this level has reached its points limit.",
+        "pvcRejected": {
+          "restored_from_save": "The match was not added because it was resumed from a saved game.",
+          "incomplete_record": "The match was not added because its record is incomplete.",
+          "too_many_undos": "The match was not added because the undo limit was exceeded.",
+          "non_counted_ending": "The match was not added because its ending does not meet the scoring conditions.",
+          "already_recorded": "This match result was already recorded.",
+          "network_error": "The result could not be recorded because of a network problem.",
+          "unknown": "The match ended, but it could not be added to the results."
+        }
       },
       "promote": "Promotion: ${cell} became a king (${side})",
       "soufla": {
@@ -1007,6 +1035,12 @@
         "disconnect": " because the opponent disconnected"
       },
       "pvpEndTitle": "Match ended",
+      "resultNotCounted": {
+        "early": "The match ended without being added to the results because the withdrawal or absence occurred before the advanced stage.",
+        "unclear": "The match ended without being added to the results because the position was not decisive enough.",
+        "cancelled": "The match was cancelled and was not added to the results.",
+        "generic": "The match ended without being added to the results."
+      },
       "newInviteBody": "Player <strong>${fromName}</strong> invited you to play${roomPart}.",
       "newInviteRoomPart": " in room <strong>${roomName}</strong>",
       "newInviteTitle": "New invite",
@@ -1435,7 +1469,18 @@
       "results": {
         "savedOk": "Résultat ajouté à l’historique avec succès.",
         "savedFail": "Échec de l’ajout du résultat à l’historique.",
-        "skipped": "Ajout du résultat au journal ignoré"
+        "skipped": "Ajout du résultat au journal ignoré",
+        "pvcCounted": "La partie a été ajoutée au classement (${points} points).",
+        "pvcCountedCapped": "La partie a été enregistrée dans les statistiques, mais ce niveau a atteint sa limite de points.",
+        "pvcRejected": {
+          "restored_from_save": "La partie n’a pas été ajoutée car elle a été reprise depuis une sauvegarde.",
+          "incomplete_record": "La partie n’a pas été ajoutée car son journal est incomplet.",
+          "too_many_undos": "La partie n’a pas été ajoutée car la limite d’annulations a été dépassée.",
+          "non_counted_ending": "La partie n’a pas été ajoutée car sa fin ne remplit pas les conditions de comptabilisation.",
+          "already_recorded": "Le résultat de cette partie a déjà été enregistré.",
+          "network_error": "Le résultat n’a pas pu être enregistré en raison d’un problème réseau.",
+          "unknown": "La partie est terminée, mais elle n’a pas pu être ajoutée aux résultats."
+        }
       },
       "promote": "Promotion : ${cell} est devenu roi (${side})",
       "soufla": {
@@ -1575,6 +1620,12 @@
         "disconnect": " car l’adversaire s’est déconnecté"
       },
       "pvpEndTitle": "Partie terminée",
+      "resultNotCounted": {
+        "early": "La partie s’est terminée sans être ajoutée aux résultats, car l’abandon ou l’absence a eu lieu avant la phase avancée.",
+        "unclear": "La partie s’est terminée sans être ajoutée aux résultats, car la position n’était pas assez décisive.",
+        "cancelled": "La partie a été annulée et n’a pas été ajoutée aux résultats.",
+        "generic": "La partie s’est terminée sans être ajoutée aux résultats."
+      },
       "newInviteBody": "Le joueur <strong>${fromName}</strong> vous invite à jouer${roomPart}.",
       "newInviteRoomPart": " dans la salle <strong>${roomName}</strong>",
       "newInviteTitle": "Nouvelle invitation",

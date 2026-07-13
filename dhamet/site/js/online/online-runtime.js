@@ -661,7 +661,7 @@
           try {
             await this._notifyMatchEndWatchers(this.gameId, "opponent_absent", this.myNick);
           } catch (e) {}
-          this._enterPostMatch({ reason: "opponent_absent", winner: this.mySide });
+          this._enterPostMatch({ reason: "opponent_absent", winner: null, countsAsResult: false });
           return true;
         },
 
@@ -1058,8 +1058,8 @@
               row.style.gap = "10px";
               row.innerHTML = `
                 <div style="display:flex; flex-direction:column;">
-                  <div style="font-weight:700;">${nick}</div>
-                  <div class="muted" style="font-size:var(--fs-body);">${stLabel}</div>
+                  <div style="font-weight:700;">${escapeHtml(nick)}</div>
+                  <div class="muted" style="font-size:var(--fs-body);">${escapeHtml(stLabel)}</div>
                 </div>
                           <button class="btn ok" ${statusInfo.canInvite ? "" : "disabled"}>${window.I18N.translateArgs("actions.invite")}</button>
     
@@ -1563,8 +1563,7 @@
           try { this._clearCaptureDraft && this._clearCaptureDraft(); } catch (e) {}
           try { this._clearPendingMoveOutbox && this._clearPendingMoveOutbox(); } catch (e) {}
           try { sessionStorage.removeItem("zamat.internalNavTs"); } catch (e) {}
-          try { localStorage.removeItem("zamat.activeGameId"); } catch (e) {}
-          try { localStorage.removeItem("zamat.activeGameTs"); } catch (e) {}
+          try { this._clearPersistedActiveGame && this._clearPersistedActiveGame(); } catch (e) {}
         },
 
     _enterPostMatch: function (meta) {
@@ -1584,6 +1583,10 @@
     
           const reason = (meta && (meta.reason || meta.endedReason)) || null;
           const endedBy = (meta && (meta.endedBy || meta.ended_by)) || null;
+          const officialResult = (meta && meta.result) || (this._lastGameData && this._lastGameData.result) || null;
+          const resultMeta = officialResult && officialResult.meta && typeof officialResult.meta === "object" ? officialResult.meta : {};
+          const resultCounted = !!(officialResult && resultMeta.countsAsResult !== false && (officialResult.terminal !== false || officialResult.status === "win" || officialResult.status === "draw"));
+          const resultRejected = !!(officialResult && resultMeta.countsAsResult === false);
     
           const byUid = (meta && meta.byUid) || (endedBy && endedBy.uid) || null;
           let byNick = (meta && meta.byNick) || (endedBy && endedBy.nickname) || "";
@@ -1594,8 +1597,9 @@
     
           let winner = null;
           try {
+            if (officialResult && typeof officialResult.winner !== "undefined") winner = Number(officialResult.winner);
             const g = this._lastGameData;
-            if (g && typeof g.winner !== "undefined") winner = g.winner;
+            if (winner == null && g && typeof g.winner !== "undefined") winner = g.winner;
           } catch (e) {}
           try {
             if (winner == null && typeof Game !== "undefined" && typeof Game.winner !== "undefined")
@@ -1618,6 +1622,31 @@
             }
           } catch (e) {}
     
+          if (resultCounted) {
+            try {
+              if (typeof UI !== "undefined" && UI && typeof UI.showGameOverModal === "function") {
+                UI.showGameOverModal(winner === TOP || winner === BOT ? winner : null);
+                return;
+              }
+            } catch (e) {}
+          }
+
+          if (resultRejected) {
+            const rejection = String(resultMeta.rejectionReason || "").trim();
+            let key = "online.resultNotCounted.generic";
+            if (rejection === "administrative_early_or_midgame") key = "online.resultNotCounted.early";
+            else if (rejection === "administrative_position_not_clear") key = "online.resultNotCounted.unclear";
+            else if (rejection === "administrative_cancelled") key = "online.resultNotCounted.cancelled";
+            const message = window.I18N.translateArgs(key);
+            try { showOnlineNotice(message, { allowSpectator: true }); } catch (e) {}
+            try {
+              setTimeout(() => {
+                try { if (this._isAsyncContextCurrent(asyncContext)) this.exitToMode(); } catch (e) {}
+              }, 1400);
+            } catch (e) {}
+            return;
+          }
+
           if (reason === "ended_by_player") {
             if (byUid && this.myUid && byUid === this.myUid) {
               try {
@@ -1837,7 +1866,7 @@
 
               const fromName = rr.requesterNick || window.I18N.translateArgs("players.player");
               const title = window.I18N.translateArgs("online.rematch.title");
-              const body = window.I18N.translateArgs("online.rematch.body", { fromName });
+              const body = window.I18N.translateArgs("online.rematch.body", { fromName: escapeHtml(fromName) });
               const plainText = (html) => {
                 try {
                   return String(html || "").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
@@ -3859,8 +3888,10 @@
     _voiceFetchIceServers: async function () {
           const fallback = this._voiceDefaultIceServers();
           try {
-            const url = String((window.ZAMAT_TURN_URL || window.ZAMAT_TURN_ENDPOINT || "") || "").trim();
-            if (!url) return fallback;
+            const baseUrl = String((window.ZAMAT_TURN_URL || window.ZAMAT_TURN_ENDPOINT || "/dhamet/api/turn") || "").trim();
+            if (!baseUrl || !this.gameId || !this.isActive || this.isSpectator) return fallback;
+            const sep = baseUrl.includes("?") ? "&" : "?";
+            const url = baseUrl + sep + "gameId=" + encodeURIComponent(String(this.gameId));
             const res = await fetch(url, {
               method: "GET",
               headers: { Accept: "application/json" },
@@ -5263,7 +5294,7 @@
             const name = ur.requesterNick || window.I18N.translateArgs("online.opponent");
             Modal.twoAction({
               title: window.I18N.translateArgs("undo.request.title"),
-              body: `<div>${formatTpl(window.I18N.translateArgs("undo.request.body"), { name })}</div>`,
+              body: `<div>${formatTpl(window.I18N.translateArgs("undo.request.body"), { name: escapeHtml(name) })}</div>`,
               firstLabel: window.I18N.translateArgs("actions.accept"),
               firstClassName: "ok",
               onFirst: () => {
@@ -5719,7 +5750,7 @@
 
     _isNaturalOnlineEndReason: function (reason) {
           const r = String(reason || "").trim();
-          return r === "natural_win" || r === "draw" || r === "no_legal_moves" || r === "opponent_absent" || r === "late_exit";
+          return r === "natural_win" || r === "draw" || r === "no_legal_moves";
         },
 
     _autoEnterFromUrl: async function () {

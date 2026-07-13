@@ -28,8 +28,8 @@
     uid = cleanId(uid);
     if (!uid || !game || typeof game !== 'object') return null;
     var players = game.players || {};
-    if (players.white && cleanId(players.white.uid) === uid) return 1;
-    if (players.black && cleanId(players.black.uid) === uid) return -1;
+    if (players.white && cleanId(players.white.uid) === uid) return -1;
+    if (players.black && cleanId(players.black.uid) === uid) return 1;
     return null;
   }
 
@@ -61,5 +61,4 @@
   }
 
   root.DhametLive = publicApi();
-  if (typeof module !== 'undefined' && module.exports) module.exports = root.DhametLive;
 })(typeof globalThis !== 'undefined' ? globalThis : window);

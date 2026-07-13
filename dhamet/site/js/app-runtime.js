@@ -87,6 +87,16 @@ if (isPhoneLike()) {
   }, 1600);
 }
 
+if (!window.__zamatRuntimeDiagnosticsBound) {
+  window.__zamatRuntimeDiagnosticsBound = true;
+  window.addEventListener('error', function (event) {
+    try { console.error('[zamat:runtime-error]', event && event.message || 'unknown', event && event.filename || '', event && event.lineno || 0); } catch (_) {}
+  });
+  window.addEventListener('unhandledrejection', function (event) {
+    try { console.error('[zamat:unhandled-rejection]', event && event.reason && (event.reason.message || String(event.reason)) || 'unknown'); } catch (_) {}
+  });
+}
+
 window.dataLayer = window.dataLayer || [];
 if (typeof window.gtag !== "function") window.gtag = function () { window.dataLayer.push(arguments); };
 try {

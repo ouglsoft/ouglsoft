@@ -826,6 +826,14 @@
   const PERSIST_GAME_TS_KEY = "zamat.activeGameTs";
   const PERSIST_GAME_TTL_MS = 1000 * 60 * 60 * 12;
 
+  function currentPersistUid(ctx) {
+    try { return String((ctx && ctx.myUid) || (auth && auth.currentUser && auth.currentUser.uid) || '').trim(); } catch (e) { return ''; }
+  }
+  function localPersistKey(base, uid) {
+    const cleanUid = String(uid || '').replace(/[^A-Za-z0-9._:@-]/g, '').slice(0, 120);
+    return cleanUid ? base + '.' + cleanUid : '';
+  }
+
   function ssGet(k) {
     try {
       return sessionStorage.getItem(k);
@@ -1915,24 +1923,25 @@
             const gid = String(this.gameId || this._presenceRoomId || "").trim();
             if (!gid) return;
             const ts = String(Date.now());
+            const uid = currentPersistUid(this);
             ssSet(PERSIST_GAME_ID_KEY, gid);
             ssSet(PERSIST_GAME_TS_KEY, ts);
-            lsSet(PERSIST_GAME_ID_KEY, gid);
-            lsSet(PERSIST_GAME_TS_KEY, ts);
+            const idKey = localPersistKey(PERSIST_GAME_ID_KEY, uid);
+            const tsKey = localPersistKey(PERSIST_GAME_TS_KEY, uid);
+            if (idKey && tsKey) { lsSet(idKey, gid); lsSet(tsKey, ts); }
           } catch (e) {}
         },
 
     _clearPersistedActiveGame: function () {
+          const uid = currentPersistUid(this);
+          try { ssRemove(PERSIST_GAME_ID_KEY); } catch (e) {}
+          try { ssRemove(PERSIST_GAME_TS_KEY); } catch (e) {}
           try {
-            ssRemove(PERSIST_GAME_ID_KEY);
-          } catch (e) {}
-          try {
-            ssRemove(PERSIST_GAME_TS_KEY);
-          } catch (e) {}
-          try {
+            const idKey = localPersistKey(PERSIST_GAME_ID_KEY, uid);
+            const tsKey = localPersistKey(PERSIST_GAME_TS_KEY, uid);
+            if (idKey) localStorage.removeItem(idKey);
+            if (tsKey) localStorage.removeItem(tsKey);
             localStorage.removeItem(PERSIST_GAME_ID_KEY);
-          } catch (e) {}
-          try {
             localStorage.removeItem(PERSIST_GAME_TS_KEY);
           } catch (e) {}
         },
@@ -1941,12 +1950,16 @@
           try {
             const fromSession = String(ssGet(PERSIST_GAME_ID_KEY) || "").trim();
             if (fromSession) return fromSession;
-            const fromLocal = String(lsGet(PERSIST_GAME_ID_KEY) || "").trim();
+            const uid = currentPersistUid(this);
+            const idKey = localPersistKey(PERSIST_GAME_ID_KEY, uid);
+            const tsKey = localPersistKey(PERSIST_GAME_TS_KEY, uid);
+            if (!idKey || !tsKey) return "";
+            const fromLocal = String(lsGet(idKey) || "").trim();
             if (!fromLocal) return "";
-            const ts = Number(lsGet(PERSIST_GAME_TS_KEY) || 0) || 0;
+            const ts = Number(lsGet(tsKey) || 0) || 0;
             if (ts && Date.now() - ts > PERSIST_GAME_TTL_MS) {
-              try { localStorage.removeItem(PERSIST_GAME_ID_KEY); } catch (e) {}
-              try { localStorage.removeItem(PERSIST_GAME_TS_KEY); } catch (e) {}
+              try { localStorage.removeItem(idKey); } catch (e) {}
+              try { localStorage.removeItem(tsKey); } catch (e) {}
               return "";
             }
             return fromLocal;
@@ -1954,6 +1967,7 @@
             return "";
           }
         },
+
 
     _getKnownActivePlayerRoomId: function () {
           const gid = String(this.gameId || this._presenceRoomId || "").trim();
@@ -2916,7 +2930,10 @@
             if (this._lifecycleBound) return;
             this._lifecycleBound = true;
     
+            let cleanupSent = false;
             const cleanup = () => {
+              if (cleanupSent) return;
+              cleanupSent = true;
               let internalNav = false;
               try {
                 const ts = parseInt(ssGet("zamat.internalNavTs") || "0", 10);
@@ -2940,6 +2957,7 @@
             window.addEventListener("beforeunload", cleanup, { capture: true });
             window.addEventListener("pageshow", (event) => {
               try {
+                cleanupSent = false;
                 if (!event || !event.persisted) return;
                 this._ensureUnifiedAppPulse("bfcache-restore", false);
                 if (this.isActive && this.gameId) this.syncNow({ reason: "bfcache", repairPresence: false, notifyFailure: false });
@@ -3229,7 +3247,7 @@
 
                 const fromName = inv.fromNick || window.I18N.translateArgs("players.player");
                 const title = window.I18N.translateArgs("online.rematch.title");
-                const body = window.I18N.translateArgs("online.rematch.body", { fromName });
+                const body = window.I18N.translateArgs("online.rematch.body", { fromName: escapeHtml(fromName) });
 
                 const canModal =
                   typeof Modal !== "undefined" && Modal && typeof Modal.open === "function";
@@ -3323,10 +3341,10 @@
             const roomName = (inv.roomName || "").trim();
             const body = roomName
               ? window.I18N.translateArgs("online.newInviteBody", {
-                  fromName: name,
-                  roomPart: window.I18N.translateArgs("online.newInviteRoomPart", { roomName }),
+                  fromName: escapeHtml(name),
+                  roomPart: window.I18N.translateArgs("online.newInviteRoomPart", { roomName: escapeHtml(roomName) }),
                 })
-              : window.I18N.translateArgs("online.newInviteBody", { fromName: name, roomPart: "" });
+              : window.I18N.translateArgs("online.newInviteBody", { fromName: escapeHtml(name), roomPart: "" });
 
             const canModal = typeof Modal !== "undefined" && Modal && typeof Modal.open === "function";
             const plainText = (html) => {

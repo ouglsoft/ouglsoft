@@ -2375,7 +2375,6 @@ function saveGame() {
       Game.forcedSeq === FO_TOP ? "FO_TOP" : Game.forcedSeq === FO_BOT ? "FO_BOT" : null,
     settings: Game.settings,
     history: Game.history,
-    logHtml: qs("#log") ? qs("#log").innerHTML : "",
     killTimerMs: Math.max(0, killMs | 0),
     gameOver: !!Game.gameOver,
     winner: Game.winner == null ? null : Game.winner | 0,

@@ -4,6 +4,7 @@ import { json, bad, requestBody, now, jsonHeaders, redirect } from './lib/http.j
 import { base64url, fromBase64url, randomToken } from './lib/security.js';
 import { createGameRouteHandlers } from './routes/game.js';
 import { createLobbyRouteHandlers } from './routes/lobby.js';
+import { buildPvcTrainingRecord, writeTrainingRecord } from './lib/training-store.js';
 import '../shared/dhamet-privacy.js';
 import '../shared/dhamet-stats.js';
 export { RealtimeObject } from './durable/realtime-object.js';
@@ -28,6 +29,44 @@ const DEFAULT_ICON = 'assets/icons/users/user1.png';
 // Keep password hashing within Cloudflare Workers' free CPU budget.
 // The iteration count is stored per user, so it can be raised later without breaking old accounts.
 const PBKDF2_ITERATIONS = 25000;
+
+function requestRateIdentity(request, category) {
+  const ip = String(request.headers.get('cf-connecting-ip') || request.headers.get('x-forwarded-for') || 'unknown').split(',')[0].trim();
+  return String(category || 'request').slice(0, 80) + ':' + ip.slice(0, 80);
+}
+
+async function durableRateLimitResponse(request, env, category, limit, windowMs) {
+  const identity = requestRateIdentity(request, category);
+  const digest = await sha256Hex(identity);
+  const stub = getRealtimeStub(env, 'rate:' + digest.slice(0, 40));
+  const response = await stub.fetch('https://realtime.internal/api/rate/consume', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-internal-secret': env.INTERNAL_API_SECRET || '' },
+    body: JSON.stringify({ category: String(category || 'request').slice(0, 80), limit, windowMs }),
+  });
+  if (response.status !== 429) return null;
+  const payload = await response.json().catch(() => ({ ok: false, error: 'request/rate-limited' }));
+  return json(payload, 429, { 'retry-after': response.headers.get('retry-after') || '60' });
+}
+
+async function revokeGameSockets(env, uid, gameId) {
+  const cleanUid = cleanPath(uid || '');
+  const cleanGameId = cleanPath(gameId || '');
+  if (!cleanUid || !cleanGameId) return { ok: true, skipped: true };
+  try {
+    const stub = getRealtimeStub(env, 'game:' + cleanGameId);
+    const res = await stub.fetch('https://realtime.internal/api/session/revoke-game', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-internal-secret': env.INTERNAL_API_SECRET || '' },
+      body: JSON.stringify({ uid: cleanUid, gameId: cleanGameId }),
+    });
+    const data = await res.json().catch(() => ({}));
+    return { ok: res.ok && data.ok !== false, data };
+  } catch (error) {
+    console.error(JSON.stringify({ level: 'warn', area: 'session', event: 'socket-revoke-failed', uid: cleanUid, gameId: cleanGameId, message: String(error && error.message || error) }));
+    return { ok: false, error: 'socket-revoke-failed' };
+  }
+}
 
 function unixNow() { return Math.floor(Date.now() / 1000); }
 
@@ -56,7 +95,9 @@ async function hashPassword(password, saltB64, iterations = PBKDF2_ITERATIONS) {
 function safeEmail(email) { return String(email || '').trim().toLowerCase(); }
 function validEmail(email) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(safeEmail(email)); }
 function safeNick(nick) {
-  nick = String(nick || '').trim().replace(/\s+/g, ' ');
+  const utils = globalThis.DhametUtils || null;
+  if (utils && typeof utils.cleanDisplayText === 'function') return utils.cleanDisplayText(nick, 20);
+  nick = String(nick || '').replace(/[\u0000-\u001F\u007F]/g, ' ').trim().replace(/\s+/g, ' ').replace(/[<>&"'`]/g, '');
   if (nick.length > 20) nick = nick.slice(0, 20);
   return nick;
 }
@@ -207,7 +248,7 @@ async function ensureProfileNode(env, user) {
         path: `profiles/${user.id}`,
         value: {
           nickname: user.nickname || user.display_name || '',
-          email: user.email || '',
+          email: null,
           icon: sanitizeIcon(user.icon),
           createdAt: user.created_at ? Number(user.created_at) : now(),
           lastActiveAt: now(),
@@ -247,13 +288,33 @@ async function createGuestIdentity(env, request, input = {}) {
 async function removePresenceForUid(env, uid) {
   uid = cleanPath(uid || '');
   if (!uid) return { ok: true, skipped: true };
+  let previous = null;
+  let roomList = {};
+  try {
+    [previous, roomList] = await Promise.all([
+      readRealtimeValue(env, 'global', 'players/' + uid).catch(() => null),
+      readRealtimeValue(env, 'global', 'roomList').catch(() => ({})),
+    ]);
+  } catch (_) {}
   try {
     const r = await writeRealtime(env, 'global', { op: 'remove', path: 'players/' + uid });
-    return { ok: !!(r && r.res && r.res.ok), data: r && r.data ? r.data : null };
+    const gameIds = new Set();
+    const roomId = cleanPath(previous && (previous.roomId || previous.gameId) || '');
+    if (roomId) gameIds.add(roomId);
+    for (const [gameId, entry] of Object.entries(roomList && typeof roomList === 'object' ? roomList : {})) {
+      const players = entry && entry.players && typeof entry.players === 'object' ? entry.players : {};
+      const whiteUid = String(players.white && players.white.uid || '');
+      const blackUid = String(players.black && players.black.uid || '');
+      if (whiteUid === uid || blackUid === uid) gameIds.add(cleanPath(gameId));
+    }
+    const socketRevocations = [];
+    for (const gameId of gameIds) socketRevocations.push({ gameId, ...(await revokeGameSockets(env, uid, gameId)) });
+    return { ok: !!(r && r.res && r.res.ok), data: r && r.data ? r.data : null, previous, roomIds: Array.from(gameIds), socketRevocations };
   } catch (e) {
-    return { ok: false, error: e && e.message ? String(e.message) : 'presence-cleanup-failed' };
+    return { ok: false, error: e && e.message ? String(e.message) : 'presence-cleanup-failed', previous };
   }
 }
+
 
 async function cleanupGuestSessionBeforeAuthChange(env, request) {
   const s = await currentSession(env, request).catch(() => null);
@@ -626,7 +687,7 @@ function sanitizeRealtimeScope(scope) {
   scope = String(scope || '').trim();
   if (!scope) return 'global';
   if (scope === 'global') return scope;
-  if (/^game:[A-Za-z0-9._:-]{1,160}$/.test(scope)) return scope;
+  if (/^(?:game|rate):[A-Za-z0-9._:-]{1,160}$/.test(scope)) return scope;
   return 'global';
 }
 
@@ -654,42 +715,6 @@ async function writeRealtime(env, scope, body) {
   });
   const data = await res.json().catch(() => ({}));
   return { res, data };
-}
-
-async function readRealtimeNode(env, scope, path) {
-  const stub = getRealtimeStub(env, scope || 'global');
-  const res = await stub.fetch('https://realtime.internal/read?path=' + encodeURIComponent(cleanPath(path || '')), {
-    headers: { 'x-internal-secret': env.INTERNAL_API_SECRET || '' },
-  });
-  const data = await res.json().catch(() => ({}));
-  return { value: data && data.ok ? data.value : null, version: data && data.version ? Number(data.version) : 0 };
-}
-
-async function txRealtime(env, scope, path, baseVersion, value) {
-  const stub = getRealtimeStub(env, scope || 'global');
-  const res = await stub.fetch('https://realtime.internal/tx', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', 'x-internal-secret': env.INTERNAL_API_SECRET || '' },
-    body: JSON.stringify({ path: cleanPath(path || ''), baseVersion: Number(baseVersion || 0), value }),
-  });
-  const data = await res.json().catch(() => ({}));
-  return { res, data };
-}
-
-async function claimAccountStatsMarker(env, markerPath, marker) {
-  const path = cleanPath(markerPath || '');
-  for (let i = 0; i < 3; i += 1) {
-    const read = await readRealtimeNode(env, 'global', path);
-    if (read.value) return { ok: true, claimed: false, marker: read.value };
-    const tx = await txRealtime(env, 'global', path, read.version || 0, marker);
-    if (tx.res.ok && tx.data && tx.data.committed) return { ok: true, claimed: true, marker };
-    if (tx.data && tx.data.value) return { ok: true, claimed: false, marker: tx.data.value };
-  }
-  return { ok: false, error: 'account/stats-marker-claim-failed' };
-}
-
-async function removeAccountStatsMarker(env, markerPath) {
-  try { await writeRealtime(env, 'global', { op: 'remove', path: cleanPath(markerPath || '') }); } catch (_) {}
 }
 
 async function internalJson(env, scope, path, body) {
@@ -752,27 +777,27 @@ async function cleanupDeletedUserRealtime(env, uid, deletedAt) {
   return { ok: failed.length === 0, uid, removed, gameCleanups, failed };
 }
 
-const gameRoutes = createGameRouteHandlers({ requireSession, requestBody, cleanPath, getRealtimeStub, json, bad, requireDb });
+const gameRoutes = createGameRouteHandlers({ requireSession, requestBody, cleanPath, getRealtimeStub, json, bad, requireDb, writeRealtime });
 const lobbyRoutes = createLobbyRouteHandlers({ requireSession, requestBody, cleanPath, getRealtimeStub, json, bad, randomToken, now });
 
-async function gameMoveEndpoint(request, env) {
-  return gameRoutes.move(request, env);
+async function gameMoveEndpoint(request, env, ctx) {
+  return gameRoutes.move(request, env, ctx);
 }
 
-async function gameResyncEndpoint(request, env) {
-  return gameRoutes.resync(request, env);
+async function gameResyncEndpoint(request, env, ctx) {
+  return gameRoutes.resync(request, env, ctx);
 }
 
-async function gameSouflaEndpoint(request, env) {
-  return gameRoutes.soufla(request, env);
+async function gameSouflaEndpoint(request, env, ctx) {
+  return gameRoutes.soufla(request, env, ctx);
 }
 
-async function gameControlEndpoint(request, env) {
-  return gameRoutes.control(request, env);
+async function gameControlEndpoint(request, env, ctx) {
+  return gameRoutes.control(request, env, ctx);
 }
 
-async function gameEndEndpoint(request, env) {
-  return gameRoutes.end(request, env);
+async function gameEndEndpoint(request, env, ctx) {
+  return gameRoutes.end(request, env, ctx);
 }
 
 async function gameRematchEndpoint(request, env) {
@@ -818,14 +843,15 @@ async function lobbyViewEndpoint(request, env) {
 
 function profileFromRealtime(uid, profile, user) {
   const p = profile && typeof profile === 'object' ? profile : {};
-  const u = user || {};
+  const u = user || null;
+  const isSelf = !!(u && String(u.id || '') === String(uid || ''));
   return {
-    uid: String(uid || u.id || ''),
-    nickname: p.nickname || u.nickname || u.display_name || '',
-    email: p.email || u.email || '',
-    icon: sanitizeIcon(p.icon || u.icon),
-    createdAt: Number(p.createdAt || u.created_at || 0) || 0,
-    lastActiveAt: Number(p.lastActiveAt || u.last_active_at || 0) || 0,
+    uid: String(uid || (u && u.id) || ''),
+    nickname: p.nickname || (u && (u.nickname || u.display_name)) || '',
+    email: isSelf ? String(u.email || '') : '',
+    icon: sanitizeIcon(p.icon || (u && u.icon)),
+    createdAt: Number(p.createdAt || (u && u.created_at) || 0) || 0,
+    lastActiveAt: isSelf ? (Number(p.lastActiveAt || u.last_active_at || 0) || 0) : 0,
     stats: p.stats && typeof p.stats === 'object' ? p.stats : {},
   };
 }
@@ -835,143 +861,174 @@ async function accountProfileEndpoint(request, env) {
   const url = new URL(request.url);
   const uid = cleanPath(url.searchParams.get('uid') || session.user.id);
   if (!uid) return bad('missing-uid', 400, 'account/missing-uid');
-  const profile = await readRealtimeValue(env, 'global', 'profiles/' + uid).catch(() => null);
-  let user = null;
-  if (uid === session.user.id) user = session.user;
-  return json({ ok: true, profile: profileFromRealtime(uid, profile, user) });
+  const stub = getRealtimeStub(env, 'global');
+  const res = await stub.fetch('https://realtime.internal/api/stats/profile', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-internal-secret': env.INTERNAL_API_SECRET || '' },
+    body: JSON.stringify({ uid }),
+  });
+  const data = await res.json().catch(() => ({ ok: false, error: 'account/profile-read-failed' }));
+  if (!res.ok || !data || data.ok === false) return json(data || { ok: false, error: 'account/profile-read-failed' }, res.status || 500);
+  const user = uid === session.user.id ? session.user : null;
+  return json({ ok: true, profile: profileFromRealtime(uid, data.profile, user), rank: data.rank == null ? null : Number(data.rank) || null });
 }
 
 async function accountLeaderboardEndpoint(request, env) {
   const url = new URL(request.url);
   const limit = Math.max(1, Math.min(500, Number(url.searchParams.get('limit') || 200) || 200));
   const currentUid = cleanPath(url.searchParams.get('currentUid') || '');
-  const [leaderboard, profiles] = await Promise.all([
-    readRealtimeValue(env, 'global', 'leaderboardV1').catch(() => ({})),
-    readRealtimeValue(env, 'global', 'profiles').catch(() => ({})),
-  ]);
-  const rows = [];
-  const data = leaderboard && typeof leaderboard === 'object' ? leaderboard : {};
-  for (const uid of Object.keys(data)) {
-    const row = data[uid] || {};
-    const points = Number(row.points || 0) || 0;
-    if (points < 1) continue;
-    const prof = profiles && profiles[uid] && typeof profiles[uid] === 'object' ? profiles[uid] : {};
-    rows.push({
-      uid,
-      points,
-      wins: Number(row.wins || 0) || 0,
-      losses: Number(row.losses || 0) || 0,
-      sortKey: String(row.sortKey || ''),
-      nickname: String(prof.nickname || '').slice(0, 80),
-      icon: sanitizeIcon(prof.icon || DEFAULT_ICON),
+  const stub = getRealtimeStub(env, 'global');
+  const res = await stub.fetch('https://realtime.internal/api/stats/leaderboard', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-internal-secret': env.INTERNAL_API_SECRET || '' },
+    body: JSON.stringify({ limit, currentUid }),
+  });
+  const data = await res.json().catch(() => ({ ok: false, error: 'leaderboard/invalid-response' }));
+  return json(data, res.status || (data.ok === false ? 500 : 200));
+}
+
+
+async function accountPvcResultEndpoint(request, env, ctx) {
+  const session = await requireSession(env, request);
+  const user = session && session.user ? session.user : null;
+  const contentLength = Math.max(0, Number(request.headers.get('content-length') || 0) || 0);
+  if (contentLength > 2_000_000) return json({ ok: false, error: 'pvc/record-too-large' }, 413);
+  const body = await requestBody(request);
+  if (!user || user.kind !== 'registered') {
+    return json({ ok: true, counted: false, reason: 'not_registered' });
+  }
+
+  const roundId = cleanPath(body && (body.roundId || body.pvcRoundId) || '');
+  const rawLevel = String(body && body.aiLevel || '').trim().toLowerCase();
+  const aiLevel = globalThis.DhametStats.normalizeAiLevel(rawLevel);
+  const humanSide = Number(body && body.humanSide);
+  const winner = Number(body && body.winner);
+  const endReason = String(body && body.endReason || '').trim().slice(0, 80);
+  const undoCount = Math.max(0, Number(body && body.undoCount || 0) || 0);
+  const restoredFromSave = !!(body && body.restoredFromSave);
+  const lateFinished = !!(body && body.lateFinished);
+  const terminalType = String(body && body.terminalType || '').trim().slice(0, 40);
+  const terminalConfidence = String(body && body.terminalConfidence || '').trim().slice(0, 20);
+  const steps = Array.isArray(body && body.steps) ? body.steps : [];
+  const samples = Array.isArray(body && body.samples) ? body.samples : [];
+  const startedAt = Math.max(0, Number(body && body.startedAt || 0) || 0);
+  const endedAt = Math.max(0, Number(body && body.endedAt || Date.now()) || Date.now());
+  const durationMs = Math.max(0, Number(body && body.durationMs || (endedAt - startedAt)) || 0);
+
+  if (!roundId || roundId.length > 180) return json({ ok: false, error: 'pvc/missing-round-id' }, 400);
+  if (steps.length > 5000 || samples.length > 10000) return json({ ok: false, error: 'pvc/record-too-large' }, 413);
+  if (!globalThis.DhametStats.AI_LEVEL_ORDER.includes(rawLevel) || rawLevel !== aiLevel) return json({ ok: false, error: 'pvc/invalid-level' }, 400);
+  if (humanSide !== 1 && humanSide !== -1) return json({ ok: false, error: 'pvc/invalid-human-side' }, 400);
+  if (winner !== 1 && winner !== -1 && winner !== 0) return json({ ok: false, error: 'pvc/invalid-result' }, 400);
+
+  let rejectionReason = '';
+  if (restoredFromSave) rejectionReason = 'restored_from_save';
+  else if (!startedAt || !endedAt || endedAt < startedAt || !steps.length || !samples.length || body.recordComplete === false) rejectionReason = 'incomplete_record';
+  else if (undoCount > globalThis.DhametStats.PVC_MAX_COUNTED_UNDOS) rejectionReason = 'too_many_undos';
+  else if (['cancel', 'abort', 'disconnect', 'leave', 'early_exit', 'resign', 'ended_by_player', 'opponent_absent'].includes(endReason) && !lateFinished) rejectionReason = 'non_counted_ending';
+  else if (lateFinished && (winner === 0 || terminalConfidence === 'low')) rejectionReason = 'non_counted_ending';
+
+  if (rejectionReason) {
+    return json({
+      ok: true,
+      counted: false,
+      reason: rejectionReason,
+      maxCountedUndos: globalThis.DhametStats.PVC_MAX_COUNTED_UNDOS,
     });
   }
-  rows.sort((a, b) => {
-    const ak = a.sortKey || '', bk = b.sortKey || '';
-    if (ak && bk && ak !== bk) return ak < bk ? -1 : 1;
-    if (b.points !== a.points) return b.points - a.points;
-    if (b.wins !== a.wins) return b.wins - a.wins;
-    return a.losses - b.losses;
-  });
-  rows.forEach((r, i) => { r.rank = i + 1; });
-  let selected = rows.slice(0, limit);
-  if (currentUid) {
-    const idx = rows.findIndex((r) => r.uid === currentUid);
-    if (idx >= 0) {
-      const start = Math.max(0, idx - 10);
-      const extra = rows.slice(start, Math.min(rows.length, idx + 11));
-      const seen = new Set(selected.map((r) => r.uid));
-      for (const r of extra) if (!seen.has(r.uid)) selected.push(r);
-      selected.sort((a, b) => a.rank - b.rank);
-    }
-  }
-  return json({ ok: true, rows: selected });
-}
 
-async function realtimeTx(env, scope, path, updateFn) {
-  const clean = cleanPath(path || '');
-  for (let i = 0; i < 4; i += 1) {
-    const read = await readRealtimeNode(env, scope, clean);
-    const base = read.value == null ? null : JSON.parse(JSON.stringify(read.value));
-    const next = updateFn(base);
-    const tx = await txRealtime(env, scope, clean, read.version || 0, next == null ? null : next);
-    if (tx.res.ok && tx.data && tx.data.committed) return next;
-  }
-  throw new Error('realtime-tx-conflict');
-}
-
-async function accountPvcResultEndpoint(request, env) {
-  const session = await requireSession(env, request);
-  if (!session || !session.user || session.user.kind !== 'registered') return bad('registered-required', 403, 'account/registered-required');
-  const body = await requestBody(request);
-  const Stats = globalThis.DhametStats || null;
-  if (!Stats || typeof Stats.applyStatsDelta !== 'function') return bad('stats-helper-missing', 500, 'account/stats-helper-missing');
-  const uid = String(session.user.id || '');
-  const matchId = cleanPath(body.matchId || ('pvc_' + uid + '_' + now())).slice(0, 140);
-  if (!matchId) return bad('missing-match-id', 400, 'account/missing-match-id');
-  const markerPath = 'profiles/' + uid + '/statsMarkersV1/' + matchId;
-
-  const winner = Number(body.winner);
-  const outcome = winner === -1 ? 'win' : (winner === 1 ? 'loss' : 'draw');
-  const endedAt = Math.max(0, Number(body.endedAt || now()) || now());
-  const marker = {
-    schema: 2,
-    endedAt,
+  const result = {
+    status: winner === 0 ? 'draw' : 'win',
+    terminal: true,
+    winner,
+    reason: endReason || (winner === 0 ? 'draw' : 'natural_win'),
     mode: 'pvc',
-    outcome,
-    matchId,
-    authoritative: true,
-    serverValidated: true,
-    createdAt: now(),
-    purgeAt: now() + 1000 * 60 * 60 * 24 * 45,
-  };
-  const claim = await claimAccountStatsMarker(env, markerPath, marker);
-  if (!claim || !claim.ok) return bad('stats-marker-claim-failed', 409, 'account/stats-marker-claim-failed');
-  if (!claim.claimed) return json({ ok: true, alreadyRecorded: true, marker: claim.marker || null });
-
-  await writeRealtime(env, 'global', {
-    op: 'update',
-    path: 'profiles/' + uid,
-    value: {
-      nickname: session.user.nickname || session.user.display_name || '',
-      email: session.user.email || '',
-      icon: sanitizeIcon(session.user.icon),
-      lastActiveAt: endedAt,
+    endedAt,
+    source: 'pvc-client-completed',
+    meta: {
+      countsAsResult: true,
+      clientReported: true,
+      adjudicated: lateFinished,
+      terminalType: terminalType || (lateFinished ? 'administrative_position' : 'strict'),
+      terminalConfidence: terminalConfidence || (lateFinished ? 'medium' : 'high'),
     },
+  };
+  const outcome = globalThis.DhametStats.resultForSide(result, humanSide);
+  if (!globalThis.DhametStats.normalizeOutcome(outcome)) return json({ ok: false, error: 'pvc/invalid-outcome' }, 400);
+
+  const stub = getRealtimeStub(env, 'global');
+  const statsResponse = await stub.fetch('https://realtime.internal/api/stats/record-result', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-internal-secret': env.INTERNAL_API_SECRET || '' },
+    body: JSON.stringify({
+      mode: 'pvc',
+      roundId,
+      matchKey: roundId,
+      gameId: roundId,
+      aiLevel,
+      endedAt,
+      trigger: 'pvc-result',
+      players: [{
+        uid: String(user.id || ''),
+        side: humanSide,
+        outcome,
+        nickname: user.nickname || user.display_name || '',
+        icon: sanitizeIcon(user.icon),
+      }],
+    }),
   });
-  let stats = null;
-  try {
-    const statsPath = 'profiles/' + uid + '/stats';
-    stats = await realtimeTx(env, 'global', statsPath, (cur) => Stats.applyStatsDelta(cur || {}, { mode: 'pvc', outcome, endedAt }));
-  } catch (e) {
-    await removeAccountStatsMarker(env, markerPath);
-    return bad('stats-update-failed', 409, 'account/stats-update-failed');
+  const stats = await statsResponse.json().catch(() => ({ ok: false, error: 'stats/invalid-response' }));
+  if (!statsResponse.ok || !stats || stats.ok === false) {
+    return json({ ok: false, error: stats && stats.error || 'pvc/stats-failed' }, statsResponse.status || 500);
   }
-  const entry = Stats.leaderboardEntry(uid, stats, { lastActiveAt: endedAt });
-  await writeRealtime(env, 'global', { op: 'set', path: 'leaderboardV1/' + uid, value: entry });
 
-  try {
-    const leaderboard = await readRealtimeValue(env, 'global', 'leaderboardV1').catch(() => ({}));
-    const ranks = Stats.rankEntries(leaderboard || {});
-    if (ranks && ranks[uid]) {
-      await writeRealtime(env, 'global', { op: 'set', path: 'profiles/' + uid + '/stats/globalRank', value: ranks[uid] });
-      stats.globalRank = ranks[uid];
-    }
-  } catch (_) {}
+  const recorded = Array.isArray(stats.recorded) && stats.recorded.length ? stats.recorded[0] : null;
+  const duplicate = !recorded && Array.isArray(stats.ignored) && stats.ignored.some((row) => row && row.reason === 'already-recorded');
+  const trainingRecord = buildPvcTrainingRecord({
+    roundId,
+    aiLevel,
+    engineVersion: body && body.engineVersion,
+    rulesVersion: body && body.rulesVersion,
+    humanSide,
+    startedAt,
+    endedAt,
+    durationMs,
+    undoCount,
+    restoredFromSave,
+    result,
+    samples,
+    steps,
+  });
+  if (!duplicate) {
+    const task = writeTrainingRecord(env, trainingRecord);
+    if (ctx && typeof ctx.waitUntil === 'function') ctx.waitUntil(task);
+    else await task;
+  }
 
-  return json({ ok: true, stats });
+  return json({
+    ok: true,
+    counted: !!recorded,
+    duplicate,
+    reason: duplicate ? 'already_recorded' : null,
+    roundId,
+    aiLevel,
+    outcome,
+    pointsDelta: recorded ? Number(recorded.pointsDelta || 0) || 0 : 0,
+    newTotalPoints: recorded ? Number(recorded.points || 0) || 0 : null,
+    pvpPoints: recorded ? Number(recorded.pvpPoints || 0) || 0 : null,
+    pvcPoints: recorded ? Number(recorded.pvcPoints || 0) || 0 : null,
+    rewardTier: recorded ? recorded.rewardTier || null : null,
+    rank: recorded && stats.ranks ? Number(stats.ranks[user.id] || 0) || null : null,
+    trainingQueued: !duplicate && !!(env && env.TRAINING_BUCKET),
+  });
 }
 
 async function trainingUpload(request, env) {
   await requireSession(env, request);
-  const body = await requestBody(request);
-  const id = 'tr_' + randomToken(12);
-  const stub = getRealtimeStub(env);
-  await stub.fetch('https://realtime.internal/api/rtdb/write', {
-    method: 'POST', headers: { 'content-type': 'application/json', 'x-internal-secret': env.INTERNAL_API_SECRET || '' },
-    body: JSON.stringify({ op: 'set', path: `training/${id}`, value: { ...body, uploadedAt: now() } }),
-  });
-  return json({ ok: true, id });
+  // Public training ingestion was unused by the shipped engine and created an
+  // unbounded write surface. It is deliberately retired rather than hidden
+  // behind client-side checks.
+  return json({ ok: false, error: 'training/upload-disabled' }, 410);
 }
 
 function splitCsv(value) {
@@ -1006,10 +1063,23 @@ async function hmacSha1Base64(secret, message) {
 
 async function turnEndpoint(request, env) {
   const session = await requireSession(env, request);
-  const ttl = Math.max(300, Math.min(86400, Number(env.TURN_TTL_SECONDS || env.EXPRESS_TURN_TTL_SECONDS || 3600) || 3600));
+  const url = new URL(request.url);
+  const gameId = cleanPath(url.searchParams.get('gameId') || url.searchParams.get('gid') || '');
+  if (!gameId) return bad('missing-game-id', 400, 'turn/missing-game-id');
+  const uidRaw = String(session && session.user && session.user.id ? session.user.id : '');
+  const authStub = getRealtimeStub(env, 'game:' + gameId);
+  const authRes = await authStub.fetch('https://realtime.internal/api/turn/authorize', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-internal-secret': env.INTERNAL_API_SECRET || '' },
+    body: JSON.stringify({ gameId, uid: uidRaw }),
+  });
+  const authData = await authRes.json().catch(() => ({ ok: false, error: 'turn/authorization-failed' }));
+  if (!authRes.ok || !authData || authData.ok === false) return json(authData || { ok: false, error: 'turn/authorization-failed' }, authRes.status || 500);
+
+  const ttl = Math.max(300, Math.min(3600, Number(env.TURN_TTL_SECONDS || env.EXPRESS_TURN_TTL_SECONDS || 3600) || 3600));
   const iceServers = [];
   const turnUrls = turnUrlsFromEnv(env);
-  const uid = String(session && session.user && session.user.id ? session.user.id : 'user').replace(/[^A-Za-z0-9._:@-]/g, '').slice(0, 80) || 'user';
+  const uid = uidRaw.replace(/[^A-Za-z0-9._:@-]/g, '').slice(0, 80) || 'user';
 
   if (env.EXPRESS_TURN_SECRET || env.TURN_SHARED_SECRET) {
     const expiry = Math.floor(Date.now() / 1000) + ttl;
@@ -1022,7 +1092,7 @@ async function turnEndpoint(request, env) {
 
   const stunUrls = stunUrlsFromEnv(env);
   if (stunUrls.length) iceServers.push({ urls: stunUrls });
-  return json({ ok: true, provider: 'external-turn', ttl, iceServers });
+  return json({ ok: true, provider: 'external-turn', ttl, gameId, iceServers });
 }
 
 
@@ -1033,6 +1103,7 @@ async function healthEndpoint(request, env) {
     bindings: {
       DB: !!env.DB,
       REALTIME: !!env.REALTIME,
+      TRAINING_BUCKET: !!env.TRAINING_BUCKET,
     },
     schema: false,
   };
@@ -1054,6 +1125,15 @@ export default {
     try {
       const url = normalizePublicUrl(request, env);
       if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: jsonHeaders });
+      const authLimitedPaths = new Set(['/api/auth/guest', '/api/auth/register', '/api/auth/login', '/api/auth/request-reset', '/api/auth/reset-password']);
+      if (authLimitedPaths.has(url.pathname)) {
+        const limited = await durableRateLimitResponse(request, env, 'auth:' + url.pathname, 12, 60 * 1000);
+        if (limited) return limited;
+      }
+      if (url.pathname === '/api/account/leaderboard') {
+        const limited = await durableRateLimitResponse(request, env, 'leaderboard', 60, 60 * 1000);
+        if (limited) return limited;
+      }
       if (url.pathname === '/api/health') return healthEndpoint(request, env);
       if (url.pathname === '/api/auth/me') return authMe(request, env);
       if (url.pathname === '/api/auth/guest' && request.method === 'POST') return authGuest(request, env);
@@ -1071,13 +1151,13 @@ export default {
       if (url.pathname === '/api/auth/google/callback') return googleCallback(request, env);
       if (url.pathname === '/api/account/profile' && request.method === 'GET') return accountProfileEndpoint(request, env);
       if (url.pathname === '/api/account/leaderboard' && request.method === 'GET') return accountLeaderboardEndpoint(request, env);
-      if (url.pathname === '/api/account/pvc-result' && request.method === 'POST') return accountPvcResultEndpoint(request, env);
+      if (url.pathname === '/api/account/pvc-result' && request.method === 'POST') return accountPvcResultEndpoint(request, env, ctx);
       if (url.pathname === '/api/turn') return turnEndpoint(request, env);
-      if (url.pathname === '/api/game/move' && request.method === 'POST') return gameMoveEndpoint(request, env);
-      if (url.pathname === '/api/game/resync' && request.method === 'POST') return gameResyncEndpoint(request, env);
-      if (url.pathname === '/api/game/soufla' && request.method === 'POST') return gameSouflaEndpoint(request, env);
-      if (url.pathname === '/api/game/control' && request.method === 'POST') return gameControlEndpoint(request, env);
-      if (url.pathname === '/api/game/end' && request.method === 'POST') return gameEndEndpoint(request, env);
+      if (url.pathname === '/api/game/move' && request.method === 'POST') return gameMoveEndpoint(request, env, ctx);
+      if (url.pathname === '/api/game/resync' && request.method === 'POST') return gameResyncEndpoint(request, env, ctx);
+      if (url.pathname === '/api/game/soufla' && request.method === 'POST') return gameSouflaEndpoint(request, env, ctx);
+      if (url.pathname === '/api/game/control' && request.method === 'POST') return gameControlEndpoint(request, env, ctx);
+      if (url.pathname === '/api/game/end' && request.method === 'POST') return gameEndEndpoint(request, env, ctx);
       if (url.pathname === '/api/game/rematch' && request.method === 'POST') return gameRematchEndpoint(request, env);
       if (url.pathname === '/api/game/chat' && request.method === 'POST') return gameChatEndpoint(request, env);
       if (url.pathname === '/api/game/rtc' && request.method === 'POST') return gameRtcEndpoint(request, env);
@@ -1094,6 +1174,11 @@ export default {
     } catch (err) {
       const status = err && err.status ? err.status : 500;
       const code = err && err.code ? err.code : (status === 401 ? 'auth/unauthorized' : 'server-error');
+      if (status >= 500) {
+        let path = '';
+        try { path = new URL(request.url).pathname; } catch (_) {}
+        console.error(JSON.stringify({ level: 'error', area: 'worker', event: 'request-failed', path, method: request.method, code, message: String(err && err.message || err) }));
+      }
       return json({ ok: false, error: code }, status);
     }
   }

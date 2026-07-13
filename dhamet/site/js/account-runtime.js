@@ -36,16 +36,16 @@
     var src = input && typeof input === 'object' ? input : {};
     return request('/dhamet/api/account/leaderboard' + query({ limit: src.limit, currentUid: src.currentUid }), { method: 'GET' });
   }
-  function recordPvcResult(input) {
+  function submitPvcResult(input) {
     return request('/dhamet/api/account/pvc-result', {
       method: 'POST',
-      body: JSON.stringify(input || {}),
+      body: JSON.stringify(input && typeof input === 'object' ? input : {}),
     });
   }
   window.DhametAccount = Object.freeze({
     version: 'cloudflare-account-v1',
     getProfile: getProfile,
     getLeaderboard: getLeaderboard,
-    recordPvcResult: recordPvcResult,
+    submitPvcResult: submitPvcResult,
   });
 })();

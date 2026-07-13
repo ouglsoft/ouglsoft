@@ -18,6 +18,7 @@ import '../../shared/dhamet-privacy.js';
 import '../../shared/dhamet-lifecycle.js';
 import '../../shared/dhamet-live.js';
 import '../../shared/dhamet-authority.js';
+import '../../shared/dhamet-stats.js';
 import { json, bad, requestBody, now } from '../lib/http.js';
 import { randomToken } from '../lib/security.js';
 import {
@@ -62,8 +63,10 @@ const PrivacyCore = globalThis.DhametPrivacy || null;
 const LifecycleCore = globalThis.DhametLifecycle || null;
 const LiveCore = globalThis.DhametLive || null;
 const AuthorityCore = globalThis.DhametAuthority;
+const StatsCore = globalThis.DhametStats;
 if (!Rules) throw new Error('DhametRules shared engine failed to load');
 if (!AuthorityCore) throw new Error('DhametAuthority shared reducer failed to load');
+if (!StatsCore) throw new Error('DhametStats shared helpers failed to load');
 
 function gameIdOrRoom(payload) { return payload && (payload.gameId || payload.roomId || payload.gid); }
 
@@ -80,6 +83,8 @@ export class RealtimeObject {
     this.ctx = ctx;
     this.env = env;
     this.sessions = new Map();
+    this.requestWindows = new Map();
+    this._maintenanceScheduled = false;
     try {
       for (const ws of this.ctx.getWebSockets()) {
         this.sessions.set(ws, (ws.deserializeAttachment && ws.deserializeAttachment()) || { subs: [] });
@@ -91,8 +96,55 @@ export class RealtimeObject {
     if (!this.root) this.root = (await this.ctx.storage.get('root')) || {};
     if (!this.versions) this.versions = (await this.ctx.storage.get('versions')) || { '': now() };
   }
-  async _save() {
+  async _save(maintenanceDelayMs) {
     await this.ctx.storage.put({ root: this.root || {}, versions: this.versions || { '': now() } });
+    if (!this._inAlarm) await this._scheduleMaintenance(maintenanceDelayMs);
+  }
+
+  async _scheduleMaintenance(delayMs) {
+    if (this._maintenanceScheduled) return;
+    this._maintenanceScheduled = true;
+    const delay = Math.max(60 * 1000, Number(delayMs || 24 * 60 * 60 * 1000) || 24 * 60 * 60 * 1000);
+    try { await this.ctx.storage.setAlarm(now() + delay); }
+    catch (err) {
+      this._maintenanceScheduled = false;
+      console.error(JSON.stringify({ level: 'error', area: 'durable-maintenance', event: 'schedule-failed', message: String(err && err.message || err) }));
+    }
+  }
+
+  _isSocketExpired(sess, atValue) {
+    if (!sess || !sess.official) return false;
+    const expiresAt = Number(sess.authExpiresAt) || 0;
+    // Sockets created by older deployments do not carry an expiry attachment;
+    // close them once after deployment so the client reconnects through current
+    // authentication instead of remaining authorized indefinitely.
+    if (!expiresAt) return true;
+    return Number(atValue || now()) >= expiresAt;
+  }
+
+  _closeSocket(ws, code, reason) {
+    try { ws.close(Number(code || 4001), String(reason || 'session-ended').slice(0, 120)); } catch (_) {}
+    this.sessions.delete(ws);
+  }
+
+  _socketStillAuthorized(sess) {
+    if (!sess || !sess.official) return true;
+    const gameId = cleanPath(sess.gameId || '');
+    const uid = String(sess.uid || '').trim();
+    if (!gameId || !uid) return false;
+    const game = getAt(this.root || {}, 'games/' + gameId);
+    if (!game || typeof game !== 'object') return false;
+    if (sess.official === 'game-rtc-live') {
+      const allowed = RtcCore && typeof RtcCore.canUseRtc === 'function' ? RtcCore.canUseRtc(game, uid) : null;
+      return !!(allowed && allowed.ok);
+    }
+    const spectators = getAt(this.root || {}, 'spectators/' + gameId) || {};
+    if (sess.official === 'game-chat-live') {
+      const allowed = ChatCore && typeof ChatCore.canParticipantChat === 'function' ? ChatCore.canParticipantChat(game, spectators, uid) : null;
+      return !!(allowed && allowed.ok);
+    }
+    const allowed = LiveCore && typeof LiveCore.canSubscribeGame === 'function' ? LiveCore.canSubscribeGame(game, spectators, { gameId, uid }) : null;
+    return !!(allowed && allowed.ok);
   }
 
   _headers() { return jsonHeaders; }
@@ -150,6 +202,50 @@ export class RealtimeObject {
     return game;
   }
 
+
+  _consumeBurst(key, limit, windowMs) {
+    const k = String(key || '').slice(0, 240);
+    if (!k) return { ok: false, retryAfterMs: windowMs || 1000 };
+    const at = now();
+    const span = Math.max(250, Number(windowMs || 1000) || 1000);
+    const max = Math.max(1, Number(limit || 1) || 1);
+    let row = this.requestWindows.get(k);
+    if (!row || at - row.startedAt >= span) row = { startedAt: at, count: 0 };
+    row.count += 1;
+    this.requestWindows.set(k, row);
+    if (this.requestWindows.size > 2000) {
+      for (const [rk, rv] of this.requestWindows) {
+        if (at - Number(rv && rv.startedAt || 0) > span * 4) this.requestWindows.delete(rk);
+        if (this.requestWindows.size <= 1500) break;
+      }
+    }
+    return row.count <= max
+      ? { ok: true, remaining: Math.max(0, max - row.count) }
+      : { ok: false, retryAfterMs: Math.max(1, span - (at - row.startedAt)) };
+  }
+
+  _limitGameAction(body, kind, limit, windowMs) {
+    const uid = String(body && body.uid || '').trim();
+    const gameId = cleanPath(body && gameIdOrRoom(body) || '');
+    const state = this._consumeBurst(String(kind || 'action') + ':' + gameId + ':' + uid, limit, windowMs);
+    return state.ok ? null : json({ ok: false, error: 'game/rate-limited', kind: String(kind || 'action'), retryAfterMs: state.retryAfterMs }, 429, { 'retry-after': String(Math.max(1, Math.ceil(state.retryAfterMs / 1000))) });
+  }
+
+  _absenceClaimStatus(game, actorSide, atValue) {
+    const at = Number(atValue || now()) || now();
+    const players = game && game.players && typeof game.players === 'object' ? game.players : {};
+    const opponentRow = Number(actorSide) === -1 ? players.black : players.white;
+    const opponentUid = String(opponentRow && opponentRow.uid || '');
+    if (!opponentUid) return { ok: false, error: 'match-end/opponent-missing' };
+    const presence = game && game.presence && game.presence[opponentUid] ? game.presence[opponentUid] : null;
+    const lastSeenAt = Number(presence && (presence.updatedAt || presence.joinedAt)) || 0;
+    const ttl = Number(PresenceCore && PresenceCore.POLICY && PresenceCore.POLICY.gamePresenceTtlMs) || 45000;
+    const absenceMs = Number(PresenceCore && PresenceCore.POLICY && PresenceCore.POLICY.opponentAbsenceMs) || 120000;
+    const baseline = lastSeenAt || Number(game && (game.acceptedAt || game.startedAt || game.createdAt)) || at;
+    const claimAt = baseline + ttl + absenceMs;
+    if (at < claimAt) return { ok: false, error: 'match-end/absence-not-established', retryAfterMs: claimAt - at, opponentUid, lastSeenAt: lastSeenAt || null };
+    return { ok: true, opponentUid, lastSeenAt: lastSeenAt || null, claimAt };
+  }
 
   async fetch(request) {
     await this._load();
@@ -233,6 +329,30 @@ export class RealtimeObject {
       const body = await requestBody(request);
       return this._cleanupDeletedUser(body);
     }
+    if (url.pathname.endsWith('/api/session/revoke-game') || url.pathname.endsWith('/session/revoke-game')) {
+      const body = await requestBody(request);
+      return this._revokeUserSockets(body);
+    }
+    if (url.pathname.endsWith('/api/stats/record-result') || url.pathname.endsWith('/stats/record-result')) {
+      const body = await requestBody(request);
+      return this._recordOfficialStats(body);
+    }
+    if (url.pathname.endsWith('/api/stats/leaderboard') || url.pathname.endsWith('/stats/leaderboard')) {
+      const body = request.method === 'POST' ? await requestBody(request) : Object.fromEntries(url.searchParams.entries());
+      return this._readLeaderboard(body);
+    }
+    if (url.pathname.endsWith('/api/stats/profile') || url.pathname.endsWith('/stats/profile')) {
+      const body = request.method === 'POST' ? await requestBody(request) : Object.fromEntries(url.searchParams.entries());
+      return this._readStatsProfile(body);
+    }
+    if (url.pathname.endsWith('/api/turn/authorize') || url.pathname.endsWith('/turn/authorize')) {
+      const body = await requestBody(request);
+      return this._authorizeTurn(body);
+    }
+    if (url.pathname.endsWith('/api/rate/consume') || url.pathname.endsWith('/rate/consume')) {
+      const body = await requestBody(request);
+      return this._consumePersistentRate(body);
+    }
     if (url.pathname.endsWith('/read')) {
       const path = cleanPath(url.searchParams.get('path') || '');
       return json({ ok: true, value: getAt(this.root, path), version: this.versions[path] || this.versions[''] || 0 });
@@ -283,6 +403,12 @@ export class RealtimeObject {
       this.root = setAt(this.root, path, body.value == null ? null : body.value);
       changed.push(path);
     }
+    if (changed.some((changedPath) => changedPath === 'leaderboardV1' || changedPath.startsWith('leaderboardV1/'))) {
+      const data = this.root && this.root.leaderboardV1 && typeof this.root.leaderboardV1 === 'object' ? this.root.leaderboardV1 : {};
+      this.root.leaderboardOrderV2 = this._leaderboardOrder(data, null, false).order;
+      this.root.leaderboardOrderSchema = 2;
+      changed.push('leaderboardOrderV2');
+    }
     bumpVersions(this.versions, changed);
     return changed;
   }
@@ -308,18 +434,11 @@ export class RealtimeObject {
   }
 
   _pruneGameStates(game) {
-    try {
-      const KEEP_STATES = 40;
-      if (!game.states || typeof game.states !== 'object') return;
-      const keys = Object.keys(game.states)
-        .map((k) => parseInt(k, 10))
-        .filter((n) => Number.isFinite(n))
-        .sort((a, b) => a - b);
-      if (keys.length <= KEEP_STATES) return;
-      const cutoff = keys[keys.length - KEEP_STATES];
-      for (const k of keys) if (k < cutoff) delete game.states[String(k)];
-    } catch (_) {}
+    // Undo history is part of the authoritative match record. It is retained
+    // for the lifetime of the game and removed only by the game-retention alarm.
+    return game;
   }
+
 
 
   _setGameRecord(gameId, game, beforeRoot) {
@@ -397,6 +516,7 @@ export class RealtimeObject {
       uid,
       gameId,
       role: allowed.role || 'participant',
+      authExpiresAt: Math.max(0, Number(request.headers.get('x-dhm-auth-expires') || 0) || 0),
       subs: [{ id: 'game-live:' + gameId, path: gamePath, event: 'value', official: true }],
     };
     try { server.serializeAttachment(sess); } catch (_) {}
@@ -487,6 +607,7 @@ export class RealtimeObject {
       uid: String(opts.uid || ''),
       gameId: cleanPath(opts.gameId || ''),
       role: String(opts.role || 'participant'),
+      authExpiresAt: Math.max(0, Number(request.headers.get('x-dhm-auth-expires') || 0) || 0),
       subs: [{ id: String(opts.socketId || opts.official || 'official-live'), path, event: 'value', official: true }],
     };
     try { server.serializeAttachment(sess); } catch (_) {}
@@ -505,6 +626,8 @@ export class RealtimeObject {
   }
 
   async _createLobbyGame(body) {
+    const limited = this._limitGameAction(body, 'invite-create', 8, 60 * 1000);
+    if (limited) return limited;
     const gameId = cleanPath(body && body.gameId);
     const uid = String((body && body.uid) || '').trim();
     const opponentUid = String((body && (body.opponentUid || body.toUid)) || '').trim();
@@ -544,6 +667,8 @@ export class RealtimeObject {
   }
 
   async _acceptLobbyGame(body) {
+    const limited = this._limitGameAction(body, 'invite-accept', 12, 60 * 1000);
+    if (limited) return limited;
     const gameId = cleanPath(body && body.gameId);
     const uid = String((body && body.uid) || '').trim();
     if (!LobbyCore || typeof LobbyCore.activatePendingGame !== 'function') return json({ ok: false, error: 'lobby/helper-missing' }, 500);
@@ -567,6 +692,8 @@ export class RealtimeObject {
   }
 
   async _rejectLobbyGame(body) {
+    const limited = this._limitGameAction(body, 'invite-reject', 12, 60 * 1000);
+    if (limited) return limited;
     const gameId = cleanPath(body && body.gameId);
     const uid = String((body && body.uid) || '').trim();
     if (!LobbyCore || typeof LobbyCore.rejectPendingGame !== 'function') return json({ ok: false, error: 'lobby/helper-missing' }, 500);
@@ -591,6 +718,8 @@ export class RealtimeObject {
   }
 
   async _commitSpectatorAction(body) {
+    const limited = this._limitGameAction(body, 'spectator', 20, 60 * 1000);
+    if (limited) return limited;
     const payload = SpectatorCore && typeof SpectatorCore.normalizeSpectatorPayload === 'function'
       ? SpectatorCore.normalizeSpectatorPayload(body)
       : (body || {});
@@ -643,6 +772,8 @@ export class RealtimeObject {
 
 
   async _commitGamePulse(body) {
+    const limited = this._limitGameAction(body, 'pulse', 30, 60 * 1000);
+    if (limited) return limited;
     const rawPayload = body && typeof body === 'object' ? body : {};
     const payload = PresenceCore && typeof PresenceCore.normalizeAppPulsePayload === 'function'
       ? PresenceCore.normalizeAppPulsePayload(rawPayload)
@@ -715,7 +846,7 @@ export class RealtimeObject {
     let opponent = null;
     if (side) {
       const players = game.players || {};
-      const opp = side === 'white' ? players.black : players.white;
+      const opp = side === -1 ? players.black : players.white;
       const oppUid = opp && opp.uid ? String(opp.uid) : '';
       const pres = oppUid && game.presence && game.presence[oppUid] ? game.presence[oppUid] : null;
       const lastSeenAt = Number(pres && (pres.updatedAt || pres.joinedAt)) || 0;
@@ -725,7 +856,7 @@ export class RealtimeObject {
       const absenceDetectedAt = online ? null : (lastSeenAt ? lastSeenAt + ttl : at);
       opponent = {
         uid: oppUid || null,
-        side: side === 'white' ? 'black' : 'white',
+        side: side === -1 ? 'black' : 'white',
         online,
         lastSeenAt: lastSeenAt || null,
         absenceDetectedAt,
@@ -964,6 +1095,8 @@ export class RealtimeObject {
   }
 
   async _commitGameRtc(body) {
+    const limited = this._limitGameAction(body, 'rtc', 80, 10 * 1000);
+    if (limited) return limited;
     if (!RtcCore) return json({ ok: false, error: 'rtc/helper-missing' }, 500);
     const payload = typeof RtcCore.normalizeRtcPayload === 'function' ? RtcCore.normalizeRtcPayload(body) : (body || {});
     const gameId = cleanPath(payload && payload.gameId);
@@ -1103,6 +1236,8 @@ export class RealtimeObject {
   }
 
   async _commitGameChat(body) {
+    const limited = this._limitGameAction(body, 'chat', 30, 10 * 1000);
+    if (limited) return limited;
     const payload = ChatCore && typeof ChatCore.normalizeChatPayload === 'function'
       ? ChatCore.normalizeChatPayload(body)
       : (body || {});
@@ -1187,6 +1322,7 @@ export class RealtimeObject {
     const gameId = cleanPath(body && body.gameId);
     const deletedAt = Number(body && body.deletedAt) || now();
     if (!uid || !gameId) return json({ ok: false, error: 'privacy/missing-context' }, 400);
+    await this._revokeUserSockets({ uid, gameId });
 
     const beforeRoot = clone(this.root || {});
     const changed = [];
@@ -1261,6 +1397,8 @@ export class RealtimeObject {
   }
 
   async _resyncGame(body) {
+    const limited = this._limitGameAction(body, 'resync', 12, 10 * 1000);
+    if (limited) return limited;
     const gameId = cleanPath(body && body.gameId);
     const uid = String((body && body.uid) || '');
     const path = gameId ? 'games/' + gameId : '';
@@ -1313,6 +1451,8 @@ export class RealtimeObject {
   }
 
   async _commitSouflaDecision(body) {
+    const limited = this._limitGameAction(body, 'soufla', 8, 10 * 1000);
+    if (limited) return limited;
     const gameId = cleanPath(body && body.gameId);
     const uid = String((body && body.uid) || '');
     const path = gameId ? 'games/' + gameId : '';
@@ -1369,6 +1509,8 @@ export class RealtimeObject {
 
 
   async _commitGameControl(body) {
+    const limited = this._limitGameAction(body, 'control', 12, 10 * 1000);
+    if (limited) return limited;
     const gameId = cleanPath(body && body.gameId);
     const uid = String((body && body.uid) || '');
     const path = gameId ? 'games/' + gameId : '';
@@ -1433,6 +1575,8 @@ export class RealtimeObject {
 
 
   async _commitGameRematch(body) {
+    const limited = this._limitGameAction(body, 'rematch', 8, 10 * 1000);
+    if (limited) return limited;
     const gameId = cleanPath(body && body.gameId);
     const uid = String((body && body.uid) || '');
     const path = gameId ? 'games/' + gameId : '';
@@ -1493,6 +1637,8 @@ export class RealtimeObject {
   }
 
   async _commitGameEnd(body) {
+    const limited = this._limitGameAction(body, 'end', 4, 10 * 1000);
+    if (limited) return limited;
     const gameId = cleanPath(body && body.gameId);
     const uid = String((body && body.uid) || '');
     const path = gameId ? 'games/' + gameId : '';
@@ -1510,6 +1656,11 @@ export class RealtimeObject {
       ? MatchEndCore.normalizeMatchEndPayload(Object.assign({}, body, { uid, by: side }))
       : Object.assign({}, body, { uid, by: side });
     if (!payload || !payload.kind) return json({ ok: false, error: 'match-end/invalid-action', game: current }, 400);
+
+    if (String(payload.kind || '') === 'opponent-absent') {
+      const absence = this._absenceClaimStatus(current, side, now());
+      if (!absence.ok) return json({ ok: false, error: absence.error, retryAfterMs: absence.retryAfterMs || 0, game: current }, 409);
+    }
 
     const clientEndId = String(payload.clientEndId || payload.clientActionId || '').slice(0, 160);
     if (clientEndId) {
@@ -1553,6 +1704,8 @@ export class RealtimeObject {
   }
 
   async _commitGameMove(body) {
+    const limited = this._limitGameAction(body, 'move', 30, 10 * 1000);
+    if (limited) return limited;
     const gameId = cleanPath(body && body.gameId);
     const uid = String((body && body.uid) || '');
     const path = gameId ? 'games/' + gameId : '';
@@ -1610,11 +1763,366 @@ export class RealtimeObject {
     return json({ ok: true, committed: true, game, moveIndex: reduced.moveIndex || game.moveIndex || 0, ply: reduced.ply || game.ply || 0 });
   }
 
+  async _consumePersistentRate(body) {
+    const at = now();
+    const limit = Math.max(1, Math.min(10000, Number(body && body.limit || 1) || 1));
+    const windowMs = Math.max(1000, Math.min(24 * 60 * 60 * 1000, Number(body && body.windowMs || 60000) || 60000));
+    const category = String(body && body.category || 'request').slice(0, 80);
+    const previous = this.root && this.root.kind === 'rate-limit' && this.root.window && typeof this.root.window === 'object' ? this.root.window : null;
+    const startedAt = previous && at - Number(previous.startedAt || 0) < windowMs ? Number(previous.startedAt) : at;
+    const count = previous && startedAt === Number(previous.startedAt) ? Number(previous.count || 0) + 1 : 1;
+    const resetAt = startedAt + windowMs;
+    this.root = { kind: 'rate-limit', category, window: { startedAt, count, limit, windowMs, resetAt }, purgeAt: resetAt + 5 * 60 * 1000 };
+    bumpVersions(this.versions, ['']);
+    await this._save(windowMs + 5 * 60 * 1000);
+    if (count > limit) return json({ ok: false, error: 'request/rate-limited', category, retryAfterMs: Math.max(1, resetAt - at) }, 429, { 'retry-after': String(Math.max(1, Math.ceil((resetAt - at) / 1000))) });
+    return json({ ok: true, category, remaining: Math.max(0, limit - count), resetAt });
+  }
+
+  async _authorizeTurn(body) {
+    const gameId = cleanPath(body && body.gameId || '');
+    const uid = String(body && body.uid || '').trim();
+    if (!gameId || !uid) return json({ ok: false, error: 'turn/missing-context' }, 400);
+    const game = getAt(this.root || {}, 'games/' + gameId);
+    if (!game || typeof game !== 'object') return json({ ok: false, error: 'turn/game-not-found' }, 404);
+    if (String(game.status || '') !== 'active') return json({ ok: false, error: 'turn/game-not-active' }, 409);
+    if (!this._gamePlayerSide(game, uid)) return json({ ok: false, error: 'turn/not-a-player' }, 403);
+    const path = 'rtc/' + gameId + '/turnRate/' + cleanPath(uid);
+    const at = now();
+    const hour = 60 * 60 * 1000;
+    const previous = getAt(this.root || {}, path) || {};
+    const startedAt = Number(previous.startedAt || 0) || at;
+    const row = at - startedAt >= hour ? { startedAt: at, count: 1 } : { startedAt, count: Number(previous.count || 0) + 1 };
+    if (row.count > 6) return json({ ok: false, error: 'turn/rate-limited', retryAfterMs: Math.max(1, hour - (at - row.startedAt)) }, 429);
+    this.root = setAt(this.root || {}, path, { ...row, updatedAt: at, purgeAt: row.startedAt + hour * 2 });
+    bumpVersions(this.versions, [path]);
+    await this._save();
+    return json({ ok: true, gameId, uid, remaining: Math.max(0, 6 - row.count) });
+  }
+
+  async _revokeUserSockets(body) {
+    const uid = String(body && body.uid || '').trim();
+    const gameId = cleanPath(body && body.gameId || '');
+    if (!uid) return json({ ok: false, error: 'session/missing-uid' }, 400);
+    let closed = 0;
+    for (const [ws, sess] of Array.from(this.sessions.entries())) {
+      if (!sess || String(sess.uid || '') !== uid) continue;
+      if (gameId && cleanPath(sess.gameId || '') !== gameId) continue;
+      this._closeSocket(ws, 4001, 'session-revoked');
+      closed += 1;
+    }
+    return json({ ok: true, closed, uid, gameId: gameId || null });
+  }
+
+  _leaderboardCompare(uidA, uidB, leaderboard) {
+    const a = leaderboard && leaderboard[uidA] ? leaderboard[uidA] : {};
+    const b = leaderboard && leaderboard[uidB] ? leaderboard[uidB] : {};
+    const ak = String(a.sortKey || StatsCore.leaderboardSortKey(uidA, a));
+    const bk = String(b.sortKey || StatsCore.leaderboardSortKey(uidB, b));
+    return ak < bk ? -1 : (ak > bk ? 1 : String(uidA).localeCompare(String(uidB)));
+  }
+
+  _leaderboardOrder(leaderboard, storedOrder, trusted) {
+    const data = leaderboard && typeof leaderboard === 'object' ? leaderboard : {};
+    if (trusted && Array.isArray(storedOrder)) return { order: storedOrder.map((uid) => cleanPath(uid)).filter(Boolean), rebuilt: false };
+    const order = Object.keys(data).filter((uid) => Number(data[uid] && data[uid].rankedGames || 0) >= 1);
+    order.sort((a, b) => this._leaderboardCompare(a, b, data));
+    return { order, rebuilt: true };
+  }
+
+  _leaderboardIndex(order, uid, leaderboard) {
+    const target = cleanPath(uid);
+    if (!target || !leaderboard || !leaderboard[target]) return -1;
+    let lo = 0, hi = Array.isArray(order) ? order.length : 0;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      const cmp = this._leaderboardCompare(order[mid], target, leaderboard);
+      if (cmp < 0) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo < order.length && order[lo] === target ? lo : -1;
+  }
+
+  _insertLeaderboardUid(order, uid, leaderboard) {
+    const cleanUid = cleanPath(uid);
+    const next = (Array.isArray(order) ? order : []).filter((id) => id !== cleanUid);
+    if (!cleanUid || Number(leaderboard && leaderboard[cleanUid] && leaderboard[cleanUid].rankedGames || 0) < 1) return next;
+    let lo = 0, hi = next.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (this._leaderboardCompare(next[mid], cleanUid, leaderboard) <= 0) lo = mid + 1;
+      else hi = mid;
+    }
+    next.splice(lo, 0, cleanUid);
+    return next;
+  }
+
+  async _recordOfficialStats(body) {
+    const mode = StatsCore.normalizeMode(body && body.mode || 'pvp');
+    const matchKey = cleanPath(body && (body.roundId || body.matchKey) || '');
+    const gameId = cleanPath(body && body.gameId || '');
+    const rows = Array.isArray(body && body.players) ? body.players : [];
+    const aiLevel = mode === 'pvc' ? StatsCore.normalizeAiLevel(body && body.aiLevel) : null;
+    if (!matchKey || !rows.length) return json({ ok: false, error: 'stats/missing-result-context' }, 400);
+    const at = Number(body && body.endedAt) || now();
+    const root = clone(this.root || {});
+    const profiles = root.profiles && typeof root.profiles === 'object' ? clone(root.profiles) : {};
+    const leaderboard = root.leaderboardV1 && typeof root.leaderboardV1 === 'object' ? clone(root.leaderboardV1) : {};
+    let order = this._leaderboardOrder(leaderboard, root.leaderboardOrderV2, Number(root.leaderboardOrderSchema || 0) === 2).order;
+    const recorded = [];
+    const ignored = [];
+    const display = globalThis.DhametUtils && globalThis.DhametUtils.cleanDisplayText;
+
+    for (const input of rows) {
+      const uid = cleanPath(input && input.uid || '');
+      const playerSide = Number(input && input.side);
+      const outcome = StatsCore.normalizeOutcome(input && input.outcome);
+      if (!uid || (playerSide !== 1 && playerSide !== -1) || !outcome) {
+        ignored.push({ uid, reason: 'invalid-player-result' });
+        continue;
+      }
+      const profile = profiles[uid] && typeof profiles[uid] === 'object' ? clone(profiles[uid]) : {};
+      const markers = profile.statsMarkersV2 && typeof profile.statsMarkersV2 === 'object' ? clone(profile.statsMarkersV2) : {};
+      if (markers[matchKey]) {
+        ignored.push({ uid, reason: 'already-recorded' });
+        continue;
+      }
+      const beforeStats = profile.stats && typeof profile.stats === 'object' ? profile.stats : {};
+      const preview = StatsCore.scoreDelta({ mode, outcome, aiLevel, stats: beforeStats });
+      const stats = StatsCore.applyStatsDelta(beforeStats, { mode, outcome, aiLevel, endedAt: at });
+      const nickname = typeof display === 'function'
+        ? display(input.nickname || profile.nickname || '', 80)
+        : String(input.nickname || profile.nickname || '').replace(/[<>&"'`]/g, '').slice(0, 80);
+      const icon = String(input.icon || profile.icon || 'assets/icons/users/user1.png').slice(0, 200);
+      markers[matchKey] = {
+        schema: 3,
+        mode,
+        roundId: matchKey,
+        matchId: matchKey,
+        gameId: gameId || matchKey,
+        side: playerSide,
+        outcome,
+        aiLevel,
+        rewardTier: preview.tier ? preview.tier.id : null,
+        pointsDelta: Number(stats.lastPointsDelta || 0) || 0,
+        scoreUnitsDelta: Number(stats.lastScoreUnitsDelta || 0) || 0,
+        scoringPolicyVersion: StatsCore.SCORING_POLICY_VERSION,
+        pvcRewardPolicyVersion: mode === 'pvc' ? StatsCore.PVC_REWARD_POLICY_VERSION : null,
+        trigger: String(body && body.trigger || 'game-result').slice(0, 40),
+        endedAt: at,
+        createdAt: now(),
+        purgeAt: now() + 180 * 24 * 60 * 60 * 1000,
+        authoritative: mode === 'pvp',
+        serverValidated: mode === 'pvp',
+        clientReported: mode === 'pvc',
+      };
+      profile.nickname = nickname;
+      profile.icon = icon;
+      profile.updatedAt = at;
+      profile.lastActiveAt = at;
+      profile.stats = stats;
+      profile.statsMarkersV2 = markers;
+      profiles[uid] = profile;
+      leaderboard[uid] = StatsCore.leaderboardEntry(uid, stats, profile);
+      order = this._insertLeaderboardUid(order, uid, leaderboard);
+      recorded.push({
+        uid,
+        side: playerSide,
+        outcome,
+        mode,
+        aiLevel,
+        rewardTier: preview.tier ? preview.tier.id : null,
+        pointsDelta: Number(stats.lastPointsDelta || 0) || 0,
+        scoreUnitsDelta: Number(stats.lastScoreUnitsDelta || 0) || 0,
+        points: Number(stats.points || 0) || 0,
+        pvpPoints: Number(stats.pvpPoints || 0) || 0,
+        pvcPoints: Number(stats.pvcPoints || 0) || 0,
+      });
+    }
+
+    if (!recorded.length) return json({ ok: true, skipped: true, roundId: matchKey, matchId: matchKey, recorded, ignored });
+    const ranks = Object.create(null);
+    for (const row of recorded) ranks[row.uid] = this._leaderboardIndex(order, row.uid, leaderboard) + 1;
+    root.profiles = profiles;
+    root.leaderboardV1 = leaderboard;
+    root.leaderboardOrderV2 = order;
+    root.leaderboardOrderSchema = 2;
+    this.root = root;
+    bumpVersions(this.versions, ['profiles', 'leaderboardV1', 'leaderboardOrderV2']);
+    await this._save();
+    return json({ ok: true, skipped: false, roundId: matchKey, matchId: matchKey, recorded, ignored, ranks });
+  }
+
+  async _ensureLeaderboardOrderSaved() {
+    const data = this.root && this.root.leaderboardV1 && typeof this.root.leaderboardV1 === 'object' ? this.root.leaderboardV1 : {};
+    const checked = this._leaderboardOrder(data, this.root && this.root.leaderboardOrderV2, Number(this.root && this.root.leaderboardOrderSchema || 0) === 2);
+    if (checked.rebuilt) {
+      this.root.leaderboardOrderV2 = checked.order;
+      this.root.leaderboardOrderSchema = 2;
+      bumpVersions(this.versions, ['leaderboardOrderV2']);
+      await this._save();
+    }
+    return checked.order;
+  }
+
+  _leaderboardRow(uid, rank, data, profiles) {
+    const row = data && data[uid] ? data[uid] : {};
+    const profile = profiles && profiles[uid] && typeof profiles[uid] === 'object' ? profiles[uid] : {};
+    return {
+      uid,
+      rank,
+      points: Number(row.points || 0) || 0,
+      pvpPoints: Number(row.pvpPoints || 0) || 0,
+      pvcPoints: Number(row.pvcPoints || 0) || 0,
+      rankedGames: Number(row.rankedGames || 0) || 0,
+      wins: Number(row.wins || 0) || 0,
+      losses: Number(row.losses || 0) || 0,
+      nickname: String(profile.nickname || '').slice(0, 80),
+      icon: String(profile.icon || 'assets/icons/users/user1.png').slice(0, 200),
+    };
+  }
+
+  async _readLeaderboard(body) {
+    const limit = Math.max(1, Math.min(500, Number(body && body.limit || 200) || 200));
+    const currentUid = cleanPath(body && body.currentUid || '');
+    const data = this.root && this.root.leaderboardV1 && typeof this.root.leaderboardV1 === 'object' ? this.root.leaderboardV1 : {};
+    const profiles = this.root && this.root.profiles && typeof this.root.profiles === 'object' ? this.root.profiles : {};
+    const order = await this._ensureLeaderboardOrderSaved();
+    const indices = new Set();
+    for (let i = 0; i < Math.min(limit, order.length); i += 1) indices.add(i);
+    if (currentUid) {
+      const currentIndex = this._leaderboardIndex(order, currentUid, data);
+      if (currentIndex >= 0) for (let i = Math.max(0, currentIndex - 10); i < Math.min(order.length, currentIndex + 11); i += 1) indices.add(i);
+    }
+    const rows = Array.from(indices).sort((a, b) => a - b).map((index) => this._leaderboardRow(order[index], index + 1, data, profiles));
+    return json({ ok: true, rows, total: order.length });
+  }
+
+  async _readStatsProfile(body) {
+    const uid = cleanPath(body && body.uid || '');
+    if (!uid) return json({ ok: false, error: 'account/missing-uid' }, 400);
+    const profiles = this.root && this.root.profiles && typeof this.root.profiles === 'object' ? this.root.profiles : {};
+    const profile = profiles[uid] && typeof profiles[uid] === 'object' ? clone(profiles[uid]) : null;
+    const order = await this._ensureLeaderboardOrderSaved();
+    const rank = this._leaderboardIndex(order, uid, this.root && this.root.leaderboardV1 || {}) + 1;
+    if (profile && profile.stats && typeof profile.stats === 'object') profile.stats.globalRank = rank > 0 ? rank : null;
+    return json({ ok: true, uid, profile, rank: rank > 0 ? rank : null });
+  }
+
+  async alarm() {
+    await this._load();
+    this._maintenanceScheduled = false;
+    this._inAlarm = true;
+    const at = now();
+    let changed = false;
+    let shouldReschedule = true;
+    try {
+      if (this.root && this.root.kind === 'rate-limit') {
+        const purgeAt = Number(this.root.purgeAt || 0) || 0;
+        if (!purgeAt || purgeAt <= at) {
+          await this.ctx.storage.deleteAll();
+          this.root = {};
+          this.versions = { '': at };
+          shouldReschedule = false;
+          return;
+        }
+        shouldReschedule = true;
+        return;
+      }
+      const games = this.root && this.root.games && typeof this.root.games === 'object' ? this.root.games : null;
+      if (games) {
+        for (const gameId of Object.keys(games)) {
+          const game = games[gameId] || {};
+          const status = String(game.status || 'pending');
+          const endedAt = Number(game.endedAt || game.rejectedAt || game.cancelledAt) || 0;
+          const lastActivity = Number(game.lastActivityAt || game.updatedAt || game.acceptedAt || game.createdAt) || 0;
+          const expired = status === 'ended'
+            ? !!endedAt && at - endedAt >= 7 * 24 * 60 * 60 * 1000
+            : (status === 'active'
+              ? !!lastActivity && at - lastActivity >= 30 * 24 * 60 * 60 * 1000
+              : !!lastActivity && at - lastActivity >= 2 * 24 * 60 * 60 * 1000);
+          if (!expired) {
+            const turnRate = this.root && this.root.rtc && this.root.rtc[gameId] && this.root.rtc[gameId].turnRate;
+            if (turnRate && typeof turnRate === 'object') {
+              for (const uid of Object.keys(turnRate)) {
+                if (Number(turnRate[uid] && turnRate[uid].purgeAt || 0) > 0 && Number(turnRate[uid].purgeAt) <= at) {
+                  delete turnRate[uid];
+                  changed = true;
+                }
+              }
+              if (!Object.keys(turnRate).length) delete this.root.rtc[gameId].turnRate;
+            }
+            continue;
+          }
+          for (const key of ['games', 'chats', 'rtc', 'spectators', 'meta']) {
+            if (this.root[key] && Object.prototype.hasOwnProperty.call(this.root[key], gameId)) {
+              delete this.root[key][gameId];
+              changed = true;
+            }
+          }
+          for (const [ws, sess] of Array.from(this.sessions.entries())) {
+            if (cleanPath(sess && sess.gameId || '') === gameId) this._closeSocket(ws, 4004, 'game-expired');
+          }
+        }
+      } else {
+        const profiles = this.root && this.root.profiles && typeof this.root.profiles === 'object' ? this.root.profiles : {};
+        for (const uid of Object.keys(profiles)) {
+          const profile = profiles[uid];
+          if (!profile || typeof profile !== 'object') continue;
+          for (const markerKey of ['statsMarkersV1', 'statsMarkersV2']) {
+            const markers = profile[markerKey];
+            if (!markers || typeof markers !== 'object') continue;
+            for (const id of Object.keys(markers)) {
+              if (Number(markers[id] && markers[id].purgeAt || 0) > 0 && Number(markers[id].purgeAt) <= at) {
+                delete markers[id];
+                changed = true;
+              }
+            }
+            if (!Object.keys(markers).length) delete profile[markerKey];
+          }
+        }
+        if (this.root.training) { delete this.root.training; changed = true; }
+      }
+      if (games) {
+        const hasGames = this.root.games && Object.keys(this.root.games).length > 0;
+        if (!hasGames) {
+          for (const ws of Array.from(this.sessions.keys())) this._closeSocket(ws, 4004, 'game-expired');
+          await this.ctx.storage.deleteAll();
+          this.root = {};
+          this.versions = { '': at };
+          changed = false;
+          shouldReschedule = false;
+          return;
+        }
+      }
+      if (changed) {
+        bumpVersions(this.versions, ['']);
+        await this.ctx.storage.put({ root: this.root || {}, versions: this.versions || { '': at } });
+      }
+    } catch (err) {
+      console.error(JSON.stringify({ level: 'error', area: 'durable-maintenance', event: 'alarm-failed', message: String(err && err.message || err) }));
+    } finally {
+      this._inAlarm = false;
+      if (shouldReschedule) {
+        const rateDelay = this.root && this.root.kind === 'rate-limit' ? Math.max(60 * 1000, Number(this.root.purgeAt || 0) - now()) : 24 * 60 * 60 * 1000;
+        await this._scheduleMaintenance(rateDelay);
+      }
+    }
+  }
+
   async webSocketMessage(ws, message) {
     await this._load();
     let data = null;
     try { data = JSON.parse(String(message || '{}')); } catch (_) { return; }
     const sess = this.sessions.get(ws) || { subs: [] };
+    if (this._isSocketExpired(sess)) {
+      this._closeSocket(ws, 4001, 'session-expired');
+      return;
+    }
+    if (!this._socketStillAuthorized(sess)) {
+      this._closeSocket(ws, 4003, 'authorization-revoked');
+      return;
+    }
     if (sess && sess.official) {
       if (data.type === 'ping') {
         try { ws.send(JSON.stringify({ type: 'pong', ts: now(), official: true, scope: sess.official })); } catch (_) {}
@@ -1653,6 +2161,14 @@ export class RealtimeObject {
     const sessions = Array.from(this.sessions.entries());
     const before = beforeRoot || {};
     for (const [ws, sess] of sessions) {
+      if (this._isSocketExpired(sess)) {
+        this._closeSocket(ws, 4001, 'session-expired');
+        continue;
+      }
+      if (!this._socketStillAuthorized(sess)) {
+        this._closeSocket(ws, 4003, 'authorization-revoked');
+        continue;
+      }
       const subs = (sess && sess.subs) || [];
       for (const sub of subs) {
         if (!changedPaths.some((p) => isAffected(sub.path, p))) continue;
@@ -1662,7 +2178,11 @@ export class RealtimeObject {
           } else {
             ws.send(JSON.stringify({ type: 'value', id: sub.id, path: sub.path, value: getAt(this.root, sub.path), version: this.versions[sub.path] || this.versions[''] || 0 }));
           }
-        } catch (_) {}
+        } catch (err) {
+          console.error(JSON.stringify({ level: 'warn', area: 'websocket', event: 'broadcast-send-failed', uid: String(sess && sess.uid || ''), gameId: String(sess && sess.gameId || ''), message: String(err && err.message || err) }));
+          this._closeSocket(ws, 1011, 'send-failed');
+          break;
+        }
       }
     }
   }

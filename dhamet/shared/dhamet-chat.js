@@ -14,6 +14,7 @@
   });
 
   const cleanString = Utils.cleanText;
+  const cleanDisplay = Utils.cleanDisplayText || Utils.cleanText;
   const nowMs = Utils.nowMs;
 
   function normalizeKind(value) {
@@ -29,7 +30,7 @@
       kind,
       gameId: cleanString(src.gameId || src.roomId || src.gid, 160),
       uid: cleanString(src.uid || src.fromUid || src.userId, 160),
-      nickname: cleanString(src.nickname || src.nick || src.fromNick || '', POLICY.maxNicknameLength),
+      nickname: cleanDisplay(src.nickname || src.nick || src.fromNick || '', POLICY.maxNicknameLength),
       text: kind === 'send' ? cleanString(src.text || src.message || '', POLICY.maxMessageLength + 1) : '',
       lastReadTs: Number(src.lastReadTs || src.ts || src.readAt || 0) || 0,
       clientChatId: cleanString(src.clientChatId || src.clientMessageId || src.clientActionId || '', 160),
@@ -85,7 +86,7 @@
     return {
       id: cleanString(opts.id || p.clientChatId || '', 180),
       fromUid: cleanString(opts.uid || p.uid, 160),
-      fromNick: cleanString(p.nickname, POLICY.maxNicknameLength),
+      fromNick: cleanDisplay(p.nickname, POLICY.maxNicknameLength),
       role: opts.role === 'spectator' ? 'spectator' : 'player',
       text: cleanString(p.text, POLICY.maxMessageLength),
       ts: at,
@@ -104,7 +105,7 @@
       out[key] = {
         id,
         fromUid: cleanString(m.fromUid, 160),
-        fromNick: cleanString(m.fromNick, POLICY.maxNicknameLength),
+        fromNick: cleanDisplay(m.fromNick, POLICY.maxNicknameLength),
         role: m.role === 'spectator' ? 'spectator' : 'player',
         text: cleanString(m.text, POLICY.maxMessageLength),
         ts: nowMs(m.ts),

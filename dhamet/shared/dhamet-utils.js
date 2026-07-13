@@ -40,6 +40,25 @@
     return s;
   }
 
+  function cleanDisplayText(value, max) {
+    let s = cleanText(value, max || 160);
+    // Display names and room labels are plain text, never markup. Removing the
+    // HTML/template metacharacters at the authority boundary protects all clients,
+    // while output escaping below also protects old stored records.
+    s = s.replace(/[<>&"'`]/g, '').replace(/\s+/g, ' ').trim();
+    if (max && s.length > max) s = s.slice(0, max).trim();
+    return s;
+  }
+
+  function escapeHtml(value) {
+    return String(value == null ? '' : value)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
   function cleanToken(value, max) {
     if (value == null) return '';
     return String(value).trim().replace(/[\u0000-\u001f\u007f]/g, '').slice(0, max || 160);
@@ -69,11 +88,12 @@
     cleanStringTrim,
     cleanStringTrimSlice,
     cleanText,
+    cleanDisplayText,
+    escapeHtml,
     cleanToken,
     validIndex,
     clampInt,
   });
 
   root.DhametUtils = api;
-  if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

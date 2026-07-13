@@ -2,6 +2,7 @@ import '../../shared/dhamet-utils.js';
 import '../../shared/dhamet-stats.js';
 import '../../shared/dhamet-live.js';
 import '../../shared/dhamet-presence.js';
+import { buildPvpTrainingRecord, writeTrainingRecord } from '../lib/training-store.js';
 
 /*
  * Game API routes for Cloudflare Worker.
@@ -20,6 +21,7 @@ export function createGameRouteHandlers(deps) {
   const json = deps && deps.json;
   const bad = deps && deps.bad;
   const requireDb = deps && deps.requireDb;
+  const writeRealtime = deps && deps.writeRealtime;
 
   if (typeof requireSession !== 'function') throw new Error('game routes require requireSession');
   if (typeof requestBody !== 'function') throw new Error('game routes require requestBody');
@@ -27,6 +29,7 @@ export function createGameRouteHandlers(deps) {
   if (typeof getRealtimeStub !== 'function') throw new Error('game routes require getRealtimeStub');
   if (typeof json !== 'function') throw new Error('game routes require json');
   if (typeof bad !== 'function') throw new Error('game routes require bad');
+  if (typeof writeRealtime !== 'function') throw new Error('game routes require writeRealtime');
 
   const StatsCore = globalThis.DhametStats;
   const PresenceCore = globalThis.DhametPresence || null;
@@ -138,13 +141,25 @@ export function createGameRouteHandlers(deps) {
     return json(data, forwarded.status || 200);
   }
 
-  async function forwardGameRequestAndRecordResult(request, env, internalPath, body, triggerKind, options) {
+  async function forwardGameRequestAndRecordResult(request, env, internalPath, body, triggerKind, options, ctx) {
     const forwarded = await forwardGameData(request, env, internalPath, body);
     if (forwarded.response) return forwarded.response;
     const data = forwarded.data || {};
     if (forwarded.res && forwarded.res.ok && data && data.ok !== false && data.committed !== false) {
       const officialStats = await recordOfficialPvpResult(env, Object.assign({ gameId: forwarded.gameId }, data), triggerKind);
       if (officialStats) data.officialStats = officialStats;
+
+      const game = data && data.game && typeof data.game === 'object' ? data.game : null;
+      if (game && String(game.status || '') === 'ended' && !data.duplicate && triggerKind !== 'resync') {
+        const roundId = StatsCore.roundIdForGame(game);
+        const task = writeTrainingRecord(env, buildPvpTrainingRecord(game, (data && data.result) || game.result, roundId));
+        if (ctx && typeof ctx.waitUntil === 'function') {
+          ctx.waitUntil(task);
+          data.training = { ok: true, queued: true, roundId };
+        } else {
+          data.training = await task;
+        }
+      }
     }
     if (options && options.touchActivity && forwarded.res && forwarded.res.ok && data && data.ok !== false) {
       data.activityTouched = await touchLightweightGameActivity(env, body, data, options.touchKind || triggerKind || 'game-activity');
@@ -191,34 +206,7 @@ export function createGameRouteHandlers(deps) {
     return bad('client truth fields are not accepted by official GameRoom endpoints', 400, 'game/client-truth-field-rejected');
   }
 
-  async function readRealtimeNode(env, scope, path) {
-    const stub = getRealtimeStub(env, scope || 'global');
-    const res = await stub.fetch('https://realtime.internal/read?path=' + encodeURIComponent(cleanPath(path || '')), { method: 'GET' });
-    const data = await res.json().catch(() => ({}));
-    return { res, data, value: data && data.ok ? data.value : null, version: Number(data && data.version) || 0 };
-  }
 
-  async function writeRealtime(env, scope, body) {
-    const stub = getRealtimeStub(env, scope || 'global');
-    const res = await stub.fetch('https://realtime.internal/write', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', 'x-internal-secret': env.INTERNAL_API_SECRET || '' },
-      body: JSON.stringify(body || {}),
-    });
-    const data = await res.json().catch(() => ({}));
-    return { res, data };
-  }
-
-  async function txRealtime(env, scope, path, baseVersion, value) {
-    const stub = getRealtimeStub(env, scope || 'global');
-    const res = await stub.fetch('https://realtime.internal/tx', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', 'x-internal-secret': env.INTERNAL_API_SECRET || '' },
-      body: JSON.stringify({ path: cleanPath(path || ''), baseVersion: Number(baseVersion || 0), value }),
-    });
-    const data = await res.json().catch(() => ({}));
-    return { res, data };
-  }
 
   async function readRegisteredUsers(env, uids) {
     const ids = Array.from(new Set((uids || []).map((u) => String(u || '').trim()).filter(Boolean)));
@@ -236,82 +224,6 @@ export function createGameRouteHandlers(deps) {
     return out;
   }
 
-  async function claimPlayerStatsMarker(env, uid, matchKey, marker) {
-    const path = 'profiles/' + cleanPath(uid) + '/statsMarkersV2/' + cleanPath(matchKey);
-    for (let i = 0; i < 3; i += 1) {
-      const read = await readRealtimeNode(env, 'global', path);
-      if (read.value) return { ok: true, claimed: false, marker: read.value };
-      const tx = await txRealtime(env, 'global', path, read.version || 0, marker);
-      if (tx.res.ok && tx.data && tx.data.committed) return { ok: true, claimed: true, marker };
-      if (tx.data && tx.data.value) return { ok: true, claimed: false, marker: tx.data.value };
-    }
-    return { ok: false, error: 'stats/marker-claim-failed' };
-  }
-
-  async function removePlayerStatsMarker(env, uid, matchKey) {
-    try {
-      await writeRealtime(env, 'global', { op: 'remove', path: 'profiles/' + cleanPath(uid) + '/statsMarkersV2/' + cleanPath(matchKey) });
-    } catch (_) {}
-  }
-
-  async function updatePlayerStats(env, uid, delta) {
-    const path = 'profiles/' + cleanPath(uid) + '/stats';
-    for (let i = 0; i < 4; i += 1) {
-      const read = await readRealtimeNode(env, 'global', path);
-      const next = StatsCore.applyStatsDelta(read.value || {}, delta || {});
-      const tx = await txRealtime(env, 'global', path, read.version || 0, next);
-      if (tx.res.ok && tx.data && tx.data.committed) return { ok: true, stats: next };
-    }
-    return { ok: false, error: 'stats/update-failed' };
-  }
-
-  async function upsertProfileAndLeaderboard(env, uid, stats, row, endedAt) {
-    const profilePatch = {
-      nickname: String((row && (row.nickname || row.display_name)) || '').slice(0, 80),
-      icon: String((row && row.icon) || 'assets/icons/users/user1.png').slice(0, 200),
-      updatedAt: Number(endedAt || Date.now()) || Date.now(),
-      lastActiveAt: Number(endedAt || Date.now()) || Date.now(),
-    };
-    const entry = StatsCore.leaderboardEntry(uid, stats || {}, profilePatch);
-    await writeRealtime(env, 'global', {
-      op: 'update',
-      path: '',
-      updates: {
-        ['profiles/' + cleanPath(uid) + '/nickname']: profilePatch.nickname,
-        ['profiles/' + cleanPath(uid) + '/icon']: profilePatch.icon,
-        ['profiles/' + cleanPath(uid) + '/updatedAt']: profilePatch.updatedAt,
-        ['profiles/' + cleanPath(uid) + '/lastActiveAt']: profilePatch.lastActiveAt,
-        ['leaderboardV1/' + cleanPath(uid)]: entry,
-      },
-      value: {
-        ['profiles/' + cleanPath(uid) + '/nickname']: profilePatch.nickname,
-        ['profiles/' + cleanPath(uid) + '/icon']: profilePatch.icon,
-        ['profiles/' + cleanPath(uid) + '/updatedAt']: profilePatch.updatedAt,
-        ['profiles/' + cleanPath(uid) + '/lastActiveAt']: profilePatch.lastActiveAt,
-        ['leaderboardV1/' + cleanPath(uid)]: entry,
-      },
-    });
-    return entry;
-  }
-
-  async function refreshRanksFor(env, uids) {
-    const ids = Array.from(new Set((uids || []).map((u) => cleanPath(u)).filter(Boolean)));
-    if (!ids.length) return {};
-    try {
-      const read = await readRealtimeNode(env, 'global', 'leaderboardV1');
-      const ranks = StatsCore.rankEntries(read.value || {});
-      const updates = {};
-      for (const uid of ids) {
-        if (ranks[uid] != null) {
-          updates['profiles/' + uid + '/stats/globalRank'] = ranks[uid];
-          updates['leaderboardV1/' + uid + '/rank'] = ranks[uid];
-        }
-      }
-      if (Object.keys(updates).length) await writeRealtime(env, 'global', { op: 'update', path: '', updates, value: updates });
-      return ranks;
-    } catch (_) { return {}; }
-  }
-
   async function recordOfficialPvpResult(env, data, triggerKind) {
     try {
       const game = data && data.game && typeof data.game === 'object' ? data.game : null;
@@ -319,106 +231,94 @@ export function createGameRouteHandlers(deps) {
       const eligibility = StatsCore.shouldRecordOfficialPvpResult(game, (data && data.result) || game.result);
       if (!eligibility || !eligibility.ok) return { ok: true, skipped: true, reason: eligibility && eligibility.reason || 'not-recordable' };
       const result = eligibility.result;
-      const matchKey = eligibility.matchKey;
       const players = eligibility.players || [];
-      const userRows = await readRegisteredUsers(env, players.map((p) => p.uid));
-      const endedAt = Number(result.endedAt || game.endedAt || Date.now()) || Date.now();
-      const recorded = [];
-      const skipped = [];
-      const touched = [];
-
+      const registered = await readRegisteredUsers(env, players.map((player) => player.uid));
+      const rows = [];
       for (const player of players) {
         const uid = cleanPath(player.uid);
-        const row = userRows[uid];
-        if (!uid || !row) {
-          skipped.push({ uid, reason: 'not-registered' });
-          continue;
-        }
+        const row = registered[uid];
         const outcome = StatsCore.resultForSide(result, player.side);
-        if (outcome !== 'win' && outcome !== 'draw' && outcome !== 'loss') {
-          skipped.push({ uid, reason: 'invalid-outcome' });
-          continue;
-        }
-        const marker = {
-          schema: 2,
-          mode: 'pvp',
-          matchId: matchKey,
-          gameId: cleanPath((data && data.gameId) || game.gameId || game.id || matchKey),
-          side: player.side,
+        if (!uid || !row || !StatsCore.normalizeOutcome(outcome)) continue;
+        rows.push({
+          uid,
+          side: Number(player.side),
           outcome,
-          trigger: String(triggerKind || 'game-result').slice(0, 40),
-          endedAt,
-          createdAt: Date.now(),
-          purgeAt: Date.now() + 1000 * 60 * 60 * 24 * 45,
-          authoritative: true,
-          serverValidated: true,
-        };
-        const claim = await claimPlayerStatsMarker(env, uid, matchKey, marker);
-        if (!claim || !claim.ok) {
-          skipped.push({ uid, reason: (claim && claim.error) || 'marker-failed' });
-          continue;
-        }
-        if (!claim.claimed) {
-          skipped.push({ uid, reason: 'already-recorded' });
-          continue;
-        }
-        const statsRes = await updatePlayerStats(env, uid, { mode: 'pvp', outcome, endedAt });
-        if (!statsRes || !statsRes.ok) {
-          await removePlayerStatsMarker(env, uid, matchKey);
-          skipped.push({ uid, reason: (statsRes && statsRes.error) || 'stats-update-failed' });
-          continue;
-        }
-        const leaderboard = await upsertProfileAndLeaderboard(env, uid, statsRes.stats, row, endedAt);
-        recorded.push({ uid, side: player.side, outcome, points: statsRes.stats.points, leaderboard });
-        touched.push(uid);
+          nickname: row.nickname || row.display_name || '',
+          icon: row.icon || 'assets/icons/users/user1.png',
+        });
       }
-
-      const ranks = await refreshRanksFor(env, touched);
-      return { ok: true, skipped: recorded.length === 0, matchId: matchKey, recorded, ignored: skipped, ranks };
-    } catch (e) {
+      if (!rows.length) return { ok: true, skipped: true, reason: 'no-registered-players', roundId: eligibility.roundId };
+      const stub = getRealtimeStub(env, 'global');
+      const body = JSON.stringify({
+        mode: 'pvp',
+        roundId: eligibility.roundId,
+        matchKey: eligibility.matchKey,
+        gameId: cleanPath((data && data.gameId) || game.gameId || game.id || eligibility.matchKey),
+        endedAt: Number(result.endedAt || game.endedAt || Date.now()) || Date.now(),
+        trigger: String(triggerKind || 'game-result').slice(0, 40),
+        players: rows,
+      });
+      let lastPayload = null;
+      let lastStatus = 500;
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        const response = await stub.fetch('https://realtime.internal/api/stats/record-result', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'x-internal-secret': env.INTERNAL_API_SECRET || '' },
+          body,
+        });
+        const payload = await response.json().catch(() => ({ ok: false, error: 'stats/invalid-response' }));
+        lastPayload = payload;
+        lastStatus = response.status;
+        if (response.ok && payload && payload.ok !== false) return payload;
+      }
+      console.error(JSON.stringify({ level: 'error', area: 'pvp-stats', event: 'record-failed', gameId: String((data && data.gameId) || ''), status: lastStatus, error: lastPayload && lastPayload.error || 'stats/record-failed' }));
+      return { ok: false, error: lastPayload && lastPayload.error || 'stats/record-failed', retryAttempted: true };
+    } catch (error) {
+      console.error(JSON.stringify({ level: 'error', area: 'pvp-stats', event: 'record-exception', message: String(error && error.message || error) }));
       return { ok: false, error: 'stats/record-failed' };
     }
   }
 
 
-  async function move(request, env) {
+
+  async function move(request, env, ctx) {
     const session = await requireSession(env, request);
     const body = await requestBody(request);
     const blocked = rejectClientTruth(body);
     if (blocked) return blocked;
-    return forwardGameRequestAndRecordResult(request, env, '/api/game/move', { ...body, uid: session.user.id }, 'move', { touchActivity: true, touchKind: 'move' });
+    return forwardGameRequestAndRecordResult(request, env, '/api/game/move', { ...body, uid: session.user.id }, 'move', { touchActivity: true, touchKind: 'move' }, ctx);
   }
 
-  async function resync(request, env) {
+  async function resync(request, env, ctx) {
     const session = await requireSession(env, request);
     const body = await requestBody(request);
     const blocked = rejectClientTruth(body);
     if (blocked) return blocked;
-    return forwardGameRequest(request, env, '/api/game/resync', { ...body, uid: session.user.id }, { touchActivity: true, touchKind: 'resync' });
+    return forwardGameRequestAndRecordResult(request, env, '/api/game/resync', { ...body, uid: session.user.id }, 'resync', { touchActivity: true, touchKind: 'resync' }, ctx);
   }
 
-  async function soufla(request, env) {
+  async function soufla(request, env, ctx) {
     const session = await requireSession(env, request);
     const body = await requestBody(request);
     const blocked = rejectClientTruth(body);
     if (blocked) return blocked;
-    return forwardGameRequestAndRecordResult(request, env, '/api/game/soufla', { ...body, uid: session.user.id }, 'soufla', { touchActivity: true, touchKind: 'soufla' });
+    return forwardGameRequestAndRecordResult(request, env, '/api/game/soufla', { ...body, uid: session.user.id }, 'soufla', { touchActivity: true, touchKind: 'soufla' }, ctx);
   }
 
-  async function control(request, env) {
+  async function control(request, env, ctx) {
     const session = await requireSession(env, request);
     const body = await requestBody(request);
     const blocked = rejectClientTruth(body);
     if (blocked) return blocked;
-    return forwardGameRequestAndRecordResult(request, env, '/api/game/control', { ...body, uid: session.user.id }, 'control', { touchActivity: true, touchKind: 'control' });
+    return forwardGameRequestAndRecordResult(request, env, '/api/game/control', { ...body, uid: session.user.id }, 'control', { touchActivity: true, touchKind: 'control' }, ctx);
   }
 
-  async function end(request, env) {
+  async function end(request, env, ctx) {
     const session = await requireSession(env, request);
     const body = await requestBody(request);
     const blocked = rejectClientTruth(body);
     if (blocked) return blocked;
-    return forwardGameRequestAndRecordResult(request, env, '/api/game/end', { ...body, uid: session.user.id }, 'end', { removeRoomOnEnd: true });
+    return forwardGameRequestAndRecordResult(request, env, '/api/game/end', { ...body, uid: session.user.id }, 'end', { removeRoomOnEnd: true }, ctx);
   }
 
   async function rematch(request, env) {
@@ -458,6 +358,7 @@ export function createGameRouteHandlers(deps) {
     const headers = new Headers(request.headers);
     headers.set('x-internal-secret', env.INTERNAL_API_SECRET || '');
     headers.set('x-dhm-uid', String(session.user.id || ''));
+    headers.set('x-dhm-auth-expires', String(Math.max(0, Number(session.user.expires_at || 0) * 1000)));
     const stub = getRealtimeStub(env, 'game:' + gameId);
     return stub.fetch(new Request(target.toString(), { method: 'GET', headers }));
   }

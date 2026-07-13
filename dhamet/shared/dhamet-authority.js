@@ -749,6 +749,8 @@
         terminalType: policy.terminalType || null,
         terminalConfidence: policy.terminalConfidence || null,
         terminalTag: policy.terminalTag || null,
+        rejectionReason: policy.rejectionReason || null,
+        assessment: policy.assessment ? clone(policy.assessment) : null,
       },
     });
 

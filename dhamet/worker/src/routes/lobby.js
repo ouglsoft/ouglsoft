@@ -34,6 +34,7 @@ export function createLobbyRouteHandlers(deps) {
   if (typeof randomToken !== 'function') throw new Error('lobby routes require randomToken');
   if (typeof now !== 'function') throw new Error('lobby routes require now');
 
+  const Utils = globalThis.DhametUtils || null;
   const PresenceCore = globalThis.DhametPresence || null;
   const PresencePolicy = PresenceCore && PresenceCore.POLICY ? PresenceCore.POLICY : {};
   const INVITE_TTL_MS = Number(PresencePolicy.inviteTtlMs || 0) || 60 * 1000;
@@ -42,6 +43,22 @@ export function createLobbyRouteHandlers(deps) {
   function cleanString(value, max = 160) {
     if (value == null) return '';
     return String(value).trim().slice(0, max);
+  }
+
+  function cleanDisplay(value, max = 80) {
+    if (Utils && typeof Utils.cleanDisplayText === 'function') return Utils.cleanDisplayText(value, max);
+    return cleanString(value, max).replace(/[<>&\"'`]/g, '');
+  }
+
+  function sessionIdentity(session) {
+    const publicUser = session && session.publicUser && typeof session.publicUser === 'object' ? session.publicUser : {};
+    const row = session && session.user && typeof session.user === 'object' ? session.user : {};
+    return {
+      uid: cleanString(row.id || publicUser.uid || '', 160),
+      nickname: cleanDisplay(publicUser.nickname || publicUser.displayName || row.nickname || row.display_name || '', 80),
+      icon: cleanString(publicUser.icon || row.icon || 'assets/icons/users/user1.png', 200),
+      registered: String(row.kind || publicUser.kind || '') === 'registered',
+    };
   }
 
   function normalizeVisibility(value) {
@@ -236,7 +253,8 @@ export function createLobbyRouteHandlers(deps) {
   }
 
   async function createInvite(request, env, session, body) {
-    const uid = cleanString(session && session.user && session.user.id, 160);
+    const identity = sessionIdentity(session);
+    const uid = identity.uid;
     const opponentUid = cleanString(body && (body.opponentUid || body.toUid || body.targetUid || body.targetUserId || body.opponentId || body.to || body.uid), 160);
     if (!uid || !opponentUid || uid === opponentUid) {
       return json({
@@ -249,10 +267,9 @@ export function createLobbyRouteHandlers(deps) {
       }, 400);
     }
 
-    const roomName = cleanString((body && (body.roomName || body.name)) || '', 40);
+    const roomName = cleanDisplay((body && (body.roomName || body.name)) || '', 40);
     const visibility = normalizeVisibility(body && body.visibility);
-    const nick = cleanString((body && (body.nick || body.fromNick)) || '', 80);
-    const opponentNick = cleanString((body && (body.opponentNick || body.toNick)) || '', 80);
+    const nick = identity.nickname;
 
     const [selfPresence, opponentPresence] = await Promise.all([
       readRealtimeValue(env, 'global', 'players/' + uid),
@@ -276,7 +293,7 @@ export function createLobbyRouteHandlers(deps) {
       uid,
       opponentUid,
       nick,
-      opponentNick: opponentNick || cleanString(opponentPresence.nickname, 80),
+      opponentNick: cleanDisplay(opponentPresence && opponentPresence.nickname, 80),
       roomName,
       visibility,
       createdAt,
@@ -316,7 +333,8 @@ export function createLobbyRouteHandlers(deps) {
   }
 
   async function acceptInvite(request, env, session, body) {
-    const uid = cleanString(session && session.user && session.user.id, 160);
+    const identity = sessionIdentity(session);
+    const uid = identity.uid;
     const gameId = cleanPath(body && body.gameId);
     const fromUid = cleanString(body && body.fromUid, 160);
     const inviteKey = cleanString((body && body.inviteKey) || (fromUid && gameId ? inviteKeyFor(fromUid, gameId) : ''), 240);
@@ -348,7 +366,7 @@ export function createLobbyRouteHandlers(deps) {
     const accepted = await internalJson(env, gameScope, '/api/lobby/accept-game', {
       gameId,
       uid,
-      nick: cleanString(body && (body.nick || body.nickname), 80),
+      nick: identity.nickname,
       inviteKey,
     });
     if (!accepted.res.ok || !accepted.data || accepted.data.ok === false) {
@@ -366,7 +384,7 @@ export function createLobbyRouteHandlers(deps) {
       if (!id) return;
       updates['players/' + id] = {
         uid: id,
-        nickname: cleanString(player.nickname || fallbackNick || '', 80),
+        nickname: cleanDisplay(player.nickname || fallbackNick || '', 80),
         status: 'inPvP',
         role: 'player',
         roomId: gameId,
@@ -380,15 +398,16 @@ export function createLobbyRouteHandlers(deps) {
         updatedAt: at,
       };
     };
-    addAcceptedPresence('white', -1, senderUidForPresence, cleanString(invite.fromNick || invite.fromNickname || '', 80), senderRegistered);
-    addAcceptedPresence('black', 1, uid, cleanString(body && (body.nick || body.nickname), 80), selfRegistered);
+    addAcceptedPresence('white', -1, senderUidForPresence, cleanDisplay(invite.fromNick || invite.fromNickname || '', 80), senderRegistered);
+    addAcceptedPresence('black', 1, uid, identity.nickname, selfRegistered);
     await writeRealtime(env, 'global', { op: 'update', path: '', updates, value: updates });
 
     return json({ ok: true, committed: true, gameId, game: acceptedGame, roomListEntry: accepted.data.roomListEntry || null });
   }
 
   async function rejectInvite(request, env, session, body) {
-    const uid = cleanString(session && session.user && session.user.id, 160);
+    const identity = sessionIdentity(session);
+    const uid = identity.uid;
     const gameId = cleanPath(body && body.gameId);
     const fromUid = cleanString(body && body.fromUid, 160);
     const inviteKey = cleanString((body && body.inviteKey) || (fromUid && gameId ? inviteKeyFor(fromUid, gameId) : ''), 240);
@@ -401,7 +420,7 @@ export function createLobbyRouteHandlers(deps) {
       await internalJson(env, gameScope, '/api/lobby/reject-game', {
         gameId,
         uid,
-        nick: cleanString(body && (body.nick || body.nickname), 80),
+        nick: identity.nickname,
         reason: cleanString((body && body.reason) || 'rejected', 80),
       });
     }
@@ -413,7 +432,8 @@ export function createLobbyRouteHandlers(deps) {
   async function spectator(request, env) {
     const session = await requireSession(env, request);
     const body = await requestBody(request);
-    const uid = cleanString(session && session.user && session.user.id, 160);
+    const identity = sessionIdentity(session);
+    const uid = identity.uid;
     const gameId = cleanPath(body && (body.gameId || body.gid || body.roomId));
     const rawKind = cleanString((body && (body.kind || body.type || body.action)) || 'join', 50).toLowerCase().replace(/[_\s]+/g, '-');
     const kind = rawKind === 'leave' || rawKind === 'remove' || rawKind === 'exit' ? 'leave' : (rawKind === 'refresh' || rawKind === 'heartbeat' ? 'refresh' : 'join');
@@ -424,7 +444,7 @@ export function createLobbyRouteHandlers(deps) {
       kind,
       gameId,
       uid,
-      nickname: cleanString((body && (body.nickname || body.nick || body.name)) || '', 80),
+      nickname: identity.nickname,
       joinedAt: Number(body && body.joinedAt) || 0,
       clientSpectatorId: cleanString((body && (body.clientSpectatorId || body.clientActionId)) || '', 160),
     });
@@ -451,7 +471,9 @@ export function createLobbyRouteHandlers(deps) {
         updates['players/' + uid + '/updatedAt'] = at;
       } else {
         updates['players/' + uid + '/uid'] = uid;
-        updates['players/' + uid + '/nickname'] = cleanString((body && (body.nickname || body.nick || body.name)) || '', 80);
+        updates['players/' + uid + '/nickname'] = identity.nickname;
+        updates['players/' + uid + '/icon'] = identity.icon;
+        updates['players/' + uid + '/registered'] = identity.registered;
         updates['players/' + uid + '/status'] = 'spectating';
         updates['players/' + uid + '/role'] = 'spectator';
         updates['players/' + uid + '/roomId'] = gameId;
@@ -857,7 +879,8 @@ export function createLobbyRouteHandlers(deps) {
   async function pulse(request, env) {
     const session = await requireSession(env, request);
     const body = await requestBody(request);
-    const uid = cleanString(session && session.user && session.user.id, 160);
+    const identity = sessionIdentity(session);
+    const uid = identity.uid;
     if (!uid) return bad('missing-session', 401, 'pulse/missing-session');
     const normalized = PresenceCore && typeof PresenceCore.normalizeAppPulsePayload === 'function'
       ? PresenceCore.normalizeAppPulsePayload(Object.assign({}, body || {}, { uid }))
@@ -879,9 +902,9 @@ export function createLobbyRouteHandlers(deps) {
       status: presenceStatus || 'available',
       role: presenceRole || (scope === 'lobby-sync' ? 'lobby' : 'app'),
       roomId: gameId || null,
-      nickname: cleanString(normalized.nickname || normalized.nick || '', 80),
-      icon: cleanString(normalized.icon || '', 200),
-      registered: normalized.registered !== false,
+      nickname: identity.nickname,
+      icon: identity.icon,
+      registered: identity.registered,
       acceptsInvites: normalized.acceptsInvites !== false,
       page: cleanString(normalized.page || '', 60),
       mode: cleanString(normalized.mode || presenceStatus || '', 60),

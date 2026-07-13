@@ -84,7 +84,9 @@ const KING = DhametRulesShared.KING;
 
 const N_CELLS = BOARD_N * BOARD_N;
 const ACTION_ENDCHAIN = N_CELLS * N_CELLS;
-const N_ACTIONS = ACTION_ENDCHAIN + 1;
+const ACTION_SOUFLA_REMOVE = ACTION_ENDCHAIN + 1;
+const ACTION_SOUFLA_FORCE = ACTION_ENDCHAIN + 2;
+const N_ACTIONS = ACTION_ENDCHAIN + 3;
 
 const APP_BASE_PATH = (() => {
   try {
@@ -1049,7 +1051,6 @@ function pushHistoryBeforeMove(fromIdx, toIdx) {
     ? JSON.parse(JSON.stringify(ctx.snapshot))
     : snapshotState({ includeTurnCtx: false });
   Game.history.push(snap);
-  if (Game.history.length > 10) Game.history.splice(0, Game.history.length - 10);
   if (ctx) ctx.historyPushed = true;
   return true;
 }
@@ -1233,7 +1234,6 @@ const SessionGame = (() => {
       })(),
       history: Array.isArray(Game.history) ? Game.history : [],
       logEvents: window.LogMgr && Array.isArray(window.LogMgr._events) ? window.LogMgr._events : [],
-      logHtml: typeof qs === "function" && qs("#log") ? qs("#log").innerHTML : "",
       killTimerMs: Math.max(0, _getKillMs()),
     };
     try {
@@ -1289,8 +1289,6 @@ const SessionGame = (() => {
           Array.isArray(data.logEvents)
         ) {
           window.LogMgr.setEvents(data.logEvents);
-        } else if (typeof data.logHtml === "string" && typeof qs === "function" && qs("#log")) {
-          qs("#log").innerHTML = data.logHtml;
         }
       } catch {}
       try {
@@ -1332,6 +1330,11 @@ const SessionGame = (() => {
         } catch {}
       }
 
+      try {
+        if (typeof TrainRecorder !== "undefined" && TrainRecorder && typeof TrainRecorder.markRestoredFromSave === "function") {
+          TrainRecorder.markRestoredFromSave();
+        }
+      } catch {}
       return true;
     } catch {
       return false;
@@ -1860,12 +1863,6 @@ function resumePendingGameWorkAfterRestore() {
 
 
 const TrainRecorder = (() => {
-  const KEEP_MS = 48 * 60 * 60 * 1000;
-
-  const MIN_SAMPLES = 12;
-  const MIN_DURATION_MS = 25_000;
-  const MAX_DECISIONS_PER_SEC = 3.0;
-
   let cur = null;
 
   function bytesToBase64(u8) {
@@ -1879,6 +1876,30 @@ const TrainRecorder = (() => {
 
   function nowMs() {
     return Date.now();
+  }
+
+  const AI_LEVEL_ORDER = ["beginner", "easy", "medium", "hard", "strong", "expert"];
+
+  function _currentAiLevel() {
+    try {
+      return typeof normalizeAILevel === "function"
+        ? normalizeAILevel(Game.settings && Game.settings.advanced && Game.settings.advanced.aiLevel || "medium")
+        : "medium";
+    } catch (_) {
+      return "medium";
+    }
+  }
+
+  function _rememberAiLevel(g) {
+    if (!g) return;
+    const level = _currentAiLevel();
+    if (!Array.isArray(g.aiLevelsUsed)) g.aiLevelsUsed = [];
+    if (!g.aiLevelsUsed.includes(level)) g.aiLevelsUsed.push(level);
+  }
+
+  function _scoringAiLevel(g) {
+    const levels = Array.isArray(g && g.aiLevelsUsed) && g.aiLevelsUsed.length ? g.aiLevelsUsed : [_currentAiLevel()];
+    return levels.slice().sort((a, b) => AI_LEVEL_ORDER.indexOf(a) - AI_LEVEL_ORDER.indexOf(b))[0] || "medium";
   }
 
   function detectMode() {
@@ -1947,10 +1968,16 @@ const TrainRecorder = (() => {
     if (!cur) {
       const mode0 = detectMode();
       cur = {
-        schema: 3,
+        schema: 4,
+        recordSchema: 4,
+        stateSchema: 4,
+        actionSchema: 2,
         mode: mode0,
         matchId: _resolveMatchId(mode0) || _makeLocalMatchId(),
         startedAt: nowMs(),
+        restoredFromSave: false,
+        undoCount: 0,
+        aiLevelsUsed: [_currentAiLevel()],
         steps: [],
         samples: [],
         _pendingSteps: [],
@@ -1974,23 +2001,59 @@ const TrainRecorder = (() => {
     cur = null;
   }
 
-  function packBoard() {
+  function packBoard(boardInput) {
+    const board = Array.isArray(boardInput) ? boardInput : Game.board;
     const a = new Int8Array(N_CELLS);
     let o = 0;
     for (let r = 0; r < BOARD_N; r++) {
       for (let c = 0; c < BOARD_N; c++) {
-        a[o++] = Game.board[r][c] | 0;
+        a[o++] = board && board[r] ? (board[r][c] | 0) : 0;
       }
     }
     return bytesToBase64(new Uint8Array(a.buffer));
   }
 
   function captureStateForTraining() {
+    let deferred = [];
+    try {
+      deferred = Array.isArray(Game.deferredPromotions)
+        ? Game.deferredPromotions.map((entry) => ({ idx: Number(entry.idx), side: Number(entry.side) })).filter((entry) => Number.isInteger(entry.idx) && (entry.side === TOP || entry.side === BOT)).slice(0, 16)
+        : [];
+    } catch (_) {}
+    let soufla = null;
+    try {
+      const pending = Game.souflaPending || Game.availableSouflaForHuman || null;
+      if (pending) {
+        const turnStartBoard = pending.turnStartSnapshot && pending.turnStartSnapshot.board;
+        soufla = {
+          longestGlobal: Math.max(0, Number(pending.longestGlobal || 0) || 0),
+          capturesDone: Math.max(0, Number(pending.capturesDone || 0) || 0),
+          startedFrom: pending.ctxStartedFrom == null ? -1 : Number(pending.ctxStartedFrom),
+          decisionRequired: Game.awaitingPenalty ? 1 : 0,
+          offenderSide: Number(pending.offenderSide) === TOP ? TOP : (Number(pending.offenderSide) === BOT ? BOT : 0),
+          offenders: Array.isArray(pending.offenders)
+            ? pending.offenders.map(Number).filter((idx) => Number.isInteger(idx) && idx >= 0 && idx < N_CELLS).slice(0, 16)
+            : [],
+          turnStartBoard: Array.isArray(turnStartBoard) ? packBoard(turnStartBoard) : "",
+        };
+      }
+    } catch (_) {}
     return {
       b: packBoard(),
       p: Game.player | 0,
       ic: Game.inChain ? 1 : 0,
       cp: Game.chainPos == null ? -1 : Game.chainPos | 0,
+      fe: Game.forcedEnabled ? 1 : 0,
+      fp: Math.max(0, Number(Game.forcedPly || 0) || 0),
+      fs: (() => {
+        try {
+          const starter = forcedOpeningBaseSide(Game.forcedSeq);
+          return starter === TOP || starter === BOT ? starter : 0;
+        } catch (_) { return 0; }
+      })(),
+      dp: deferred,
+      sp: soufla,
+      m: Math.max(0, Number(Game.moveCount || 0) || 0),
     };
   }
 
@@ -2016,10 +2079,9 @@ const TrainRecorder = (() => {
     g.mode = detectMode();
 
     const side = actor == null ? Game.player : actor;
+    if (g.mode === "vs_cpu" && side !== humanSide()) _rememberAiLevel(g);
 
     if (g._inForceRewrite) return null;
-
-    if (g.mode === "vs_cpu" && side !== humanSide()) return null;
 
     return {
       snap: captureStateForTraining(),
@@ -2214,19 +2276,23 @@ const TrainRecorder = (() => {
       if (Array.isArray(g._pendingSteps))
         g._pendingSteps.length = Math.max(0, b.pendingStepsLen | 0);
     } catch {}
+    try {
+      if (g.mode === "vs_cpu") g.undoCount = Math.max(0, Number(g.undoCount || 0) || 0) + 1;
+    } catch {}
     return true;
   }
 
-  const ACTION_SOUFLA_REMOVE = 0;
-  const ACTION_SOUFLA_FORCE = BOARD_N * BOARD_N + 1;
+  function markRestoredFromSave() {
+    const g = ensureGame();
+    if (g && g.mode === "vs_cpu") g.restoredFromSave = true;
+  }
+
 
   function recordSouflaPenaltyChoice({ pending = null, kind = null, actor = null } = {}) {
     const g = ensureGame();
     g.mode = detectMode();
 
     const side = actor == null ? Game.player : actor;
-
-    if (g.mode === "vs_cpu" && side !== humanSide()) return;
 
     if (g._inForceRewrite) return;
 
@@ -2257,7 +2323,7 @@ const TrainRecorder = (() => {
       sfStartedFrom: -1,
 
       sfPenaltyChoice: 1,
-      sfPenaltyByHuman: 1,
+      sfPenaltyByHuman: side === humanSide() ? 1 : 0,
     };
     _applyMeta(sample, meta);
 
@@ -2335,24 +2401,6 @@ const TrainRecorder = (() => {
     g._inForceRewrite = false;
   }
 
-  function isAcceptableForUpload(record) {
-    if (!record) return false;
-    if (!record.samples || record.samples.length < MIN_SAMPLES) return false;
-    if (!Number.isFinite(record.durationMs) || record.durationMs < MIN_DURATION_MS) return false;
-
-    const sps = record.samples.length / Math.max(1, record.durationMs / 1000);
-    if (sps > MAX_DECISIONS_PER_SEC) return false;
-
-    if (
-      (record.endReason === "disconnect" ||
-        record.endReason === "abort" ||
-        record.endReason === "cancel") &&
-      !record.lateFinished
-    ) {
-      return false;
-    }
-    return true;
-  }
 
   function _finalCountsFromBoard(board) {
     const out = {
@@ -2477,12 +2525,26 @@ const TrainRecorder = (() => {
     }
   }
 
-  function _inferLateExitOutcome() {
+  function _inferLateExitOutcome(expectedLoserSide = null) {
     try {
       const board = window.Game && Game.board ? Game.board : null;
       const finalCounts = _finalCountsFromBoard(board);
       const topTotal = finalCounts.topTotal | 0;
       const botTotal = finalCounts.botTotal | 0;
+      const totalPieces = topTotal + botTotal;
+      const totalKings = (finalCounts.topKings | 0) + (finalCounts.botKings | 0);
+      const moveCount = Math.max(0, Number(Game.moveCount || 0) || 0);
+      const captured = Math.max(0, 80 - totalPieces);
+      const advanced = moveCount >= 48 || (moveCount >= 32 && (captured >= 8 || totalPieces <= 24 || totalKings > 0));
+      if (!advanced) {
+        return {
+          lateFinished: false,
+          winner: null,
+          terminalType: "early_or_midgame",
+          terminalConfidence: "high",
+          finalCounts,
+        };
+      }
 
       const topHasMove = _sideHasAnyMove(TOP);
       const botHasMove = _sideHasAnyMove(BOT);
@@ -2546,8 +2608,28 @@ const TrainRecorder = (() => {
       if (!losing.TOP) losing.TOP = considerSide(TOP);
       if (!losing.BOT) losing.BOT = considerSide(BOT);
 
+      const expected = expectedLoserSide === TOP || expectedLoserSide === BOT ? expectedLoserSide : null;
       const topLose = !!losing.TOP;
       const botLose = !!losing.BOT;
+      if (expected != null) {
+        const candidate = expected === TOP ? losing.TOP : losing.BOT;
+        if (!candidate) {
+          return {
+            lateFinished: false,
+            winner: null,
+            terminalType: "position_not_clear",
+            terminalConfidence: "medium",
+            finalCounts,
+          };
+        }
+        return {
+          lateFinished: true,
+          winner: -expected,
+          terminalType: "adjudicated",
+          terminalConfidence: candidate.confidence || "medium",
+          finalCounts,
+        };
+      }
       if (topLose === botLose) {
         return {
           lateFinished: false,
@@ -2607,18 +2689,54 @@ const TrainRecorder = (() => {
 
 
 
+  function _registeredSession() {
+    try {
+      const session = window.ZAuth && typeof window.ZAuth.readSession === "function" ? window.ZAuth.readSession() : null;
+      if (session && session.user && session.user.kind === "registered") return session;
+      if (session && session.kind === "registered") return { user: session };
+    } catch (_) {}
+    try {
+      const raw = sessionStorage.getItem("zamat.session.user.v1") || localStorage.getItem("zamat.session.user.persist.v1");
+      const session = raw ? JSON.parse(raw) : null;
+      const user = session && session.user ? session.user : session;
+      if (user && user.kind === "registered") return session;
+    } catch (_) {}
+    return null;
+  }
+
+  function _resultText(result) {
+    const t = (key, vars) => {
+      try { return window.I18N && typeof window.I18N.text === "function" ? window.I18N.text(key, vars) : key; }
+      catch (_) { return key; }
+    };
+    if (result && result.counted) {
+      if (String(result.rewardTier || "") === "capped") {
+        return t("log.results.pvcCountedCapped");
+      }
+      return t("log.results.pvcCounted", { points: Number(result.pointsDelta || 0) });
+    }
+    const reason = result && result.reason ? String(result.reason) : "unknown";
+    const key = "log.results.pvcRejected." + reason;
+    const translated = t(key);
+    return translated && translated !== key ? translated : t("log.results.pvcRejected.unknown");
+  }
+
+  function _logPvcResult(result) {
+    try {
+      if (window.UI && typeof UI.log === "function") UI.log(_resultText(result));
+    } catch (_) {}
+  }
+
   async function finalizeAndUpload({ winner = null, endReason = null } = {}) {
     const g = ensureGame();
     const endedAt = nowMs();
     const startedAt = Number.isFinite(g.startedAt) ? g.startedAt : endedAt;
     const durationMs = Math.max(0, endedAt - startedAt);
-
     const mode = detectMode();
 
     let w = winner === TOP ? TOP : winner === BOT ? BOT : null;
     let reason = endReason || (w == null ? "draw" : "natural_win");
     let lateFinished = false;
-
     let terminalType = "unknown";
     let terminalConfidence = "low";
     let finalCounts = _finalCountsFromBoard(window.Game && Game.board ? Game.board : null);
@@ -2626,11 +2744,9 @@ const TrainRecorder = (() => {
     if (reason === "natural_win" || reason === "draw") {
       terminalType = "strict";
       terminalConfidence = "high";
-    }
-
-    if ((reason === "disconnect" || reason === "abort" || reason === "cancel") && w == null) {
-      const late = _inferLateExitOutcome();
-      if (late && late.lateFinished && (late.winner === TOP || late.winner === BOT)) {
+    } else if ((reason === "disconnect" || reason === "abort" || reason === "cancel" || reason === "leave" || reason === "resign") && w == null) {
+      const late = _inferLateExitOutcome(humanSide());
+      if (late && late.lateFinished && (late.winner === TOP || late.winner === BOT) && late.terminalConfidence !== "low") {
         w = late.winner;
         lateFinished = true;
         terminalType = late.terminalType || "adjudicated";
@@ -2645,134 +2761,70 @@ const TrainRecorder = (() => {
       terminalConfidence = "medium";
     }
 
+    const steps = Array.isArray(g.steps) ? g.steps.slice(0, 5000) : [];
+    const samples = Array.isArray(g.samples) ? g.samples.slice(0, 10000) : [];
     const record = {
-      schema: 3,
+      recordSchema: 4,
+      stateSchema: 4,
+      actionSchema: 2,
       mode,
-      matchId: g.matchId != null ? String(g.matchId) : null,
+      roundId: g.matchId != null ? String(g.matchId).slice(0, 180) : _makeLocalMatchId(),
       startedAt,
       endedAt,
       durationMs,
-      winner: w,
+      winner: w == null ? 0 : w,
       endReason: reason,
       terminalType,
       terminalConfidence,
-      lateFinished: lateFinished ? true : false,
+      lateFinished: !!lateFinished,
       finalCounts,
-      steps: Array.isArray(g.steps) ? g.steps.slice(0, 20000) : [],
-      samples: Array.isArray(g.samples) ? g.samples.slice(0, 200000) : [],
-      processed: false,
-      purgeAt: endedAt + KEEP_MS,
+      restoredFromSave: !!g.restoredFromSave,
+      undoCount: Math.max(0, Number(g.undoCount || 0) || 0),
+      aiLevelsUsed: Array.isArray(g.aiLevelsUsed) ? g.aiLevelsUsed.slice() : [],
+      steps,
+      samples,
     };
 
-    try {
-      if (!record.matchId) record.matchId = _resolveMatchId(record.mode) || _makeLocalMatchId();
-      if (record.matchId) record.matchId = String(record.matchId).slice(0, 140);
-    } catch (_) {}
-
-    // Computer games are deliberately local-only. The engine, result handling,
-    // and learning path must not call Cloudflare APIs or consume dynamic quotas.
-    // Online PvP keeps its existing server-authoritative behavior unchanged.
-    if (record.mode === "vs_cpu") {
+    if (record.mode !== "vs_cpu") {
       resetGame();
-      return { uploaded: false, skipped: true, reason: "local_computer_game" };
+      return { uploaded: false, skipped: true, reason: "official_pvp_server" };
     }
 
-    // Only online PvP reaches this point; its official result/statistics are
-    // written by the server-authoritative GameRoom route.
-    const statsRes = { ok: false, reason: "skipped_official_pvp_server" };
-
-    try {
-      if (window.UI && typeof UI.log === "function") {
-        const okKey = "log.results.savedOk";
-        const failKey = "log.results.savedFail";
-        const skipKey = "log.results.skipped";
-        if (statsRes && statsRes.ok) UI.log({ kind: "i18n", key: okKey, ts: Date.now() });
-        else if (
-          statsRes &&
-          typeof statsRes.reason === "string" &&
-          statsRes.reason.startsWith("skipped_")
-        )
-          UI.log({
-            kind: "i18n_suffix",
-            key: skipKey,
-            suffix: statsRes.reason,
-            ts: Date.now(),
-          });
-        else if (statsRes && statsRes.reason) {
-          const _r = String(statsRes.reason || "");
-          if (_r === "not_registered" || _r === "no_user") UI.log("Not registered");
-          else
-            UI.log({
-              kind: "i18n_suffix",
-              key: failKey,
-              suffix: _r,
-              ts: Date.now(),
-            });
-        } else if (statsRes === null)
-          UI.log({
-            kind: "i18n_suffix",
-            key: skipKey,
-            suffix: "no_attempt",
-            ts: Date.now(),
-          });
-        else UI.log({ kind: "i18n", key: failKey, ts: Date.now() });
-      }
-    } catch (_) {}
-
-    const _logLearningUpload = (ok, reason = null) => {
-      try {
-        if (!(window.UI && typeof UI.log === "function")) return;
-        const okKey = "log.learning.sentOk";
-        const failKey = "log.learning.sentFail";
-        if (ok) UI.log({ kind: "i18n", key: okKey, ts: Date.now() });
-        else if (reason)
-          UI.log({
-            kind: "i18n_suffix",
-            key: failKey,
-            suffix: reason,
-            ts: Date.now(),
-          });
-        else UI.log({ kind: "i18n", key: failKey, ts: Date.now() });
-      } catch (_) {}
-    };
-
-    if (!isAcceptableForUpload(record)) {
-      _logLearningUpload(false, "skipped");
+    const session = _registeredSession();
+    if (!session) {
       resetGame();
-      return { uploaded: false, skipped: true };
+      return { ok: true, counted: false, reason: "not_registered" };
     }
 
+    let response;
     try {
-      try {
-        if (window.CloudflareAuth && typeof window.CloudflareAuth.signInGuest === "function") {
-          const u = window.CloudflareAuth.currentUser && window.CloudflareAuth.currentUser();
-          if (!u) await window.CloudflareAuth.signInGuest({}).catch(() => null);
-        }
-      } catch (_) {}
-
-      const res = await fetch("/dhamet/api/training/upload", {
-        method: "POST",
-        credentials: "include",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(record),
+      const level = _scoringAiLevel(g);
+      const complete = !!(steps.length && samples.length && startedAt && endedAt >= startedAt);
+      const payload = Object.assign({}, record, {
+        pvcRoundId: record.roundId,
+        aiLevel: level,
+        humanSide: humanSide(),
+        recordComplete: complete,
+        rulesVersion: String(DhametRulesShared && DhametRulesShared.version || "unknown"),
+        engineVersion: String(DhametAIEngine && DhametAIEngine.version || "unknown"),
       });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data || data.ok === false) throw new Error((data && data.error) || "upload_failed");
-      record.id = data.id || record.id || null;
-
-      _logLearningUpload(true);
-
+      if (!window.DhametAccount || typeof window.DhametAccount.submitPvcResult !== "function") {
+        throw new Error("pvc/result-client-unavailable");
+      }
+      response = await window.DhametAccount.submitPvcResult(payload);
+      _logPvcResult(response);
+    } catch (error) {
+      response = { ok: false, counted: false, reason: _dbErrorReason(error) || "network_error" };
+      _logPvcResult(response);
+    } finally {
       resetGame();
-      return { uploaded: true, id: record.id };
-    } catch (e) {
-      _logLearningUpload(false, _dbErrorReason(e) || "upload_failed");
-      resetGame();
-      return { uploaded: false, skipped: false, reason: "upload_failed" };
     }
+    return response;
   }
 
   function startNewGame() {
     resetGame();
+    try { window.__zamat_tr_finalized = false; } catch (_) {}
     ensureGame();
   }
 
@@ -2827,6 +2879,7 @@ const TrainRecorder = (() => {
     recordExternalDecision,
     beginMoveBoundary,
     rollbackLastMoveBoundary,
+    markRestoredFromSave,
     recordSouflaPenaltyChoice,
 
     turnEnd,

@@ -208,14 +208,33 @@
   function updatePassword(password) { return post('/dhamet/api/auth/update-password', { password: String(password || '') }); }
 
   function deleteAccount() {
+    var oldUid = cachedUser && cachedUser.uid ? String(cachedUser.uid) : '';
     return post('/dhamet/api/auth/delete', {}).then(function (res) {
+      clearAccountTransientStorage(oldUid);
       setCurrentUser(null);
       return res || { ok: true };
     });
   }
 
+  function clearAccountTransientStorage(uid) {
+    try {
+      sessionStorage.removeItem('zamat.activeGameId');
+      sessionStorage.removeItem('zamat.activeGameTs');
+      sessionStorage.removeItem('zamat.session.game.pvc.v1');
+      sessionStorage.removeItem('zamat.manual.save.v1');
+      if (uid) {
+        localStorage.removeItem('zamat.activeGameId.' + uid);
+        localStorage.removeItem('zamat.activeGameTs.' + uid);
+      }
+      localStorage.removeItem('zamat.activeGameId');
+      localStorage.removeItem('zamat.activeGameTs');
+    } catch (_) {}
+  }
+
   function signOut() {
+    var oldUid = cachedUser && cachedUser.uid ? String(cachedUser.uid) : '';
     return post('/dhamet/api/auth/logout', {}).then(function (res) {
+      clearAccountTransientStorage(oldUid);
       if (res && res.user) return setCurrentUser(res.user);
       setCurrentUser(null);
       return null;

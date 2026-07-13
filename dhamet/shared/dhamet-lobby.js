@@ -32,6 +32,7 @@
   const clone = Utils.cloneJson;
   const nowMs = Utils.nowMs;
   const cleanString = Utils.cleanStringTrimSlice;
+  const cleanDisplay = Utils.cleanDisplayText || Utils.cleanText;
 
   function normalizeVisibility(value) {
     return cleanString(value, 20) === ROOM_VISIBILITY_PRIVATE ? ROOM_VISIBILITY_PRIVATE : ROOM_VISIBILITY_PUBLIC;
@@ -84,8 +85,8 @@
       type: 'invite',
       fromUid,
       toUid,
-      fromNick: cleanString(src.fromNick || src.nick, 80),
-      roomName: cleanString(src.roomName || src.name, 40),
+      fromNick: cleanDisplay(src.fromNick || src.nick, 80),
+      roomName: cleanDisplay(src.roomName || src.name, 40),
       visibility: normalizeVisibility(src.visibility),
       gameId,
       inviteKey,
@@ -110,9 +111,9 @@
       inviteKey: cleanString(src.inviteKey, 240),
       fromUid: cleanString(src.fromUid, 160),
       toUid: cleanString(src.toUid || src.opponentUid, 160),
-      fromNick: cleanString(src.fromNick || src.nick, 80),
-      toNick: cleanString(src.toNick || src.opponentNick, 80),
-      roomName: cleanString(src.roomName || src.name, 40),
+      fromNick: cleanDisplay(src.fromNick || src.nick, 80),
+      toNick: cleanDisplay(src.toNick || src.opponentNick, 80),
+      roomName: cleanDisplay(src.roomName || src.name, 40),
       visibility: normalizeVisibility(src.visibility),
       reason: cleanString(src.reason, 80),
     };
@@ -128,7 +129,7 @@
     const state = createInitialStatePayload({ starter: botSide(), forcedEnabled: true });
     if (!state || !state.snapshot) return null;
     return {
-      roomName: cleanString(src.roomName || src.name, 40),
+      roomName: cleanDisplay(src.roomName || src.name, 40),
       visibility: normalizeVisibility(src.visibility),
       status: 'pending',
       acceptedAt: 0,
@@ -140,8 +141,8 @@
       turn: state.snapshot.player,
       starter: 'white',
       players: {
-        white: { uid: fromUid, nickname: cleanString(src.fromNick || src.nick, 80) },
-        black: { uid: toUid, nickname: cleanString(src.toNick || src.opponentNick, 80) },
+        white: { uid: fromUid, nickname: cleanDisplay(src.fromNick || src.nick, 80) },
+        black: { uid: toUid, nickname: cleanDisplay(src.toNick || src.opponentNick, 80) },
       },
       state,
       states: { 0: clone(state) },
@@ -159,7 +160,7 @@
         {
           ts,
           type: 'invite_sent',
-          text: encodeLogText({ kind: 'i18n', key: 'online.log.inviteSent', vars: { from: cleanString(src.fromNick || src.nick, 80), to: cleanString(src.toNick || src.opponentNick, 80) } }),
+          text: encodeLogText({ kind: 'i18n', key: 'online.log.inviteSent', vars: { from: cleanDisplay(src.fromNick || src.nick, 80), to: cleanDisplay(src.toNick || src.opponentNick, 80) } }),
         },
       ],
     };
@@ -178,16 +179,16 @@
     const g = clone(game || {});
     const src = input && typeof input === 'object' ? input : {};
     const uid = cleanString(src.uid || src.actor, 160);
-    const nick = cleanString(src.nick || src.nickname, 80);
+    const nick = cleanDisplay(src.nick || src.nickname, 80);
     const ts = Math.max(0, Number(src.acceptedAt || src.ts || nowMs()) || nowMs());
     if (!g || g.status !== 'pending') return { ok: false, error: 'invite/not-pending' };
     const black = g.players && g.players.black ? g.players.black : null;
     if (!uid || !black || (black.uid && cleanString(black.uid, 160) !== uid)) return { ok: false, error: 'invite/not-invited-player' };
     g.players = g.players || {};
-    g.players.black = { uid, nickname: nick || cleanString(black.nickname, 80) };
+    g.players.black = { uid, nickname: nick || cleanDisplay(black.nickname, 80) };
     g.status = 'active';
     if (!g.acceptedAt) g.acceptedAt = ts;
-    const who = nick || cleanString(black.nickname, 80);
+    const who = nick || cleanDisplay(black.nickname, 80);
     const withLog = appendLog(g, {
       ts,
       type: 'invite_accepted',
@@ -209,7 +210,7 @@
     g.status = 'rejected';
     g.endedAt = ts;
     g.endedReason = cleanString(src.reason || 'rejected', 80) || 'rejected';
-    const nick = cleanString(src.nick || src.nickname, 80);
+    const nick = cleanDisplay(src.nick || src.nickname, 80);
     const withLog = appendLog(g, {
       ts,
       type: 'invite_rejected',

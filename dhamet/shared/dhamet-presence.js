@@ -66,6 +66,7 @@
   ];
 
   const cleanString = Utils.cleanStringTrim;
+  const cleanDisplay = Utils.cleanDisplayText || Utils.cleanText;
   const nowMs = Utils.nowMs;
 
 
@@ -77,8 +78,8 @@
     if (src.role != null) out.role = src.role == null ? null : cleanString(src.role, 40);
     if (src.roomId != null) out.roomId = src.roomId == null ? null : cleanString(src.roomId, 160);
     if (src.gameId != null && out.roomId == null) out.roomId = cleanString(src.gameId, 160);
-    if (src.nickname != null) out.nickname = cleanString(src.nickname, 80);
-    if (src.nick != null && out.nickname == null) out.nickname = cleanString(src.nick, 80);
+    if (src.nickname != null) out.nickname = cleanDisplay(src.nickname, 80);
+    if (src.nick != null && out.nickname == null) out.nickname = cleanDisplay(src.nick, 80);
     if (src.icon != null) out.icon = cleanString(src.icon, 200);
     if (src.registered != null) out.registered = src.registered !== false;
     if (src.acceptsInvites != null) out.acceptsInvites = src.acceptsInvites !== false;
@@ -306,5 +307,4 @@
   });
 
   global.DhametPresence = api;
-  if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof globalThis !== 'undefined' ? globalThis : window);

@@ -26,6 +26,7 @@
   }
 
   const cleanString = Utils.cleanStringLoose;
+  const cleanDisplay = Utils.cleanDisplayText || Utils.cleanText;
 
   function cleanKind(value) {
     const k = cleanString(value || '', 40).toLowerCase().replace(/[_\s]+/g, '-');
@@ -47,7 +48,7 @@
       baseMoveIndex: Number(src.baseMoveIndex != null ? src.baseMoveIndex : actionSrc.baseMoveIndex),
       actor: cleanString(src.actor || src.uid || actionSrc.actor || actionSrc.uid, 160) || null,
       by: side(src.by != null ? src.by : actionSrc.by, null),
-      nick: cleanString(src.nick || src.requesterNick || actionSrc.nick || actionSrc.requesterNick, 80),
+      nick: cleanDisplay(src.nick || src.requesterNick || actionSrc.nick || actionSrc.requesterNick, 80),
       accept: acceptRaw === true || acceptRaw === 'true' || acceptRaw === 1 || acceptRaw === '1',
       ts: Math.max(0, Number(src.ts || actionSrc.ts || nowMs()) || nowMs()),
       meta: src.meta && typeof src.meta === 'object' ? clone(src.meta) : {},
@@ -61,7 +62,7 @@
       acceptedAt: 0,
       requesterUid: cleanString(src.requesterUid || src.uid || src.actor, 160),
       requesterSide: side(src.requesterSide != null ? src.requesterSide : src.by, null),
-      requesterNick: cleanString(src.requesterNick || src.nick, 80),
+      requesterNick: cleanDisplay(src.requesterNick || src.nick, 80),
       requestedAt: Math.max(0, Number(src.requestedAt || src.ts || nowMs()) || nowMs()),
       ply: Math.max(0, Number(src.ply || 0) || 0),
       moveIndex: Math.max(0, Number(src.moveIndex || 0) || 0),
@@ -79,12 +80,12 @@
       acceptedAt: Math.max(0, Number(input.acceptedAt || 0) || 0),
       requesterUid: cleanString(input.requesterUid || input.uid || input.actor, 160),
       requesterSide: side(input.requesterSide != null ? input.requesterSide : input.by, null),
-      requesterNick: cleanString(input.requesterNick || input.nick, 80),
+      requesterNick: cleanDisplay(input.requesterNick || input.nick, 80),
       requestedAt: Math.max(0, Number(input.requestedAt || 0) || 0),
       respondedAt: Math.max(0, Number(input.respondedAt || 0) || 0),
       responderUid: cleanString(input.responderUid || '', 160),
       responderSide: side(input.responderSide, null),
-      responderNick: cleanString(input.responderNick || '', 80),
+      responderNick: cleanDisplay(input.responderNick || '', 80),
       ply: Math.max(0, Number(input.ply || 0) || 0),
       moveIndex: Math.max(0, Number(input.moveIndex || 0) || 0),
       clientActionId: input.clientActionId == null ? null : cleanString(input.clientActionId, 160),

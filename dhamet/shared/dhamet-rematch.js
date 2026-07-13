@@ -20,6 +20,7 @@
   const clone = Utils.cloneJson;
   const nowMs = Utils.nowMs;
   const cleanString = Utils.cleanStringLoose;
+  const cleanDisplay = Utils.cleanDisplayText || Utils.cleanText;
 
   function side(value, fallback) {
     const n = Number(value);
@@ -53,7 +54,7 @@
       baseMoveIndex: Number(src.baseMoveIndex != null ? src.baseMoveIndex : actionSrc.baseMoveIndex),
       actor: cleanString(src.actor || src.uid || actionSrc.actor || actionSrc.uid, 160) || null,
       by: side(src.by != null ? src.by : actionSrc.by, null),
-      nick: cleanString(src.nick || src.byNick || actionSrc.nick || actionSrc.byNick, 80),
+      nick: cleanDisplay(src.nick || src.byNick || actionSrc.nick || actionSrc.byNick, 80),
       accept,
       starter: side(src.starter != null ? src.starter : actionSrc.starter, null),
       reason: cleanString(src.reason || actionSrc.reason, 80),
@@ -69,11 +70,11 @@
       status,
       requesterUid: cleanString(input.requesterUid || input.uid || input.actor, 160),
       requesterSide: side(input.requesterSide != null ? input.requesterSide : input.by, null),
-      requesterNick: cleanString(input.requesterNick || input.nick, 80),
+      requesterNick: cleanDisplay(input.requesterNick || input.nick, 80),
       requestedAt: Math.max(0, Number(input.requestedAt || input.ts || 0) || 0),
       responderUid: cleanString(input.responderUid || '', 160),
       responderSide: side(input.responderSide, null),
-      responderNick: cleanString(input.responderNick || '', 80),
+      responderNick: cleanDisplay(input.responderNick || '', 80),
       respondedAt: Math.max(0, Number(input.respondedAt || 0) || 0),
       moveIndex: Math.max(0, Number(input.moveIndex || 0) || 0),
       ply: Math.max(0, Number(input.ply || 0) || 0),

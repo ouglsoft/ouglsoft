@@ -14,6 +14,10 @@ database_name = "dhamet2_test"
 database_id = "3f957678-fd6c-4164-8302-f5fa4b8acf16"
 migrations_dir = "migrations"
 
+[[r2_buckets]]
+binding = "TRAINING_BUCKET"
+bucket_name = "dhamet-training-private"
+
 [[durable_objects.bindings]]
 name = "REALTIME"
 class_name = "RealtimeObject"
