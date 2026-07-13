@@ -1,0 +1,351 @@
+/* ========================================================================== AUTH.CSS ========================================================================== */
+/* ========================================================================== AUTH LAYOUT & FORMS ========================================================================== */
+.z-auth-page {
+  min-height: 100vh; display: flex;
+  flex-direction: column; align-items: stretch;
+  padding: 0; --z-auth-action-bg: linear-gradient(135deg, var(--btn-start), var(--btn-end));
+  --z-auth-action-border: rgba(37, 99, 235, 0.22); --z-auth-action-text: var(--btn-text);
+}
+.z-auth-wrap {
+  width: min(1240px, 100%); margin: 0 auto;
+  flex: 1; display: flex;
+  flex-direction: column; justify-content: flex-start;
+  padding: 20px 14px 88px;
+}
+.z-auth-main {
+  display: grid; grid-template-columns: 1fr minmax(380px, 560px) 1fr;
+  gap: 18px; align-items: stretch;
+  width: 100%;
+}
+.z-auth-card, .z-auth-seo-card {
+  position: relative; padding: 20px;
+  overflow: hidden; border: 1px solid var(--border);
+  border-radius: 26px;
+}
+.z-auth-main .z-auth-card,
+.z-auth-titlebar h2 { margin: 0; }
+.z-auth-card::before, .z-auth-card h2, .z-auth-seo-card h2 { position: relative; margin: 0 0 12px; color: var(--text-strong); }
+.z-auth-login-heading { display: block; margin: 0 0 12px; text-align: center; color: var(--text-strong); }
+.z-auth-grid { display: grid; gap: 12px; }
+.z-auth-row { display: grid; gap: 7px; }
+.z-auth-row label { font-weight: 800; color: var(--text-strong); font-size: var(--fs-body); }
+.z-auth-row-inline-field { gap: 0; }
+.z-auth-row input, .z-auth-row select {
+  width: 100%; min-height: 48px;
+  padding: 11px 12px; border-radius: 16px;
+  border: 1px solid var(--border); background: var(--panel-strong);
+  color: var(--text); font-size: var(--fs-body);
+}
+.z-auth-card section[data-auth-view="login"] .z-auth-grid,
+.z-auth-card section[data-auth-view="register"] .z-auth-grid,
+.z-auth-card section[data-auth-view="recover"] .z-auth-grid {
+  gap: 10px;
+}
+.z-auth-card section[data-auth-view="login"] .z-auth-row,
+.z-auth-card section[data-auth-view="register"] .z-auth-row-register,
+.z-auth-card section[data-auth-view="recover"] .z-auth-row {
+  gap: 0;
+}
+.z-auth-actions { display: grid; gap: 10px; margin-top: 12px; }
+.z-auth-actions .btn { width: 100%; font-size: var(--fs-body); }
+.z-auth-actions-wrap { flex-wrap: wrap; gap: 10px; }
+.z-auth-row-stack-gap { margin-top: 10px; }
+/* ========================================================================== AUTH BRANDING & LANGUAGE CONTROLS ========================================================================== */
+.z-auth-seo-card .seo-small{ display: none; }
+.z-auth-brand {
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-bottom: 12px;
+  text-align: center;
+}
+.z-auth-brand img { width: 40px; height: 40px; border-radius: 14px; box-shadow: var(--shadow-sm); }
+.z-auth-brand h1 {
+  margin: 0; line-height: 1.1;
+  text-align: center; color: var(--text-strong);
+  font-size: var(--fs-title);
+}
+.z-auth-lang {
+  display: flex; justify-content: flex-end;
+  align-items: center; gap: 8px;
+  position: relative; margin-bottom: 12px;
+}
+
+.z-auth-page.z-has-topbar .z-auth-lang { display: none; }
+.z-auth-page.z-auth-desktop-topbar { padding-top: var(--z-topbar-h); }
+.z-auth-page.z-auth-desktop-topbar .z-topbar { display: block !important; }
+/* ========================================================================== AUTH FOOTER ========================================================================== */
+.z-auth-foot {
+  position: fixed; left: 0;
+  right: 0; bottom: 0;
+  display: flex; justify-content: center;
+  flex-wrap: wrap; gap: 14px;
+  padding: 12px 10px; background: rgba(255,255,255,0.9);
+  border-top: 1px solid var(--border); backdrop-filter: blur(16px);
+  box-shadow: 0 -8px 24px rgba(15,23,42,0.08);
+  z-index: 40; font-size: var(--fs-footer);
+}
+:root.dark .z-auth-foot { background: rgba(15,23,42,0.9); }
+.z-auth-foot a { text-decoration: none; opacity: .92; }
+/* ========================================================================== AUTH SEO CONTENT ========================================================================== */
+:root.dark .z-auth-card::before, :root.dark .z-auth-seo-card::before { background: radial-gradient(circle at top right, rgba(56,189,248,0.12), transparent 36%); }
+.z-auth-seo-list {
+  position: relative; margin: 0;
+  padding-inline-start: 18px; display: grid;
+  gap: 8px;
+}
+.z-auth-seo-list li { line-height: 1.6; opacity: 0.92; font-size: var(--fs-body); }
+.z-auth-seo-para {
+  line-height: 1.6; opacity: 0.92;
+  position: relative; margin: 0;
+  display: -webkit-box; -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical; overflow: hidden;
+  font-size: var(--fs-body);
+}
+.z-auth-seo-card .seo-large, .z-auth-msg.is-show{ display: block; }
+
+/* ========================================================================== AUTH PRIMARY ACTIONS ========================================================================== */
+.z-auth-page .z-auth-google-top {
+  background: var(--z-auth-action-bg) !important; color: var(--z-auth-action-text) !important;
+  border-color: var(--z-auth-action-border) !important; box-shadow: var(--btn-shadow) !important;
+  display: inline-flex; align-items: center;
+  justify-content: center; gap: 8px;
+}
+.z-auth-page #btnGuest {
+  background: linear-gradient(135deg, #b91c1c, #991b1b) !important;
+  color: #fff !important;
+  border-color: rgba(153, 27, 27, 0.36) !important;
+  box-shadow: var(--btn-shadow) !important;
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+}
+.z-auth-page .z-auth-google-top:hover, .z-auth-page #btnGuest:hover { filter: brightness(1.03); }
+.z-auth-page .z-auth-google-top .btn-ico, .z-auth-page #btnGuest .btn-ico { filter: none; }
+.z-auth-titlebar {
+  display: grid;
+  grid-template-columns: 1fr;
+  justify-items: center;
+  gap: 10px;
+  margin: 0 0 12px;
+}
+.z-auth-titlebar h2 { width: 100%; text-align: center; }
+.z-auth-google-top { padding: 9px 12px; font-size: var(--fs-body); border-radius: 14px; white-space: nowrap; justify-self: center; }
+.z-auth-google-top .btn-ico { width: 16px; height: 16px; }
+#btnGuest { justify-content: center; padding: 13px 14px; font-size: var(--fs-body); }
+.btn.guest { padding: 15px 14px; justify-content: center; text-align: center; font-size: var(--fs-body); }
+.btn.guest .btn-ico { width: 18px; height: 18px; }
+/* ========================================================================== AUTH FEEDBACK & SUPPORT LINKS ========================================================================== */
+.z-auth-msg {
+  display: none; margin: 12px 0;
+  padding: 12px 14px; border-radius: 16px;
+  border: 1px solid var(--border); background: rgba(255,255,255,0.56);
+  box-shadow: var(--shadow-sm); font-size: var(--fs-body);
+}
+:root.dark .z-auth-msg { background: rgba(19,29,50,0.78); }
+
+.z-auth-msg.is-error { border-color: rgba(220, 38, 38, 0.34); color: var(--danger); }
+.z-auth-msg.is-ok { border-color: rgba(15, 159, 110, 0.34); color: var(--ok); }
+.z-auth-links {
+  display: flex; justify-content: space-between;
+  gap: 10px; flex-wrap: wrap;
+  margin-top: 10px; font-size: var(--fs-body);
+}
+.z-auth-links a {
+  color: #1e3a8a; opacity: 0.9;
+  text-decoration: none; cursor: pointer;
+  font-weight: 800; font-size: var(--fs-body);
+}
+.z-auth-links a:hover { text-decoration: underline; }
+html.dark .z-auth-links a { color: #1e3a8a; }
+.z-auth-foot a { color: #1e3a8a; font-weight: 800; }
+html.dark .z-auth-foot a { color: #1e3a8a; font-weight: 800; }
+html.dark .z-auth-card, html.dark .z-auth-seo-card {
+  color: var(--text);
+  background: linear-gradient(180deg, rgba(19,29,50,0.96), rgba(15,23,42,0.98));
+  border-color: rgba(148,163,184,0.2);
+}
+/* ========================================================================== AUTH DARK THEME HARMONIZATION ========================================================================== */
+html.dark .z-auth-page, html.dark .z-auth-wrap, html.dark .z-auth-main, html.dark .z-auth-foot { color: var(--text); }
+html.dark .z-auth-row input, html.dark .z-auth-row select {
+  background: rgba(15,23,42,0.78); border-color: rgba(148,163,184,0.2);
+  color: var(--text);
+}
+
+
+.z-auth-main-reset {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+}
+.z-auth-reset-card {
+  max-width: 520px;
+  width: min(520px, 100%);
+}
+.z-auth-help {
+  margin: 0 0 14px;
+  opacity: 0.82;
+  line-height: 1.7;
+}
+
+/* ========================================================================== RESET PASSWORD PAGE ========================================================================== */
+.z-reset-page {
+  min-height: 100svh;
+  display: block;
+  background: var(--bg);
+}
+.z-reset-shell {
+  width: 100%;
+  min-height: 100svh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: max(24px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+}
+.z-reset-card {
+  width: min(560px, 100%);
+  margin: 0 auto;
+  padding: clamp(20px, 4vw, 34px);
+  border: 1px solid var(--border);
+  border-radius: 28px;
+  background: linear-gradient(180deg, rgba(255,255,255,0.96), rgba(255,255,255,0.88));
+  box-shadow: var(--shadow-lg);
+  color: var(--text);
+}
+html.dark .z-reset-card {
+  background: linear-gradient(180deg, rgba(19,29,50,0.96), rgba(15,23,42,0.98));
+  border-color: rgba(148,163,184,0.22);
+}
+.z-reset-brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 0 0 18px;
+}
+.z-reset-brand img {
+  width: 54px;
+  height: 54px;
+  border-radius: 18px;
+  box-shadow: var(--shadow-sm);
+  flex: 0 0 auto;
+}
+.z-reset-brand p {
+  margin: 0 0 4px;
+  color: var(--muted);
+  font-size: clamp(13px, 1.7vw, 15px);
+  font-weight: 800;
+}
+.z-reset-brand h1 {
+  margin: 0;
+  color: var(--text-strong);
+  font-size: clamp(22px, 3.2vw, 32px);
+  line-height: 1.25;
+}
+.z-reset-help {
+  margin: 0 0 16px;
+  color: var(--text);
+  opacity: 0.88;
+  line-height: 1.8;
+  font-size: clamp(15px, 2vw, 17px);
+}
+.z-reset-form {
+  display: grid;
+  gap: 16px;
+}
+.z-reset-field {
+  display: grid;
+  gap: 8px;
+  color: var(--text-strong);
+  font-weight: 900;
+  font-size: clamp(14px, 1.8vw, 16px);
+}
+.z-reset-input-wrap {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+.z-reset-input-wrap input {
+  min-width: 0;
+  width: 100%;
+  min-height: 52px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--panel-strong);
+  color: var(--text);
+  font-size: clamp(15px, 2vw, 17px);
+}
+html.dark .z-reset-input-wrap input {
+  background: rgba(15,23,42,0.78);
+  border-color: rgba(148,163,184,0.22);
+}
+.z-reset-toggle {
+  min-height: 52px;
+  padding-inline: 14px;
+  white-space: nowrap;
+  border-radius: 16px;
+}
+.z-reset-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 6px;
+}
+.z-reset-actions .btn {
+  width: 100%;
+  min-height: 52px;
+  justify-content: center;
+  text-align: center;
+  font-size: clamp(14px, 1.8vw, 16px);
+}
+.z-reset-page .z-auth-msg {
+  display: none;
+  margin: 0 0 16px;
+  line-height: 1.7;
+}
+.z-reset-page .z-auth-msg.is-show {
+  display: block;
+}
+.z-auth-msg.is-warn {
+  border-color: rgba(245, 158, 11, 0.38);
+  color: #92400e;
+}
+html.dark .z-auth-msg.is-warn {
+  color: #fbbf24;
+}
+@media (max-width: 640px) {
+  .z-reset-shell {
+    align-items: stretch;
+    padding: max(14px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right)) max(14px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left));
+  }
+  .z-reset-card {
+    width: 100%;
+    min-height: calc(100svh - 28px);
+    padding: 18px 14px;
+    border-radius: 22px;
+  }
+  .z-reset-brand {
+    align-items: flex-start;
+    gap: 10px;
+  }
+  .z-reset-brand img {
+    width: 46px;
+    height: 46px;
+    border-radius: 15px;
+  }
+  .z-reset-input-wrap {
+    grid-template-columns: 1fr;
+  }
+  .z-reset-toggle {
+    width: 100%;
+  }
+  .z-reset-actions {
+    grid-template-columns: 1fr;
+  }
+}
+@media (min-width: 980px) {
+  .z-reset-card {
+    width: min(680px, 100%);
+  }
+}
