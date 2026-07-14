@@ -69,35 +69,35 @@
     '<svg xmlns="http://www.w3.org/2000/svg" width="768" height="256" viewBox="0 0 768 256">',
     '<defs>',
     '<filter id="ps" x="-34%" y="-34%" width="170%" height="190%"><feDropShadow dx="0" dy="11" stdDeviation="9" flood-color="#020617" flood-opacity=".46"/></filter>',
-    '<linearGradient id="wb" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset=".34" stop-color="#f5f8ff"/><stop offset=".74" stop-color="#cfdbec"/><stop offset="1" stop-color="#879ab7"/></linearGradient>',
-    '<linearGradient id="wr" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#dbeafe"/><stop offset="1" stop-color="#1d4ed8"/></linearGradient>',
-    '<radialGradient id="wh" cx="35%" cy="25%" r="78%"><stop offset="0" stop-color="#ffffff"/><stop offset=".48" stop-color="#eef4ff"/><stop offset="1" stop-color="#8095b3"/></radialGradient>',
-    '<linearGradient id="bb" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#6b7c97"/><stop offset=".38" stop-color="#2a3850"/><stop offset="1" stop-color="#0f172a"/></linearGradient>',
-    '<linearGradient id="br" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fed7aa"/><stop offset="1" stop-color="#f97316"/></linearGradient>',
-    '<radialGradient id="bh" cx="35%" cy="25%" r="78%"><stop offset="0" stop-color="#97a8c2"/><stop offset=".48" stop-color="#3a4963"/><stop offset="1" stop-color="#111827"/></radialGradient>',
+    '<linearGradient id="wb" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fafafa"/><stop offset=".58" stop-color="#ededed"/><stop offset="1" stop-color="#d4d4d4"/></linearGradient>',
+    '<linearGradient id="wr" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#93c5fd"/><stop offset="1" stop-color="#526bfc"/></linearGradient>',
+    '<radialGradient id="wh" cx="35%" cy="25%" r="78%"><stop offset="0" stop-color="#ffffff"/><stop offset=".50" stop-color="#f5f5f5"/><stop offset="1" stop-color="#cbd5e1"/></radialGradient>',
+    '<linearGradient id="bb" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#1f2937"/><stop offset=".54" stop-color="#17202d"/><stop offset="1" stop-color="#0b1220"/></linearGradient>',
+    '<linearGradient id="br" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fdba74"/><stop offset="1" stop-color="#fc780c"/></linearGradient>',
+    '<radialGradient id="bh" cx="35%" cy="25%" r="78%"><stop offset="0" stop-color="#334155"/><stop offset=".48" stop-color="#1f2937"/><stop offset="1" stop-color="#0b1220"/></radialGradient>',
     '<linearGradient id="gold" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff4a8"/><stop offset=".32" stop-color="#facc15"/><stop offset=".72" stop-color="#d99000"/><stop offset="1" stop-color="#8f5200"/></linearGradient>',
     '<linearGradient id="goldEdge" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff8c7"/><stop offset="1" stop-color="#a85f00"/></linearGradient>',
     '</defs>',
     '<g filter="url(#ps)">',
     '<g transform="translate(0 0)">',
     '<ellipse cx="128" cy="211" rx="73" ry="17" fill="#07152d" opacity=".28"/>',
-    '<ellipse cx="128" cy="190" rx="74" ry="25" fill="url(#wb)" stroke="#1e40af" stroke-width="5.5"/>',
-    '<ellipse cx="128" cy="181" rx="66" ry="18" fill="#ffffff" opacity=".48"/>',
-    '<path d="M78 179 C83 151 101 138 104 114 C106 100 98 93 92 87 C103 83 113 80 128 80 C143 80 153 83 164 87 C158 93 150 100 152 114 C155 138 173 151 178 179 Z" fill="url(#wb)" stroke="#60748f" stroke-width="3.4"/>',
-    '<ellipse cx="128" cy="118" rx="28" ry="12" fill="url(#wr)" opacity=".96"/>',
-    '<circle cx="128" cy="69" r="34" fill="url(#wh)" stroke="#556b88" stroke-width="3.6"/>',
+    '<ellipse cx="128" cy="190" rx="74" ry="25" fill="url(#wb)" stroke="#526bfc" stroke-width="5"/>',
+    '<ellipse cx="128" cy="181" rx="66" ry="18" fill="#ffffff" opacity=".34"/>',
+    '<path d="M78 179 C83 151 101 138 104 114 C106 100 98 93 92 87 C103 83 113 80 128 80 C143 80 153 83 164 87 C158 93 150 100 152 114 C155 138 173 151 178 179 Z" fill="url(#wb)" stroke="#94a3b8" stroke-width="3"/>',
+    '<ellipse cx="128" cy="118" rx="28" ry="12" fill="url(#wr)" opacity=".92"/>',
+    '<circle cx="128" cy="69" r="34" fill="url(#wh)" stroke="#94a3b8" stroke-width="3"/>',
     '<ellipse cx="117" cy="57" rx="13" ry="8" fill="#ffffff" opacity=".75"/>',
-    '<ellipse cx="128" cy="91" rx="29" ry="9" fill="#475569" opacity=".56"/>',
+    '<ellipse cx="128" cy="91" rx="29" ry="9" fill="#94a3b8" opacity=".36"/>',
     '</g>',
     '<g transform="translate(256 0)">',
     '<ellipse cx="128" cy="211" rx="73" ry="17" fill="#000000" opacity=".5"/>',
-    '<ellipse cx="128" cy="190" rx="74" ry="25" fill="url(#bb)" stroke="#7dd3fc" stroke-width="5.2"/>',
-    '<ellipse cx="128" cy="181" rx="66" ry="18" fill="#e2e8f0" opacity=".22"/>',
-    '<path d="M78 179 C83 151 101 138 104 114 C106 100 98 93 92 87 C103 83 113 80 128 80 C143 80 153 83 164 87 C158 93 150 100 152 114 C155 138 173 151 178 179 Z" fill="url(#bb)" stroke="#93c5fd" stroke-width="2.8"/>',
-    '<ellipse cx="128" cy="118" rx="28" ry="12" fill="url(#br)" opacity=".98"/>',
-    '<circle cx="128" cy="69" r="34" fill="url(#bh)" stroke="#7dd3fc" stroke-width="3.2"/>',
-    '<ellipse cx="117" cy="57" rx="13" ry="8" fill="#f8fafc" opacity=".34"/>',
-    '<ellipse cx="128" cy="91" rx="29" ry="9" fill="#0f172a" opacity=".40"/>',
+    '<ellipse cx="128" cy="190" rx="74" ry="25" fill="url(#bb)" stroke="#fc780c" stroke-width="5"/>',
+    '<ellipse cx="128" cy="181" rx="66" ry="18" fill="#94a3b8" opacity=".12"/>',
+    '<path d="M78 179 C83 151 101 138 104 114 C106 100 98 93 92 87 C103 83 113 80 128 80 C143 80 153 83 164 87 C158 93 150 100 152 114 C155 138 173 151 178 179 Z" fill="url(#bb)" stroke="#374151" stroke-width="3"/>',
+    '<ellipse cx="128" cy="118" rx="28" ry="12" fill="url(#br)" opacity=".94"/>',
+    '<circle cx="128" cy="69" r="34" fill="url(#bh)" stroke="#374151" stroke-width="3"/>',
+    '<ellipse cx="117" cy="57" rx="13" ry="8" fill="#cbd5e1" opacity=".20"/>',
+    '<ellipse cx="128" cy="91" rx="29" ry="9" fill="#000000" opacity=".40"/>',
     '</g>',
     '<g transform="translate(512 0)">',
     '<ellipse cx="128" cy="205" rx="79" ry="15" fill="#020617" opacity=".32"/>',
@@ -162,14 +162,14 @@
     var dark = isDark(opts);
     var root = getComputedRoot(opts);
     return {
-      base: cssValue(root, "--board-depth-base", dark ? "#0b1425" : "#edf4ff"),
-      surface: cssValue(root, "--board-depth-surface", dark ? "#101d33" : "#f8fbff"),
-      frame: cssValue(root, "--board-depth-frame", dark ? "#334155" : "#9fb0c7"),
-      line: cssValue(root, "--board-depth-line", dark ? "#dbe7f7" : "#173458"),
-      accent: cssValue(root, "--accent", dark ? "#60a5fa" : "#2563eb"),
-      accent2: cssValue(root, "--accent-2", dark ? "#38bdf8" : "#0ea5e9"),
-      highlight: cssValue(root, "--board-depth-highlight", dark ? "rgba(96,165,250,.10)" : "rgba(255,255,255,.72)"),
-      shadow: cssValue(root, "--board-depth-shadow", dark ? "rgba(0,0,0,.42)" : "rgba(15,23,42,.18)"),
+      base: dark ? "#111c33" : "#eef5ff",
+      surface: dark ? "#081121" : "#fbfdff",
+      frame: cssValue(root, "--board-diag", dark ? "#f8fbff" : "#010b18"),
+      diag: cssValue(root, "--board-diag", dark ? "#f8fbff" : "#010b18"),
+      grid: cssValue(root, "--board-grid", dark ? "#bfd0e8" : "#01060e"),
+      point: cssValue(root, "--board-grid", dark ? "#bfd0e8" : "#01060e"),
+      highlight: dark ? "rgba(255,255,255,.06)" : "rgba(255,255,255,.34)",
+      shadow: dark ? "rgba(0,0,0,.28)" : "rgba(15,23,42,.12)",
     };
   }
 
@@ -179,31 +179,29 @@
     var minSide = Math.min(W, H);
     ctx.save();
 
-    var base = ctx.createLinearGradient(0, 0, W, H);
+    var base = ctx.createLinearGradient(0, 0, 0, H);
     base.addColorStop(0, pal.surface);
-    base.addColorStop(0.58, pal.base);
-    base.addColorStop(1, dark ? "#0a1324" : "#e5eefb");
+    base.addColorStop(1, pal.base);
     ctx.fillStyle = base;
     ctx.fillRect(0, 0, W, H);
 
-    var identityGlow = ctx.createRadialGradient(W * 0.24, H * 0.18, minSide * 0.02, W * 0.32, H * 0.28, Math.max(W, H) * 0.72);
-    identityGlow.addColorStop(0, dark ? "rgba(56,189,248,.12)" : "rgba(37,99,235,.10)");
-    identityGlow.addColorStop(0.55, "rgba(255,255,255,0)");
-    identityGlow.addColorStop(1, dark ? "rgba(2,6,23,.18)" : "rgba(14,165,233,.035)");
-    ctx.fillStyle = identityGlow;
+    var softShadow = ctx.createRadialGradient(W * 0.5, H * 0.58, minSide * 0.05, W * 0.5, H * 0.58, Math.max(W, H) * 0.82);
+    softShadow.addColorStop(0, dark ? "rgba(0,0,0,.06)" : "rgba(15,23,42,.045)");
+    softShadow.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = softShadow;
     ctx.fillRect(0, 0, W, H);
 
     var sheen = ctx.createLinearGradient(0, 0, W, 0);
     sheen.addColorStop(0, "rgba(255,255,255,0)");
-    sheen.addColorStop(0.45, pal.highlight);
-    sheen.addColorStop(0.62, "rgba(255,255,255,0)");
-    ctx.globalAlpha = dark ? 0.22 : 0.34;
+    sheen.addColorStop(0.42, pal.highlight);
+    sheen.addColorStop(0.60, "rgba(255,255,255,0)");
+    ctx.globalAlpha = dark ? 0.18 : 0.26;
     ctx.fillStyle = sheen;
     ctx.fillRect(0, 0, W, H);
     ctx.globalAlpha = 1;
 
-    ctx.lineWidth = Math.max(0.65, minSide * 0.0009);
-    ctx.strokeStyle = dark ? "rgba(148,163,184,.035)" : "rgba(37,99,235,.035)";
+    ctx.lineWidth = Math.max(0.55, minSide * 0.0008);
+    ctx.strokeStyle = dark ? "rgba(255,255,255,.028)" : "rgba(2,6,23,.026)";
     var grainGap = Math.max(24, minSide * 0.045);
     for (var gy = grainGap; gy < H; gy += grainGap) {
       ctx.beginPath();
@@ -214,17 +212,17 @@
 
     var frameWidth = Math.max(3, minSide * 0.006);
     ctx.lineWidth = frameWidth;
-    ctx.strokeStyle = pal.frame;
+    ctx.strokeStyle = dark ? "rgba(248,251,255,.70)" : "rgba(1,11,24,.30)";
     ctx.shadowColor = pal.shadow;
     ctx.shadowBlur = Math.max(5, minSide * 0.009);
     ctx.shadowOffsetY = Math.max(2, minSide * 0.003);
     ctx.strokeRect(frameWidth / 2, frameWidth / 2, W - frameWidth, H - frameWidth);
 
     ctx.shadowColor = "transparent";
-    ctx.lineWidth = Math.max(1, minSide * 0.0018);
-    ctx.strokeStyle = dark ? "rgba(255,255,255,.11)" : "rgba(255,255,255,.76)";
+    ctx.lineWidth = Math.max(1, minSide * 0.0014);
+    ctx.strokeStyle = dark ? "rgba(255,255,255,.08)" : "rgba(255,255,255,.55)";
     ctx.strokeRect(frameWidth + 1, frameWidth + 1, W - (frameWidth + 1) * 2, H - (frameWidth + 1) * 2);
-    ctx.strokeStyle = dark ? "rgba(2,6,23,.55)" : "rgba(71,85,105,.20)";
+    ctx.strokeStyle = dark ? "rgba(2,6,23,.42)" : "rgba(71,85,105,.14)";
     ctx.strokeRect(frameWidth + 3, frameWidth + 3, W - (frameWidth + 3) * 2, H - (frameWidth + 3) * 2);
     ctx.restore();
   }
@@ -326,10 +324,10 @@
     var pal = dimensional ? dimensionalPalette(opts) : null;
 
     if (dimensional) {
-      ctx.shadowColor = pal.shadow;
-      ctx.shadowBlur = Math.max(2, minSide * 0.0045);
-      ctx.shadowOffsetY = Math.max(1, minSide * 0.0018);
-      ctx.strokeStyle = pal.line;
+      ctx.shadowColor = dark ? "rgba(0,0,0,.18)" : "rgba(15,23,42,.12)";
+      ctx.shadowBlur = Math.max(1.6, minSide * 0.0036);
+      ctx.shadowOffsetY = Math.max(0.7, minSide * 0.0012);
+      ctx.strokeStyle = pal.diag;
     } else {
       ctx.strokeStyle =
         (cssRoot.getPropertyValue("--board-diag") || "").trim() ||
@@ -342,7 +340,7 @@
     drawLineSet(ctx, lines[1], stepX, stepY, opts);
 
     ctx.strokeStyle = dimensional
-      ? pal.line
+      ? pal.grid
       : (cssRoot.getPropertyValue("--board-grid") || "").trim() ||
         (cssRoot.getPropertyValue("--grid") || "").trim() ||
         "#cbd5e1";
@@ -363,7 +361,7 @@
     }
 
     ctx.shadowBlur = dimensional ? Math.max(1, minSide * 0.0025) : 0;
-    ctx.fillStyle = dimensional ? pal.line : opts.pointFill || "#667085";
+    ctx.fillStyle = dimensional ? pal.point : opts.pointFill || "#667085";
     for (var rr = 0; rr < n; rr++) {
       for (var cc = 0; cc < n; cc++) {
         var px = cc * stepX + stepX / 2;
