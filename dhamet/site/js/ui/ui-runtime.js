@@ -2622,6 +2622,11 @@ function bindUI() {
     DhametBoardInput.installCanvasClick(__boardInputCanvas, Input.onBoardClick, {
       onceKey: "__dhametMainBoardClickInstalled",
     });
+    if (typeof DhametBoardInput.installCanvasZoomGuard === "function") {
+      DhametBoardInput.installCanvasZoomGuard(__boardInputCanvas, {
+        onceKey: "__dhametMainBoardZoomGuardInstalled",
+      });
+    }
     DhametBoardInput.installBusyPointerBlocker(__boardInputCanvas, computerBusyKind, {
       onceKey: "__dhametMainBoardBusyBlockerInstalled",
     });

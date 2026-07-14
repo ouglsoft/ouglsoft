@@ -2154,6 +2154,14 @@ body.z-mobile-on[data-mobile-orientation="portrait"][data-mobile-page="game"]
   margin: 0;
   padding: 0 4px 1px;
 }
+body.z-mobile-on[data-mobile-page="game"] canvas#board {
+  width: 100% !important;
+  height: 100% !important;
+  max-width: 100% !important;
+  max-height: 100% !important;
+  touch-action: manipulation;
+}
+
 body.z-mobile-on[data-mobile-page="game"] .board-wrap {
   flex: 0 0 auto;
   align-self: center;

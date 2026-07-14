@@ -92,6 +92,36 @@
     return cleanup;
   }
 
+  function installCanvasZoomGuard(canvas, opts) {
+    opts = opts || {};
+    if (!canvas || typeof canvas.addEventListener !== "function") return null;
+    if (opts.onceKey && canvas[opts.onceKey]) return canvas[opts.onceKey];
+
+    var lastTouchEnd = 0;
+    var preventGesture = function (ev) {
+      try { ev.preventDefault(); } catch (_) {}
+    };
+    var preventDoubleTapZoom = function (ev) {
+      var now = Date.now();
+      if (now - lastTouchEnd <= 350) {
+        try { ev.preventDefault(); } catch (_) {}
+      }
+      lastTouchEnd = now;
+    };
+
+    canvas.addEventListener("dblclick", preventGesture, { passive: false });
+    canvas.addEventListener("gesturestart", preventGesture, { passive: false });
+    canvas.addEventListener("touchend", preventDoubleTapZoom, { passive: false });
+
+    var cleanup = function () {
+      try { canvas.removeEventListener("dblclick", preventGesture, { passive: false }); } catch (_) {}
+      try { canvas.removeEventListener("gesturestart", preventGesture, { passive: false }); } catch (_) {}
+      try { canvas.removeEventListener("touchend", preventDoubleTapZoom, { passive: false }); } catch (_) {}
+    };
+    if (opts.onceKey) canvas[opts.onceKey] = cleanup;
+    return cleanup;
+  }
+
   function installBusyPointerBlocker(target, getBusyKind, opts) {
     opts = opts || {};
     if (!target || typeof target.addEventListener !== "function") return null;
@@ -116,6 +146,7 @@
     shouldIgnoreBoardInput: shouldIgnoreBoardInput,
     shouldBlockBusyPointer: shouldBlockBusyPointer,
     installCanvasClick: installCanvasClick,
+    installCanvasZoomGuard: installCanvasZoomGuard,
     installBusyPointerBlocker: installBusyPointerBlocker,
   });
 
