@@ -229,10 +229,7 @@ const Visual = (() => {
         ? payload.highlightForcePath.slice()
         : [];
 
-      const __bs = Game.settings.boardStyle;
-      Game.settings.boardStyle = "2d";
       draw(canvas);
-      Game.settings.boardStyle = __bs;
 
       if (payload.removeRingIdx != null) {
         const prevCv = S._activeCanvas;
