@@ -49,12 +49,12 @@
   --fs-footer: 12px;
   --board-grid: #01060e;
   --board-diag: #010b18;
-  --board-depth-base: #e8f1ff;
-  --board-depth-surface: #f7faff;
+  --board-depth-base: #eaf2ff;
+  --board-depth-surface: #f8fbff;
   --board-depth-frame: #8aa8d0;
   --board-depth-line: #2563eb;
-  --board-depth-highlight: rgba(255, 255, 255, 0.82);
-  --board-depth-shadow: rgba(30, 64, 175, 0.18);
+  --board-depth-highlight: rgba(255, 255, 255, 0.80);
+  --board-depth-shadow: rgba(30, 64, 175, 0.14);
   --surface-elev-1: rgba(255, 255, 255, 0.78);
   --surface-elev-2: rgba(255, 255, 255, 0.92);
   --surface-stroke: rgba(148, 163, 184, 0.24);
@@ -351,13 +351,13 @@ canvas#board {
 
 body.board-depth canvas#board {
   background: transparent;
-  border-color: var(--board-depth-frame);
+  border-color: rgba(138, 168, 208, 0.52);
 }
 
 body.board-depth .board-wrap {
   box-shadow:
-    0 16px 38px var(--board-depth-shadow),
-    0 4px 12px rgba(15, 23, 42, 0.10);
+    0 12px 28px var(--board-depth-shadow),
+    0 3px 10px rgba(15, 23, 42, 0.08);
 }
 
 
