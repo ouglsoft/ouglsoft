@@ -49,14 +49,12 @@
   --fs-footer: 12px;
   --board-grid: #01060e;
   --board-diag: #010b18;
-  --board3d-base: #dfeafb;
-  --board3d-plate: #cfdef6;
-  --board3d-frame: #8aa4cb;
-  --board3d-cell-light: rgba(255, 255, 255, 0.28);
-  --board3d-cell-dark: rgba(110, 139, 182, 0.18);
-  --board3d-grain-light: rgba(255, 255, 255, 0.10);
-  --board3d-grain-dark: rgba(73, 106, 154, 0.12);
-  --board3d-line: #041127;
+  --board-depth-base: #dce8f8;
+  --board-depth-surface: #edf4ff;
+  --board-depth-frame: #7891b8;
+  --board-depth-line: #102746;
+  --board-depth-highlight: rgba(255, 255, 255, 0.56);
+  --board-depth-shadow: rgba(31, 55, 92, 0.28);
   --surface-elev-1: rgba(255, 255, 255, 0.78);
   --surface-elev-2: rgba(255, 255, 255, 0.92);
   --surface-stroke: rgba(148, 163, 184, 0.24);
@@ -100,14 +98,12 @@
   --btn-shadow: 0 16px 34px rgba(2, 6, 23, 0.48);
   --board-grid: #bfd0e8;
   --board-diag: #f8fbff;
-  --board3d-base: #223746;
-  --board3d-plate: #1b2b37;
-  --board3d-frame: #0d1822;
-  --board3d-cell-light: rgba(96, 165, 250, 0.09);
-  --board3d-cell-dark: rgba(2, 8, 23, 0.22);
-  --board3d-grain-light: rgba(255, 255, 255, 0.05);
-  --board3d-grain-dark: rgba(2, 8, 23, 0.22);
-  --board3d-line: #e5eefc;
+  --board-depth-base: #172334;
+  --board-depth-surface: #223246;
+  --board-depth-frame: #070d17;
+  --board-depth-line: #e5eefc;
+  --board-depth-highlight: rgba(255, 255, 255, 0.08);
+  --board-depth-shadow: rgba(0, 0, 0, 0.55);
   --surface-elev-1: rgba(15, 23, 42, 0.82);
   --surface-elev-2: rgba(15, 23, 42, 0.94);
   --surface-stroke: rgba(148, 163, 184, 0.18);
@@ -344,19 +340,17 @@ canvas#board {
   border: 1px solid var(--board-diag);
 }
 
-#board3d {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  z-index: 1;
+body.board-depth canvas#board {
+  background: transparent;
+  border-color: var(--board-depth-frame);
 }
 
-#board3d canvas {
-  width: 100% !important;
-  height: 100% !important;
-  display: block;
+body.board-depth .board-wrap {
+  box-shadow:
+    0 26px 56px var(--board-depth-shadow),
+    0 8px 20px rgba(15, 23, 42, 0.16);
 }
+
 
 .side {
   display: flex;
@@ -1626,9 +1620,7 @@ body[dir="rtl"] #aiLevelValue {
 }
 
 .ui-hold body.z-game-page.mode-pvp .board-wrap,
-.ui-hold body.z-game-page.mode-pvp #board3d,
 .role-pending body.z-game-page.mode-pvp .board-wrap,
-.role-pending body.z-game-page.mode-pvp #board3d,
 .ui-hold body.z-game-page.mode-pvp #board,
 .role-pending body.z-game-page.mode-pvp #board {
   pointer-events: none;
@@ -2241,10 +2233,6 @@ body[dir="rtl"] .settings-control {
 
 /* Compact desktop game layout. This is used only when the responsive mobile
    controller is not active, so a narrow desktop window never crushes the 9×9 board. */
-#board3d,
-#board3d canvas {
-  pointer-events: none;
-}
 
 @media (max-width: 1160px) {
   body.z-game-page:not(.z-mobile-on) .app {

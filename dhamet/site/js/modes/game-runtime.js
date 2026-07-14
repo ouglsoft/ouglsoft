@@ -1496,7 +1496,6 @@ function applySouflaDecision(requestedDecision, pending) {
   Game._souflaApplying = true;
   try {
     Visual.setSuspended(true);
-    Board3D.setSuspended(true);
   } catch {}
 
   try {
@@ -1590,8 +1589,6 @@ function applySouflaDecision(requestedDecision, pending) {
     console.error("Soufla application failed atomically", error);
     Game._souflaApplying = false;
     try {
-      Board3D.setSuspended(false);
-      Board3D.invalidate();
       Visual.setSuspended(false);
       UI.updateAll();
     } catch {}
@@ -1619,7 +1616,7 @@ function applySouflaDecision(requestedDecision, pending) {
   } catch (error) {
     try { restoreSnapshotSilent(stateBeforePenalty); } catch (_) {}
     Game._souflaApplying = false;
-    try { Board3D.setSuspended(false); Visual.setSuspended(false); UI.updateAll(); } catch (_) {}
+    try { Visual.setSuspended(false); UI.updateAll(); } catch (_) {}
     console.error("Soufla finalization failed atomically", error);
     return false;
   }
@@ -1632,7 +1629,7 @@ function applySouflaDecision(requestedDecision, pending) {
           { noDraw: true },
         );
       } catch (_) {}
-      try { Board3D.setSuspended(false); Board3D.invalidate(); Visual.setSuspended(false); } catch (_) {}
+      try { Visual.setSuspended(false); } catch (_) {}
       Game._souflaApplying = false;
       scheduleComputerMoveIfNeeded();
     });

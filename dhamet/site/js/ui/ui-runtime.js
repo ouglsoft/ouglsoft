@@ -468,25 +468,13 @@ const Visual = (() => {
         H = cv.height;
       ctx.clearRect(0, 0, W, H);
 
-      const __is3d = !!(
-        Game.settings &&
-        Game.settings.boardStyle === "3d" &&
-        typeof Board3D !== "undefined" &&
-        Board3D.ready &&
-        Board3D.enabled
-      );
-
-      if (!__is3d) {
-        drawGrid(ctx, W, H);
-      }
+      drawGrid(ctx, W, H);
       if (S.showCoords || Game.settings.showCoords) drawCoords(ctx, W, H);
 
       for (const [r, c] of S.highlightCells) {
         drawCellHighlight(ctx, r, c);
       }
-      if (!__is3d) {
-        drawPieces(ctx);
-      }
+      drawPieces(ctx);
       const __numLabels = [];
       try { S._arrowStacks = new Map(); } catch (_) { S._arrowStacks = null; }
 
@@ -614,9 +602,6 @@ const Visual = (() => {
       S._activeCanvas = prevCv;
     }
 
-    try {
-      if (Game.settings.boardStyle === "3d") Board3D.syncIfNeeded();
-    } catch {}
   }
 
   function cellCenter(idx) {
@@ -660,6 +645,13 @@ const Visual = (() => {
       documentElement: typeof document !== "undefined" ? document.documentElement : null,
       activeStyle: S._activeStyle || null,
       arrowStacks: S._arrowStacks || null,
+      boardStyle:
+        Game && Game.settings && Game.settings.boardStyle === "3d" ? "3d" : "2d",
+      requestRedraw: () => {
+        try {
+          draw();
+        } catch {}
+      },
       ...extra,
     };
   }
@@ -2655,1099 +2647,93 @@ function bindUI() {
   }
 }
 
-const Board3D = (() => {
-  let enabled = false;
-  let inited = false;
-  let suspended = false;
-
-  let wrap = null;
-  let renderer = null;
-  let scene = null;
-  let camera = null;
-
-  let boardGroup = null;
-  let piecesGroup = null;
-  let hiGroup = null;
-
-  let gridTexCanvas = null;
-  let gridTexture = null;
-  let gridPlane = null;
-
-  let surfaceTexCanvas = null;
-  let surfaceTexture = null;
-  let bumpTexCanvas = null;
-  let bumpTexture = null;
-  let _noiseCanvas = null;
-
-  let M = { W: 0, H: 0, stepX: 0, stepY: 0, unit: 0, halfW: 0, halfH: 0 };
-
-  let lastHash = null;
-
-  function updateMetrics() {
-    const cv = qs("#board");
-    if (!cv) return;
-    const W = Math.max(1, cv.width | 0);
-    const H = Math.max(1, cv.height | 0);
-    const stepX = W / BOARD_N;
-    const stepY = H / BOARD_N;
-    M = { W, H, stepX, stepY, unit: Math.min(stepX, stepY), halfW: W / 2, halfH: H / 2 };
-  }
-
-  function isDarkTheme() {
-    return document.documentElement.classList.contains("dark");
-  }
-
-  function cssVar(name, fallback) {
-    try {
-      const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-      return v || fallback;
-    } catch {
-      return fallback;
-    }
-  }
-
-  function palette() {
-    const dark = isDarkTheme();
-    return {
-      base: cssVar("--board3d-base", dark ? "#223746" : "#dfeafb"),
-      plate: cssVar("--board3d-plate", dark ? "#1b2b37" : "#cfdef6"),
-      frame: cssVar("--board3d-frame", dark ? "#0d1822" : "#8aa4cb"),
-      cellLight: cssVar("--board3d-cell-light", dark ? "rgba(96, 165, 250, 0.09)" : "rgba(255, 255, 255, 0.28)"),
-      cellDark: cssVar("--board3d-cell-dark", dark ? "rgba(2, 8, 23, 0.22)" : "rgba(110, 139, 182, 0.18)"),
-      grainLight: cssVar("--board3d-grain-light", dark ? "rgba(255, 255, 255, 0.05)" : "rgba(255, 255, 255, 0.10)"),
-      grainDark: cssVar("--board3d-grain-dark", dark ? "rgba(2, 8, 23, 0.22)" : "rgba(73, 106, 154, 0.12)"),
-      line: cssVar("--board3d-line", dark ? "#e5eefc" : "#223b63"),
-      lineShadow: dark ? "rgba(0,0,0,0.90)" : "rgba(34,59,99,0.20)",
-    };
-  }
-
-  function ensureDom() {
-    wrap = qs("#board3d");
-  }
-
-  function updateCameraPose() {
-    if (!camera) return;
-    updateMetrics();
-
-    camera.left = -M.halfW;
-    camera.right = M.halfW;
-    camera.top = M.halfH;
-    camera.bottom = -M.halfH;
-
-    camera.near = 1;
-    camera.far = Math.max(5000, Math.max(M.W, M.H) * 8);
-
-    const y = Math.max(900, Math.max(M.W, M.H) * 1.8);
-    camera.position.set(0, y, 0);
-
-    camera.up.set(0, 0, -1);
-    camera.lookAt(0, 0, 0);
-
-    camera.updateProjectionMatrix();
-  }
-
-  function mountModeControls(mode, isSpectator) {
-    try {
-      if (document.body && document.body.classList && document.body.classList.contains("z-mobile-on") && document.body.getAttribute("data-mobile-page") === "game") {
-        return;
-      }
-    } catch (_) {}
-    const pool = document.getElementById("controlsPool");
-    const pvcBox = document.getElementById("pvcControlsBox");
-    const pvpBox = document.getElementById("pvpControlsBox");
-    const row1 = document.getElementById("pvpRow1");
-    const row2 = document.getElementById("pvpRow2");
-    const row3 = document.getElementById("pvpRow3");
-    const specBar = document.getElementById("specBar");
-    if (!pool || !pvcBox || !pvpBox || !row1 || !row2 || !row3 || !specBar) return;
-
-    const els = {
-      endLocal: document.getElementById("btnEndLocalMatch"),
-      endOnline: document.getElementById("btnEndOnline"),
-      sync: document.getElementById("btnSync"),
-      undo: document.getElementById("btnUndo"),
-      settings: document.getElementById("btnSettings"),
-      chat: document.getElementById("btnChat"),
-      spk: document.getElementById("btnSpk"),
-      mic: document.getElementById("btnMic"),
-      newBtn: document.getElementById("btnNew"),
-      save: document.getElementById("btnSave"),
-      resume: document.getElementById("btnResume"),
-    };
-
-    const clear = (node) => {
-      while (node && node.firstChild) node.removeChild(node.firstChild);
-    };
-
-    Object.values(els).forEach((el) => {
-      if (el && el.parentElement !== pool) {
-        pool.appendChild(el);
-      }
-    });
-
-    clear(pvcBox);
-    clear(row1);
-    clear(row2);
-    clear(row3);
-
-    if (isSpectator) {
-      const leaveRoom = document.getElementById("btnLeaveRoom");
-      if (leaveRoom && leaveRoom.parentElement !== specBar) specBar.appendChild(leaveRoom);
-      if (els.chat && els.chat.parentElement !== specBar) specBar.appendChild(els.chat);
-      return;
-    }
-
-    if (mode === "pvp") {
-      [els.endOnline, els.sync, els.undo].forEach((el) => el && row1.appendChild(el));
-
-      [els.chat, els.settings].forEach((el) => el && row2.appendChild(el));
-
-      [els.spk, els.mic].forEach((el) => el && row3.appendChild(el));
-    } else {
-      [els.endLocal, els.undo, els.settings, els.newBtn, els.save, els.resume].forEach(
-        (el) => el && pvcBox.appendChild(el),
-      );
-    }
-  }
-
-  window.ZamatControls = window.ZamatControls || {};
-  window.ZamatControls.mount = function (isOnline, isSpectator) {
-    try {
-      mountModeControls(isOnline ? "pvp" : "pvc", !!isSpectator);
-    } catch (e) {}
-  };
-
-  function init() {
-    if (inited) return true;
-    ensureDom();
-    if (!wrap) return false;
-    if (!window.THREE) return false;
-
-    updateMetrics();
-
-    renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-    try {
-      if (renderer.outputColorSpace !== undefined && THREE.SRGBColorSpace) {
-        renderer.outputColorSpace = THREE.SRGBColorSpace;
-      } else if (renderer.outputEncoding !== undefined && THREE.sRGBEncoding) {
-        renderer.outputEncoding = THREE.sRGBEncoding;
-      }
-    } catch {}
-    try {
-      renderer.shadowMap.enabled = true;
-      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    } catch {}
-
-    renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
-    try {
-      renderer.setClearColor(0x000000, 0);
-    } catch {}
-    wrap.innerHTML = "";
-    wrap.appendChild(renderer.domElement);
-
-    scene = new THREE.Scene();
-    camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 1, 10000);
-    updateCameraPose();
-
-    const amb = new THREE.AmbientLight(0xffffff, 0.8);
-    scene.add(amb);
-
-    const dir = new THREE.DirectionalLight(0xffffff, 0.85);
-    dir.position.set(250, 600, -350);
-    try {
-      dir.castShadow = true;
-      dir.shadow.mapSize.set(1024, 1024);
-
-      const span = Math.max(M.W, M.H) * 0.75;
-      dir.shadow.camera.left = -span;
-      dir.shadow.camera.right = span;
-      dir.shadow.camera.top = span;
-      dir.shadow.camera.bottom = -span;
-      dir.shadow.camera.near = 10;
-      dir.shadow.camera.far = 3000;
-    } catch {}
-    scene.add(dir);
-
-    boardGroup = new THREE.Group();
-    piecesGroup = new THREE.Group();
-    hiGroup = new THREE.Group();
-    scene.add(boardGroup);
-    scene.add(hiGroup);
-    scene.add(piecesGroup);
-
-    buildBoard();
-
-    window.addEventListener("resize", resize);
-
-    try {
-      const mo = new MutationObserver(() => {
-        if (!enabled) return;
-        try {
-          buildBoard();
-          syncPieces();
-          syncHighlights();
-          render();
-        } catch {}
-      });
-      mo.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
-    } catch {}
-
-    resize();
-
-    inited = true;
-    return true;
-  }
-
-  function resize() {
-    if (!renderer || !wrap || !camera) return;
-    updateMetrics();
-    const rect = wrap.getBoundingClientRect();
-    const w = Math.max(10, rect.width | 0);
-    const h = Math.max(10, rect.height | 0);
-    renderer.setSize(w, h, false);
-    updateCameraPose();
-    render();
-  }
-
-  function disposeNode(n) {
-    try {
-      n.traverse?.((o) => {
-        if (o.geometry) {
-          try {
-            o.geometry.dispose?.();
-          } catch {}
-        }
-        const m = o.material;
-        if (Array.isArray(m)) {
-          m.forEach((mm) => {
-            try {
-              mm.dispose?.();
-            } catch {}
-          });
-        } else if (m) {
-          try {
-            m.dispose?.();
-          } catch {}
-        }
-      });
-    } catch {}
-  }
-
-  function clearObj3D(obj) {
-    if (!obj) return;
-    try {
-      while (obj.children && obj.children.length) {
-        const ch = obj.children.pop();
-        try {
-          disposeNode(ch);
-        } catch {}
-      }
-    } catch {}
-  }
-
-  function vrcToPos(vr, vc) {
-    const x = vc * M.stepX + M.stepX / 2 - M.halfW;
-    const z = vr * M.stepY + M.stepY / 2 - M.halfH;
-    return new THREE.Vector3(x, 0, z);
-  }
-
-  function ensureNoiseCanvas() {
-    if (_noiseCanvas) return _noiseCanvas;
-    _noiseCanvas = document.createElement("canvas");
-    _noiseCanvas.width = 256;
-    _noiseCanvas.height = 256;
-    return _noiseCanvas;
-  }
-
-  function drawBoardSurfaceTexture(ctx, W, H, pal) {
-    const dark = isDarkTheme();
-    const stepX = W / BOARD_N;
-    const stepY = H / BOARD_N;
-    ctx.save();
-
-    const bg = ctx.createLinearGradient(0, 0, W, H);
-    bg.addColorStop(0, pal.plate);
-    bg.addColorStop(0.5, pal.base);
-    bg.addColorStop(1, pal.frame);
-    ctx.fillStyle = bg;
-    ctx.fillRect(0, 0, W, H);
-
-    for (let r = 0; r < BOARD_N; r++) {
-      for (let c = 0; c < BOARD_N; c++) {
-        const x = c * stepX;
-        const y = r * stepY;
-        const fill = (r + c) % 2 === 0 ? pal.cellLight : pal.cellDark;
-        ctx.fillStyle = fill;
-        ctx.fillRect(x, y, stepX, stepY);
-
-        const shine = ctx.createLinearGradient(x, y, x + stepX, y + stepY);
-        shine.addColorStop(0, dark ? "rgba(255,255,255,0.04)" : "rgba(255,255,255,0.14)");
-        shine.addColorStop(1, dark ? "rgba(0,0,0,0.12)" : "rgba(0,0,0,0.08)");
-        ctx.fillStyle = shine;
-        ctx.fillRect(x, y, stepX, stepY);
-
-        ctx.strokeStyle = dark ? "rgba(255,255,255,0.035)" : "rgba(255,255,255,0.08)";
-        ctx.lineWidth = 1;
-        ctx.strokeRect(x + 0.5, y + 0.5, stepX - 1, stepY - 1);
-      }
-    }
-
-    const ncv = ensureNoiseCanvas();
-    const nctx = ncv.getContext("2d");
-    const img = nctx.createImageData(256, 256);
-    for (let i = 0; i < img.data.length; i += 4) {
-      const v = (Math.random() * 255) | 0;
-      img.data[i] = v;
-      img.data[i + 1] = v;
-      img.data[i + 2] = v;
-      img.data[i + 3] = dark ? 10 : 14;
-    }
-    nctx.putImageData(img, 0, 0);
-    ctx.globalAlpha = dark ? 0.14 : 0.12;
-    ctx.drawImage(ncv, 0, 0, W, H);
-
-    ctx.globalAlpha = 1;
-    ctx.lineWidth = 1.05;
-    ctx.strokeStyle = pal.grainDark;
-    for (let y = 12; y < H; y += 18) {
-      ctx.beginPath();
-      for (let x = 0; x <= W; x += 12) {
-        const yy = y + Math.sin(x / 48 + y / 70) * 2.3;
-        if (x === 0) ctx.moveTo(x, yy);
-        else ctx.lineTo(x, yy);
-      }
-      ctx.stroke();
-    }
-
-    ctx.strokeStyle = pal.grainLight;
-    ctx.lineWidth = 0.8;
-    for (let y = 20; y < H; y += 26) {
-      ctx.beginPath();
-      for (let x = 0; x <= W; x += 14) {
-        const yy = y + Math.sin(x / 56 + y / 82) * 1.8;
-        if (x === 0) ctx.moveTo(x, yy);
-        else ctx.lineTo(x, yy);
-      }
-      ctx.stroke();
-    }
-
-    const inset = Math.max(10, Math.min(W, H) * 0.03);
-    ctx.strokeStyle = dark ? "rgba(255,255,255,0.07)" : "rgba(255,255,255,0.28)";
-    ctx.lineWidth = 2;
-    ctx.strokeRect(inset, inset, W - inset * 2, H - inset * 2);
-    ctx.strokeStyle = dark ? "rgba(0,0,0,0.28)" : "rgba(0,0,0,0.14)";
-    ctx.strokeRect(inset + 3, inset + 3, W - (inset + 3) * 2, H - (inset + 3) * 2);
-
-    const vg = ctx.createRadialGradient(
-      W * 0.5,
-      H * 0.42,
-      Math.min(W, H) * 0.08,
-      W * 0.5,
-      H * 0.5,
-      Math.max(W, H) * 0.72,
-    );
-    vg.addColorStop(0, "rgba(255,255,255,0)");
-    vg.addColorStop(1, dark ? "rgba(0,0,0,0.32)" : "rgba(0,0,0,0.16)");
-    ctx.fillStyle = vg;
-    ctx.fillRect(0, 0, W, H);
-
-    ctx.restore();
-  }
-
-  function drawBumpTexture(ctx, W, H) {
-    const dark = isDarkTheme();
-    const stepX = W / BOARD_N;
-    const stepY = H / BOARD_N;
-    ctx.save();
-    ctx.fillStyle = "rgb(128,128,128)";
-    ctx.fillRect(0, 0, W, H);
-
-    for (let r = 0; r < BOARD_N; r++) {
-      for (let c = 0; c < BOARD_N; c++) {
-        const x = c * stepX;
-        const y = r * stepY;
-        ctx.fillStyle = (r + c) % 2 === 0 ? "rgba(140,140,140,1)" : "rgba(118,118,118,1)";
-        ctx.fillRect(x, y, stepX, stepY);
-      }
-    }
-
-    const ncv = ensureNoiseCanvas();
-    const nctx = ncv.getContext("2d");
-    const img = nctx.createImageData(256, 256);
-    for (let i = 0; i < img.data.length; i += 4) {
-      const v = 122 + ((Math.random() * 14) | 0);
-      img.data[i] = v;
-      img.data[i + 1] = v;
-      img.data[i + 2] = v;
-      img.data[i + 3] = 255;
-    }
-    nctx.putImageData(img, 0, 0);
-    ctx.globalAlpha = dark ? 0.42 : 0.35;
-    ctx.drawImage(ncv, 0, 0, W, H);
-
-    ctx.globalAlpha = 0.55;
-    ctx.lineWidth = 1;
-    ctx.strokeStyle = "rgba(145,145,145,1)";
-    for (let y = 14; y < H; y += 22) {
-      ctx.beginPath();
-      for (let x = 0; x <= W; x += 14) {
-        const yy = y + Math.sin(x / 52 + y / 74) * 2.2;
-        if (x === 0) ctx.moveTo(x, yy);
-        else ctx.lineTo(x, yy);
-      }
-      ctx.stroke();
-    }
-
-    ctx.strokeStyle = "rgba(112,112,112,1)";
-    ctx.lineWidth = 2;
-    for (let r = 0; r <= BOARD_N; r++) {
-      const y = r * stepY;
-      ctx.beginPath();
-      ctx.moveTo(0, y);
-      ctx.lineTo(W, y);
-      ctx.stroke();
-    }
-    for (let c = 0; c <= BOARD_N; c++) {
-      const x = c * stepX;
-      ctx.beginPath();
-      ctx.moveTo(x, 0);
-      ctx.lineTo(x, H);
-      ctx.stroke();
-    }
-
-    ctx.restore();
-  }
-
-  function drawGrid3DTexture(ctx, W, H, pal) {
-    if (window.DhametBoardView && typeof DhametBoardView.drawGrid3DTexture === "function") {
-      return DhametBoardView.drawGrid3DTexture(ctx, W, H, pal, boardViewOptions());
-    }
-  }
-
-
-  function buildBoard() {
-    updateMetrics();
-    clearObj3D(boardGroup);
-    gridPlane = null;
-
-    const pal = palette();
-    const unit = M.unit;
-
-    function ensureGridTexture() {
-      updateMetrics();
-      const W = Math.max(1, M.W | 0);
-      const H = Math.max(1, M.H | 0);
-
-      const dpr = Math.min(2, window.devicePixelRatio || 1);
-      const cw = Math.max(1, Math.round(W * dpr));
-      const ch = Math.max(1, Math.round(H * dpr));
-
-      if (!gridTexCanvas || gridTexCanvas.width !== cw || gridTexCanvas.height !== ch) {
-        gridTexCanvas = document.createElement("canvas");
-        gridTexCanvas.width = cw;
-        gridTexCanvas.height = ch;
-
-        gridTexture = new THREE.CanvasTexture(gridTexCanvas);
-
-        gridTexture.flipY = false;
-
-        try {
-          gridTexture.generateMipmaps = false;
-          gridTexture.minFilter = THREE.LinearFilter;
-          gridTexture.magFilter = THREE.LinearFilter;
-        } catch {}
-
-        try {
-          if (gridTexture.colorSpace !== undefined && THREE.SRGBColorSpace) {
-            gridTexture.colorSpace = THREE.SRGBColorSpace;
-          }
-        } catch {}
-        try {
-          const maxAn = renderer?.capabilities?.getMaxAnisotropy?.() || 1;
-          gridTexture.anisotropy = Math.min(8, maxAn);
-        } catch {}
-      }
-      const ctx = gridTexCanvas.getContext("2d");
-      ctx.setTransform(1, 0, 0, 1, 0, 0);
-      ctx.clearRect(0, 0, gridTexCanvas.width, gridTexCanvas.height);
-      ctx.setTransform(
-        Math.min(2, window.devicePixelRatio || 1),
-        0,
-        0,
-        Math.min(2, window.devicePixelRatio || 1),
-        0,
-        0,
-      );
-      try {
-        drawGrid3DTexture(ctx, W, H, pal);
-      } catch {
-        try {
-          drawGrid(ctx, W, H);
-        } catch {}
-      }
-      gridTexture.needsUpdate = true;
-    }
-
-    ensureGridTexture();
-
-    (function ensureSurfaceTextures() {
-      updateMetrics();
-      const W = Math.max(1, M.W | 0);
-      const H = Math.max(1, M.H | 0);
-      const dpr = Math.min(2, window.devicePixelRatio || 1);
-      const cw = Math.max(1, Math.round(W * dpr));
-      const ch = Math.max(1, Math.round(H * dpr));
-
-      if (!surfaceTexCanvas || surfaceTexCanvas.width !== cw || surfaceTexCanvas.height !== ch) {
-        surfaceTexCanvas = document.createElement("canvas");
-        surfaceTexCanvas.width = cw;
-        surfaceTexCanvas.height = ch;
-
-        surfaceTexture = new THREE.CanvasTexture(surfaceTexCanvas);
-        surfaceTexture.flipY = false;
-        try {
-          surfaceTexture.generateMipmaps = false;
-          surfaceTexture.minFilter = THREE.LinearFilter;
-          surfaceTexture.magFilter = THREE.LinearFilter;
-        } catch {}
-      }
-
-      if (!bumpTexCanvas || bumpTexCanvas.width !== cw || bumpTexCanvas.height !== ch) {
-        bumpTexCanvas = document.createElement("canvas");
-        bumpTexCanvas.width = cw;
-        bumpTexCanvas.height = ch;
-
-        bumpTexture = new THREE.CanvasTexture(bumpTexCanvas);
-        bumpTexture.flipY = false;
-        try {
-          bumpTexture.generateMipmaps = false;
-          bumpTexture.minFilter = THREE.LinearFilter;
-          bumpTexture.magFilter = THREE.LinearFilter;
-        } catch {}
-      }
-
-      const sctx = surfaceTexCanvas.getContext("2d");
-      sctx.setTransform(1, 0, 0, 1, 0, 0);
-      sctx.clearRect(0, 0, cw, ch);
-      sctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      drawBoardSurfaceTexture(sctx, W, H, pal);
-      surfaceTexture.needsUpdate = true;
-
-      const bctx = bumpTexCanvas.getContext("2d");
-      bctx.setTransform(1, 0, 0, 1, 0, 0);
-      bctx.clearRect(0, 0, cw, ch);
-      bctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      drawBumpTexture(bctx, W, H);
-      bumpTexture.needsUpdate = true;
-    })();
-
-    const baseT = Math.max(16, unit * 0.12);
-    const plateT = baseT;
-    const plate = new THREE.Mesh(
-      new THREE.BoxGeometry(M.W, baseT, M.H),
-      new THREE.MeshStandardMaterial({
-        color: new THREE.Color(pal.plate || pal.base),
-        map: surfaceTexture || null,
-        bumpMap: bumpTexture || null,
-        bumpScale: Math.max(0.4, unit * 0.008),
-        roughness: 0.86,
-        metalness: 0.02,
-      }),
-    );
-    plate.position.y = -plateT / 2 + 0.02;
-    plate.receiveShadow = true;
-    boardGroup.add(plate);
-
-    const frameT = Math.max(18, baseT * 1.15);
-    const frame = new THREE.Mesh(
-      new THREE.BoxGeometry(M.W * 1.035, frameT, M.H * 1.035),
-      new THREE.MeshStandardMaterial({
-        color: new THREE.Color(pal.frame || pal.base),
-        map: surfaceTexture || null,
-        bumpMap: bumpTexture || null,
-        bumpScale: Math.max(0.5, unit * 0.009),
-        roughness: 0.96,
-        metalness: 0.0,
-      }),
-    );
-    frame.position.y = -frameT / 2 - 0.6;
-    frame.receiveShadow = true;
-    boardGroup.add(frame);
-
-    gridPlane = new THREE.Mesh(
-      new THREE.PlaneGeometry(M.W, M.H),
-      (() => {
-        const m = new THREE.MeshBasicMaterial({
-          map: gridTexture,
-          transparent: true,
-          opacity: 1,
-          depthWrite: false,
-          alphaTest: 0.01,
-          side: THREE.DoubleSide,
-        });
-
-        try {
-          m.toneMapped = false;
-        } catch {}
-        return m;
-      })(),
-    );
-    gridPlane.rotation.x = -Math.PI / 2;
-    gridPlane.position.y = 0.03;
-    gridPlane.receiveShadow = false;
-    gridPlane.renderOrder = 1;
-    boardGroup.add(gridPlane);
-  }
-
-  function piecePalette(isWhite) {
-    if (isWhite) {
-      return {
-        body: 0xffffff,
-        rim: 0x000814,
-        emissive: 0x9ab9e6,
-        emissiveIntensity: 0.035,
-        roughness: 0.22,
-        metalness: 0.08,
-      };
-    }
-    return {
-      body: 0x06080d,
-      rim: 0xff3c00,
-      emissive: 0x1b1208,
-      emissiveIntensity: 0.06,
-      roughness: 0.32,
-      metalness: 0.1,
-    };
-  }
-
-  function makePawnMaterial(isWhite) {
-    const pal = piecePalette(isWhite);
-    return new THREE.MeshStandardMaterial({
-      color: pal.body,
-      roughness: pal.roughness,
-      metalness: pal.metalness,
-      emissive: pal.emissive,
-      emissiveIntensity: pal.emissiveIntensity,
-    });
-  }
-
-  function makePawn(isWhite) {
-    const g = new THREE.Group();
-    const mat = makePawnMaterial(isWhite);
-    const pal = piecePalette(isWhite);
-
-    const base = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.4, 0.14, 20), mat);
-    base.position.y = 0.07;
-    g.add(base);
-
-    const rim = new THREE.Mesh(
-      new THREE.TorusGeometry(0.34, 0.028, 10, 28),
-      new THREE.MeshStandardMaterial({
-        color: pal.rim,
-        roughness: 0.3,
-        metalness: 0.12,
-      }),
-    );
-    rim.rotation.x = Math.PI / 2;
-    rim.position.y = 0.145;
-    g.add(rim);
-
-    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.23, 0.3, 0.42, 20), mat);
-    body.position.y = 0.14 + 0.21;
-    g.add(body);
-
-    const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.2, 0.1, 18), mat);
-    neck.position.y = 0.14 + 0.42 + 0.05;
-    g.add(neck);
-
-    const head = new THREE.Mesh(new THREE.SphereGeometry(0.18, 22, 18), mat);
-    head.position.y = 0.14 + 0.42 + 0.1 + 0.18;
-    g.add(head);
-
-    const topAccent = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.12, 0.135, 0.028, 18),
-      new THREE.MeshStandardMaterial({
-        color: pal.rim,
-        roughness: 0.28,
-        metalness: 0.14,
-      }),
-    );
-    topAccent.position.y = 0.14 + 0.42 + 0.1 + 0.18 + 0.11;
-    g.add(topAccent);
-
-    return g;
-  }
-
-  function makeKing(isWhite) {
-    const g = new THREE.Group();
-    const mat = makePawnMaterial(isWhite);
-    const pal = piecePalette(isWhite);
-
-    const gold = new THREE.MeshStandardMaterial({
-      color: 0xfacc15,
-      roughness: 0.35,
-      metalness: 0.25,
-      emissive: 0x3b2a00,
-      emissiveIntensity: 0.1,
-    });
-
-    const base = new THREE.Mesh(new THREE.CylinderGeometry(0.38, 0.44, 0.14, 20), mat);
-    base.position.y = 0.07;
-    g.add(base);
-
-    const rim = new THREE.Mesh(
-      new THREE.TorusGeometry(0.37, 0.03, 10, 30),
-      new THREE.MeshStandardMaterial({
-        color: pal.rim,
-        roughness: 0.28,
-        metalness: 0.14,
-      }),
-    );
-    rim.rotation.x = Math.PI / 2;
-    rim.position.y = 0.148;
-    g.add(rim);
-
-    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.3, 0.55, 20), mat);
-    body.position.y = 0.14 + 0.275;
-    g.add(body);
-
-    const accentBand = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.28, 0.26, 0.045, 20),
-      new THREE.MeshStandardMaterial({
-        color: pal.rim,
-        roughness: 0.28,
-        metalness: 0.14,
-      }),
-    );
-    accentBand.position.y = 0.14 + 0.22;
-    g.add(accentBand);
-
-    const crownRing = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.24, 0.1, 18), gold);
-    crownRing.position.y = 0.14 + 0.55 + 0.05;
-    g.add(crownRing);
-
-    const spikeGeo = new THREE.ConeGeometry(0.05, 0.1, 10);
-    for (let i = 0; i < 6; i++) {
-      const a = (i / 6) * Math.PI * 2;
-      const sp = new THREE.Mesh(spikeGeo, gold);
-      sp.position.set(Math.cos(a) * 0.22, 0.14 + 0.55 + 0.1, Math.sin(a) * 0.22);
-      sp.rotation.x = Math.PI;
-      g.add(sp);
-    }
-
-    const ball = new THREE.Mesh(new THREE.SphereGeometry(0.12, 18, 16), gold);
-    ball.position.y = 0.14 + 0.55 + 0.18 + 0.1;
-    g.add(ball);
-
-    const v = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.22, 0.06), gold);
-    v.position.y = 0.14 + 0.55 + 0.18 + 0.22;
-    g.add(v);
-
-    const h = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.06, 0.06), gold);
-    h.position.y = 0.14 + 0.55 + 0.18 + 0.22 + 0.03;
-    g.add(h);
-
-    return g;
-  }
-
-  function hashBoard() {
-    let h = 2166136261 | 0;
-    for (let r = 0; r < BOARD_N; r++) {
-      for (let c = 0; c < BOARD_N; c++) {
-        const v = Game.board[r][c] | 0;
-        h ^= (v + 31) | 0;
-        h = Math.imul(h, 16777619) | 0;
-      }
-    }
-    try {
-      const sel = window.Input && Input.selected != null ? Input.selected | 0 : -1;
-      h ^= (sel + 131) | 0;
-      h = Math.imul(h, 16777619) | 0;
-    } catch {}
-    try {
-      const hc =
-        window.Visual && typeof Visual.getHighlightCells === "function"
-          ? Visual.getHighlightCells()
-          : [];
-      if (hc && hc.length) {
-        for (const [rr, cc] of hc) {
-          h ^= (rr * 31 + cc + 503) | 0;
-          h = Math.imul(h, 16777619) | 0;
-        }
-      }
-    } catch {}
-    return h;
-  }
-
-  function syncPieces() {
-    updateMetrics();
-    clearObj3D(piecesGroup);
-
-    const scale = Math.max(1, M.unit * 0.82);
-    const lift = Math.max(1.0, M.unit * 0.01);
-
-    for (let r = 0; r < BOARD_N; r++) {
-      for (let c = 0; c < BOARD_N; c++) {
-        const v = Game.board[r][c];
-        if (!v) continue;
-
-        const [vr, vc] = toViewRC(r, c);
-        const p = vrcToPos(vr, vc);
-
-        const isWhite = pieceOwner(v) === BOT;
-        const isKing = Math.abs(v) === 2;
-
-        const mesh = isKing ? makeKing(isWhite) : makePawn(isWhite);
-        try {
-          mesh.traverse((o) => {
-            if (o && o.isMesh) {
-              o.castShadow = true;
-              o.receiveShadow = false;
-            }
-          });
-        } catch {}
-
-        mesh.scale.setScalar(scale);
-        mesh.position.set(p.x, lift, p.z);
-        piecesGroup.add(mesh);
-      }
-    }
-  }
-
-  function syncHighlights() {
-    updateMetrics();
-    clearObj3D(hiGroup);
-
-    const hi =
-      window.Visual && typeof Visual.getHighlightCells === "function"
-        ? Visual.getHighlightCells()
-        : [];
-    if (!hi || !hi.length) return;
-
-    const unit = M.unit;
-    const mat = new THREE.MeshStandardMaterial({
-      color: 0xef4444,
-      transparent: true,
-      opacity: 0.35,
-      roughness: 0.6,
-      metalness: 0.0,
-    });
-
-    const ringR = Math.max(10, unit * 0.25);
-    const tube = Math.max(2.6, unit * 0.04);
-    const geo = new THREE.TorusGeometry(ringR, tube, 12, 26);
-
-    const y = Math.max(1.2, unit * 0.012);
-
-    for (const [r, c] of hi) {
-      const [vr, vc] = toViewRC(r, c);
-      const p = vrcToPos(vr, vc);
-
-      const ring = new THREE.Mesh(geo, mat);
-      ring.rotation.x = Math.PI / 2;
-      ring.position.set(p.x, y, p.z);
-      hiGroup.add(ring);
-    }
-  }
-
-  function syncIfNeeded() {
-    if (!enabled || !inited || suspended) return;
-    if (Game && ((Game._simDepth || 0) > 0 || Game._souflaApplying)) return;
-    const h = hashBoard();
-    if (h === lastHash) return;
-    lastHash = h;
-    syncPieces();
-    syncHighlights();
-    render();
-  }
-
-  function setSuspended(v) {
-    suspended = !!v;
-    if (!suspended) {
-      lastHash = null;
-      syncIfNeeded();
-    }
-  }
-
-  function invalidate() {
-    lastHash = null;
-    syncIfNeeded();
-  }
-
-  function render() {
-    if (!enabled || !renderer || !scene || !camera) return;
-    renderer.render(scene, camera);
-  }
-
-  function setEnabled(v) {
-    const next = !!v;
-    if (!next) {
-      enabled = false;
-      return;
-    }
-    if (!init()) {
-      enabled = false;
-      return;
-    }
-    enabled = true;
-    lastHash = null;
-    syncIfNeeded();
-  }
-
-  function show() {
-    ensureDom();
-    if (wrap) wrap.style.display = "block";
-  }
-
-  function hide() {
-    ensureDom();
-    if (wrap) wrap.style.display = "none";
-  }
-
-  return {
-    enable() {
-      setEnabled(true);
-    },
-    disable() {
-      setEnabled(false);
-    },
-    show,
-    hide,
-    resize,
-    render,
-    syncIfNeeded,
-    setSuspended,
-    invalidate,
-    get enabled() {
-      return enabled;
-    },
-    get ready() {
-      return !!(inited && renderer && scene && camera);
-    },
-  };
-})();
-
-let threeRuntimePromise = null;
-const THREE_RUNTIME_SRC = "https://cdn.jsdelivr.net/npm/three@0.149.0/build/three.min.js";
-
-function ensureThreeRuntime() {
-  if (window.THREE) return Promise.resolve(true);
-  if (threeRuntimePromise) return threeRuntimePromise;
-  threeRuntimePromise = new Promise((resolve) => {
-    let settled = false;
-    let script = document.getElementById("dhametThreeRuntime");
-    const finish = (ok) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timeoutId);
-      resolve(!!ok && !!window.THREE);
-    };
-    const timeoutId = setTimeout(() => finish(false), 8000);
-    if (!script) {
-      script = document.createElement("script");
-      script.id = "dhametThreeRuntime";
-      script.src = THREE_RUNTIME_SRC;
-      script.async = true;
-      script.crossOrigin = "anonymous";
-      (document.head || document.documentElement).appendChild(script);
-    }
-    if (window.THREE) {
-      finish(true);
-      return;
-    }
-    script.addEventListener("load", () => finish(true), { once: true });
-    script.addEventListener("error", () => finish(false), { once: true });
-  }).then((ready) => {
-    if (!ready) {
-      try { document.getElementById("dhametThreeRuntime")?.remove(); } catch {}
-      threeRuntimePromise = null;
-    }
-    return ready;
-  });
-  return threeRuntimePromise;
-}
-
-function setBoard3DLoading(loading) {
+function mountModeControls(mode, isSpectator) {
   try {
-    document.body && document.body.classList.toggle("board-3d-loading", !!loading);
-  } catch {}
-}
-
-function applyBoardStyle(style) {
-  const cv = qs("#board");
-  const w3 = qs("#board3d");
-  const requested = style === "3d" ? "3d" : "2d";
-  Game.settings.boardStyle = requested;
-
-  if (requested === "3d" && !window.THREE) {
-    setBoard3DLoading(true);
-    try {
-      document.body && document.body.classList.remove("board-3d");
-      Board3D.disable();
-      Board3D.hide();
-    } catch {}
-    if (w3) w3.style.display = "none";
-    if (cv) {
-      cv.style.opacity = "";
-      cv.style.pointerEvents = "";
-      cv.style.background = "";
-      cv.style.backgroundColor = "";
+    if (
+      document.body &&
+      document.body.classList &&
+      document.body.classList.contains("z-mobile-on") &&
+      document.body.getAttribute("data-mobile-page") === "game"
+    ) {
+      return;
     }
-    try { Visual.draw(); } catch {}
-    ensureThreeRuntime().then((ready) => {
-      setBoard3DLoading(false);
-      if (Game.settings.boardStyle !== "3d") return;
-      if (ready) {
-        applyBoardStyle("3d");
-        return;
-      }
-      Game.settings.boardStyle = "2d";
-      try { showUiNotice(t("errors.render3d.failed")); } catch {}
-      applyBoardStyle("2d");
-    });
+  } catch (_) {}
+
+  const pool = document.getElementById("controlsPool");
+  const pvcBox = document.getElementById("pvcControlsBox");
+  const pvpBox = document.getElementById("pvpControlsBox");
+  const row1 = document.getElementById("pvpRow1");
+  const row2 = document.getElementById("pvpRow2");
+  const row3 = document.getElementById("pvpRow3");
+  const specBar = document.getElementById("specBar");
+  if (!pool || !pvcBox || !pvpBox || !row1 || !row2 || !row3 || !specBar) return;
+
+  const els = {
+    endLocal: document.getElementById("btnEndLocalMatch"),
+    endOnline: document.getElementById("btnEndOnline"),
+    sync: document.getElementById("btnSync"),
+    undo: document.getElementById("btnUndo"),
+    settings: document.getElementById("btnSettings"),
+    chat: document.getElementById("btnChat"),
+    spk: document.getElementById("btnSpk"),
+    mic: document.getElementById("btnMic"),
+    newBtn: document.getElementById("btnNew"),
+    save: document.getElementById("btnSave"),
+    resume: document.getElementById("btnResume"),
+  };
+
+  const clear = (node) => {
+    while (node && node.firstChild) node.removeChild(node.firstChild);
+  };
+
+  Object.values(els).forEach((el) => {
+    if (el && el.parentElement !== pool) pool.appendChild(el);
+  });
+
+  clear(pvcBox);
+  clear(row1);
+  clear(row2);
+  clear(row3);
+
+  if (isSpectator) {
+    const leaveRoom = document.getElementById("btnLeaveRoom");
+    if (leaveRoom && leaveRoom.parentElement !== specBar) specBar.appendChild(leaveRoom);
+    if (els.chat && els.chat.parentElement !== specBar) specBar.appendChild(els.chat);
     return;
   }
 
-  setBoard3DLoading(false);
-  const is3D = requested === "3d";
+  if (mode === "pvp") {
+    [els.endOnline, els.sync, els.undo].forEach((el) => el && row1.appendChild(el));
+    [els.chat, els.settings].forEach((el) => el && row2.appendChild(el));
+    [els.spk, els.mic].forEach((el) => el && row3.appendChild(el));
+  } else {
+    [els.endLocal, els.undo, els.settings, els.newBtn, els.save, els.resume].forEach(
+      (el) => el && pvcBox.appendChild(el),
+    );
+  }
+}
+
+window.ZamatControls = window.ZamatControls || {};
+window.ZamatControls.mount = function (isOnline, isSpectator) {
   try {
-    document.body && document.body.classList.toggle("board-3d", is3D);
+    mountModeControls(isOnline ? "pvp" : "pvc", !!isSpectator);
+  } catch {}
+};
+
+function applyBoardStyle(style) {
+  const requested = style === "3d" ? "3d" : "2d";
+  Game.settings.boardStyle = requested;
+
+  try {
+    document.body && document.body.classList.toggle("board-depth", requested === "3d");
   } catch {}
 
-  if (is3D) {
-    if (w3) w3.style.display = "block";
-    if (cv) {
-      cv.style.opacity = "1";
-      cv.style.pointerEvents = "auto";
-      cv.style.background = "transparent";
-      cv.style.backgroundColor = "transparent";
-    }
-    try {
-      Board3D.show();
-      Board3D.enable();
-      if (!Board3D.ready || !Board3D.enabled) throw new Error("3D renderer unavailable");
-      Board3D.resize();
-    } catch {
-      Game.settings.boardStyle = "2d";
-      try { showUiNotice(t("errors.render3d.failed")); } catch {}
-      applyBoardStyle("2d");
-      return;
-    }
-  } else {
-    try {
-      Board3D.disable();
-      Board3D.hide();
-    } catch {}
-    if (w3) w3.style.display = "none";
-    if (cv) {
-      cv.style.opacity = "";
-      cv.style.pointerEvents = "";
-      cv.style.background = "";
-      cv.style.backgroundColor = "";
-    }
-  }
+  const canvas = qs("#board");
+  if (canvas) canvas.dataset.boardStyle = requested;
 
-  try { Visual.draw(); } catch {}
+  try {
+    Visual.draw();
+  } catch {}
 }
 
 function bindEndKillShortcut() {

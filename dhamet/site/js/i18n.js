@@ -576,9 +576,6 @@
         "network": "مشكلة اتصال",
         "timeout": "انتهت مهلة الاتصال",
         "auth": "مشكلة مصادقة"
-      },
-      "render3d": {
-        "failed": "تعذر تشغيل العرض ثلاثي الأبعاد. سيتم استخدام الشكل ثنائي الأبعاد."
       }
     }
 
@@ -1159,9 +1156,6 @@
         "network": "Network issue",
         "timeout": "Connection timed out",
         "auth": "Authentication issue"
-      },
-      "render3d": {
-        "failed": "Failed to start the 3D view. Falling back to 2D."
       }
     }
 
@@ -1742,9 +1736,6 @@
         "network": "Problème de réseau",
         "timeout": "Délai de connexion dépassé",
         "auth": "Problème d’authentification"
-      },
-      "render3d": {
-        "failed": "Impossible de lancer la vue 3D. Retour au mode 2D."
       }
     }
 
