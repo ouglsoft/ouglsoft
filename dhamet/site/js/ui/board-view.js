@@ -321,6 +321,7 @@
     var stepY = H / n;
     var cssRoot = getComputedRoot(opts);
     var minSide = Math.min(W, H);
+    var dark = isDark(opts);
     var pal = dimensional ? dimensionalPalette(opts) : null;
 
     if (dimensional) {
