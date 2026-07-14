@@ -2,7 +2,6 @@ import '../../shared/dhamet-utils.js';
 import '../../shared/dhamet-stats.js';
 import '../../shared/dhamet-live.js';
 import '../../shared/dhamet-presence.js';
-import { buildPvpTrainingRecord, queueTrainingRecord } from '../lib/training-store.js';
 
 /*
  * Game API routes for Cloudflare Worker.
@@ -20,7 +19,6 @@ export function createGameRouteHandlers(deps) {
   const getRealtimeStub = deps && deps.getRealtimeStub;
   const json = deps && deps.json;
   const bad = deps && deps.bad;
-  const requireDb = deps && deps.requireDb;
   const writeRealtime = deps && deps.writeRealtime;
 
   if (typeof requireSession !== 'function') throw new Error('game routes require requireSession');
@@ -141,37 +139,25 @@ export function createGameRouteHandlers(deps) {
     return json(data, forwarded.status || 200);
   }
 
-  async function forwardGameRequestAndRecordResult(request, env, internalPath, body, triggerKind, options, ctx) {
+  async function forwardGameRequestAndRecordResult(request, env, internalPath, body, triggerKind, options) {
     const forwarded = await forwardGameData(request, env, internalPath, body);
     if (forwarded.response) return forwarded.response;
     const data = forwarded.data || {};
     if (forwarded.res && forwarded.res.ok && data && data.ok !== false && data.committed !== false) {
-      const officialStats = await recordOfficialPvpResult(env, Object.assign({ gameId: forwarded.gameId }, data), triggerKind);
-      if (officialStats) data.officialStats = officialStats;
-      if (officialStats && officialStats.ok === false) data.statsPending = true;
-
       const game = data && data.game && typeof data.game === 'object' ? data.game : null;
-      if (game && String(game.status || '') === 'ended' && !data.duplicate && triggerKind !== 'resync' && (!officialStats || officialStats.ok !== false)) {
-        const roundId = StatsCore.roundIdForGame(game);
-        const task = queueTrainingRecord(env, buildPvpTrainingRecord(game, (data && data.result) || game.result, roundId));
-        if (ctx && typeof ctx.waitUntil === 'function') {
-          ctx.waitUntil(task);
-          data.training = { ok: true, queued: true, roundId };
-        } else {
-          data.training = await task;
-        }
+      if (game && String(game.status || '') === 'ended') {
+        const officialStats = await ensureOfficialPvpResult(env, forwarded.gameId, triggerKind);
+        if (officialStats) data.officialStats = officialStats;
       }
+
     }
     if (options && options.touchActivity && forwarded.res && forwarded.res.ok && data && data.ok !== false) {
       data.activityTouched = await touchLightweightGameActivity(env, body, data, options.touchKind || triggerKind || 'game-activity');
     }
     if (options && options.removeRoomOnEnd && forwarded.res && forwarded.res.ok && data && data.ok !== false) {
       const game = data && data.game && typeof data.game === 'object' ? data.game : null;
-      if (game && String(game.status || '') === 'ended' && !(data.officialStats && data.officialStats.ok === false)) {
+      if (game && String(game.status || '') === 'ended') {
         data.roomListRemoved = await removeGlobalRoomListEntry(env, forwarded.gameId || (body && body.gameId), game.endedReason || triggerKind || 'ended');
-      } else if (game && String(game.status || '') === 'ended') {
-        data.roomListRemoved = false;
-        data.statsPending = true;
       }
     }
     return json(data, forwarded.status || 200);
@@ -212,73 +198,25 @@ export function createGameRouteHandlers(deps) {
 
 
 
-  async function readRegisteredUsers(env, uids) {
-    const ids = Array.from(new Set((uids || []).map((u) => String(u || '').trim()).filter(Boolean)));
-    const out = Object.create(null);
-    if (!ids.length) return out;
-    if (typeof requireDb !== 'function') throw new Error('stats/database-unavailable');
-    const db = requireDb(env);
-    for (const uid of ids) {
-      const row = await db.prepare('SELECT id, kind, nickname, display_name, icon, deleted_at FROM users WHERE id = ?1 AND deleted_at IS NULL').bind(uid).first();
-      if (row && row.kind === 'registered') out[uid] = row;
+  async function ensureOfficialPvpResult(env, gameId, triggerKind) {
+    const gid = cleanPath(gameId || '');
+    if (!gid) return { ok: true, skipped: true, reason: 'missing-game-id' };
+    try {
+      const stub = getRealtimeStub(env, 'game:' + gid);
+      const response = await stub.fetch('https://realtime.internal/api/game/ensure-stats', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-internal-secret': env.INTERNAL_API_SECRET || '' },
+        body: JSON.stringify({ gameId: gid, trigger: String(triggerKind || 'game-result').slice(0, 40) }),
+      });
+      const payload = await response.json().catch(() => ({ ok: false, error: 'stats/invalid-response' }));
+      if (!response.ok || !payload) return { ok: true, pending: true, reason: payload && payload.error || 'stats/pending-retry' };
+      return payload;
+    } catch (error) {
+      console.error(JSON.stringify({ level: 'error', area: 'pvp-stats', event: 'ensure-failed', gameId: gid, message: String(error && error.message || error) }));
+      return { ok: true, pending: true, reason: 'stats/pending-retry' };
     }
-    return out;
   }
 
-  async function recordOfficialPvpResult(env, data, triggerKind) {
-    try {
-      const game = data && data.game && typeof data.game === 'object' ? data.game : null;
-      if (!game) return { ok: true, skipped: true, reason: 'missing-game' };
-      const eligibility = StatsCore.shouldRecordOfficialPvpResult(game, (data && data.result) || game.result);
-      if (!eligibility || !eligibility.ok) return { ok: true, skipped: true, reason: eligibility && eligibility.reason || 'not-recordable' };
-      const result = eligibility.result;
-      const players = eligibility.players || [];
-      const registered = await readRegisteredUsers(env, players.map((player) => player.uid));
-      const rows = [];
-      for (const player of players) {
-        const uid = cleanPath(player.uid);
-        const row = registered[uid];
-        const outcome = StatsCore.resultForSide(result, player.side);
-        if (!uid || !row || !StatsCore.normalizeOutcome(outcome)) continue;
-        rows.push({
-          uid,
-          side: Number(player.side),
-          outcome,
-          nickname: row.nickname || row.display_name || '',
-          icon: row.icon || 'assets/icons/users/user1.png',
-        });
-      }
-      if (!rows.length) return { ok: true, skipped: true, reason: 'no-registered-players', roundId: eligibility.roundId };
-      const stub = getRealtimeStub(env, 'global');
-      const body = JSON.stringify({
-        mode: 'pvp',
-        roundId: eligibility.roundId,
-        matchKey: eligibility.matchKey,
-        gameId: cleanPath((data && data.gameId) || game.gameId || game.id || eligibility.matchKey),
-        endedAt: Number(result.endedAt || game.endedAt || Date.now()) || Date.now(),
-        trigger: String(triggerKind || 'game-result').slice(0, 40),
-        players: rows,
-      });
-      let lastPayload = null;
-      let lastStatus = 500;
-      for (let attempt = 0; attempt < 2; attempt += 1) {
-        const response = await stub.fetch('https://realtime.internal/api/stats/record-result', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json', 'x-internal-secret': env.INTERNAL_API_SECRET || '' },
-          body,
-        });
-        const payload = await response.json().catch(() => ({ ok: false, error: 'stats/invalid-response' }));
-        lastPayload = payload;
-        lastStatus = response.status;
-        if (response.ok && payload && payload.ok !== false) return payload;
-      }
-      console.error(JSON.stringify({ level: 'error', area: 'pvp-stats', event: 'record-failed', gameId: String((data && data.gameId) || ''), status: lastStatus, error: lastPayload && lastPayload.error || 'stats/record-failed' }));
-      return { ok: false, error: lastPayload && lastPayload.error || 'stats/record-failed', retryAttempted: true };
-    } catch (error) {
-      console.error(JSON.stringify({ level: 'error', area: 'pvp-stats', event: 'record-exception', message: String(error && error.message || error) }));
-      return { ok: false, error: 'stats/record-failed' };
-    }
-  }
 
 
 
@@ -287,7 +225,7 @@ export function createGameRouteHandlers(deps) {
     const body = await requestBody(request);
     const blocked = rejectClientTruth(body);
     if (blocked) return blocked;
-    return forwardGameRequestAndRecordResult(request, env, '/api/game/move', { ...body, uid: session.user.id }, 'move', { touchActivity: true, touchKind: 'move' }, ctx);
+    return forwardGameRequestAndRecordResult(request, env, '/api/game/move', { ...body, uid: session.user.id }, 'move', { touchActivity: true, touchKind: 'move' });
   }
 
   async function resync(request, env, ctx) {
@@ -295,7 +233,7 @@ export function createGameRouteHandlers(deps) {
     const body = await requestBody(request);
     const blocked = rejectClientTruth(body);
     if (blocked) return blocked;
-    return forwardGameRequestAndRecordResult(request, env, '/api/game/resync', { ...body, uid: session.user.id }, 'resync', { touchActivity: true, touchKind: 'resync' }, ctx);
+    return forwardGameRequestAndRecordResult(request, env, '/api/game/resync', { ...body, uid: session.user.id }, 'resync', { touchActivity: true, touchKind: 'resync' });
   }
 
   async function soufla(request, env, ctx) {
@@ -303,7 +241,7 @@ export function createGameRouteHandlers(deps) {
     const body = await requestBody(request);
     const blocked = rejectClientTruth(body);
     if (blocked) return blocked;
-    return forwardGameRequestAndRecordResult(request, env, '/api/game/soufla', { ...body, uid: session.user.id }, 'soufla', { touchActivity: true, touchKind: 'soufla' }, ctx);
+    return forwardGameRequestAndRecordResult(request, env, '/api/game/soufla', { ...body, uid: session.user.id }, 'soufla', { touchActivity: true, touchKind: 'soufla' });
   }
 
   async function control(request, env, ctx) {
@@ -311,7 +249,7 @@ export function createGameRouteHandlers(deps) {
     const body = await requestBody(request);
     const blocked = rejectClientTruth(body);
     if (blocked) return blocked;
-    return forwardGameRequestAndRecordResult(request, env, '/api/game/control', { ...body, uid: session.user.id }, 'control', { touchActivity: true, touchKind: 'control' }, ctx);
+    return forwardGameRequestAndRecordResult(request, env, '/api/game/control', { ...body, uid: session.user.id }, 'control', { touchActivity: true, touchKind: 'control' });
   }
 
   async function end(request, env, ctx) {
@@ -319,7 +257,7 @@ export function createGameRouteHandlers(deps) {
     const body = await requestBody(request);
     const blocked = rejectClientTruth(body);
     if (blocked) return blocked;
-    return forwardGameRequestAndRecordResult(request, env, '/api/game/end', { ...body, uid: session.user.id }, 'end', { removeRoomOnEnd: true }, ctx);
+    return forwardGameRequestAndRecordResult(request, env, '/api/game/end', { ...body, uid: session.user.id }, 'end', { removeRoomOnEnd: true });
   }
 
   async function rematch(request, env) {

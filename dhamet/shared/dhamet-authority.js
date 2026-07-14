@@ -341,6 +341,18 @@
         ply,
         penalty: decision.kind,
         offenderIdx: decision.offenderIdx,
+        stateBefore: {
+          board: clone(currentSnapshot.board),
+          player: penalizer,
+          inChain: !!currentSnapshot.inChain,
+          chainPos: currentSnapshot.chainPos == null ? -1 : Number(currentSnapshot.chainPos),
+          forcedEnabled: !!currentSnapshot.forcedEnabled,
+          forcedPly: Math.max(0, Number(currentSnapshot.forcedPly || currentSnapshot.openingPly || 0) || 0),
+          openingStarter: side(currentSnapshot.openingStarter) || 0,
+          moveCount: Math.max(0, Number(currentSnapshot.moveCount || record.ply || 0) || 0),
+          deferredPromotions: clone(promotionStart.deferredPromotions || []),
+          soufla: clone(pending),
+        },
         result: { decision, pending, removed: appliedMeta.removed || null, fx },
       }));
       if (result && result.terminal && typeof Events.createGameEndedEvent === 'function') {

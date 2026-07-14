@@ -95,18 +95,25 @@ export class RealtimeObject {
   async _load() {
     if (!this.root) this.root = (await this.ctx.storage.get('root')) || {};
     if (!this.versions) this.versions = (await this.ctx.storage.get('versions')) || { '': now() };
+    if (!this.pendingOfficialStats) this.pendingOfficialStats = (await this.ctx.storage.get('pendingOfficialStats')) || {};
   }
   async _save(maintenanceDelayMs) {
-    await this.ctx.storage.put({ root: this.root || {}, versions: this.versions || { '': now() } });
+    await this.ctx.storage.put({
+      root: this.root || {},
+      versions: this.versions || { '': now() },
+      pendingOfficialStats: this.pendingOfficialStats || {},
+    });
     if (!this._inAlarm) await this._scheduleMaintenance(maintenanceDelayMs);
   }
 
   async _scheduleMaintenance(delayMs) {
-    if (this._maintenanceScheduled) return;
-    this._maintenanceScheduled = true;
     const delay = Math.max(60 * 1000, Number(delayMs || 24 * 60 * 60 * 1000) || 24 * 60 * 60 * 1000);
-    try { await this.ctx.storage.setAlarm(now() + delay); }
-    catch (err) {
+    const target = now() + delay;
+    try {
+      const existing = typeof this.ctx.storage.getAlarm === 'function' ? await this.ctx.storage.getAlarm() : null;
+      if (!existing || target < Number(existing)) await this.ctx.storage.setAlarm(target);
+      this._maintenanceScheduled = true;
+    } catch (err) {
       this._maintenanceScheduled = false;
       console.error(JSON.stringify({ level: 'error', area: 'durable-maintenance', event: 'schedule-failed', message: String(err && err.message || err) }));
     }
@@ -332,6 +339,10 @@ export class RealtimeObject {
     if (url.pathname.endsWith('/api/session/revoke-game') || url.pathname.endsWith('/session/revoke-game')) {
       const body = await requestBody(request);
       return this._revokeUserSockets(body);
+    }
+    if (url.pathname.endsWith('/api/game/ensure-stats') || url.pathname.endsWith('/game/ensure-stats')) {
+      const body = await requestBody(request);
+      return this._ensureGameOfficialStats(body);
     }
     if (url.pathname.endsWith('/api/stats/record-result') || url.pathname.endsWith('/stats/record-result')) {
       const body = await requestBody(request);
@@ -1814,6 +1825,126 @@ export class RealtimeObject {
     return json({ ok: true, closed, uid, gameId: gameId || null });
   }
 
+  _globalStatsStub() {
+    if (!this.env || !this.env.REALTIME) throw new Error('Durable Object binding REALTIME is missing');
+    return this.env.REALTIME.get(this.env.REALTIME.idFromName('global'));
+  }
+
+  _officialStatsRetryDelay(attempts) {
+    const n = Math.max(1, Number(attempts || 1) || 1);
+    return Math.min(60 * 60 * 1000, 60 * 1000 * Math.pow(2, Math.min(5, n - 1)));
+  }
+
+  _pendingStatsRecord(game, triggerKind) {
+    const eligibility = StatsCore.shouldRecordOfficialPvpResult(game, game && game.result);
+    if (!eligibility || !eligibility.ok) return { eligibility, record: null };
+    const roundId = cleanPath(eligibility.roundId || eligibility.matchKey || '');
+    if (!roundId) return { eligibility: { ok: false, reason: 'missing-round-id' }, record: null };
+    const existing = this.pendingOfficialStats && this.pendingOfficialStats[roundId];
+    const players = (eligibility.players || []).map((player) => ({
+      uid: cleanPath(player && player.uid || ''),
+      side: Number(player && player.side),
+    })).filter((player) => player.uid && (player.side === 1 || player.side === -1));
+    return {
+      eligibility,
+      record: Object.assign({}, existing || {}, {
+        roundId,
+        matchKey: cleanPath(eligibility.matchKey || roundId),
+        gameId: cleanPath(game && (game.gameId || game.id) || roundId),
+        endedAt: Number(eligibility.result && eligibility.result.endedAt || game && game.endedAt || now()) || now(),
+        trigger: String(triggerKind || existing && existing.trigger || 'game-result').slice(0, 40),
+        result: StatsCore.normalizeResult(eligibility.result || game && game.result || {}),
+        players,
+        createdAt: Number(existing && existing.createdAt || now()) || now(),
+        attempts: Math.max(0, Number(existing && existing.attempts || 0) || 0),
+        nextRetryAt: Math.max(0, Number(existing && existing.nextRetryAt || 0) || 0),
+      }),
+    };
+  }
+
+  async _registeredRowsForPendingStats(record) {
+    if (!this.env || !this.env.DB || typeof this.env.DB.prepare !== 'function') throw new Error('D1 binding DB is missing');
+    const players = Array.isArray(record && record.players) ? record.players : [];
+    const uids = Array.from(new Set(players.map((player) => cleanPath(player && player.uid || '')).filter(Boolean))).slice(0, 2);
+    if (!uids.length) return [];
+    const placeholders = uids.map((_, index) => `?${index + 1}`).join(', ');
+    const response = await this.env.DB.prepare(`SELECT id, kind, nickname, display_name, icon
+      FROM users WHERE id IN (${placeholders}) AND deleted_at IS NULL`).bind(...uids).all();
+    const dbRows = Array.isArray(response && response.results) ? response.results : [];
+    const byUid = new Map(dbRows.filter((row) => row && row.kind === 'registered').map((row) => [String(row.id || ''), row]));
+    const rows = [];
+    for (const player of players) {
+      const uid = cleanPath(player && player.uid || '');
+      const account = byUid.get(uid);
+      const outcome = StatsCore.resultForSide(record.result, player && player.side);
+      if (!account || !StatsCore.normalizeOutcome(outcome)) continue;
+      rows.push({
+        uid,
+        side: Number(player.side),
+        outcome,
+        nickname: account.nickname || account.display_name || '',
+        icon: account.icon || 'assets/icons/users/user1.png',
+      });
+    }
+    return rows;
+  }
+
+  async _flushPendingOfficialStats(roundId) {
+    const id = cleanPath(roundId || '');
+    const pending = id && this.pendingOfficialStats ? this.pendingOfficialStats[id] : null;
+    if (!pending) return { ok: true, skipped: true, reason: 'stats/no-pending-result', roundId: id || null };
+    try {
+      const rows = await this._registeredRowsForPendingStats(pending);
+      if (!rows.length) {
+        delete this.pendingOfficialStats[id];
+        await this._save();
+        return { ok: true, skipped: true, reason: 'no-registered-players', roundId: id };
+      }
+      const response = await this._globalStatsStub().fetch('https://realtime.internal/api/stats/record-result', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-internal-secret': this.env.INTERNAL_API_SECRET || '' },
+        body: JSON.stringify({
+          mode: 'pvp',
+          roundId: pending.roundId,
+          matchKey: pending.matchKey || pending.roundId,
+          gameId: pending.gameId || pending.roundId,
+          endedAt: pending.endedAt,
+          trigger: pending.trigger || 'game-result',
+          players: rows,
+        }),
+      });
+      const payload = await response.json().catch(() => ({ ok: false, error: 'stats/invalid-response' }));
+      if (!response.ok || !payload || payload.ok === false) throw new Error(payload && payload.error || `stats/http-${response.status}`);
+      delete this.pendingOfficialStats[id];
+      await this._save();
+      return Object.assign({}, payload, { pending: false, durableCommitted: true });
+    } catch (error) {
+      const attempts = Math.max(0, Number(pending.attempts || 0) || 0) + 1;
+      const retryDelayMs = this._officialStatsRetryDelay(attempts);
+      this.pendingOfficialStats[id] = Object.assign({}, pending, {
+        attempts,
+        lastAttemptAt: now(),
+        nextRetryAt: now() + retryDelayMs,
+        lastError: String(error && error.message || error).slice(0, 240),
+      });
+      await this._save(retryDelayMs);
+      console.error(JSON.stringify({ level: 'error', area: 'pvp-stats', event: 'queued-for-retry', roundId: id, attempts, message: String(error && error.message || error) }));
+      return { ok: true, pending: true, roundId: id, attempts, retryAfterMs: retryDelayMs, reason: 'stats/pending-retry' };
+    }
+  }
+
+  async _ensureGameOfficialStats(body) {
+    const gameId = cleanPath(body && body.gameId || '');
+    if (!gameId) return json({ ok: false, error: 'stats/missing-game-id' }, 400);
+    const game = getAt(this.root || {}, 'games/' + gameId);
+    if (!game || typeof game !== 'object') return json({ ok: false, error: 'game/not-found' }, 404);
+    const built = this._pendingStatsRecord(game, body && body.trigger);
+    if (!built.record) return json({ ok: true, skipped: true, reason: built.eligibility && built.eligibility.reason || 'not-recordable' });
+    this.pendingOfficialStats[built.record.roundId] = built.record;
+    await this._save(60 * 1000);
+    return json(await this._flushPendingOfficialStats(built.record.roundId));
+  }
+
   _leaderboardCompare(uidA, uidB, leaderboard) {
     const a = leaderboard && leaderboard[uidA] ? leaderboard[uidA] : {};
     const b = leaderboard && leaderboard[uidB] ? leaderboard[uidB] : {};
@@ -1872,6 +2003,27 @@ export class RealtimeObject {
     const recorded = [];
     const ignored = [];
     const display = globalThis.DhametUtils && globalThis.DhametUtils.cleanDisplayText;
+
+    if (mode === 'pvc' && rows.length === 1) {
+      const uid = cleanPath(rows[0] && rows[0].uid || '');
+      const profile = uid && profiles[uid] && typeof profiles[uid] === 'object' ? clone(profiles[uid]) : {};
+      const existingMarkers = profile.statsMarkersV2 && typeof profile.statsMarkersV2 === 'object' ? profile.statsMarkersV2 : {};
+      if (uid && existingMarkers[matchKey]) {
+        return json({ ok: true, skipped: true, roundId: matchKey, matchId: matchKey, recorded: [], ignored: [{ uid, reason: 'already-recorded' }] });
+      }
+      const currentRate = profile.pvcResultRateV1 && typeof profile.pvcResultRateV1 === 'object' ? clone(profile.pvcResultRateV1) : {};
+      const windowMs = 60 * 60 * 1000;
+      const limit = 40;
+      const atNow = now();
+      const windowStart = Number(currentRate.windowStart || 0) || atNow;
+      const active = atNow - windowStart < windowMs;
+      const count = active ? Math.max(0, Number(currentRate.count || 0) || 0) : 0;
+      if (count >= limit) {
+        return json({ ok: false, error: 'pvc/rate-limited', retryAfterMs: Math.max(1000, windowStart + windowMs - atNow) }, 429);
+      }
+      profile.pvcResultRateV1 = { windowStart: active ? windowStart : atNow, count: count + 1, purgeAt: (active ? windowStart : atNow) + windowMs };
+      profiles[uid] = profile;
+    }
 
     for (const input of rows) {
       const uid = cleanPath(input && input.uid || '');
@@ -2023,12 +2175,20 @@ export class RealtimeObject {
           await this.ctx.storage.deleteAll();
           this.root = {};
           this.versions = { '': at };
+          this.pendingOfficialStats = {};
           shouldReschedule = false;
           return;
         }
         shouldReschedule = true;
         return;
       }
+      const pendingStats = this.pendingOfficialStats && typeof this.pendingOfficialStats === 'object' ? this.pendingOfficialStats : {};
+      const dueRoundIds = Object.keys(pendingStats)
+        .filter((roundId) => Number(pendingStats[roundId] && pendingStats[roundId].nextRetryAt || 0) <= at)
+        .sort((a, b) => Number(pendingStats[a] && pendingStats[a].nextRetryAt || 0) - Number(pendingStats[b] && pendingStats[b].nextRetryAt || 0))
+        .slice(0, 8);
+      for (const roundId of dueRoundIds) await this._flushPendingOfficialStats(roundId);
+
       const games = this.root && this.root.games && typeof this.root.games === 'object' ? this.root.games : null;
       if (games) {
         for (const gameId of Object.keys(games)) {
@@ -2081,23 +2241,26 @@ export class RealtimeObject {
             if (!Object.keys(markers).length) delete profile[markerKey];
           }
         }
-        if (this.root.training) { delete this.root.training; changed = true; }
       }
       if (games) {
         const hasGames = this.root.games && Object.keys(this.root.games).length > 0;
         if (!hasGames) {
           for (const ws of Array.from(this.sessions.keys())) this._closeSocket(ws, 4004, 'game-expired');
-          await this.ctx.storage.deleteAll();
-          this.root = {};
-          this.versions = { '': at };
-          changed = false;
-          shouldReschedule = false;
-          return;
+          const hasPendingStats = this.pendingOfficialStats && Object.keys(this.pendingOfficialStats).length > 0;
+          if (!hasPendingStats) {
+            await this.ctx.storage.deleteAll();
+            this.root = {};
+            this.versions = { '': at };
+            this.pendingOfficialStats = {};
+            changed = false;
+            shouldReschedule = false;
+            return;
+          }
         }
       }
       if (changed) {
         bumpVersions(this.versions, ['']);
-        await this.ctx.storage.put({ root: this.root || {}, versions: this.versions || { '': at } });
+        await this.ctx.storage.put({ root: this.root || {}, versions: this.versions || { '': at }, pendingOfficialStats: this.pendingOfficialStats || {} });
       }
     } catch (err) {
       console.error(JSON.stringify({ level: 'error', area: 'durable-maintenance', event: 'alarm-failed', message: String(err && err.message || err) }));
@@ -2105,7 +2268,13 @@ export class RealtimeObject {
       this._inAlarm = false;
       if (shouldReschedule) {
         const rateDelay = this.root && this.root.kind === 'rate-limit' ? Math.max(60 * 1000, Number(this.root.purgeAt || 0) - now()) : 24 * 60 * 60 * 1000;
-        await this._scheduleMaintenance(rateDelay);
+        const pending = this.pendingOfficialStats && typeof this.pendingOfficialStats === 'object' ? Object.values(this.pendingOfficialStats) : [];
+        const nextPendingAt = pending.reduce((min, row) => {
+          const value = Math.max(now() + 60 * 1000, Number(row && row.nextRetryAt || 0) || now() + 60 * 1000);
+          return min == null || value < min ? value : min;
+        }, null);
+        const pendingDelay = nextPendingAt == null ? rateDelay : Math.max(60 * 1000, nextPendingAt - now());
+        await this._scheduleMaintenance(Math.min(rateDelay, pendingDelay));
       }
     }
   }

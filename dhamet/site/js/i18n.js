@@ -285,10 +285,6 @@
         "openingStarted": "بدأت النقلات الإجبارية الافتتاحية",
         "openingEnded": "انتهت النقلات الإجبارية الافتتاحية"
       },
-      "learning": {
-        "sentOk": "تم إرسال بيانات التعلّم بنجاح",
-        "sentFail": "فشل إرسال بيانات التعلّم"
-      },
       "save": {
         "none": "لا توجد لعبة محفوظة لاستئنافها",
         "done": "تم حفظ الوضعية الحالية للعبة",
@@ -309,6 +305,8 @@
           "non_counted_ending": "لم تُضف المباراة إلى النتائج لأن نهايتها لا تستوفي شروط الاحتساب.",
           "already_recorded": "سبق تسجيل نتيجة هذه المباراة.",
           "network_error": "تعذر تسجيل النتيجة بسبب مشكلة في الاتصال.",
+          "pending_retry": "تعذر الاتصال مؤقتًا؛ حُفظت النتيجة على هذا الجهاز وستُرسل تلقائيًا عند عودة الاتصال.",
+          "rate_limited": "تم بلوغ الحد المؤقت لنتائج اللعب ضد الحاسوب. حاول لاحقًا.",
           "unknown": "انتهت المباراة، لكن تعذر إضافتها إلى النتائج."
         }
       },
@@ -870,10 +868,6 @@
         "openingStarted": "Forced opening started.",
         "openingEnded": "Forced opening ended."
       },
-      "learning": {
-        "sentOk": "Learning data uploaded successfully.",
-        "sentFail": "Failed to upload learning data."
-      },
       "save": {
         "none": "No saved game to resume.",
         "done": "Game state saved.",
@@ -894,6 +888,8 @@
           "non_counted_ending": "The match was not added because its ending does not meet the scoring conditions.",
           "already_recorded": "This match result was already recorded.",
           "network_error": "The result could not be recorded because of a network problem.",
+          "pending_retry": "The connection is temporarily unavailable. The result was saved on this device and will be retried automatically.",
+          "rate_limited": "The temporary limit for computer-match results has been reached. Try again later.",
           "unknown": "The match ended, but it could not be added to the results."
         }
       },
@@ -1455,10 +1451,6 @@
         "openingStarted": "Ouverture obligatoire démarrée.",
         "openingEnded": "Ouverture obligatoire terminée."
       },
-      "learning": {
-        "sentOk": "Données d’apprentissage envoyées avec succès.",
-        "sentFail": "Échec de l’envoi des données d’apprentissage."
-      },
       "save": {
         "none": "Aucune partie enregistrée à reprendre.",
         "done": "État de la partie enregistré.",
@@ -1479,6 +1471,8 @@
           "non_counted_ending": "La partie n’a pas été ajoutée car sa fin ne remplit pas les conditions de comptabilisation.",
           "already_recorded": "Le résultat de cette partie a déjà été enregistré.",
           "network_error": "Le résultat n’a pas pu être enregistré en raison d’un problème réseau.",
+          "pending_retry": "La connexion est temporairement indisponible. Le résultat a été conservé sur cet appareil et sera renvoyé automatiquement.",
+          "rate_limited": "La limite temporaire des résultats contre l’ordinateur a été atteinte. Réessayez plus tard.",
           "unknown": "La partie est terminée, mais elle n’a pas pu être ajoutée aux résultats."
         }
       },

@@ -163,6 +163,7 @@
         penalty: src.penalty || null,
         offenderIdx: src.offenderIdx == null ? null : Number(src.offenderIdx),
         result: src.result == null ? null : clone(src.result),
+        stateBefore: src.stateBefore == null ? null : clone(src.stateBefore),
       },
     });
   }

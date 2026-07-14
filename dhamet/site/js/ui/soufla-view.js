@@ -20,7 +20,6 @@
       valueAt: deps.valueAt || root.valueAt || ((idx) => game && game.board ? game.board[idx] : null),
       boardIdxFromClient: deps.boardIdxFromClient || root.boardIdxFromClient || (root.DhametBoardGeometry && root.DhametBoardGeometry.clientToBoardIndex),
       rcStr: deps.rcStr || root.rcStr || ((idx) => { const n = Number(idx); return Number.isFinite(n) ? `${Math.floor(n / 9)}.${n % 9}` : ""; }),
-      TrainRecorder: deps.TrainRecorder || root.TrainRecorder,
       applySouflaDecision: deps.applySouflaDecision || root.applySouflaDecision,
       UI: deps.UI || root.UI,
     };
@@ -37,7 +36,6 @@
     const toViewRC = d.toViewRC;
     const valueAt = d.valueAt;
     const boardIdxFromClient = d.boardIdxFromClient;
-    const TrainRecorder = d.TrainRecorder;
     const applySouflaDecision = d.applySouflaDecision;
     const UI = d.UI;
 
@@ -324,18 +322,6 @@
           const pick = selected.forces && selected.forces[i];
           if (!pick) return;
           applied = true;
-          try {
-            if (
-              typeof TrainRecorder !== "undefined" &&
-              TrainRecorder &&
-              typeof TrainRecorder.recordSouflaPenaltyChoice === "function"
-            )
-              TrainRecorder.recordSouflaPenaltyChoice({
-                pending,
-                kind: "force",
-                actor: Game.player,
-              });
-          } catch {}
           applySouflaDecision(
             {
               kind: "force",
@@ -389,14 +375,6 @@
       ev.stopPropagation();
       if (!selected) return;
       applied = true;
-      try {
-        if (
-          typeof TrainRecorder !== "undefined" &&
-          TrainRecorder &&
-          typeof TrainRecorder.recordSouflaPenaltyChoice === "function"
-        )
-          TrainRecorder.recordSouflaPenaltyChoice({ pending, kind: "remove", actor: Game.player });
-      } catch {}
       applySouflaDecision({ kind: "remove", offenderIdx: selected.offenderIdx }, pending);
       Modal.close();
     });

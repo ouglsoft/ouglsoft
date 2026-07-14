@@ -216,24 +216,24 @@
     window.Logger = Logger;
   } catch (e) {}
 
-  async function tryFinalizeTrainingOnExit(endReason, maxWaitMs) {
+  async function tryFinalizePvcResultOnExit(endReason, maxWaitMs) {
     try {
-      if (window.__zamat_tr_finalized) return false;
+      if (window.__zamat_pvc_result_finalized) return false;
       try {
         if (window.Online && Online && Online.isSpectator) return false;
       } catch (e) {}
       if (window.Game && Game.gameOver) return false;
       if (
-        typeof TrainRecorder === "undefined" ||
-        !TrainRecorder ||
-        typeof TrainRecorder.finalizeAndUpload !== "function"
+        typeof PvCResultRecorder === "undefined" ||
+        !PvCResultRecorder ||
+        typeof PvCResultRecorder.finalizeAndSubmit !== "function"
       )
         return false;
 
-      window.__zamat_tr_finalized = true;
+      window.__zamat_pvc_result_finalized = true;
       const ms = Number.isFinite(maxWaitMs) ? maxWaitMs : 900;
       await Promise.race([
-        TrainRecorder.finalizeAndUpload({
+        PvCResultRecorder.finalizeAndSubmit({
           winner: null,
           endReason: String(endReason || "disconnect"),
         }),
@@ -3733,7 +3733,7 @@
 
   window.__ZAMAT_ONLINE_SHARED__ = {
     formatTpl: formatTpl,
-    tryFinalizeTrainingOnExit: tryFinalizeTrainingOnExit,
+    tryFinalizePvcResultOnExit: tryFinalizePvcResultOnExit,
     normalizeSouflaFx: normalizeSouflaFx,
     buildSouflaFxFromDecisionAndPending: buildSouflaFxFromDecisionAndPending,
     isPermissionDenied: isPermissionDenied,

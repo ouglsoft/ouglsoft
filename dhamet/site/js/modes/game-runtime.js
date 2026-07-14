@@ -2,7 +2,7 @@
  * Dhamet game runtime.
  *
  * Owns the browser-side Game object, turn orchestration, forced opening, local
- * move application, PvC wiring, training recorder, and page-level game glue.
+ * move application, PvC result tracking, and page-level game glue.
  * It coordinates the mode, AI, UI, and shared-rule modules that are loaded
  * before it.
  */
@@ -459,7 +459,7 @@ function setupInitialBoard() {
   } catch {}
   Game.killTimer.hardStop();
   try {
-    TrainRecorder.startNewGame();
+    PvCResultRecorder.startNewGame();
   } catch {}
 
   try {
@@ -793,9 +793,6 @@ const Turn = {
     Game.inChain = false;
     Game.chainPos = null;
 
-    try {
-      TrainRecorder.turnEnd({ pending });
-    } catch {}
 
     if (pending) {
       if (window.Online?.isActive) {
@@ -1027,23 +1024,6 @@ function snapshotState(options) {
 function pushHistoryBeforeMove(fromIdx, toIdx) {
   const ctx = typeof Turn !== "undefined" && Turn ? Turn.ctx : null;
   if (ctx && ctx.historyPushed) return false;
-
-  try {
-    const onlineActive = !!(window.Online && window.Online.isActive);
-    if (
-      !onlineActive &&
-      typeof TrainRecorder !== "undefined" &&
-      TrainRecorder &&
-      typeof TrainRecorder.beginMoveBoundary === "function"
-    ) {
-      TrainRecorder.beginMoveBoundary({
-        type: "move",
-        actor: Game.player,
-        fromIdx,
-        toIdx,
-      });
-    }
-  } catch (_) {}
 
   // One history entry represents one complete player turn, not each segment of
   // a capture chain.  The turn-start snapshot is the exact rollback target.
@@ -1331,8 +1311,8 @@ const SessionGame = (() => {
       }
 
       try {
-        if (typeof TrainRecorder !== "undefined" && TrainRecorder && typeof TrainRecorder.markRestoredFromSave === "function") {
-          TrainRecorder.markRestoredFromSave();
+        if (typeof PvCResultRecorder !== "undefined" && PvCResultRecorder && typeof PvCResultRecorder.markRestoredFromSave === "function") {
+          PvCResultRecorder.markRestoredFromSave();
         }
       } catch {}
       return true;
@@ -1544,14 +1524,8 @@ function applySouflaDecision(requestedDecision, pending) {
 
       UI.log({ kind: "soufla_remove", idx: decision.offenderIdx, ts: Date.now() });
       armSouflaFXPersistence(-pending.penalizer);
-      try {
-        TrainRecorder.souflaApplied(decision, pending);
-      } catch {}
       if (Game.player !== pending.penalizer) switchPlayer();
     } else {
-      try {
-        TrainRecorder.souflaBeginForce(decision, pending);
-      } catch {}
 
       restoreSnapshotSilent(pending.turnStartSnapshot);
       if (
@@ -1607,9 +1581,6 @@ function applySouflaDecision(requestedDecision, pending) {
 
       UI.log({ kind: "soufla_force", from: decision.offenderIdx, path: decision.path, ts: Date.now() });
       armSouflaFXPersistence(-pending.penalizer);
-      try {
-        TrainRecorder.souflaEndForce(decision, pending);
-      } catch {}
       switchPlayer();
     }
   } catch (error) {
@@ -1718,12 +1689,12 @@ function checkEndConditions() {
   try { UI.showGameOverModal?.(Game.winner); } catch {}
   try {
     Promise.resolve(
-      TrainRecorder.finalizeAndUpload({
+      PvCResultRecorder.finalizeAndSubmit({
         winner: Game.winner,
         endReason: Game.terminationReason,
       }),
     ).finally(() => {
-      try { TrainRecorder.startNewGame(); } catch {}
+      try { PvCResultRecorder.startNewGame(); } catch {}
     });
   } catch {}
 }
@@ -1862,667 +1833,161 @@ function resumePendingGameWorkAfterRestore() {
 }
 
 
-const TrainRecorder = (() => {
-  let cur = null;
-
-  function bytesToBase64(u8) {
-    let s = "";
-    const CH = 0x8000;
-    for (let i = 0; i < u8.length; i += CH) {
-      s += String.fromCharCode.apply(null, u8.subarray(i, i + CH));
-    }
-    return btoa(s);
-  }
-
-  function nowMs() {
-    return Date.now();
-  }
-
+const PvCResultRecorder = (() => {
+  let current = null;
   const AI_LEVEL_ORDER = ["beginner", "easy", "medium", "hard", "strong", "expert"];
 
-  function _currentAiLevel() {
+  function nowMs() { return Date.now(); }
+
+  function currentAiLevel() {
     try {
       return typeof normalizeAILevel === "function"
         ? normalizeAILevel(Game.settings && Game.settings.advanced && Game.settings.advanced.aiLevel || "medium")
         : "medium";
-    } catch (_) {
-      return "medium";
-    }
+    } catch (_) { return "medium"; }
   }
 
-  function _rememberAiLevel(g) {
-    if (!g) return;
-    const level = _currentAiLevel();
-    if (!Array.isArray(g.aiLevelsUsed)) g.aiLevelsUsed = [];
-    if (!g.aiLevelsUsed.includes(level)) g.aiLevelsUsed.push(level);
-  }
-
-  function _scoringAiLevel(g) {
-    const levels = Array.isArray(g && g.aiLevelsUsed) && g.aiLevelsUsed.length ? g.aiLevelsUsed : [_currentAiLevel()];
-    return levels.slice().sort((a, b) => AI_LEVEL_ORDER.indexOf(a) - AI_LEVEL_ORDER.indexOf(b))[0] || "medium";
-  }
-
-  function detectMode() {
+  function mode() {
     try {
-      if (DhametMatchMode && typeof DhametMatchMode.trainingMode === "function") {
-        return DhametMatchMode.trainingMode({ Online: window.Online, document });
-      }
       if (DhametMatchMode && typeof DhametMatchMode.detectMode === "function") {
-        const mode = DhametMatchMode.detectMode({ Online: window.Online, document });
-        return mode === "spectator" ? "online_pvp" : mode;
+        const value = DhametMatchMode.detectMode({ Online: window.Online, document });
+        return value === "spectator" ? "online_pvp" : value;
       }
       if (DhametPvCMode && typeof DhametPvCMode.detectMode === "function") {
-        const mode = DhametPvCMode.detectMode({ Online: window.Online, document });
-        return mode === "spectator" ? "online_pvp" : mode;
+        const value = DhametPvCMode.detectMode({ Online: window.Online, document });
+        return value === "spectator" ? "online_pvp" : value;
       }
     } catch (_) {}
     return window.Online && window.Online.isActive ? "online_pvp" : "vs_cpu";
   }
 
-  function _makeLocalMatchId() {
+  function makeRoundId() {
     try {
       if (DhametMatchMode && typeof DhametMatchMode.createLocalMatchId === "function") {
-        return DhametMatchMode.createLocalMatchId("local");
+        return DhametMatchMode.createLocalMatchId("pvc");
       }
       if (DhametPvCMode && typeof DhametPvCMode.createLocalMatchId === "function") {
-        return DhametPvCMode.createLocalMatchId("local");
+        return DhametPvCMode.createLocalMatchId("pvc");
       }
     } catch (_) {}
     try {
-      if (window.crypto && crypto.getRandomValues) {
-        const b = new Uint8Array(8);
-        crypto.getRandomValues(b);
-        let s = "";
-        for (const x of b) s += x.toString(16).padStart(2, "0");
-        return `local_${Date.now().toString(36)}_${s}`;
-      }
-    } catch (_) {}
-    return `local_${Date.now().toString(36)}_${Math.floor(Math.random() * 1e9).toString(36)}`;
+      const bytes = new Uint8Array(8);
+      crypto.getRandomValues(bytes);
+      return `pvc_${Date.now().toString(36)}_${Array.from(bytes).map((x) => x.toString(16).padStart(2, "0")).join("")}`;
+    } catch (_) {
+      return `pvc_${Date.now().toString(36)}_${Math.floor(Math.random() * 1e9).toString(36)}`;
+    }
   }
 
-  function _resolveMatchId(mode) {
-    try {
-      if (mode === "online_pvp" && DhametMatchMode && typeof DhametMatchMode.resolveOnlineMatchId === "function") {
-        const mid = DhametMatchMode.resolveOnlineMatchId({ Online: window.Online, document });
-        if (mid) return mid;
-      }
-      if (mode === "online_pvp" && DhametPvCMode && typeof DhametPvCMode.resolveMatchId === "function") {
-        const mid = DhametPvCMode.resolveMatchId({ Online: window.Online, document });
-        if (mid) return mid;
-      }
-    } catch (_) {}
-    try {
-      if (mode === "online_pvp" && window.Online) {
-        const gid =
-          (Online && (Online.gameId || Online._presenceRoomId || Online._pendingGameId)) || null;
-        if (gid != null) {
-          const s = String(gid).trim();
-          return s ? s.slice(0, 140) : null;
-        }
-      }
-    } catch (_) {}
-    return null;
-  }
-
-  function ensureGame() {
-    if (!cur) {
-      const mode0 = detectMode();
-      cur = {
-        schema: 4,
-        recordSchema: 4,
-        stateSchema: 4,
-        actionSchema: 2,
-        mode: mode0,
-        matchId: _resolveMatchId(mode0) || _makeLocalMatchId(),
+  function ensure() {
+    if (!current) {
+      current = {
+        roundId: makeRoundId(),
         startedAt: nowMs(),
         restoredFromSave: false,
         undoCount: 0,
-        aiLevelsUsed: [_currentAiLevel()],
-        steps: [],
-        samples: [],
-        _pendingSteps: [],
-        _pendingSamples: [],
-        _heldSoufla: null,
-        _heldSouflaMeta: null,
-        _inForceRewrite: false,
-        _moveBoundaries: [],
+        aiLevelsUsed: [currentAiLevel()],
       };
     }
-    try {
-      const m = detectMode();
-      cur.mode = m;
-      const mid = _resolveMatchId(m);
-      if (mid) cur.matchId = mid;
-    } catch (_) {}
-    return cur;
+    const level = currentAiLevel();
+    if (!current.aiLevelsUsed.includes(level)) current.aiLevelsUsed.push(level);
+    return current;
   }
 
-  function resetGame() {
-    cur = null;
-  }
+  function reset() { current = null; }
 
-  function packBoard(boardInput) {
-    const board = Array.isArray(boardInput) ? boardInput : Game.board;
-    const a = new Int8Array(N_CELLS);
-    let o = 0;
-    for (let r = 0; r < BOARD_N; r++) {
-      for (let c = 0; c < BOARD_N; c++) {
-        a[o++] = board && board[r] ? (board[r][c] | 0) : 0;
-      }
-    }
-    return bytesToBase64(new Uint8Array(a.buffer));
-  }
-
-  function captureStateForTraining() {
-    let deferred = [];
-    try {
-      deferred = Array.isArray(Game.deferredPromotions)
-        ? Game.deferredPromotions.map((entry) => ({ idx: Number(entry.idx), side: Number(entry.side) })).filter((entry) => Number.isInteger(entry.idx) && (entry.side === TOP || entry.side === BOT)).slice(0, 16)
-        : [];
-    } catch (_) {}
-    let soufla = null;
-    try {
-      const pending = Game.souflaPending || Game.availableSouflaForHuman || null;
-      if (pending) {
-        const turnStartBoard = pending.turnStartSnapshot && pending.turnStartSnapshot.board;
-        soufla = {
-          longestGlobal: Math.max(0, Number(pending.longestGlobal || 0) || 0),
-          capturesDone: Math.max(0, Number(pending.capturesDone || 0) || 0),
-          startedFrom: pending.ctxStartedFrom == null ? -1 : Number(pending.ctxStartedFrom),
-          decisionRequired: Game.awaitingPenalty ? 1 : 0,
-          offenderSide: Number(pending.offenderSide) === TOP ? TOP : (Number(pending.offenderSide) === BOT ? BOT : 0),
-          offenders: Array.isArray(pending.offenders)
-            ? pending.offenders.map(Number).filter((idx) => Number.isInteger(idx) && idx >= 0 && idx < N_CELLS).slice(0, 16)
-            : [],
-          turnStartBoard: Array.isArray(turnStartBoard) ? packBoard(turnStartBoard) : "",
-        };
-      }
-    } catch (_) {}
-    return {
-      b: packBoard(),
-      p: Game.player | 0,
-      ic: Game.inChain ? 1 : 0,
-      cp: Game.chainPos == null ? -1 : Game.chainPos | 0,
-      fe: Game.forcedEnabled ? 1 : 0,
-      fp: Math.max(0, Number(Game.forcedPly || 0) || 0),
-      fs: (() => {
-        try {
-          const starter = forcedOpeningBaseSide(Game.forcedSeq);
-          return starter === TOP || starter === BOT ? starter : 0;
-        } catch (_) { return 0; }
-      })(),
-      dp: deferred,
-      sp: soufla,
-      m: Math.max(0, Number(Game.moveCount || 0) || 0),
-    };
-  }
-
-  function isSquareCapturableBySide(targetIdx, bySide) {
-    for (let r = 0; r < BOARD_N; r++) {
-      for (let c = 0; c < BOARD_N; c++) {
-        const v = Game.board[r][c];
-        if (!v) continue;
-        if (pieceOwner(v) !== bySide) continue;
-        const fromIdx = r * BOARD_N + c;
-        const caps = generateCapturesFrom(fromIdx);
-        for (const cap of caps) {
-          const jumpedIdx = cap[1];
-          if (jumpedIdx === targetIdx) return true;
-        }
-      }
-    }
-    return false;
-  }
-
-  function beginDecision({ fromIdx = null, toIdx = null, action = null, actor = null } = {}) {
-    const g = ensureGame();
-    g.mode = detectMode();
-
-    const side = actor == null ? Game.player : actor;
-    if (g.mode === "vs_cpu" && side !== humanSide()) _rememberAiLevel(g);
-
-    if (g._inForceRewrite) return null;
-
-    return {
-      snap: captureStateForTraining(),
-      actor: side,
-      action: action,
-      fromIdx,
-      toIdx,
-      pieceBefore: fromIdx == null ? null : valueAt(fromIdx),
-      tRel: Math.max(0, nowMs() - g.startedAt),
-    };
-  }
-
-  function endDecision(token, { cap = 0, crown = 0, trap = 0, fromStr = null, toStr = null } = {}) {
-    if (!token) return;
-
-    const g = ensureGame();
-
-    let crown2 = crown ? 1 : 0;
-    try {
-      if (!crown2 && token.toIdx != null && token.pieceBefore != null) {
-        const afterV = valueAt(token.toIdx);
-        const beforeKind = pieceKind(token.pieceBefore);
-        const afterKind = pieceKind(afterV);
-        if (beforeKind === MAN && afterKind === KING) crown2 = 1;
-      }
-    } catch {}
-
-    let trap2 = trap ? 1 : 0;
-    try {
-      if (token.toIdx != null) {
-        const afterV = valueAt(token.toIdx);
-        const owner = pieceOwner(afterV);
-        trap2 = isSquareCapturableBySide(token.toIdx, -owner) ? 1 : 0;
-      } else if (Game.chainPos != null) {
-        trap2 = isSquareCapturableBySide(Game.chainPos, -Game.player) ? 1 : 0;
-      }
-    } catch {}
-
-    const sample = {
-      s: token.snap,
-      a: token.action,
-      actor: token.actor,
-      cap: cap ? 1 : 0,
-      crown: crown2,
-      trap: trap2,
-      t: token.tRel,
-
-      sf: 0,
-      sfFlags: 0,
-      sfDecision: 0,
-      Lmax: 0,
-      Ls: 0,
-      capturesDone: 0,
-      sfStartedFrom: -1,
-    };
-    _ensureTurnBuffers(g);
-    g._pendingSamples.push(sample);
-
-    try {
-      const f = fromStr != null ? fromStr : token.fromIdx == null ? "END" : rcStr(token.fromIdx);
-      const t = toStr != null ? toStr : token.toIdx == null ? "END" : rcStr(token.toIdx);
-      _ensureTurnBuffers(g);
-      g._pendingSteps.push([f, t]);
-    } catch {}
-  }
-
-  function _ensureTurnBuffers(g) {
-    if (!g) return;
-    if (!Array.isArray(g._pendingSamples)) g._pendingSamples = [];
-    if (!Array.isArray(g._pendingSteps)) g._pendingSteps = [];
-  }
-
-  function _buildSouflaMeta(pending, decisionKind) {
-    const sf = pending ? 1 : 0;
-    const Lmax = pending ? pending.longestGlobal | 0 : 0;
-    const startedFrom =
-      pending && pending.ctxStartedFrom != null ? pending.ctxStartedFrom | 0 : null;
-    const capturesDone = pending ? pending.capturesDone | 0 : 0;
-    const Ls = pending ? pending.ctxLs | 0 : 0;
-
-    let flags = 0;
-    if (pending) {
-      if (startedFrom == null) flags |= 1;
-      if (Lmax > 0 && Ls < Lmax) flags |= 2;
-      if (Ls > 0 && capturesDone < Ls) flags |= 4;
-    }
-
-    return {
-      sf,
-      sfFlags: flags | 0,
-      sfDecision: decisionKind | 0,
-      Lmax,
-      Ls,
-      capturesDone,
-      sfStartedFrom: startedFrom == null ? -1 : startedFrom,
-    };
-  }
-
-  function _applyMeta(sample, meta) {
-    if (!sample || !meta) return;
-    sample.sf = meta.sf | 0;
-    sample.sfFlags = meta.sfFlags | 0;
-    sample.sfDecision = meta.sfDecision | 0;
-    sample.Lmax = meta.Lmax | 0;
-    sample.Ls = meta.Ls | 0;
-    sample.capturesDone = meta.capturesDone | 0;
-    sample.sfStartedFrom = meta.sfStartedFrom | 0;
-  }
-
-  function _commitPendingTurn(g, meta) {
-    _ensureTurnBuffers(g);
-    if (!g._pendingSamples.length) return;
-
-    for (const s of g._pendingSamples) _applyMeta(s, meta);
-
-    if (!Array.isArray(g.samples)) g.samples = [];
-    if (!Array.isArray(g.steps)) g.steps = [];
-
-    _pushMoveBoundary(g, { type: "turn", moveIndex: null, by: null });
-    g.samples.push(...g._pendingSamples);
-    g.steps.push(...g._pendingSteps);
-
-    g._pendingSamples.length = 0;
-    g._pendingSteps.length = 0;
-  }
-
-  function _discardPendingTurn(g) {
-    _ensureTurnBuffers(g);
-    g._pendingSamples.length = 0;
-    g._pendingSteps.length = 0;
-  }
-
-  function _pushMoveBoundary(g, meta = null) {
-    if (!g) return;
-    _ensureTurnBuffers(g);
-    if (!Array.isArray(g.samples)) g.samples = [];
-    if (!Array.isArray(g.steps)) g.steps = [];
-    if (!Array.isArray(g._moveBoundaries)) g._moveBoundaries = [];
-    g._moveBoundaries.push({
-      samplesLen: g.samples.length | 0,
-      stepsLen: g.steps.length | 0,
-      pendingSamplesLen: Array.isArray(g._pendingSamples) ? g._pendingSamples.length | 0 : 0,
-      pendingStepsLen: Array.isArray(g._pendingSteps) ? g._pendingSteps.length | 0 : 0,
-      meta: meta || null,
-    });
-  }
-
-  function beginMoveBoundary(meta = null) {
-    const g = ensureGame();
-    _pushMoveBoundary(g, meta);
-  }
-
-  function rollbackLastMoveBoundary(match = null) {
-    const g = ensureGame();
-    if (!g || !Array.isArray(g._moveBoundaries) || !g._moveBoundaries.length) return false;
-
-    let idx = g._moveBoundaries.length - 1;
-    if (match && typeof match === "object") {
-      let found = -1;
-      for (let i = g._moveBoundaries.length - 1; i >= 0; i--) {
-        const m =
-          g._moveBoundaries[i] && g._moveBoundaries[i].meta ? g._moveBoundaries[i].meta : null;
-        if (!m) continue;
-        let ok = true;
-        for (const k in match) {
-          if (match[k] == null) continue;
-          if (m[k] !== match[k]) {
-            ok = false;
-            break;
-          }
-        }
-        if (ok) {
-          found = i;
-          break;
-        }
-      }
-      if (found >= 0) idx = found;
-      else idx = g._moveBoundaries.length - 1;
-    }
-
-    const b = g._moveBoundaries[idx];
-    if (!b) return false;
-
-    g._moveBoundaries.length = Math.max(0, idx);
-
-    try {
-      if (Array.isArray(g.samples)) g.samples.length = Math.max(0, b.samplesLen | 0);
-      if (Array.isArray(g.steps)) g.steps.length = Math.max(0, b.stepsLen | 0);
-      _ensureTurnBuffers(g);
-      if (Array.isArray(g._pendingSamples))
-        g._pendingSamples.length = Math.max(0, b.pendingSamplesLen | 0);
-      if (Array.isArray(g._pendingSteps))
-        g._pendingSteps.length = Math.max(0, b.pendingStepsLen | 0);
-    } catch {}
-    try {
-      if (g.mode === "vs_cpu") g.undoCount = Math.max(0, Number(g.undoCount || 0) || 0) + 1;
-    } catch {}
-    return true;
+  function scoringAiLevel(state) {
+    const levels = Array.isArray(state && state.aiLevelsUsed) && state.aiLevelsUsed.length
+      ? state.aiLevelsUsed.slice()
+      : [currentAiLevel()];
+    levels.sort((a, b) => AI_LEVEL_ORDER.indexOf(a) - AI_LEVEL_ORDER.indexOf(b));
+    return levels[0] || "medium";
   }
 
   function markRestoredFromSave() {
-    const g = ensureGame();
-    if (g && g.mode === "vs_cpu") g.restoredFromSave = true;
+    if (mode() !== "vs_cpu") return;
+    ensure().restoredFromSave = true;
   }
 
+  function noteUndo() {
+    if (mode() !== "vs_cpu") return;
+    const state = ensure();
+    state.undoCount = Math.max(0, Number(state.undoCount || 0) || 0) + 1;
+  }
 
-  function recordSouflaPenaltyChoice({ pending = null, kind = null, actor = null } = {}) {
-    const g = ensureGame();
-    g.mode = detectMode();
-
-    const side = actor == null ? Game.player : actor;
-
-    if (g._inForceRewrite) return;
-
-    const k = kind === "force" ? 2 : kind === "remove" ? 1 : 0;
-    if (!k) return;
-
-    const meta = _buildSouflaMeta(pending, k);
-    const st = captureStateForTraining();
-    if (!st) return;
-
-    const action = k === 1 ? ACTION_SOUFLA_REMOVE : ACTION_SOUFLA_FORCE;
-
-    const sample = {
-      s: st,
-      a: action,
-      actor: side,
-      cap: 0,
-      crown: 0,
-      trap: 0,
-      t: Math.max(0, nowMs() - g.startedAt),
-
-      sf: 0,
-      sfFlags: 0,
-      sfDecision: 0,
-      Lmax: 0,
-      Ls: 0,
-      capturesDone: 0,
-      sfStartedFrom: -1,
-
-      sfPenaltyChoice: 1,
-      sfPenaltyByHuman: side === humanSide() ? 1 : 0,
-    };
-    _applyMeta(sample, meta);
-
+  function finalCountsFromBoard(board) {
+    const out = { topMen: 0, topKings: 0, botMen: 0, botKings: 0, topTotal: 0, botTotal: 0 };
+    if (!Array.isArray(board)) return out;
     try {
-      if (!Array.isArray(g.samples)) g.samples = [];
-      if (!Array.isArray(g.steps)) g.steps = [];
-      g.samples.push(sample);
-      g.steps.push(["SF", k === 1 ? "REM" : "FOR"]);
-    } catch {}
-  }
-
-  function turnEnd({ pending = null } = {}) {
-    const g = ensureGame();
-    _ensureTurnBuffers(g);
-
-    if (g._heldSoufla && !pending) {
-      _discardPendingTurn(g);
-      g._heldSoufla = null;
-      g._heldSouflaMeta = null;
-      g._inForceRewrite = false;
-    }
-
-    if (pending) {
-      _discardPendingTurn(g);
-      g._heldSoufla = pending;
-      g._heldSouflaMeta = _buildSouflaMeta(pending, 0);
-      g._inForceRewrite = false;
-      return;
-    }
-
-    const meta = _buildSouflaMeta(null, 0);
-    _commitPendingTurn(g, meta);
-    g._heldSoufla = null;
-    g._heldSouflaMeta = null;
-    g._inForceRewrite = false;
-  }
-
-  function souflaBeginForce(decision, pending) {
-    const g = ensureGame();
-    _ensureTurnBuffers(g);
-    g._heldSoufla = pending || g._heldSoufla || null;
-    g._heldSouflaMeta = _buildSouflaMeta(g._heldSoufla, 2);
-    g._inForceRewrite = true;
-
-    _discardPendingTurn(g);
-  }
-
-  function souflaApplied(decision, pending) {
-    const g = ensureGame();
-    _ensureTurnBuffers(g);
-    const held = pending || g._heldSoufla || null;
-    const kind =
-      decision && decision.kind === "force" ? 2 : decision && decision.kind === "remove" ? 1 : 0;
-
-    if (kind === 2) {
-      return;
-    }
-
-    const meta = _buildSouflaMeta(held, kind);
-    _discardPendingTurn(g);
-    g._heldSoufla = null;
-    g._heldSouflaMeta = null;
-    g._inForceRewrite = false;
-  }
-
-  function souflaEndForce(decision, pending) {
-    const g = ensureGame();
-    _ensureTurnBuffers(g);
-    const held = pending || g._heldSoufla || null;
-    const meta = _buildSouflaMeta(held, 2);
-
-    _discardPendingTurn(g);
-    g._heldSoufla = null;
-    g._heldSouflaMeta = null;
-    g._inForceRewrite = false;
-  }
-
-
-  function _finalCountsFromBoard(board) {
-    const out = {
-      topMen: 0,
-      topKings: 0,
-      botMen: 0,
-      botKings: 0,
-      topTotal: 0,
-      botTotal: 0,
-    };
-
-    if (!board) return out;
-
-    try {
-      if (Array.isArray(board) && Array.isArray(board[0])) {
-        for (let r = 0; r < BOARD_N; r++) {
-          const row = board[r];
-          if (!Array.isArray(row)) continue;
-          for (let c = 0; c < BOARD_N; c++) {
-            const v = row[c] | 0;
-            if (!v) continue;
-            const owner = v > 0 ? TOP : BOT;
-            const isKing = Math.abs(v) === 2;
-            if (owner === TOP) {
-              if (isKing) out.topKings++;
-              else out.topMen++;
-            } else {
-              if (isKing) out.botKings++;
-              else out.botMen++;
-            }
-          }
-        }
-      } else {
-        for (let i = 0; i < (board.length | 0); i++) {
-          const v = board[i] | 0;
-          if (!v) continue;
-          const owner = v > 0 ? TOP : BOT;
-          const isKing = Math.abs(v) === 2;
-          if (owner === TOP) {
-            if (isKing) out.topKings++;
-            else out.topMen++;
-          } else {
-            if (isKing) out.botKings++;
-            else out.botMen++;
-          }
+      for (let r = 0; r < BOARD_N; r += 1) {
+        const row = Array.isArray(board[r]) ? board[r] : [];
+        for (let c = 0; c < BOARD_N; c += 1) {
+          const value = Number(row[c] || 0) | 0;
+          if (!value) continue;
+          const owner = value > 0 ? TOP : BOT;
+          const king = Math.abs(value) === 2;
+          if (owner === TOP) king ? out.topKings++ : out.topMen++;
+          else king ? out.botKings++ : out.botMen++;
         }
       }
     } catch (_) {}
-
-    out.topTotal = (out.topMen + out.topKings) | 0;
-    out.botTotal = (out.botMen + out.botKings) | 0;
+    out.topTotal = out.topMen + out.topKings;
+    out.botTotal = out.botMen + out.botKings;
     return out;
   }
 
-  function _inferLateExitOutcome(expectedLoserSide = null) {
+  function inferLateExitOutcome(expectedLoserSide) {
+    const finalCounts = finalCountsFromBoard(window.Game && Game.board ? Game.board : null);
     try {
       const loser = expectedLoserSide === TOP || expectedLoserSide === BOT ? expectedLoserSide : null;
-      const shared = window.DhametMatchEnd;
-      if (loser == null || !shared || typeof shared.assessAdministrativeEnd !== "function") {
+      const assessor = window.DhametMatchEnd && typeof window.DhametMatchEnd.assessAdministrativeEnd === "function"
+        ? window.DhametMatchEnd.assessAdministrativeEnd
+        : null;
+      if (loser == null || !assessor || !window.Game || !Array.isArray(Game.board)) {
+        return { lateFinished: false, winner: null, terminalType: "position_unavailable", terminalConfidence: "low", finalCounts };
+      }
+      const moveCount = Math.max(0, Number(Game.moveCount || 0) || 0);
+      const view = {
+        ply: moveCount,
+        state: { snapshot: { board: cloneBoard(Game.board), moveCount } },
+        states: { "0": { snapshot: { board: createInitialBoard(), moveCount: 0 } } },
+      };
+      const assessment = assessor(view, loser) || null;
+      if (!assessment || !assessment.count) {
         return {
           lateFinished: false,
           winner: null,
-          terminalType: "position_unavailable",
-          terminalConfidence: "low",
-          finalCounts: _finalCountsFromBoard(window.Game && Game.board ? Game.board : null),
+          terminalType: assessment && assessment.reason || "position_not_clear",
+          terminalConfidence: assessment && assessment.confidence || "low",
+          assessment,
+          finalCounts,
         };
       }
-      const board = window.Game && Game.board ? Game.board : null;
-      const moveCount = Math.max(0, Number(Game.moveCount || 0) || 0);
-      const adaptedGame = {
-        ply: moveCount,
-        state: { snapshot: { board, moveCount } },
-        states: {},
-      };
-      const assessment = shared.assessAdministrativeEnd(adaptedGame, loser);
       return {
-        lateFinished: !!(assessment && assessment.count),
-        winner: assessment && assessment.count ? -loser : null,
-        terminalType: assessment && assessment.reason ? assessment.reason : "position_not_clear",
-        terminalConfidence: assessment && assessment.confidence ? assessment.confidence : "low",
-        finalCounts: _finalCountsFromBoard(board),
+        lateFinished: true,
+        winner: -loser,
+        terminalType: "administrative_position",
+        terminalConfidence: assessment.confidence || "medium",
+        assessment,
+        finalCounts,
       };
     } catch (_) {
-      return {
-        lateFinished: false,
-        winner: null,
-        terminalType: "unknown",
-        terminalConfidence: "low",
-        finalCounts: _finalCountsFromBoard(null),
-      };
+      return { lateFinished: false, winner: null, terminalType: "position_unavailable", terminalConfidence: "low", finalCounts };
     }
   }
 
-  function _dbErrorReason(e) {
+  function errorReason(error) {
     try {
-      const _t = (key, vars) => {
-        try {
-          return window.I18N && typeof window.I18N.text === "function" ? window.I18N.text(key, vars) : String(key || "");
-        } catch (_) {
-          return String(key || "");
-        }
-      };
-      const code = e && (e.code || e.name) ? String(e.code || e.name).toLowerCase() : "";
-      const msg = e && e.message ? String(e.message) : "";
-      if (code.includes("permission") || msg.toLowerCase().includes("permission"))
-        return _t("errors.db.permission");
-      if (code.includes("network") || msg.toLowerCase().includes("network"))
-        return _t("errors.db.network");
-      if (code.includes("timeout") || msg.toLowerCase().includes("timeout"))
-        return _t("errors.db.timeout");
-      if (code.includes("auth")) return _t("errors.db.auth");
+      const code = String(error && (error.code || error.name) || "").toLowerCase();
+      const message = String(error && error.message || "").toLowerCase();
+      if (code === "pvc/rate-limited") return "rate_limited";
+      if (code.includes("network") || message.includes("network") || code.startsWith("http-5")) return "network_error";
       if (code) return code;
-      return null;
-    } catch (_) {
-      return null;
-    }
+    } catch (_) {}
+    return "network_error";
   }
 
-
-
-
-  function _registeredSession() {
+  function registeredSession() {
     try {
       const session = window.ZAuth && typeof window.ZAuth.readSession === "function" ? window.ZAuth.readSession() : null;
       if (session && session.user && session.user.kind === "registered") return session;
@@ -2537,15 +2002,13 @@ const TrainRecorder = (() => {
     return null;
   }
 
-  function _resultText(result) {
+  function resultText(result) {
     const t = (key, vars) => {
       try { return window.I18N && typeof window.I18N.text === "function" ? window.I18N.text(key, vars) : key; }
       catch (_) { return key; }
     };
     if (result && result.counted) {
-      if (String(result.rewardTier || "") === "capped") {
-        return t("log.results.pvcCountedCapped");
-      }
+      if (String(result.rewardTier || "") === "capped") return t("log.results.pvcCountedCapped");
       return t("log.results.pvcCounted", { points: Number(result.pointsDelta || 0) });
     }
     const reason = result && result.reason ? String(result.reason) : "unknown";
@@ -2554,172 +2017,86 @@ const TrainRecorder = (() => {
     return translated && translated !== key ? translated : t("log.results.pvcRejected.unknown");
   }
 
-  function _logPvcResult(result) {
-    try {
-      if (window.UI && typeof UI.log === "function") UI.log(_resultText(result));
-    } catch (_) {}
+  function logResult(result) {
+    try { if (window.UI && typeof UI.log === "function") UI.log(resultText(result)); } catch (_) {}
   }
 
-  async function finalizeAndUpload({ winner = null, endReason = null } = {}) {
-    const g = ensureGame();
+  async function finalizeAndSubmit({ winner = null, endReason = null } = {}) {
+    if (mode() !== "vs_cpu") return { skipped: true, reason: "online_result_is_server_managed" };
+    const state = ensure();
     const endedAt = nowMs();
-    const startedAt = Number.isFinite(g.startedAt) ? g.startedAt : endedAt;
-    const durationMs = Math.max(0, endedAt - startedAt);
-    const mode = detectMode();
-
-    let w = winner === TOP ? TOP : winner === BOT ? BOT : null;
-    let reason = endReason || (w == null ? "draw" : "natural_win");
+    const startedAt = Number.isFinite(state.startedAt) ? state.startedAt : endedAt;
+    let resolvedWinner = winner === TOP ? TOP : winner === BOT ? BOT : null;
+    let reason = endReason || (resolvedWinner == null ? "draw" : "natural_win");
     let lateFinished = false;
     let terminalType = "unknown";
     let terminalConfidence = "low";
-    let finalCounts = _finalCountsFromBoard(window.Game && Game.board ? Game.board : null);
 
     if (reason === "natural_win" || reason === "draw") {
       terminalType = "strict";
       terminalConfidence = "high";
-    } else if ((reason === "disconnect" || reason === "abort" || reason === "cancel" || reason === "leave" || reason === "resign") && w == null) {
-      const late = _inferLateExitOutcome(humanSide());
+    } else if (["disconnect", "abort", "cancel", "leave", "resign"].includes(reason) && resolvedWinner == null) {
+      const late = inferLateExitOutcome(humanSide());
       if (late && late.lateFinished && (late.winner === TOP || late.winner === BOT) && late.terminalConfidence !== "low") {
-        w = late.winner;
+        resolvedWinner = late.winner;
         lateFinished = true;
-        terminalType = late.terminalType || "adjudicated";
+        terminalType = late.terminalType || "administrative_position";
         terminalConfidence = late.terminalConfidence || "medium";
-        if (late.finalCounts) finalCounts = late.finalCounts;
         reason = reason === "disconnect" ? "disconnect_late" : "late_exit";
       }
     }
-
-    if (terminalType === "unknown" && (w === TOP || w === BOT)) {
+    if (terminalType === "unknown" && (resolvedWinner === TOP || resolvedWinner === BOT)) {
       terminalType = "strict";
       terminalConfidence = "medium";
     }
 
-    const steps = Array.isArray(g.steps) ? g.steps.slice(0, 5000) : [];
-    const samples = Array.isArray(g.samples) ? g.samples.slice(0, 10000) : [];
-    const record = {
-      recordSchema: 4,
-      stateSchema: 4,
-      actionSchema: 2,
-      mode,
-      roundId: g.matchId != null ? String(g.matchId).slice(0, 180) : _makeLocalMatchId(),
-      startedAt,
-      endedAt,
-      durationMs,
-      winner: w == null ? 0 : w,
-      endReason: reason,
-      terminalType,
-      terminalConfidence,
-      lateFinished: !!lateFinished,
-      finalCounts,
-      restoredFromSave: !!g.restoredFromSave,
-      undoCount: Math.max(0, Number(g.undoCount || 0) || 0),
-      aiLevelsUsed: Array.isArray(g.aiLevelsUsed) ? g.aiLevelsUsed.slice() : [],
-      steps,
-      samples,
-    };
-
-    if (record.mode !== "vs_cpu") {
-      resetGame();
-      return { uploaded: false, skipped: true, reason: "official_pvp_server" };
-    }
-
-    const session = _registeredSession();
-    if (!session) {
-      resetGame();
+    if (!registeredSession()) {
+      reset();
       return { ok: true, counted: false, reason: "not_registered" };
     }
 
+    const moveCount = Math.max(0, Number(Game && Game.moveCount || 0) || 0);
+    const payload = {
+      pvcRoundId: state.roundId,
+      roundId: state.roundId,
+      aiLevel: scoringAiLevel(state),
+      humanSide: humanSide(),
+      winner: resolvedWinner == null ? 0 : resolvedWinner,
+      endReason: reason,
+      terminalType,
+      terminalConfidence,
+      lateFinished,
+      restoredFromSave: !!state.restoredFromSave,
+      undoCount: Math.max(0, Number(state.undoCount || 0) || 0),
+      startedAt,
+      endedAt,
+      stepCount: moveCount,
+      decisionCount: moveCount,
+      recordComplete: !!(startedAt && endedAt >= startedAt && moveCount > 0),
+    };
+
     let response;
     try {
-      const level = _scoringAiLevel(g);
-      const complete = !!(steps.length && samples.length && startedAt && endedAt >= startedAt);
-      const payload = Object.assign({}, record, {
-        pvcRoundId: record.roundId,
-        aiLevel: level,
-        humanSide: humanSide(),
-        recordComplete: complete,
-        rulesVersion: String(DhametRulesShared && DhametRulesShared.version || "unknown"),
-        engineVersion: String(DhametAIEngine && DhametAIEngine.version || "unknown"),
-      });
       if (!window.DhametAccount || typeof window.DhametAccount.submitPvcResult !== "function") {
         throw new Error("pvc/result-client-unavailable");
       }
       response = await window.DhametAccount.submitPvcResult(payload);
-      _logPvcResult(response);
     } catch (error) {
-      response = { ok: false, counted: false, reason: _dbErrorReason(error) || "network_error" };
-      _logPvcResult(response);
+      response = { ok: false, counted: false, reason: errorReason(error) };
     } finally {
-      resetGame();
+      reset();
     }
+    logResult(response);
     return response;
   }
 
   function startNewGame() {
-    resetGame();
-    try { window.__zamat_tr_finalized = false; } catch (_) {}
-    ensureGame();
+    reset();
+    try { window.__zamat_pvc_result_finalized = false; } catch (_) {}
+    if (mode() === "vs_cpu") ensure();
   }
 
-  function recordExternalDecision({
-    state,
-    action,
-    actor,
-    cap = 0,
-    crown = 0,
-    trap = 0,
-    tRel = null,
-    fromStr = null,
-    toStr = null,
-  } = {}) {
-    const g = ensureGame();
-    g.mode = detectMode();
-    if (g.mode !== "online_pvp") return;
-
-    if (!state || typeof action !== "number") return;
-
-    const sample = {
-      s: state,
-      a: action,
-      actor: actor == null ? 0 : actor,
-      cap: cap ? 1 : 0,
-      crown: crown ? 1 : 0,
-      trap: trap ? 1 : 0,
-      t: Number.isFinite(tRel) ? tRel : Math.max(0, nowMs() - g.startedAt),
-      sf: 0,
-      sfFlags: 0,
-      sfDecision: 0,
-      Lmax: 0,
-      Ls: 0,
-      capturesDone: 0,
-      sfStartedFrom: -1,
-    };
-    g.samples.push(sample);
-
-    try {
-      const f = fromStr != null ? fromStr : "UNK";
-      const t = toStr != null ? toStr : "UNK";
-      g.steps.push([f, t]);
-    } catch {}
-  }
-
-  return {
-    startNewGame,
-    beginDecision,
-    endDecision,
-    finalizeAndUpload,
-    captureStateForTraining,
-    recordExternalDecision,
-    beginMoveBoundary,
-    rollbackLastMoveBoundary,
-    markRestoredFromSave,
-    recordSouflaPenaltyChoice,
-
-    turnEnd,
-    souflaBeginForce,
-    souflaApplied,
-    souflaEndForce,
-  };
+  return Object.freeze({ startNewGame, finalizeAndSubmit, markRestoredFromSave, noteUndo });
 })();
 
 const AI = DhametAIEngine.create({

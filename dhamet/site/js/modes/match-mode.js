@@ -152,10 +152,6 @@
     return `${p}_${Date.now().toString(36)}_${Math.floor(Math.random() * 1e9).toString(36)}`;
   }
 
-  function trainingMode(ctx) {
-    const mode = detectMode(ctx);
-    return mode === MODE_SPECTATOR ? MODE_ONLINE : mode;
-  }
 
   const api = Object.freeze({
     version: 'match-mode-v2',
@@ -177,7 +173,6 @@
     resolveOnlineMatchId,
     resolveMatchId: resolveOnlineMatchId,
     createLocalMatchId,
-    trainingMode,
   });
 
   root.DhametMatchMode = api;

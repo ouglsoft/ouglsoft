@@ -798,25 +798,10 @@ try {
   if (typeof globalThis !== "undefined") globalThis.Visual = Visual;
 } catch (_) {}
 
-function trBegin(payload) {
-  try {
-    if (typeof TrainRecorder === "undefined") return null;
-    return TrainRecorder.beginDecision(payload);
-  } catch {
-    return null;
-  }
-}
 
-function trEnd(token, payload) {
+function _pvcFinalizeOnce(reason) {
   try {
-    if (typeof TrainRecorder === "undefined") return;
-    TrainRecorder.endDecision(token, payload);
-  } catch {}
-}
-
-function _trFinalizeOnce(reason) {
-  try {
-    if (window.__zamat_tr_finalized) return;
+    if (window.__zamat_pvc_result_finalized) return;
     try {
       const isOnline = !!(window.Online && window.Online.isActive);
       if (isOnline) {
@@ -833,13 +818,13 @@ function _trFinalizeOnce(reason) {
     } catch (e) {}
     if (window.Game && Game.gameOver) return;
     if (
-      typeof TrainRecorder === "undefined" ||
-      !TrainRecorder ||
-      typeof TrainRecorder.finalizeAndUpload !== "function"
+      typeof PvCResultRecorder === "undefined" ||
+      !PvCResultRecorder ||
+      typeof PvCResultRecorder.finalizeAndSubmit !== "function"
     )
       return;
-    window.__zamat_tr_finalized = true;
-    TrainRecorder.finalizeAndUpload({
+    window.__zamat_pvc_result_finalized = true;
+    PvCResultRecorder.finalizeAndSubmit({
       winner: window.Game ? Game.winner : null,
       endReason: String(reason || "disconnect"),
     });
@@ -847,8 +832,8 @@ function _trFinalizeOnce(reason) {
 }
 
 try {
-  window.addEventListener("pagehide", () => _trFinalizeOnce("disconnect"), { capture: true });
-  window.addEventListener("beforeunload", () => _trFinalizeOnce("disconnect"), { capture: true });
+  window.addEventListener("pagehide", () => _pvcFinalizeOnce("disconnect"), { capture: true });
+  window.addEventListener("beforeunload", () => _pvcFinalizeOnce("disconnect"), { capture: true });
 } catch {}
 
 function boardIdxFromClient(canvas, clientX, clientY) {
@@ -1349,12 +1334,6 @@ const Input = {
       if (isCap) {
         if (!Turn.ctx) Turn.start();
         Turn.beginCapture(fromIdx);
-        const tr = trBegin({
-          fromIdx,
-          toIdx,
-          action: encodeAction(fromIdx, toIdx),
-          actor: Game.player,
-        });
         try { Visual && typeof Visual.consumeTurnClear === "function" && Visual.consumeTurnClear(); } catch (_) {}
         applyMove(fromIdx, toIdx, true, jumped);
         Turn.recordCapture();
@@ -1363,7 +1342,6 @@ const Input = {
         Game.lastMovedTo = toIdx;
         Visual.setLastMovePath(Game.lastMoveFrom, Game.lastMovePath);
 
-        trEnd(tr, { cap: 1, fromStr: rcStr(fromIdx), toStr: rcStr(toIdx) });
 
         const caps = generateCapturesFrom(toIdx, valueAt(toIdx));
         if (caps.length === 0) {
@@ -1378,12 +1356,6 @@ const Input = {
           Visual.draw();
           return;
         }
-        const tr = trBegin({
-          fromIdx,
-          toIdx,
-          action: encodeAction(fromIdx, toIdx),
-          actor: Game.player,
-        });
         try { Visual && typeof Visual.consumeTurnClear === "function" && Visual.consumeTurnClear(); } catch (_) {}
         applyMove(fromIdx, toIdx, false, null);
         Game.inChain = false;
@@ -1391,7 +1363,6 @@ const Input = {
         Game.lastMovedTo = toIdx;
         Visual.setLastMove(fromIdx, toIdx);
 
-        trEnd(tr, { cap: 0, fromStr: rcStr(fromIdx), toStr: rcStr(toIdx) });
 
         maybeQueueDeferredPromotion(toIdx);
         Turn.finishTurnAndSoufla();
@@ -1544,20 +1515,6 @@ function endKillPressed() {
 
     completeForcedOpeningPly();
   }
-
-  try {
-    const fromIdx = Game.chainPos ?? Game.lastMovedTo ?? null;
-    if (
-      typeof TrainRecorder !== "undefined" &&
-      TrainRecorder &&
-      typeof TrainRecorder.beginMoveBoundary === "function"
-    ) {
-      TrainRecorder.beginMoveBoundary({ type: "end_chain", actor: Game.player, fromIdx });
-    }
-    const tr = trBegin({ action: ACTION_ENDCHAIN, actor: Game.player, fromIdx });
-    const fromStr = fromIdx != null ? rcStr(fromIdx) : "END";
-    trEnd(tr, { cap: 0, fromStr, toStr: "END" });
-  } catch {}
 
   maybeQueueDeferredPromotion(Game.chainPos ?? Game.lastMovedTo);
 
@@ -2189,7 +2146,6 @@ const UI = {
     if (window.DhametSouflaView && typeof DhametSouflaView.showSouflaModal === "function") {
       return DhametSouflaView.showSouflaModal(pending, {
         game: Game, t, Modal, Visual, BOARD_N, idxToRC, toViewRC, valueAt, boardIdxFromClient,
-        TrainRecorder: typeof TrainRecorder !== "undefined" ? TrainRecorder : null,
         applySouflaDecision, UI,
       });
     }
@@ -2247,13 +2203,10 @@ function performLocalUndo(options) {
     __beforeUndoSnap = typeof snapshotState === "function" ? snapshotState() : null;
   } catch {}
   try {
-    if (
-      typeof TrainRecorder !== "undefined" &&
-      TrainRecorder &&
-      typeof TrainRecorder.rollbackLastMoveBoundary === "function"
-    )
-      TrainRecorder.rollbackLastMoveBoundary();
-  } catch {}
+    if (typeof PvCResultRecorder !== "undefined" && PvCResultRecorder && typeof PvCResultRecorder.noteUndo === "function") {
+      PvCResultRecorder.noteUndo();
+    }
+  } catch (_) {}
   restoreSnapshot(snap);
 
   try {
@@ -2536,15 +2489,15 @@ async function endLocalMatchPressed() {
   try {
     await confirmMatchExitAction(async () => {
       try {
-        if (!window.__zamat_tr_finalized) {
-          window.__zamat_tr_finalized = true;
+        if (!window.__zamat_pvc_result_finalized) {
+          window.__zamat_pvc_result_finalized = true;
           if (
-            typeof TrainRecorder !== "undefined" &&
-            TrainRecorder &&
-            typeof TrainRecorder.finalizeAndUpload === "function"
+            typeof PvCResultRecorder !== "undefined" &&
+            PvCResultRecorder &&
+            typeof PvCResultRecorder.finalizeAndSubmit === "function"
           ) {
             await Promise.race([
-              TrainRecorder.finalizeAndUpload({
+              PvCResultRecorder.finalizeAndSubmit({
                 winner: window.Game ? Game.winner : null,
                 endReason: "cancel",
               }),

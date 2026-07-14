@@ -35,7 +35,6 @@ TURN_TTL_SECONDS = "3600"
 # GOOGLE_CLIENT_ID
 # GOOGLE_CLIENT_SECRET
 # INTERNAL_API_SECRET (any long random string; also used for internal writes)
-# TRAINING_EXPORT_SECRET (a different long random string, shared only with GitHub Actions)
 # Optional ExpressTURN secrets. Prefer EXPRESS_TURN_SECRET for time-limited credentials.
 # EXPRESS_TURN_SECRET
 # EXPRESS_TURN_USERNAME
