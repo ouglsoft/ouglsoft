@@ -49,12 +49,12 @@
   --fs-footer: 12px;
   --board-grid: #01060e;
   --board-diag: #010b18;
-  --board-depth-base: #edf4ff;
-  --board-depth-surface: #f8fbff;
-  --board-depth-frame: #9fb0c7;
-  --board-depth-line: #173458;
-  --board-depth-highlight: rgba(255, 255, 255, 0.72);
-  --board-depth-shadow: rgba(15, 23, 42, 0.18);
+  --board-depth-base: #e8f1ff;
+  --board-depth-surface: #f7faff;
+  --board-depth-frame: #8aa8d0;
+  --board-depth-line: #2563eb;
+  --board-depth-highlight: rgba(255, 255, 255, 0.82);
+  --board-depth-shadow: rgba(30, 64, 175, 0.18);
   --surface-elev-1: rgba(255, 255, 255, 0.78);
   --surface-elev-2: rgba(255, 255, 255, 0.92);
   --surface-stroke: rgba(148, 163, 184, 0.24);
@@ -101,7 +101,7 @@
   --board-depth-base: #0b1425;
   --board-depth-surface: #101d33;
   --board-depth-frame: #334155;
-  --board-depth-line: #dbe7f7;
+  --board-depth-line: #60a5fa;
   --board-depth-highlight: rgba(96, 165, 250, 0.10);
   --board-depth-shadow: rgba(0, 0, 0, 0.42);
   --surface-elev-1: rgba(15, 23, 42, 0.82);
