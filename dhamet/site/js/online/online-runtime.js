@@ -9,7 +9,15 @@
   const S = window.__ZAMAT_ONLINE_SHARED__;
   const Online = window.Online;
   if (!S || !Online) {
-    try { console.error("[ZAMAT] lobby-runtime.js must be loaded before the online runtime"); } catch (e) {}
+    try {
+      const missing = [];
+      if (!Online) missing.push("window.Online");
+      if (!S) missing.push("window.__ZAMAT_ONLINE_SHARED__");
+      console.error(
+        "[ZAMAT] lobby-runtime.js did not complete initialization. Missing:",
+        missing.join(", ")
+      );
+    } catch (e) {}
     return;
   }
   const Logger = S.Logger || window.Logger;

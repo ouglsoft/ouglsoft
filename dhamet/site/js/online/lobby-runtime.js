@@ -3707,7 +3707,6 @@
     normalizeLogArrayForWrite: normalizeLogArrayForWrite,
     showOnlineNotice: showOnlineNotice,
     ensureCloudflareAuth: ensureCloudflareAuth,
-    initServerTimeOffset: initServerTimeOffset,
     nowTs: nowTs,
     localNow: localNow,
     ssGet: ssGet,
