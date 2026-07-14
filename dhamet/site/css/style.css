@@ -49,11 +49,8 @@
   --fs-footer: 12px;
   --board-grid: #01060e;
   --board-diag: #010b18;
-  --board-depth-base: #edf4ff;
-  --board-depth-surface: #f8fbff;
-  --board-depth-frame: #9fb0c7;
-  --board-depth-line: #173458;
-  --board-depth-highlight: rgba(255, 255, 255, 0.72);
+  --board-bg-start: #fbfdff;
+  --board-bg-end: #eef5ff;
   --board-depth-shadow: rgba(15, 23, 42, 0.18);
   --surface-elev-1: rgba(255, 255, 255, 0.78);
   --surface-elev-2: rgba(255, 255, 255, 0.92);
@@ -98,11 +95,8 @@
   --btn-shadow: 0 16px 34px rgba(2, 6, 23, 0.48);
   --board-grid: #bfd0e8;
   --board-diag: #f8fbff;
-  --board-depth-base: #0b1425;
-  --board-depth-surface: #101d33;
-  --board-depth-frame: #334155;
-  --board-depth-line: #dbe7f7;
-  --board-depth-highlight: rgba(96, 165, 250, 0.10);
+  --board-bg-start: #081121;
+  --board-bg-end: #111c33;
   --board-depth-shadow: rgba(0, 0, 0, 0.42);
   --surface-elev-1: rgba(15, 23, 42, 0.82);
   --surface-elev-2: rgba(15, 23, 42, 0.94);
@@ -289,7 +283,7 @@ html.dark .z-nav-toggle {
 
 /* ========================================================================== GAME SHELL LAYOUT ========================================================================== */
 :root.dark canvas#board {
-  background: linear-gradient(180deg, #081121 0%, #111c33 100%);
+  background: linear-gradient(180deg, var(--board-bg-start) 0%, var(--board-bg-end) 100%);
   color: var(--text);
 }
 
@@ -339,7 +333,7 @@ canvas#board {
   color: var(--text);
   position: relative;
   z-index: 2;
-  background: linear-gradient(180deg, #fbfdff 0%, #eef5ff 100%);
+  background: linear-gradient(180deg, var(--board-bg-start) 0%, var(--board-bg-end) 100%);
   border: 1px solid var(--board-diag);
   touch-action: manipulation;
   overscroll-behavior: contain;

@@ -2730,9 +2730,6 @@ function applyBoardStyle(style) {
     document.body && document.body.classList.toggle("board-depth", requested === "3d");
   } catch {}
 
-  const canvas = qs("#board");
-  if (canvas) canvas.dataset.boardStyle = requested;
-
   try {
     Visual.draw();
   } catch {}

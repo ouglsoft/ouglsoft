@@ -64,16 +64,30 @@
     return { getPropertyValue: function () { return ""; } };
   }
 
+  var PIECE_COLORS = Object.freeze({
+    whiteLight: "#fafafa",
+    whiteMid: "#ededed",
+    whiteDark: "#d4d4d4",
+    whiteEdge: "#526bfc",
+    whiteDot: "#3b82f6",
+    blackLight: "#1f2937",
+    blackMid: "#17202d",
+    blackDark: "#0b1220",
+    blackEdge: "#fc780c",
+    blackDot: "#f77e0e",
+    king: "#f5c542",
+  });
+
   var PIECE_SPRITE_TILE = 256;
   var PIECE_SPRITE_SVG = [
     '<svg xmlns="http://www.w3.org/2000/svg" width="768" height="256" viewBox="0 0 768 256">',
     '<defs>',
     '<filter id="ps" x="-34%" y="-34%" width="170%" height="190%"><feDropShadow dx="0" dy="11" stdDeviation="9" flood-color="#020617" flood-opacity=".46"/></filter>',
-    '<linearGradient id="wb" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fafafa"/><stop offset=".58" stop-color="#ededed"/><stop offset="1" stop-color="#d4d4d4"/></linearGradient>',
-    '<linearGradient id="wr" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#93c5fd"/><stop offset="1" stop-color="#526bfc"/></linearGradient>',
+    '<linearGradient id="wb" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="' + PIECE_COLORS.whiteLight + '"/><stop offset=".58" stop-color="' + PIECE_COLORS.whiteMid + '"/><stop offset="1" stop-color="' + PIECE_COLORS.whiteDark + '"/></linearGradient>',
+    '<linearGradient id="wr" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#93c5fd"/><stop offset="1" stop-color="' + PIECE_COLORS.whiteEdge + '"/></linearGradient>',
     '<radialGradient id="wh" cx="35%" cy="25%" r="78%"><stop offset="0" stop-color="#ffffff"/><stop offset=".50" stop-color="#f5f5f5"/><stop offset="1" stop-color="#cbd5e1"/></radialGradient>',
-    '<linearGradient id="bb" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#1f2937"/><stop offset=".54" stop-color="#17202d"/><stop offset="1" stop-color="#0b1220"/></linearGradient>',
-    '<linearGradient id="br" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fdba74"/><stop offset="1" stop-color="#fc780c"/></linearGradient>',
+    '<linearGradient id="bb" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="' + PIECE_COLORS.blackLight + '"/><stop offset=".54" stop-color="' + PIECE_COLORS.blackMid + '"/><stop offset="1" stop-color="' + PIECE_COLORS.blackDark + '"/></linearGradient>',
+    '<linearGradient id="br" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fdba74"/><stop offset="1" stop-color="' + PIECE_COLORS.blackEdge + '"/></linearGradient>',
     '<radialGradient id="bh" cx="35%" cy="25%" r="78%"><stop offset="0" stop-color="#334155"/><stop offset=".48" stop-color="#1f2937"/><stop offset="1" stop-color="#0b1220"/></radialGradient>',
     '<linearGradient id="gold" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff4a8"/><stop offset=".32" stop-color="#facc15"/><stop offset=".72" stop-color="#d99000"/><stop offset="1" stop-color="#8f5200"/></linearGradient>',
     '<linearGradient id="goldEdge" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff8c7"/><stop offset="1" stop-color="#a85f00"/></linearGradient>',
@@ -81,7 +95,7 @@
     '<g filter="url(#ps)">',
     '<g transform="translate(0 0)">',
     '<ellipse cx="128" cy="211" rx="73" ry="17" fill="#07152d" opacity=".28"/>',
-    '<ellipse cx="128" cy="190" rx="74" ry="25" fill="url(#wb)" stroke="#526bfc" stroke-width="5"/>',
+    '<ellipse cx="128" cy="190" rx="74" ry="25" fill="url(#wb)" stroke="' + PIECE_COLORS.whiteEdge + '" stroke-width="5"/>',
     '<ellipse cx="128" cy="181" rx="66" ry="18" fill="#ffffff" opacity=".34"/>',
     '<path d="M78 179 C83 151 101 138 104 114 C106 100 98 93 92 87 C103 83 113 80 128 80 C143 80 153 83 164 87 C158 93 150 100 152 114 C155 138 173 151 178 179 Z" fill="url(#wb)" stroke="#94a3b8" stroke-width="3"/>',
     '<ellipse cx="128" cy="118" rx="28" ry="12" fill="url(#wr)" opacity=".92"/>',
@@ -91,7 +105,7 @@
     '</g>',
     '<g transform="translate(256 0)">',
     '<ellipse cx="128" cy="211" rx="73" ry="17" fill="#000000" opacity=".5"/>',
-    '<ellipse cx="128" cy="190" rx="74" ry="25" fill="url(#bb)" stroke="#fc780c" stroke-width="5"/>',
+    '<ellipse cx="128" cy="190" rx="74" ry="25" fill="url(#bb)" stroke="' + PIECE_COLORS.blackEdge + '" stroke-width="5"/>',
     '<ellipse cx="128" cy="181" rx="66" ry="18" fill="#94a3b8" opacity=".12"/>',
     '<path d="M78 179 C83 151 101 138 104 114 C106 100 98 93 92 87 C103 83 113 80 128 80 C143 80 153 83 164 87 C158 93 150 100 152 114 C155 138 173 151 178 179 Z" fill="url(#bb)" stroke="#374151" stroke-width="3"/>',
     '<ellipse cx="128" cy="118" rx="28" ry="12" fill="url(#br)" opacity=".94"/>',
@@ -162,9 +176,8 @@
     var dark = isDark(opts);
     var root = getComputedRoot(opts);
     return {
-      base: dark ? "#111c33" : "#eef5ff",
-      surface: dark ? "#081121" : "#fbfdff",
-      frame: cssValue(root, "--board-diag", dark ? "#f8fbff" : "#010b18"),
+      base: cssValue(root, "--board-bg-end", dark ? "#111c33" : "#eef5ff"),
+      surface: cssValue(root, "--board-bg-start", dark ? "#081121" : "#fbfdff"),
       diag: cssValue(root, "--board-diag", dark ? "#f8fbff" : "#010b18"),
       grid: cssValue(root, "--board-grid", dark ? "#bfd0e8" : "#01060e"),
       point: cssValue(root, "--board-grid", dark ? "#bfd0e8" : "#01060e"),
@@ -457,7 +470,9 @@
     opts = opts || {};
     var owner = typeof opts.pieceOwner === "function" ? opts.pieceOwner(value) : global.pieceOwner ? global.pieceOwner(value) : value > 0 ? 1 : -1;
     var bot = opts.BOT != null ? opts.BOT : global.BOT;
-    return owner === bot ? ["#fafafa", "#d4d4d4"] : ["#0b1220", "#1f2937"];
+    return owner === bot
+      ? [PIECE_COLORS.whiteLight, PIECE_COLORS.whiteDark]
+      : [PIECE_COLORS.blackDark, PIECE_COLORS.blackLight];
   }
 
   function drawDimensionalFallbackPiece(ctx, x, anchorY, width, height, isWhite) {
@@ -466,20 +481,20 @@
     var baseY = anchorY - height * 0.08;
     var main = ctx.createLinearGradient(x - width / 2, top, x + width / 2, anchorY);
     if (isWhite) {
-      main.addColorStop(0, "#ffffff");
-      main.addColorStop(0.5, "#edf4ff");
-      main.addColorStop(1, "#9badc5");
+      main.addColorStop(0, PIECE_COLORS.whiteLight);
+      main.addColorStop(0.5, PIECE_COLORS.whiteMid);
+      main.addColorStop(1, PIECE_COLORS.whiteDark);
     } else {
-      main.addColorStop(0, "#56657c");
-      main.addColorStop(0.46, "#172033");
-      main.addColorStop(1, "#020617");
+      main.addColorStop(0, PIECE_COLORS.blackLight);
+      main.addColorStop(0.46, PIECE_COLORS.blackMid);
+      main.addColorStop(1, PIECE_COLORS.blackDark);
     }
     ctx.save();
     ctx.shadowColor = "rgba(2,6,23,.42)";
     ctx.shadowBlur = Math.max(4, width * 0.1);
     ctx.shadowOffsetY = Math.max(2, height * 0.06);
     ctx.fillStyle = main;
-    ctx.strokeStyle = isWhite ? "#526bfc" : "#f77e0e";
+    ctx.strokeStyle = isWhite ? PIECE_COLORS.whiteEdge : PIECE_COLORS.blackEdge;
     ctx.lineWidth = Math.max(2, width * 0.045);
     ctx.beginPath();
     ctx.ellipse(x, baseY, width * 0.40, height * 0.10, 0, 0, Math.PI * 2);
@@ -606,20 +621,20 @@
         ctx.fillStyle = grad;
         ctx.fill();
         ctx.lineWidth = 3;
-        ctx.strokeStyle = ownerFn && ownerFn(v) === bot ? "#526bfc" : "#fc780c";
+        ctx.strokeStyle = ownerFn && ownerFn(v) === bot ? PIECE_COLORS.whiteEdge : PIECE_COLORS.blackEdge;
         ctx.stroke();
         var kind = kindFn ? kindFn(v) : Math.abs(Number(v));
         if (kind === 2 || Math.abs(Number(v)) === 2) {
           ctx.beginPath();
           ctx.arc(x, y, rad * 0.8, 0, Math.PI * 2);
           ctx.lineWidth = 4;
-          ctx.strokeStyle = "#f5c542";
+          ctx.strokeStyle = PIECE_COLORS.king;
           ctx.stroke();
         }
         var dotR = rad * 0.3;
         ctx.beginPath();
         ctx.arc(x, y, dotR, 0, Math.PI * 2);
-        ctx.fillStyle = ownerFn && ownerFn(v) === bot ? "#3b82f6" : "#f77e0e";
+        ctx.fillStyle = ownerFn && ownerFn(v) === bot ? PIECE_COLORS.whiteDot : PIECE_COLORS.blackDot;
         ctx.fill();
         ctx.restore();
       }
