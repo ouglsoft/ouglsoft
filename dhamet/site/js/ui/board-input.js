@@ -52,33 +52,6 @@
     if (!ev) return null;
     return indexFromPoint(canvas, ev.clientX, ev.clientY, opts);
   }
-
-  function isRoleInputHeld(doc) {
-    doc = doc || getDocument();
-    var root = doc && doc.documentElement;
-    return !!(root && root.classList && (root.classList.contains("role-pending") || root.classList.contains("ui-hold")));
-  }
-
-  function isPvpMode(doc) {
-    doc = doc || getDocument();
-    return !!(doc && doc.body && doc.body.classList && doc.body.classList.contains("mode-pvp"));
-  }
-
-  function shouldIgnoreBoardInput(doc) {
-    doc = doc || getDocument();
-    return isRoleInputHeld(doc) && isPvpMode(doc);
-  }
-
-  function shouldBlockBusyPointer(getBusyKind) {
-    try {
-      if (typeof getBusyKind !== "function") return false;
-      var busy = getBusyKind();
-      return busy === "move" || busy === "soufla";
-    } catch (_) {
-      return false;
-    }
-  }
-
   function installCanvasClick(canvas, onClick, opts) {
     opts = opts || {};
     if (!canvas || typeof canvas.addEventListener !== "function" || typeof onClick !== "function") return null;
@@ -112,32 +85,11 @@
     return cleanup;
   }
 
-  function installBusyPointerBlocker(target, getBusyKind, opts) {
-    opts = opts || {};
-    if (!target || typeof target.addEventListener !== "function") return null;
-    if (opts.onceKey && target[opts.onceKey]) return target[opts.onceKey];
-    var handler = function (ev) {
-      if (!shouldBlockBusyPointer(getBusyKind)) return;
-      try { ev.preventDefault(); } catch (_) {}
-    };
-    target.addEventListener("pointerdown", handler, true);
-    var cleanup = function () {
-      try { target.removeEventListener("pointerdown", handler, true); } catch (_) {}
-    };
-    if (opts.onceKey) target[opts.onceKey] = cleanup;
-    return cleanup;
-  }
-
   var api = Object.freeze({
     indexFromPoint: indexFromPoint,
     indexFromEvent: indexFromEvent,
-    isRoleInputHeld: isRoleInputHeld,
-    isPvpMode: isPvpMode,
-    shouldIgnoreBoardInput: shouldIgnoreBoardInput,
-    shouldBlockBusyPointer: shouldBlockBusyPointer,
     installCanvasClick: installCanvasClick,
     installCanvasZoomGuard: installCanvasZoomGuard,
-    installBusyPointerBlocker: installBusyPointerBlocker,
   });
 
   global.DhametBoardInput = api;

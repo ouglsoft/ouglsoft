@@ -1009,23 +1009,6 @@ const Input = {
   onBoardClick(ev) {
     const cv = qs("#board");
 
-    try {
-      if (window.DhametBoardInput && DhametBoardInput.shouldIgnoreBoardInput(document)) return;
-      var root = document.documentElement;
-      if (
-        !window.DhametBoardInput &&
-        root &&
-        root.classList &&
-        (root.classList.contains("role-pending") || root.classList.contains("ui-hold"))
-      ) {
-        if (
-          document.body &&
-          document.body.classList &&
-          document.body.classList.contains("mode-pvp")
-        )
-          return;
-      }
-    } catch (_) {}
     if (Game.gameOver) return;
 
     try {
@@ -2630,25 +2613,8 @@ function bindUI() {
         onceKey: "__dhametMainBoardZoomGuardInstalled",
       });
     }
-    DhametBoardInput.installBusyPointerBlocker(__boardInputCanvas, computerBusyKind, {
-      onceKey: "__dhametMainBoardBusyBlockerInstalled",
-    });
   } else if (__boardInputCanvas) {
     __boardInputCanvas.addEventListener("click", Input.onBoardClick);
-    __boardInputCanvas.addEventListener(
-      "pointerdown",
-      (ev) => {
-        try {
-          const busy = computerBusyKind();
-          if (busy === "move" || busy === "soufla") {
-            try {
-              ev.preventDefault();
-            } catch (_) {}
-          }
-        } catch (_) {}
-      },
-      true,
-    );
   }
 }
 

@@ -1622,12 +1622,6 @@ body[dir="rtl"] #aiLevelValue {
   pointer-events: none;
 }
 
-.ui-hold body.z-game-page.mode-pvp .board-wrap,
-.role-pending body.z-game-page.mode-pvp .board-wrap,
-.ui-hold body.z-game-page.mode-pvp #board,
-.role-pending body.z-game-page.mode-pvp #board {
-  pointer-events: none;
-}
 
 .mode-pvp .online-box {
   display: flex;

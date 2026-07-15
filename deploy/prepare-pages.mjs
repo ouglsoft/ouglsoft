@@ -33,6 +33,37 @@ function injectBuildToken(dir, build) {
   }
 }
 
+function isLocalAssetUrl(value) {
+  return !/^(?:(?:https?:)?\/\/|data:|blob:|mailto:|tel:|#)/i.test(String(value || '').trim());
+}
+function assertVersionedRuntimeAssets(dir, build) {
+  const expected = `v=${encodeURIComponent(build)}`;
+  const problems = [];
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const file = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      assertVersionedRuntimeAssets(file, build);
+      continue;
+    }
+    if (!entry.isFile() || !entry.name.endsWith('.html')) continue;
+    const text = fs.readFileSync(file, 'utf8');
+    const tags = text.match(/<(?:script|link)\b[^>]*>/gi) || [];
+    for (const tag of tags) {
+      const isScript = /^<script\b/i.test(tag);
+      const isStylesheet = /^<link\b/i.test(tag) && /\brel\s*=\s*(["'])[^"']*stylesheet[^"']*\1/i.test(tag);
+      if (!isScript && !isStylesheet) continue;
+      const attr = isScript ? 'src' : 'href';
+      const match = tag.match(new RegExp(`\\b${attr}\\s*=\\s*(["'])([^"']+)\\1`, 'i'));
+      if (!match || !isLocalAssetUrl(match[2])) continue;
+      if (!new RegExp(`(?:[?&])${expected}(?:[&#]|$)`).test(match[2])) {
+        problems.push(`${path.relative(dir, file)}: ${match[2]}`);
+      }
+    }
+    if (text.includes('__DHAMET_BUILD__')) problems.push(`${path.relative(dir, file)}: unresolved build token`);
+  }
+  if (problems.length) fail(`Unversioned Dhamet runtime assets:\n${problems.join('\n')}`);
+}
+
 function fail(message) {
   console.error(`prepare-pages: ${message}`);
   process.exit(1);
@@ -78,7 +109,9 @@ const dhametOut = path.join(outDir, 'dhamet');
 resetDir(dhametOut);
 copyDhametPublicFiles(dhametSiteDir, dhametOut);
 copyDir(dhametSharedDir, path.join(dhametOut, 'shared'));
-injectBuildToken(dhametOut, readDhametBuild());
+const dhametBuild = readDhametBuild();
+injectBuildToken(dhametOut, dhametBuild);
+assertVersionedRuntimeAssets(dhametOut, dhametBuild);
 
 console.log('Prepared Pages output: .deploy/site');
 console.log('Dhamet public path: .deploy/site/dhamet');
