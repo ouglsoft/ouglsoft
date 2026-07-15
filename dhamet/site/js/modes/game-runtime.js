@@ -1021,6 +1021,7 @@ function snapshotState(options) {
 }
 
 function pushHistoryBeforeMove(fromIdx, toIdx) {
+  if (Game.forcedEnabled && Number(Game.forcedPly || 0) < 10) return false;
   const ctx = typeof Turn !== "undefined" && Turn ? Turn.ctx : null;
   if (ctx && ctx.historyPushed) return false;
 
@@ -1429,7 +1430,7 @@ function canonicalSouflaDecision(decision, pending) {
   };
 }
 
-function souflaRedSegments(decision, pending) {
+function souflaRedPaths(decision, pending) {
   if (!decision || !pending || !Array.isArray(pending.options)) return [];
   const options = pending.options
     .filter(
@@ -1481,7 +1482,7 @@ function applySouflaDecision(requestedDecision, pending) {
   }
 
   const stateBeforePenalty = snapshotState();
-  const fxRedSegments = souflaRedSegments(decision, pending);
+  const fxRedPaths = souflaRedPaths(decision, pending);
   let fxRemoveIdx = null;
   let fxForcePath = null;
   let fxUndoArrow = null;
@@ -1621,7 +1622,7 @@ function applySouflaDecision(requestedDecision, pending) {
 
   try {
     Visual.applySouflaFXBatch(
-      { redSegments: fxRedSegments, removeIdx: fxRemoveIdx, forcePath: fxForcePath, undoArrow: fxUndoArrow },
+      { redPaths: fxRedPaths, removeIdx: fxRemoveIdx, forcePath: fxForcePath, undoArrow: fxUndoArrow },
       { noDraw: true },
     );
   } catch (_) {}

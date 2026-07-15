@@ -1460,6 +1460,8 @@
 
     gameId: null,
 
+    _acceptedGameNavigationId: null,
+
     gameRef: null,
 
     _invitePreferenceRef: null,
@@ -3403,41 +3405,37 @@
         },
 
     _handleOutgoingInviteAccepted: async function (gameId) {
+          const gid = String(gameId || "").trim();
+          if (!gid) return false;
+
+          // A stale gameId in lobby presence must not prevent navigation. Only
+          // an actually active browser match owns the current page session.
+          if (this.isActive && this.gameId) return false;
+          if (this._acceptedGameNavigationId === gid) return true;
+          this._acceptedGameNavigationId = gid;
+
           try {
-            if (!gameId) return;
-    
-            const inMatch = !!(this.isActive || this.gameId);
-            if (inMatch) return;
-    
-            try {
-              const gid = String(gameId);
-              const w = this._outInviteWatchMap && this._outInviteWatchMap[gid];
-              if (w && w.ref && w.cb) {
-                try {
-                  w.ref.off("value", w.cb);
-                } catch (e) {}
-              }
-              if (this._outInviteWatchMap) {
-                try {
-                  delete this._outInviteWatchMap[gid];
-                } catch (e) {}
-              }
-            } catch (e) {}
-    
-            try {
-              this._discardLocalInvitesOnEnterMatch();
-            } catch (e) {}
-    
+            const watch = this._outInviteWatchMap && this._outInviteWatchMap[gid];
+            if (watch && watch.ref && watch.cb) watch.ref.off("value", watch.cb);
+            if (this._outInviteWatchMap) delete this._outInviteWatchMap[gid];
+          } catch (_) {}
+          try { this._untrackOutgoingInviteByGame && this._untrackOutgoingInviteByGame(gid); } catch (_) {}
+          try { this._discardLocalInvitesOnEnterMatch(); } catch (_) {}
+
+          try {
             if (!isGamePage()) {
-              try {
-                this._goToGameAsPlayer(gameId);
-              } catch (e) {}
-            } else {
-              try {
-                await this._startInviterGame(gameId);
-              } catch (e) {}
+              const navigated = this._goToGameAsPlayer(gid);
+              if (!navigated) this._acceptedGameNavigationId = null;
+              return !!navigated;
             }
-          } catch (e) {}
+            const started = await this._startInviterGame(gid);
+            if (!started) this._acceptedGameNavigationId = null;
+            return !!started;
+          } catch (error) {
+            this._acceptedGameNavigationId = null;
+            try { Logger.warn("accepted_game_navigation_failed", { gameId: gid, error: String(error && (error.message || error)) }); } catch (_) {}
+            return false;
+          }
         },
 
     _touchRoomListActivity: function (gameId, force) {
@@ -3455,11 +3453,16 @@
 
     _goToGameAsPlayer: function (gameId) {
           try {
+            const gid = String(gameId || "").trim();
+            if (!gid) return false;
             const inPages = (location.pathname || "").includes("/pages/");
             const base = inPages ? "./game.html" : "pages/game.html";
-            const url = `${base}?pvp=1&gid=${encodeURIComponent(String(gameId || ""))}`;
+            const url = `${base}?pvp=1&gid=${encodeURIComponent(gid)}`;
             location.href = url;
-          } catch (e) {}
+            return true;
+          } catch (e) {
+            return false;
+          }
         },
 
     _invalidateInviteLocally: async function (inv, inviteRef) {

@@ -94,6 +94,14 @@
     };
   }
 
+
+  function isMandatoryOpeningSnapshot(snapshot) {
+    const snap = snapshot && typeof snapshot === 'object' ? snapshot : null;
+    if (!snap || !snap.forcedEnabled) return false;
+    const ply = Math.max(0, Number(snap.forcedPly != null ? snap.forcedPly : snap.openingPly) || 0);
+    return ply < 10;
+  }
+
   function canRequestUndo(game, requesterSide, options) {
     const g = game && typeof game === 'object' ? game : {};
     if (g.status && g.status !== 'active') return { ok: false, error: 'control/not-active' };
@@ -102,7 +110,11 @@
     if (!snap) return { ok: false, error: 'control/invalid-state' };
     if (snap.inChain) return { ok: false, error: 'control/in-chain' };
     if (Number(g.ply || 0) <= 0) return { ok: false, error: 'control/no-undo' };
-    if (!g.states || !g.states[String(Math.max(0, Number(g.ply || 0) - 1))]) return { ok: false, error: 'control/missing-previous-state' };
+    const previous = previousStateForUndo(g);
+    if (!previous) return { ok: false, error: 'control/missing-previous-state' };
+    if (isMandatoryOpeningSnapshot(previous.state && previous.state.snapshot)) {
+      return { ok: false, error: 'control/opening-undo-disabled' };
+    }
     const ur = normalizeUndoRequest(g.undoRequest);
     const opts = options && typeof options === 'object' ? options : {};
     if (!opts.ignorePending && ur && (ur.status === 'pending' || ur.status === 'active')) return { ok: false, error: 'control/undo-already-pending', undoRequest: ur };
@@ -160,6 +172,7 @@
     normalizeControlPayload,
     createUndoRequest,
     normalizeUndoRequest,
+    isMandatoryOpeningSnapshot,
     canRequestUndo,
     previousStateForUndo,
     undoFxFromSnapshot,

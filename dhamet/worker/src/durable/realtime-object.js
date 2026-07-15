@@ -1551,7 +1551,7 @@ export class RealtimeObject {
     const reduced = AuthorityCore.applyControlAction(current, Object.assign({}, payload, { uid, by: side }), { actor: uid, side, source: 'cloudflare-durable-object' });
     if (!reduced || reduced.ok === false) {
       const err = String((reduced && reduced.error) || '');
-      const status = /not-active|stale|forced-opening|no-undo|in-chain|soufla-pending|missing-previous/.test(err)
+      const status = /not-active|stale|forced-opening|opening-undo|no-undo|in-chain|soufla-pending|missing-previous/.test(err)
         ? 409
         : (/not-player|not-last-mover|requester-cannot-respond|invalid-side/.test(err) ? 403 : 400);
       return json(Object.assign({ ok: false, error: 'control/validation-failed', game: current }, reduced || {}), status);

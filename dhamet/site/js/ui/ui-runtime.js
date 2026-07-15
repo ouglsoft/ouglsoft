@@ -270,50 +270,18 @@ const Visual = (() => {
     }
   }
 
-  function setSouflaIgnoredPaths(list) {
-    SouflaFX.active = true;
-    SouflaFX.redPaths = list.slice();
-    draw();
-  }
-  function setSouflaUndoArrow(from, to) {
-    SouflaFX.active = true;
-
-    try {
-      if (Array.isArray(from)) {
-        const nodes = from.map((n) => Number(n)).filter(Number.isFinite);
-        SouflaFX.undoArrow = nodes.length >= 2 ? { nodes } : null;
-      } else if (Array.isArray(to)) {
-        const nodes = [from]
-          .concat(to)
-          .map((n) => Number(n))
-          .filter(Number.isFinite);
-        SouflaFX.undoArrow = nodes.length >= 2 ? { nodes } : null;
-      } else if (from != null && to != null) {
-        const a = Number(from),
-          b = Number(to);
-        SouflaFX.undoArrow = Number.isFinite(a) && Number.isFinite(b) ? { nodes: [a, b] } : null;
-      } else {
-        SouflaFX.undoArrow = null;
-      }
-    } catch {
-      SouflaFX.undoArrow = null;
-    }
-
-    draw();
-  }
-
   function applySouflaFXBatch(payload, opts) {
     payload = payload || {};
     opts = opts || {};
     const noDraw = !!opts.noDraw;
 
-    const redSegments = payload.redSegments;
+    const redPaths = payload.redPaths;
     const removeIdx = payload.removeIdx;
     const forcePath = payload.forcePath;
     const undoArrow = payload.undoArrow;
 
     const hasAny =
-      (Array.isArray(redSegments) && redSegments.length) ||
+      (Array.isArray(redPaths) && redPaths.length) ||
       removeIdx != null ||
       (Array.isArray(forcePath) && forcePath.length) ||
       (undoArrow &&
@@ -322,7 +290,7 @@ const Visual = (() => {
           (undoArrow.from != null && undoArrow.to != null)));
 
     SouflaFX.active = !!hasAny;
-    SouflaFX.redPaths = Array.isArray(redSegments) ? redSegments.slice() : [];
+    SouflaFX.redPaths = Array.isArray(redPaths) ? redPaths.slice() : [];
 
     SouflaFX.undoArrow = null;
     try {
@@ -394,26 +362,16 @@ const Visual = (() => {
     if (!noDraw) draw();
   }
 
-  function setUndoMovePath(fr, path) {
+  function setUndoMovePath(fr, path, noDraw) {
     if (fr == null || !Array.isArray(path) || !path.length) {
       S.undoMove = null;
-      draw();
+      if (!noDraw) draw();
       return;
     }
     clearAllFxExceptUndo();
     S.undoMove = { from: fr, path: path.slice() };
     S.pendingTurnClear = true;
-    draw();
-  }
-
-  function setSouflaRemove(idx) {
-    S.souflaRemove = idx;
-    draw();
-  }
-
-  function setSouflaForcePath(path) {
-    S.souflaForcePath = path.slice();
-    draw();
+    if (!noDraw) draw();
   }
 
   function setIgnoredKills(list) {
@@ -731,8 +689,6 @@ const Visual = (() => {
     clearPrevMove,
     setUndoMove,
     setUndoMovePath,
-    setSouflaRemove,
-    setSouflaForcePath,
     setIgnoredKills,
     setForcedOpeningArrow,
     clearForcedOpeningArrow,
@@ -741,9 +697,9 @@ const Visual = (() => {
     getCapturedOrder() {
       return Array.isArray(S.capturedOrder) ? S.capturedOrder.slice() : [];
     },
-    setCapturedOrder(list) {
+    setCapturedOrder(list, noDraw) {
       S.capturedOrder = Array.isArray(list) ? list.slice() : [];
-      draw();
+      if (!noDraw) draw();
     },
     markTurnBoundary() {
       S.pendingTurnClear = true;
@@ -762,17 +718,15 @@ const Visual = (() => {
       S.capturedOrder.push(idx);
       draw();
     },
-    clearCapturedOrder() {
+    clearCapturedOrder(noDraw) {
       S.capturedOrder = [];
       S.pendingTurnClear = false;
-      draw();
+      if (!noDraw) draw();
     },
     setShowCoords(v) {
       S.showCoords = !!v;
       draw();
     },
-    setSouflaIgnoredPaths: setSouflaIgnoredPaths,
-    setSouflaUndoArrow: setSouflaUndoArrow,
     clearSouflaFX: clearSouflaFX,
     applySouflaFXBatch: applySouflaFXBatch,
     renderSouflaPreview: renderSouflaPreview,
@@ -1593,7 +1547,7 @@ const UI = {
             postMatch: false,
             inChain: !!Game.inChain,
             myTurn: true,
-            canUndo: !!(Game.history && Game.history.length),
+            canUndo: canPerformLocalUndoNow(),
             canClaimSoufla: !!Game.availableSouflaForHuman,
             isSyncing: false,
           });
@@ -2158,8 +2112,33 @@ try {
   }
 } catch (_) {}
 
+function isMandatoryOpeningUndoCandidate(snapshot) {
+  const snap = snapshot && typeof snapshot === "object" ? snapshot : null;
+  if (!snap || !snap.forcedEnabled) return false;
+  const ply = Math.max(0, Number(snap.forcedPly != null ? snap.forcedPly : snap.openingPly) || 0);
+  return ply < 10;
+}
+
+function canPerformLocalUndoNow() {
+  if (!Game || Game.inChain) return false;
+  try {
+    if (Turn && Turn.ctx && Number(Turn.ctx.capturesDone || 0) > 0) return false;
+  } catch (_) {}
+  if (!Game.history || !Game.history.length) return false;
+  return !isMandatoryOpeningUndoCandidate(Game.history[Game.history.length - 1]);
+}
+
 function performLocalUndo(options) {
   const opts = options && typeof options === "object" ? options : {};
+
+  if (Game.inChain || (Turn && Turn.ctx && Number(Turn.ctx.capturesDone || 0) > 0)) {
+    Modal.alert({
+      title: t("modals.undo.title"),
+      body: `<div>${t("ui.noUndo")}</div>`,
+      okLabel: t("actions.close"),
+    });
+    return false;
+  }
 
   if (!Game.history.length) {
     Modal.alert({
@@ -2172,6 +2151,14 @@ function performLocalUndo(options) {
   }
 
   const candidate = Game.history[Game.history.length - 1];
+  if (isMandatoryOpeningUndoCandidate(candidate)) {
+    Modal.alert({
+      title: t("modals.undo.notAllowedTitle"),
+      body: `<div>${t("modals.undo.notAllowedBody")}</div>`,
+      okLabel: t("actions.close"),
+    });
+    return false;
+  }
   const candidateMover = candidate && Number(candidate.player);
   const localSide = Number(humanSide());
   if (opts.onlineLocalOnly && (candidateMover === TOP || candidateMover === BOT) && candidateMover !== localSide) {

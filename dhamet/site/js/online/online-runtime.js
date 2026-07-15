@@ -1436,6 +1436,16 @@
     _buildOnlineActionState: function (online) {
           const on = online !== false;
           const uiBlocked = !!(document.documentElement && document.documentElement.classList.contains("ui-hold"));
+          let canUndo = false;
+          if (on && !this.isSpectator && !uiBlocked && !this._inPostMatch) {
+            try {
+              canUndo = !!(
+                window.DhametControl &&
+                typeof DhametControl.canRequestUndo === "function" &&
+                DhametControl.canRequestUndo(this._lastGameData, this.mySide).ok
+              );
+            } catch (_) { canUndo = false; }
+          }
           return {
             online: on,
             spectator: on && !!this.isSpectator,
@@ -1443,7 +1453,7 @@
             postMatch: on && !!this._inPostMatch,
             inChain: !!(typeof Game !== "undefined" && Game.inChain),
             myTurn: !on || !!(typeof Game !== "undefined" && Game.player === this.mySide),
-            canUndo: on && !this.isSpectator && Number(this.moveIndex || 0) > 0,
+            canUndo,
             canClaimSoufla: on && !this.isSpectator && !!(typeof Game !== "undefined" && Game.availableSouflaForHuman),
             isSyncing: on && !!this._resyncInFlight,
           };
@@ -2306,232 +2316,164 @@
         },
 
     _applyRemoteState: function (data, options) {
+          this._isApplyingRemote = true;
           try {
-            this._isApplyingRemote = true;
             const applyOptions = options && typeof options === "object" ? options : {};
             const skipFx = !!applyOptions.skipFx;
-    
-            try {
-              const remoteMI = Number(
-                (data && (data.moveIndex ?? (data.lastMove && data.lastMove.moveIndex))) ?? 0,
-              );
-              if (this._awaitingLocalCommit && Number.isFinite(this._expectedMoveIndex)) {
-                if (remoteMI < this._expectedMoveIndex) {
-                  return;
-                }
-                this._markLocalCommitSettled();
-              }
-            } catch (e) {}
-            const snap = data && data.state ? data.state.snapshot : null;
-            if (!snap) return;
-    
-            try { if (typeof resetTransientGameState === "function") resetTransientGameState(); } catch (e) {}
-            restoreSnapshot(snap, { redraw: false, visual: false });
-    
-            try {
-              const lm = data && data.lastMove ? data.lastMove : null;
-                const curSide =
-                  snap && typeof snap.player === "number"
-                    ? snap.player
-                    : typeof data.turn === "number"
-                      ? data.turn
-                      : null;
-                const lastSide =
-                  curSide != null ? -curSide : lm && typeof lm.by === "number" ? lm.by : null;
-    
-                if (lm && lm.kind === "undo" && typeof Visual !== "undefined" && Visual) {
-                  const fr = lm.undoneFrom != null ? lm.undoneFrom : null;
-                  const p = Array.isArray(lm.undonePath) ? lm.undonePath : null;
-                  if (fr != null && p && p.length && typeof Visual.setUndoMovePath === "function") {
-                    Visual.setUndoMovePath(fr, p);
-                  } else if (fr != null && p && p.length && typeof Visual.setUndoMove === "function") {
-                    Visual.setUndoMove(fr, p[p.length - 1]);
-                  } else {
-                    try {
-                      Visual.setUndoMove && Visual.setUndoMove(null, null);
-                    } catch (e) {}
-                  }
-                  try {
-                    if (typeof Visual.markTurnBoundary === "function") Visual.markTurnBoundary();
-                  } catch (e) {}
-                } else {
-                  try {
-                    if (lastSide != null) Game.lastMoveSide = lastSide;
-                  } catch (e) {}
-                  try {
-                    let fr = null;
-                    let p = null;
-    
-                    if (lm && lm.from != null && Array.isArray(lm.path) && lm.path.length) {
-                      fr = lm.from;
-                      p = lm.path;
-                    } else {
-                      fr =
-                        snap.lastMoveFrom != null
-                          ? snap.lastMoveFrom
-                          : snap.lastMovedFrom != null
-                            ? snap.lastMovedFrom
-                            : null;
-                      p =
-                        Array.isArray(snap.lastMovePath) && snap.lastMovePath.length
-                          ? snap.lastMovePath
-                          : snap.lastMovedTo != null
-                            ? [snap.lastMovedTo]
-                            : null;
-                    }
-    
-                    if (fr != null && p && p.length && typeof Visual !== "undefined" && Visual) {
-                      if (typeof Visual.setLastMovePath === "function")
-                        Visual.setLastMovePath(fr, p, lastSide);
-                      else if (typeof Visual.setLastMove === "function")
-                        Visual.setLastMove(fr, p[p.length - 1], lastSide);
-                      try {
-                        if (typeof Visual.markTurnBoundary === "function") Visual.markTurnBoundary();
-                      } catch (e) {}
-                    } else {
-                      try {
-                        Visual && Visual.setLastMove && Visual.setLastMove(null, null);
-                      } catch (e) {}
-                    }
-                  } catch (e) {}
-                }
-            } catch (e) {}
-    
-            try {
-              if (
-                typeof UI !== "undefined" &&
-                UI &&
-                typeof UI.updateCounts === "function" &&
-                Game &&
-                Array.isArray(Game.board)
-              ) {
-                let top = 0,
-                  bot = 0,
-                  tKings = 0,
-                  bKings = 0;
-                for (let r = 0; r < Game.board.length; r++) {
-                  const row = Game.board[r];
-                  if (!Array.isArray(row)) continue;
-                  for (let c = 0; c < row.length; c++) {
-                    const v = row[c];
-                    if (!v) continue;
-                    if (v > 0) {
-                      top++;
-                      if (Math.abs(v) === 2) tKings++;
-                    } else if (v < 0) {
-                      bot++;
-                      if (Math.abs(v) === 2) bKings++;
-                    }
-                  }
-                }
-                UI.updateCounts({ top, bot, tKings, bKings });
-              }
-            } catch (e) {}
-    
-            try {
-              const queue = deferredPromotionQueue(data && data.state);
-              Game.deferredPromotions = queue;
-              Game.deferredPromotion = queue.length ? Object.assign({}, queue[0]) : null;
-            } catch (e) {}
-    
-            try {
-              if (!skipFx && data.state && Array.isArray(data.state.capturedOrder)) {
-                try {
-                  if (
-                    typeof Visual !== "undefined" &&
-                    Visual &&
-                    typeof Visual.setCapturedOrder === "function"
-                  )
-                    Visual.setCapturedOrder(data.state.capturedOrder);
-                } catch (e) {}
-              }
-            } catch (e) {}
-            try {
-              // Install the official unresolved soufla before starting the
-              // turn. The turn-start routine must see it so it cannot run terminal checks
-              // or create a normal turn context on a position that is still
-              // subject to the entitled player's penalty decision.
-              this._installOfficialSouflaState(data);
-              this._resumeOfficialTurn();
-            } catch (error) {
-              try { Logger.warn("official_turn_resume_failed", { gameId: this.gameId, error: String(error && (error.message || error)) }); } catch (_) {}
+            const remoteMI = Number(
+              (data && (data.moveIndex ?? (data.lastMove && data.lastMove.moveIndex))) ?? 0,
+            );
+
+            if (
+              this._awaitingLocalCommit &&
+              Number.isFinite(this._expectedMoveIndex) &&
+              remoteMI < this._expectedMoveIndex
+            ) {
+              return false;
             }
-    
-            try {
-              const lm = data.lastMove;
-              const mi = lm && typeof lm.moveIndex === "number" ? lm.moveIndex : 0;
-              if (mi && mi > (this._lastSeenMoveModal || 0)) {
-                this._lastSeenMoveModal = mi;
-                if (lm.kind === "soufla" && lm.decision) {
-                  this._showSouflaModalFromLastMove(lm);
-                } else if (lm.kind === "undo") {
-                  showOnlineNotice(window.I18N.translateArgs("undo.applied"));
+            if (
+              this._awaitingLocalCommit &&
+              Number.isFinite(this._expectedMoveIndex) &&
+              remoteMI >= this._expectedMoveIndex
+            ) {
+              this._markLocalCommitSettled();
+            }
+
+            const snap = data && data.state ? data.state.snapshot : null;
+            const board = snap && snap.board;
+            const validBoard = Array.isArray(board) && board.length === 9 && board.every((row) => Array.isArray(row) && row.length === 9);
+            if (!snap || !validBoard || snap.inChain) {
+              throw new Error("official/invalid-turn-boundary-snapshot");
+            }
+
+            if (typeof resetTransientGameState === "function") resetTransientGameState();
+            restoreSnapshot(snap, { redraw: false, visual: false });
+
+            const rules = window.DhametRules || null;
+            const boardApplied = rules && typeof rules.boardsEqual === "function"
+              ? rules.boardsEqual(Game.board, board)
+              : JSON.stringify(Game.board) === JSON.stringify(board);
+            if (!boardApplied) throw new Error("official/snapshot-board-not-applied");
+
+            const lm = data && data.lastMove ? data.lastMove : null;
+            const curSide = typeof snap.player === "number"
+              ? snap.player
+              : typeof data.turn === "number"
+                ? data.turn
+                : null;
+            const lastSide = curSide != null ? -curSide : lm && typeof lm.by === "number" ? lm.by : null;
+
+            if (lm && lm.kind === "undo" && typeof Visual !== "undefined" && Visual) {
+              const fr = lm.undoneFrom != null ? lm.undoneFrom : null;
+              const path = Array.isArray(lm.undonePath) ? lm.undonePath : null;
+              if (fr != null && path && path.length && typeof Visual.setUndoMovePath === "function") {
+                Visual.setUndoMovePath(fr, path, true);
+              } else if (fr != null && path && path.length && typeof Visual.setUndoMove === "function") {
+                Visual.setUndoMove(fr, path[path.length - 1], true);
+              } else if (typeof Visual.setUndoMove === "function") {
+                Visual.setUndoMove(null, null, true);
+              }
+              if (typeof Visual.markTurnBoundary === "function") Visual.markTurnBoundary();
+            } else {
+              if (lastSide != null) Game.lastMoveSide = lastSide;
+              let from = null;
+              let path = null;
+              if (lm && lm.from != null && Array.isArray(lm.path) && lm.path.length) {
+                from = lm.from;
+                path = lm.path;
+              } else {
+                from = snap.lastMoveFrom != null
+                  ? snap.lastMoveFrom
+                  : snap.lastMovedFrom != null
+                    ? snap.lastMovedFrom
+                    : null;
+                path = Array.isArray(snap.lastMovePath) && snap.lastMovePath.length
+                  ? snap.lastMovePath
+                  : snap.lastMovedTo != null
+                    ? [snap.lastMovedTo]
+                    : null;
+              }
+              if (from != null && path && path.length && typeof Visual !== "undefined" && Visual) {
+                if (typeof Visual.setLastMovePath === "function") Visual.setLastMovePath(from, path, lastSide);
+                else if (typeof Visual.setLastMove === "function") Visual.setLastMove(from, path[path.length - 1], lastSide);
+                if (typeof Visual.markTurnBoundary === "function") Visual.markTurnBoundary();
+              } else if (typeof Visual !== "undefined" && Visual && typeof Visual.setLastMove === "function") {
+                Visual.setLastMove(null, null);
+              }
+            }
+
+            if (typeof UI !== "undefined" && UI && typeof UI.updateCounts === "function") {
+              let top = 0;
+              let bot = 0;
+              let tKings = 0;
+              let bKings = 0;
+              for (const row of Game.board) {
+                for (const value of row) {
+                  if (!value) continue;
+                  if (value > 0) {
+                    top++;
+                    if (Math.abs(value) === 2) tKings++;
+                  } else {
+                    bot++;
+                    if (Math.abs(value) === 2) bKings++;
+                  }
                 }
               }
-    
-              try {
-                const lm2 = data.lastMove;
-                const mi2 = lm2 && typeof lm2.moveIndex === "number" ? lm2.moveIndex : 0;
-    
-                if (lm2 && lm2.kind === "soufla" && lm2.souflaMeta && lm2.souflaMeta.fx) {
-                  const fx = lm2.souflaMeta.fx;
-                  this._lastSouflaFXMoveIndex = mi2 || this._lastSouflaFXMoveIndex;
-    
-                  try {
-                    if (typeof Visual !== "undefined" && Visual && Visual.clearSouflaFX) {
-                      Visual.clearSouflaFX();
-                    }
-                  } catch (e) {}
-    
-                  try {
-                    if (fx && Array.isArray(fx.redPaths) && fx.redPaths.length) {
-                      Visual.setSouflaIgnoredPaths && Visual.setSouflaIgnoredPaths(fx.redPaths);
-                    } else if (fx && fx.red && fx.red.from != null) {
-                      Visual.setSouflaIgnoredPaths &&
-                        Visual.setSouflaIgnoredPaths([
-                          { from: fx.red.from, path: [fx.red.to], jumps: [] },
-                        ]);
-                    }
-                  } catch (e) {}
-    
-                  try {
-                    if (fx && fx.undoArrow && Visual.setSouflaUndoArrow) {
-                      if (Array.isArray(fx.undoArrow.nodes) && fx.undoArrow.nodes.length >= 2) {
-                        Visual.setSouflaUndoArrow(fx.undoArrow.nodes);
-                      } else if (fx.undoArrow.from != null && Array.isArray(fx.undoArrow.path) && fx.undoArrow.path.length) {
-                        Visual.setSouflaUndoArrow(fx.undoArrow.from, fx.undoArrow.path);
-                      } else if (fx.undoArrow.from != null && fx.undoArrow.to != null) {
-                        Visual.setSouflaUndoArrow(fx.undoArrow.from, fx.undoArrow.to);
-                      }
-                    }
-                  } catch (e) {}
-    
-                  try {
-                    if (fx && fx.removeIdx != null) {
-                      Visual.setSouflaRemove && Visual.setSouflaRemove(fx.removeIdx);
-                    }
-                  } catch (e) {}
-    
-                  try {
-                    if (fx && Array.isArray(fx.forcePath) && fx.forcePath.length) {
-                      Visual.setSouflaForcePath && Visual.setSouflaForcePath(fx.forcePath);
-                    }
-                  } catch (e) {}
-                } else if (
-                  this._lastSouflaFXMoveIndex != null &&
-                  mi2 &&
-                  mi2 > this._lastSouflaFXMoveIndex
-                ) {
-                  try {
-                    if (typeof Visual !== "undefined" && Visual && Visual.clearSouflaFX) {
-                      Visual.clearSouflaFX();
-                    }
-                  } catch (e) {}
-                  this._lastSouflaFXMoveIndex = null;
-                }
-              } catch (e) {}
-            } catch (e) {}
-          } catch (e) {
+              UI.updateCounts({ top, bot, tKings, bKings });
+            }
+
+            const queue = deferredPromotionQueue(data && data.state);
+            Game.deferredPromotions = queue;
+            Game.deferredPromotion = queue.length ? Object.assign({}, queue[0]) : null;
+
+            if (!skipFx && data.state && Array.isArray(data.state.capturedOrder)) {
+              if (typeof Visual !== "undefined" && Visual && typeof Visual.setCapturedOrder === "function") {
+                Visual.setCapturedOrder(data.state.capturedOrder, true);
+              }
+            }
+
+            this._installOfficialSouflaState(data);
+
+            const moveFxIndex = lm && typeof lm.moveIndex === "number" ? lm.moveIndex : 0;
+            const officialSouflaFx = lm && lm.kind === "soufla" && lm.souflaMeta && lm.souflaMeta.fx
+              ? lm.souflaMeta.fx
+              : null;
+            if (!skipFx && officialSouflaFx && typeof Visual !== "undefined" && Visual) {
+              if (typeof Visual.applySouflaFXBatch !== "function") {
+                throw new Error("official/soufla-fx-batch-missing");
+              }
+              Visual.applySouflaFXBatch(officialSouflaFx, { noDraw: true });
+              this._lastSouflaFXMoveIndex = moveFxIndex || this._lastSouflaFXMoveIndex;
+            } else if (
+              !skipFx &&
+              this._lastSouflaFXMoveIndex != null &&
+              moveFxIndex &&
+              moveFxIndex > this._lastSouflaFXMoveIndex
+            ) {
+              if (typeof Visual !== "undefined" && Visual && typeof Visual.clearSouflaFX === "function") {
+                Visual.clearSouflaFX(true);
+              }
+              this._lastSouflaFXMoveIndex = null;
+            }
+
+            // The official board, turn metadata and all visual effects are now
+            // installed. Resume and redraw exactly once from the canonical UI path.
+            this._resumeOfficialTurn();
+
+            if (moveFxIndex && moveFxIndex > (this._lastSeenMoveModal || 0)) {
+              this._lastSeenMoveModal = moveFxIndex;
+              if (lm.kind === "soufla" && lm.decision) this._showSouflaModalFromLastMove(lm);
+              else if (lm.kind === "undo") showOnlineNotice(window.I18N.translateArgs("undo.applied"));
+            }
+            return true;
+          } catch (error) {
+            try {
+              Logger.warn("official_state_apply_failed", {
+                gameId: this.gameId,
+                error: String(error && (error.message || error)),
+              });
+            } catch (_) {}
+            return false;
           } finally {
             this._isApplyingRemote = false;
           }
@@ -4985,36 +4927,24 @@
           if (!this.isActive || !this.gameId) return;
           if (this.isSpectator) return;
 
-          try {
-            const hasLocalSteps = this.hasUnsentLocalMoveSteps && this.hasUnsentLocalMoveSteps();
-            if (Game && Game.inChain && hasLocalSteps) {
-              if (typeof window.performLocalUndo === "function") {
-                window.performLocalUndo({ onlineLocalOnly: true, allowForcedOpening: true });
-              }
-              return;
-            }
-          } catch (e) {}
-
           if (!allowOnlineWrite()) return;
 
+          let undoCheck = null;
           try {
-            const turnSide = Game && Number(Game.player);
-            const lastMoverSide = turnSide === TOP || turnSide === BOT ? -turnSide : null;
-            if (lastMoverSide == null || Number(this.mySide) !== lastMoverSide) {
-              showOnlineNotice(window.I18N.translateArgs("ui.undoOwnLastOnly"), { title: window.I18N.translateArgs("modals.undo.title") });
-              return;
-            }
-          } catch (e) {}
-
-          try {
-            if (Game && Game.inChain) {
-              showOnlineNotice(window.I18N.translateArgs("ui.noUndo"), { title: window.I18N.translateArgs("modals.undo.title") });
-              return;
-            }
-          } catch (e) {}
-
-          if ((this.ply || 0) <= 0) {
-            showOnlineNotice(window.I18N.translateArgs("ui.noUndo"), { title: window.I18N.translateArgs("modals.undo.title") });
+            undoCheck = window.DhametControl && typeof DhametControl.canRequestUndo === "function"
+              ? DhametControl.canRequestUndo(this._lastGameData, this.mySide)
+              : null;
+          } catch (_) { undoCheck = null; }
+          if (!undoCheck || !undoCheck.ok) {
+            const error = undoCheck && undoCheck.error;
+            const ownMoveError = error === "control/not-last-mover";
+            const openingError = error === "control/opening-undo-disabled";
+            showOnlineNotice(
+              window.I18N.translateArgs(
+                openingError ? "modals.undo.notAllowedBody" : ownMoveError ? "ui.undoOwnLastOnly" : "ui.noUndo"
+              ),
+              { title: window.I18N.translateArgs(openingError ? "modals.undo.notAllowedTitle" : "modals.undo.title") },
+            );
             return;
           }
 
@@ -5943,7 +5873,8 @@
           if (preserveLocalCapture) {
             try { this._scheduleCaptureDraftSave(); } catch (e) {}
           } else if (stateSnap) {
-            this._applyRemoteState(data, { skipFx: !!source.skipFx });
+            const stateApplied = this._applyRemoteState(data, { skipFx: !!source.skipFx });
+            if (!stateApplied) return false;
             try { this._restoreCaptureDraftIfValid && this._restoreCaptureDraftIfValid(data); } catch (e) {}
           } else if (typeof data.turn === "number") {
             try {
