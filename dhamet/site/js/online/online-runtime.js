@@ -2169,12 +2169,18 @@
               return;
             }
             try {
-              this._ingestOfficialGame(data, {
+              const applied = this._ingestOfficialGame(data, {
                 source: "live",
                 gameId: gid,
                 version: envelope && envelope.version,
                 rejectDuplicate: true,
               });
+              if (!applied && this._lastOfficialIngestFailureReason === "apply-failed") {
+                this._requestOfficialSync({
+                  reason: "live-state-apply-failed",
+                  notifyFailure: false,
+                });
+              }
             } catch (e) {
               try { Logger.warn("official_live_apply_failed", { gameId: gid, err: String(e && (e.message || e)) }); } catch (_) {}
             }
@@ -5725,7 +5731,11 @@
         },
 
     _ingestOfficialGame: function (rawData, meta) {
-          if (!rawData || typeof rawData !== "object") return false;
+          this._lastOfficialIngestFailureReason = "";
+          if (!rawData || typeof rawData !== "object") {
+            this._lastOfficialIngestFailureReason = "invalid-input";
+            return false;
+          }
           const source = meta && typeof meta === "object" ? meta : {};
           const remoteMi = Number(rawData.moveIndex || 0) || 0;
           const localBaseMoveIndex = Number(this.moveIndex || 0) || 0;
@@ -5734,6 +5744,7 @@
 
           if (previousRematchSeq != null && rs < Number(previousRematchSeq || 0)) {
             try { Logger.info("official_state_rejected", { gameId: this.gameId, reason: "older-rematch", rematchSeq: rs, currentRematchSeq: previousRematchSeq }); } catch (_) {}
+            this._lastOfficialIngestFailureReason = "older-rematch";
             return false;
           }
           const isTerminalState = !!(rawData.status && rawData.status !== "active");
@@ -5748,6 +5759,7 @@
             const allowPendingRollback = !!(source.allowPendingRollback || this._moveRetryGaveUp);
             if (!allowPendingRollback) {
               try { Logger.info("official_state_held_for_local_commit", { gameId: this.gameId, remoteMi, expected: this._expectedMoveIndex, source: source.source || "" }); } catch (_) {}
+              this._lastOfficialIngestFailureReason = "pending-local-commit";
               return false;
             }
             // The official state is still at the pre-move boundary after all
@@ -5763,68 +5775,153 @@
           const stateSnap = data && data.state && data.state.snapshot;
           if (data.status === "active" && stateSnap && stateSnap.inChain) {
             try { Logger.warn("official_partial_turn_rejected", { gameId: this.gameId, moveIndex: remoteMi, reason: "official-snapshots-must-be-turn-boundaries" }); } catch (_) {}
+            this._lastOfficialIngestFailureReason = "partial-turn";
             return false;
           }
 
           const cursor = this._officialCursor(data, source);
+          const coordinator = window.DhametMatchCoordinator || null;
+          const gateOptions = {
+            expectedGameId: this.gameId,
+            allowGameChange: false,
+            rejectDuplicate: source.rejectDuplicate !== false,
+          };
+          let cursorNeedsCommit = false;
           let gate = { accepted: true };
           try {
-            if (window.DhametMatchCoordinator && typeof DhametMatchCoordinator.acceptRemote === "function") {
-              gate = DhametMatchCoordinator.acceptRemote(cursor, {
-                expectedGameId: this.gameId,
-                allowGameChange: false,
-                rejectDuplicate: source.rejectDuplicate !== false,
-              });
+            if (coordinator && typeof coordinator.inspectRemote === "function") {
+              gate = coordinator.inspectRemote(cursor, gateOptions);
+              cursorNeedsCommit = true;
+            } else if (
+              coordinator &&
+              typeof coordinator.normalizeCursor === "function" &&
+              typeof coordinator.compareCursor === "function" &&
+              typeof coordinator.getRemoteCursor === "function"
+            ) {
+              // A mixed cached document can briefly pair the new online runtime
+              // with the previous coordinator. Inspect its public cursor without
+              // mutating it, then use acceptRemote only after a successful apply.
+              const nextCursor = coordinator.normalizeCursor(cursor);
+              const currentCursor = coordinator.getRemoteCursor();
+              const differentExpectedGame = gateOptions.expectedGameId && nextCursor.gameId && nextCursor.gameId !== String(gateOptions.expectedGameId);
+              const differentCurrentGame = currentCursor && nextCursor.gameId && currentCursor.gameId && nextCursor.gameId !== currentCursor.gameId;
+              const order = coordinator.compareCursor(nextCursor, currentCursor);
+              if (differentExpectedGame || (differentCurrentGame && !gateOptions.allowGameChange)) {
+                gate = { accepted: false, reason: "different-game", cursor: nextCursor, current: currentCursor };
+              } else if (currentCursor && order < 0) {
+                gate = { accepted: false, reason: "stale", cursor: nextCursor, current: currentCursor };
+              } else if (currentCursor && order === 0 && gateOptions.rejectDuplicate) {
+                gate = { accepted: false, reason: "duplicate", cursor: nextCursor, current: currentCursor };
+              } else {
+                gate = { accepted: true, reason: order > 0 ? "newer" : "same-or-first", cursor: nextCursor, current: currentCursor };
+                cursorNeedsCommit = true;
+              }
             }
           } catch (e) {
             try { Logger.warn("official_state_gate_failed", { gameId: this.gameId, error: String(e && (e.message || e)) }); } catch (_) {}
           }
           if (!gate.accepted) {
             try { Logger.info("official_state_rejected", { gameId: this.gameId, reason: gate.reason, cursor, source: source.source || "" }); } catch (_) {}
+            this._lastOfficialIngestFailureReason = gate.reason || "cursor-rejected";
             return false;
           }
-
-          if (
-            this._awaitingLocalCommit &&
-            Number.isFinite(this._expectedMoveIndex) &&
-            (remoteMi >= this._expectedMoveIndex || isTerminalState || isNewRematch)
-          ) {
-            try { this._markLocalCommitSettled(); } catch (e) {}
-          }
+          const commitOfficialCursor = () => {
+            if (!cursorNeedsCommit || !coordinator) return true;
+            try {
+              const committed = typeof coordinator.commitRemote === "function"
+                ? coordinator.commitRemote(cursor, Object.assign({}, gateOptions, { rejectDuplicate: false }))
+                : coordinator.acceptRemote(cursor, Object.assign({}, gateOptions, { rejectDuplicate: false }));
+              if (committed && committed.accepted) return true;
+              this._lastOfficialIngestFailureReason = committed && committed.reason ? committed.reason : "cursor-commit-failed";
+              try { Logger.warn("official_state_cursor_commit_failed", { gameId: this.gameId, reason: this._lastOfficialIngestFailureReason, cursor }); } catch (_) {}
+              return false;
+            } catch (error) {
+              this._lastOfficialIngestFailureReason = "cursor-commit-failed";
+              try { Logger.warn("official_state_cursor_commit_failed", { gameId: this.gameId, error: String(error && (error.message || error)), cursor }); } catch (_) {}
+              return false;
+            }
+          };
 
           let rematchAdvanced = false;
-          if (previousRematchSeq == null) this._lastRematchSeq = rs;
-          else if (rs > Number(previousRematchSeq || 0)) {
+          if (previousRematchSeq != null && rs > Number(previousRematchSeq || 0)) {
             rematchAdvanced = true;
-            this._lastRematchSeq = rs;
             try { this._onRematchStarted(); } catch (e) {}
-            try {
-              if (window.DhametMatchCoordinator) {
-                DhametMatchCoordinator.acceptRemote(cursor, {
-                  expectedGameId: this.gameId,
-                  allowGameChange: false,
-                  rejectDuplicate: false,
-                });
-              }
-            } catch (e) {}
           }
 
-          try { this._lastGameData = data; } catch (e) {}
-          try { this._handleOfficialRematchRequest(data); } catch (e) {}
-
           if (data.status && data.status !== "active") {
+            let enteredPostMatch = false;
             try {
-              this._enterPostMatch({
+              enteredPostMatch = this._enterPostMatch({
                 reason: data.endedReason || data.status,
                 endedBy: data.endedBy || null,
                 byUid: data.endedBy && data.endedBy.uid,
                 byNick: data.endedBy && data.endedBy.nickname,
                 result: data.result || null,
                 winner: data.winner,
-              });
-            } catch (e) {}
+              }) !== false;
+            } catch (error) {
+              this._lastOfficialIngestFailureReason = "apply-failed";
+              try { Logger.warn("official_terminal_state_apply_failed", { gameId: this.gameId, error: String(error && (error.message || error)) }); } catch (_) {}
+              return false;
+            }
+            if (!enteredPostMatch) {
+              this._lastOfficialIngestFailureReason = "apply-failed";
+              return false;
+            }
+            if (!commitOfficialCursor()) return false;
+            this._lastRematchSeq = rs;
+            this._lastGameData = data;
+            this.moveIndex = remoteMi;
+            this.ply = Number(data.ply || 0) || 0;
+            try { this._handleOfficialRematchRequest(data); } catch (e) {}
+            if (
+              this._awaitingLocalCommit &&
+              Number.isFinite(this._expectedMoveIndex) &&
+              (remoteMi >= this._expectedMoveIndex || isTerminalState || isNewRematch)
+            ) {
+              try { this._markLocalCommitSettled(); } catch (e) {}
+            }
             return true;
           }
+
+          const preserveLocalCapture = !!(
+            stateSnap &&
+            Game && Game.inChain &&
+            Array.isArray(this._pendingSteps) && this._pendingSteps.length &&
+            remoteMi === localBaseMoveIndex &&
+            rs === Number(previousRematchSeq || 0)
+          );
+          let restoreCaptureDraft = false;
+          if (preserveLocalCapture) {
+            try { this._scheduleCaptureDraftSave(); } catch (e) {}
+          } else if (stateSnap) {
+            const stateApplied = this._applyRemoteState(data, { skipFx: !!source.skipFx });
+            if (!stateApplied) {
+              this._lastOfficialIngestFailureReason = "apply-failed";
+              return false;
+            }
+            restoreCaptureDraft = true;
+          } else if (typeof data.turn === "number") {
+            try {
+              this._installOfficialSouflaState(data);
+              this._resumeOfficialTurn(data.turn);
+            } catch (error) {
+              this._lastOfficialIngestFailureReason = "apply-failed";
+              try { Logger.warn("official_turn_only_resume_failed", { gameId: this.gameId, error: String(error && (error.message || error)) }); } catch (_) {}
+              return false;
+            }
+          }
+
+          if (!commitOfficialCursor()) return false;
+
+          // Publish transport and match metadata only after the authoritative
+          // board/turn state has been installed. A failed visual application
+          // must not make the browser claim a move index it is not displaying.
+          this._lastRematchSeq = rs;
+          this._lastGameData = data;
+          this.moveIndex = remoteMi;
+          this.ply = Number(data.ply || 0) || 0;
+          try { this._handleOfficialRematchRequest(data); } catch (e) {}
 
           try {
             const w = data.players && data.players.white ? data.players.white.nickname || "" : "";
@@ -5838,34 +5935,19 @@
             this._updatePresenceUi();
           } catch (e) {}
 
-          this.moveIndex = remoteMi;
-          this.ply = Number(data.ply || 0) || 0;
           try { this._renderSharedLog(data.log || []); } catch (e) {}
           try { this._handlePresence(data); } catch (e) {}
           try { this._handleUndoRequest(data); } catch (e) {}
-
-          const preserveLocalCapture = !!(
-            stateSnap &&
-            Game && Game.inChain &&
-            Array.isArray(this._pendingSteps) && this._pendingSteps.length &&
-            remoteMi === localBaseMoveIndex &&
-            rs === Number(this._lastRematchSeq || 0)
-          );
-          if (preserveLocalCapture) {
-            try { this._scheduleCaptureDraftSave(); } catch (e) {}
-          } else if (stateSnap) {
-            const stateApplied = this._applyRemoteState(data, { skipFx: !!source.skipFx });
-            if (!stateApplied) return false;
+          if (restoreCaptureDraft) {
             try { this._restoreCaptureDraftIfValid && this._restoreCaptureDraftIfValid(data); } catch (e) {}
-          } else if (typeof data.turn === "number") {
-            try {
-              this._installOfficialSouflaState(data);
-              this._resumeOfficialTurn(data.turn);
-            } catch (error) {
-              try { Logger.warn("official_turn_only_resume_failed", { gameId: this.gameId, error: String(error && (error.message || error)) }); } catch (_) {}
-            }
           }
-
+          if (
+            this._awaitingLocalCommit &&
+            Number.isFinite(this._expectedMoveIndex) &&
+            (remoteMi >= this._expectedMoveIndex || isTerminalState || isNewRematch)
+          ) {
+            try { this._markLocalCommitSettled(); } catch (e) {}
+          }
           try { this._applyUiHold(false); } catch (e) {}
           try { this.refreshPvpControls && this.refreshPvpControls(); } catch (e) {}
           if (rematchAdvanced) {

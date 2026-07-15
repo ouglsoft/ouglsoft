@@ -85,7 +85,7 @@
     return 0;
   }
 
-  function acceptRemote(input, options) {
+  function inspectRemote(input, options) {
     const next = normalizeCursor(input);
     const opts = options || {};
     if (opts.expectedGameId && next.gameId && next.gameId !== String(opts.expectedGameId)) {
@@ -99,8 +99,18 @@
     if (cursor && order === 0 && opts.rejectDuplicate) {
       return { accepted: false, reason: 'duplicate', cursor: next, current: cursor };
     }
-    cursor = next;
     return { accepted: true, reason: order > 0 ? 'newer' : 'same-or-first', cursor: next, current: cursor };
+  }
+
+  function commitRemote(input, options) {
+    const result = inspectRemote(input, options);
+    if (!result.accepted) return result;
+    cursor = result.cursor;
+    return { accepted: true, reason: result.reason, cursor: result.cursor, current: cursor };
+  }
+
+  function acceptRemote(input, options) {
+    return commitRemote(input, options);
   }
 
   function resetRemoteCursor() { cursor = null; }
@@ -255,6 +265,8 @@
     setPhase,
     normalizeCursor,
     compareCursor,
+    inspectRemote,
+    commitRemote,
     acceptRemote,
     resetRemoteCursor,
     getRemoteCursor,
