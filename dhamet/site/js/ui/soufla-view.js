@@ -392,6 +392,7 @@
         if (applied || reason === "replaced" || reason === "state-change") return;
 
         Game.awaitingPenalty = false;
+        Game.souflaPending = null;
         try {
           UI.updateAll();
         } catch {}

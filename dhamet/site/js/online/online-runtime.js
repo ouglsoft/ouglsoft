@@ -2234,11 +2234,19 @@
             : pending && pending.penalizer != null
               ? Number(pending.penalizer)
               : null;
-          Game.awaitingPenalty = !!pending;
-          Game.souflaPending = pending;
-          Game.availableSouflaForHuman = pending && !this.isSpectator && availableFor === Number(this.mySide)
-            ? pending
-            : null;
+          const claimable = !!(
+            pending &&
+            !this.isSpectator &&
+            availableFor === Number(this.mySide)
+          );
+          // An official Soufla right is optional until its owner presses the
+          // Soufla button. Merely receiving that right must never pause the
+          // turn or block board input. Preserve an already-open choice modal,
+          // but otherwise expose only the claimable right.
+          const choiceOpen = !!(claimable && Game.awaitingPenalty && Game.souflaPending);
+          Game.awaitingPenalty = choiceOpen;
+          Game.souflaPending = choiceOpen ? pending : null;
+          Game.availableSouflaForHuman = claimable ? pending : null;
           return pending;
         },
 

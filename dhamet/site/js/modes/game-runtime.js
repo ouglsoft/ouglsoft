@@ -682,7 +682,9 @@ function consumeTurnClearForMove() {
 }
 
 function hasUnresolvedSoufla() {
-  return !!(!Game._souflaApplying && (Game.awaitingPenalty || Game.souflaPending || Game.availableSouflaForHuman));
+  // A claimable but unopened Soufla right does not pause the turn. The right
+  // expires naturally when its owner starts a board-changing move.
+  return !!(!Game._souflaApplying && (Game.awaitingPenalty || Game.souflaPending));
 }
 
 const Turn = {
