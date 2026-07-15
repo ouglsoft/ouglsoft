@@ -26,6 +26,15 @@
   Referrer-Policy: strict-origin-when-cross-origin
   Permissions-Policy: camera=(), microphone=(), geolocation=()
 
+/dhamet/
+  Cache-Control: no-store, max-age=0
+
+/dhamet/index.html
+  Cache-Control: no-store, max-age=0
+
+/dhamet/pages/*
+  Cache-Control: no-store, max-age=0
+
 /dhamet/*
   ! Permissions-Policy
   Permissions-Policy: camera=(), microphone=(self), geolocation=()

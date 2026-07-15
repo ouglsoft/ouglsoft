@@ -6,6 +6,25 @@
 (function () {
   var BUILD = "__DHAMET_BUILD__";
   try {
+    var buildMeta = document && document.querySelector
+      ? document.querySelector('meta[name="dhamet-build"]')
+      : null;
+    var documentBuild = buildMeta ? String(buildMeta.getAttribute("content") || "") : "";
+    if (documentBuild && documentBuild !== BUILD) {
+      var reloadKey = "zamat.build.mismatch.reload";
+      var reloadValue = documentBuild + "|" + BUILD;
+      var alreadyReloaded = false;
+      try { alreadyReloaded = sessionStorage.getItem(reloadKey) === reloadValue; } catch (_) {}
+      if (!alreadyReloaded) {
+        try { sessionStorage.setItem(reloadKey, reloadValue); } catch (_) {}
+        window.location.reload();
+        return;
+      }
+    } else {
+      try { sessionStorage.removeItem("zamat.build.mismatch.reload"); } catch (_) {}
+    }
+  } catch (_) {}
+  try {
     if (typeof window !== "undefined") window.DHAMET_APP_BUILD = BUILD;
     var key = "zamat.app.build.applied";
     var prev = null;
