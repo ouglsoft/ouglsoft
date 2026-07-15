@@ -1212,9 +1212,14 @@
             this._trackOutgoingInvite({ gameId, toUid: opponentUid, inviteKey, createdAt, expiresAt });
           } catch (e) {}
     
-          // Do not start a fast sender-side watch after sending the invite.
-          // The accepted game is picked up from notifications.outgoingGames
-          // on the next existing unified pulse.
+          // The sender cannot know that the other browser accepted until it
+          // asks the official lobby endpoint. Reuse the single unified pulse
+          // timer with a short 5/10/15/20-second backoff while this invite is
+          // pending; no parallel watcher or realtime listener is created.
+          try {
+            const fastDelay = this._getPendingOutgoingInvitePulseDelay ? this._getPendingOutgoingInvitePulseDelay() : 5 * 1000;
+            this._scheduleUnifiedAppPulseNoLaterThan && this._scheduleUnifiedAppPulseNoLaterThan(fastDelay || 5 * 1000);
+          } catch (e) {}
         },
 
     _returnToActiveMatch: async function (gameId) {
@@ -2092,6 +2097,8 @@
         },
 
     _teardownOnlineSubscriptions: function () {
+          try { if (this._reconnectSyncRetryTimer) clearTimeout(this._reconnectSyncRetryTimer); } catch (e) {}
+          this._reconnectSyncRetryTimer = null;
           try { this._teardownRoomComms(); } catch (e) {}
           try { this._stopOpponentAbsenceWatcher(); } catch (e) {}
           try { this.gameRef && this.gameRef.off(); } catch (e) {}
@@ -2148,19 +2155,10 @@
           this._gameLiveSub = null;
         },
 
-    _bindGameListeners: function () {
-          const gid = String(this.gameId || "").trim();
-          if (!gid) return;
+    _bindGameLiveSubscription: function (gameId) {
+          const gid = String(gameId || this.gameId || "").trim();
+          if (!gid) return false;
           this._unbindGameLiveSubscription();
-          try {
-            if (this.gameRef && typeof this.gameRef.off === "function") this.gameRef.off();
-          } catch (e) {}
-          try {
-            this._setupGamePresence();
-          } catch (e) {}
-          try {
-            this._startOpponentAbsenceWatcher();
-          } catch (e) {}
           const liveContext = this._captureAsyncContext(gid);
           const onLiveGame = (data, envelope) => {
             if (!this._isAsyncContextCurrent(liveContext, { ignorePostMatch: true })) return;
@@ -2204,11 +2202,27 @@
                 try { if (this._isAsyncContextCurrent(liveContext, { ignorePostMatch: true })) this._forceResync && this._forceResync("live-error"); } catch (e) {}
               },
             });
+            return true;
           } catch (e) {
             Logger.warn("game_live_subscribe_failed", { gameId: gid, err: String(e && (e.message || e)) });
             try { this._forceResync && this._forceResync("live-subscribe-failed"); } catch (_) {}
+            return false;
           }
-    
+        },
+
+    _bindGameListeners: function () {
+          const gid = String(this.gameId || "").trim();
+          if (!gid) return;
+          try {
+            if (this.gameRef && typeof this.gameRef.off === "function") this.gameRef.off();
+          } catch (e) {}
+          try {
+            this._setupGamePresence();
+          } catch (e) {}
+          try {
+            this._startOpponentAbsenceWatcher();
+          } catch (e) {}
+          this._bindGameLiveSubscription(gid);
           try {
             this._installViewHooksOnce();
           } catch (e) {}

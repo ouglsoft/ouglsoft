@@ -50,9 +50,12 @@
   
   .soufla-boardwrap { position: relative; display: block; width: 100%; margin: 0 auto; overflow: visible; padding-top: 12px; }
   .soufla-board { width: 100%; height: auto; display: block; border-radius: 14px; border: 1px solid rgba(148,163,184,0.35); background: rgba(2,6,23,0.04); max-height: 74vh; }
-  .soufla-toast{ position:absolute; inset:0; display:none; align-items:center; justify-content:center; z-index:4; pointer-events:none; }
-  .soufla-toast > div{ max-width: min(90%, 520px); padding: 12px 16px; border-radius: 14px; font-weight: 900; font-size: var(--fs-title); line-height: 1.55; background: rgba(0,0,0,0.72); color: #fff; box-shadow: 0 18px 50px rgba(0,0,0,0.35); text-align:center; }
-  :root:not(.dark) .soufla-toast > div{ background: rgba(255,255,255,0.95); color: #111827; box-shadow: 0 18px 50px rgba(0,0,0,0.18); }
+  .soufla-warning-dialog{ position:absolute; inset:0; display:none; align-items:center; justify-content:center; z-index:6; padding:18px; background:rgba(2,6,23,.42); }
+  .soufla-warning-dialog.is-open{ display:flex; }
+  .soufla-warning-box{ width:min(92%,520px); padding:18px; border-radius:16px; background:#111827; color:#fff; box-shadow:0 22px 60px rgba(0,0,0,.42); text-align:center; }
+  .soufla-warning-text{ font-weight:900; font-size:var(--fs-title); line-height:1.55; margin-bottom:14px; }
+  .soufla-warning-ok{ min-width:120px; padding:9px 18px; border-radius:999px; font-weight:900; border:0; cursor:pointer; }
+  :root:not(.dark) .soufla-warning-box{ background:#fff; color:#111827; box-shadow:0 22px 60px rgba(15,23,42,.24); }
   
   .soufla-actionbar {
     scrollbar-width: thin;
@@ -157,11 +160,23 @@
     wrap.className = "soufla-boardwrap";
     wrap.appendChild(cv);
 
-    const toast = document.createElement("div");
-    toast.className = "soufla-toast";
-    const toastBox = document.createElement("div");
-    toast.appendChild(toastBox);
-    wrap.appendChild(toast);
+    const warningDialog = document.createElement("div");
+    warningDialog.className = "soufla-warning-dialog";
+    warningDialog.setAttribute("role", "alertdialog");
+    warningDialog.setAttribute("aria-modal", "true");
+    warningDialog.setAttribute("aria-hidden", "true");
+    const warningBox = document.createElement("div");
+    warningBox.className = "soufla-warning-box";
+    const warningText = document.createElement("div");
+    warningText.className = "soufla-warning-text";
+    const warningOk = document.createElement("button");
+    warningOk.type = "button";
+    warningOk.className = "primary soufla-warning-ok";
+    warningOk.textContent = t("actions.ok");
+    warningBox.appendChild(warningText);
+    warningBox.appendChild(warningOk);
+    warningDialog.appendChild(warningBox);
+    wrap.appendChild(warningDialog);
 
     const actionBar = document.createElement("div");
     actionBar.className = "soufla-actionbar";
@@ -181,17 +196,26 @@
 
     const title = t("soufla.pick.title");
 
-    let toastTimer = null;
-    function showToast(msg) {
+    function closeWarningDialog() {
       try {
-        toastBox.textContent = String(msg ?? "");
-        toast.style.display = "flex";
-        if (toastTimer) clearTimeout(toastTimer);
-        toastTimer = setTimeout(() => {
-          toast.style.display = "none";
-        }, 1500);
+        warningDialog.classList.remove("is-open");
+        warningDialog.setAttribute("aria-hidden", "true");
       } catch {}
     }
+
+    function showNotOffenderDialog(msg) {
+      try {
+        warningText.textContent = String(msg ?? "");
+        warningDialog.classList.add("is-open");
+        warningDialog.setAttribute("aria-hidden", "false");
+        setTimeout(() => { try { warningOk.focus(); } catch {} }, 0);
+      } catch {}
+    }
+
+    warningOk.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      closeWarningDialog();
+    });
 
     let selected = null;
     function drawPlain() {
@@ -357,7 +381,7 @@
       const hit = pickOffenderForClickedIdx(idx);
       if (!hit) {
         clearSelection();
-        showToast(t("soufla.pick.toastNotOffender"));
+        showNotOffenderDialog(t("soufla.pick.toastNotOffender"));
         return;
       }
 
@@ -365,6 +389,7 @@
     });
 
     root.addEventListener("click", (ev) => {
+      if (warningDialog.classList.contains("is-open")) return;
       if (actionBar.contains(ev.target)) return;
 
       if (ev.target === cv) return;

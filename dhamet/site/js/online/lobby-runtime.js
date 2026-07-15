@@ -822,6 +822,7 @@
   const LOBBY_PULSE_LONG_IDLE_MS = Number(PresenceBudget.lobbyPulseLongIdleMs || 0) || 120 * 1000;
   const LOBBY_PULSE_IDLE_AFTER_MS = Number(PresenceBudget.lobbyPulseIdleAfterMs || 0) || 2 * 60 * 1000;
   const LOBBY_PULSE_LONG_IDLE_AFTER_MS = Number(PresenceBudget.lobbyPulseLongIdleAfterMs || 0) || 6 * 60 * 1000;
+  const OUTGOING_INVITE_PULSE_TARGETS_MS = Object.freeze([5 * 1000, 15 * 1000, 30 * 1000, 50 * 1000]);
   const GAME_PULSE_ACTIVE_MS = Number(PresenceBudget.gamePulseActiveMs || 0) || 20 * 1000;
   const GAME_PULSE_IDLE_MS = Number(PresenceBudget.gamePulseIdleMs || 0) || 60 * 1000;
   const GAME_PULSE_LONG_IDLE_MS = Number(PresenceBudget.gamePulseLongIdleMs || 0) || 120 * 1000;
@@ -1734,8 +1735,28 @@
             if (!downtimeMs) return "none";
     
             this._autoReconnectActionAt = now;
+            const reconnectGameId = String(this.gameId || "");
             try {
-              this.syncNow({ reason: downtimeMs >= 40 * 1000 ? "long-reconnect" : "reconnect", repairPresence: false, notifyFailure: false });
+              // A browser may report itself online while its previous WebSocket
+              // is still half-open. Rebind the existing live subscription so
+              // its initial official value restores the current board state.
+              if (typeof this._bindGameLiveSubscription === "function") this._bindGameLiveSubscription(reconnectGameId);
+            } catch (e) {}
+            try {
+              const syncReason = downtimeMs >= 40 * 1000 ? "long-reconnect" : "reconnect";
+              const firstSync = this.syncNow({ reason: syncReason, repairPresence: false, notifyFailure: false });
+              Promise.resolve(firstSync).then((applied) => {
+                if (applied) return;
+                try { if (this._reconnectSyncRetryTimer) clearTimeout(this._reconnectSyncRetryTimer); } catch (_) {}
+                this._reconnectSyncRetryTimer = setTimeout(() => {
+                  this._reconnectSyncRetryTimer = null;
+                  try {
+                    if (!this.isActive || String(this.gameId || "") !== reconnectGameId) return;
+                    if (typeof navigator !== "undefined" && navigator.onLine === false) return;
+                    this.syncNow({ reason: syncReason + "-retry", repairPresence: false, notifyFailure: false });
+                  } catch (e) {}
+                }, 1500);
+              }).catch(() => {});
             } catch (e) {}
             try {
               if (this._moveRetryPausedOffline && this._moveRetryArgs && this.isActive) {
@@ -1854,8 +1875,30 @@
           }
         },
 
+    _getPendingOutgoingInvitePulseDelay: function () {
+          try {
+            if (!this._isUnifiedLobbyPage || !this._isUnifiedLobbyPage()) return 0;
+            const now = nowTs();
+            const rows = this._loadOutgoingInvites ? this._loadOutgoingInvites() : [];
+            const pending = (Array.isArray(rows) ? rows : []).filter((row) => {
+              if (!row || !row.gameId) return false;
+              const expiresAt = Number(row.expiresAt || 0) || 0;
+              return !expiresAt || now < expiresAt;
+            });
+            if (!pending.length) return 0;
+            const createdAt = pending.reduce((latest, row) => Math.max(latest, Number(row.createdAt || 0) || now), 0) || now;
+            const elapsed = Math.max(0, now - createdAt);
+            for (const target of OUTGOING_INVITE_PULSE_TARGETS_MS) {
+              if (elapsed < target) return Math.max(250, target - elapsed);
+            }
+          } catch (e) {}
+          return 0;
+        },
+
     _getUnifiedAppPulseMinGap: function () {
           try {
+            const pendingDelay = this._getPendingOutgoingInvitePulseDelay ? this._getPendingOutgoingInvitePulseDelay() : 0;
+            if (pendingDelay > 0) return 5 * 1000;
             const core = typeof window !== "undefined" ? window.DhametPresence : null;
             const policy = core && core.POLICY ? core.POLICY : {};
             return Number(policy.appPulseMinGapMs || 0) || 20 * 1000;
@@ -1930,7 +1973,12 @@
             if (payloadGameId !== stampGameId) return false;
             const age = nowTs() - (Number(stamp.at || 0) || 0);
             const interval = this._getUnifiedAppPulseInterval ? Number(this._getUnifiedAppPulseInterval() || 0) : 0;
-            const threshold = interval > 8000 ? Math.max(5000, Math.min(interval - 1000, Math.floor(interval * 0.85))) : 0;
+            const fastInviteDelay = this._getPendingOutgoingInvitePulseDelay ? Number(this._getPendingOutgoingInvitePulseDelay() || 0) : 0;
+            const threshold = fastInviteDelay > 0
+              ? Math.max(1000, Math.min(4000, Math.floor(interval * 0.8)))
+              : interval > 8000
+                ? Math.max(5000, Math.min(interval - 1000, Math.floor(interval * 0.85)))
+                : 0;
             return threshold > 0 && age >= 0 && age < threshold;
           } catch (e) {
             return false;
@@ -1970,10 +2018,24 @@
             if (!Number.isFinite(n) || n < 0) return false;
             const delay = Math.max(0, n || 0);
             if (this._unifiedAppPulseTimer) clearTimeout(this._unifiedAppPulseTimer);
+            this._unifiedAppPulseDueAt = nowTs() + delay;
             this._unifiedAppPulseTimer = setTimeout(() => {
+              this._unifiedAppPulseTimer = null;
+              this._unifiedAppPulseDueAt = 0;
               try { this._runUnifiedAppPulse(false, "tick"); } catch (e) {}
             }, delay);
             return true;
+          } catch (e) {
+            return false;
+          }
+        },
+
+    _scheduleUnifiedAppPulseNoLaterThan: function (delayMs) {
+          try {
+            const delay = Math.max(0, Number(delayMs || 0) || 0);
+            const dueAt = Number(this._unifiedAppPulseDueAt || 0) || 0;
+            if (this._unifiedAppPulseTimer && dueAt > 0 && dueAt <= nowTs() + delay) return true;
+            return this._scheduleUnifiedAppPulseAfter(delay);
           } catch (e) {
             return false;
           }
@@ -2083,6 +2145,8 @@
             const hidden = !!(typeof document !== "undefined" && document.hidden);
             const now = nowTs();
             if (this._isUnifiedLobbyPage && this._isUnifiedLobbyPage(page)) {
+              const outgoingDelay = this._getPendingOutgoingInvitePulseDelay ? this._getPendingOutgoingInvitePulseDelay() : 0;
+              if (outgoingDelay > 0) return hidden ? Math.max(outgoingDelay, APP_PULSE_BACKGROUND_MS) : outgoingDelay;
               if (!this._lastLobbyUserActivityAt) this._lastLobbyUserActivityAt = this._lobbyOpenedAt || now;
               const base = Math.max(Number(this._lastLobbyUserActivityAt || 0) || 0, Number(this._lastManualLobbyRefreshAt || 0) || 0, Number(this._lobbyOpenedAt || 0) || 0) || now;
               const delay = this._activityAdaptiveDelay(now - base, LOBBY_PULSE_ACTIVE_MS, LOBBY_PULSE_IDLE_MS, LOBBY_PULSE_LONG_IDLE_MS, LOBBY_PULSE_IDLE_AFTER_MS, LOBBY_PULSE_LONG_IDLE_AFTER_MS);
@@ -2451,6 +2515,7 @@
             }
             try { if (this._unifiedAppPulseTimer) clearTimeout(this._unifiedAppPulseTimer); } catch (e) {}
             this._unifiedAppPulseTimer = null;
+            this._unifiedAppPulseDueAt = 0;
             this._unifiedAppPulseInFlight = true;
             const res = await this._dispatchUnifiedAppPulseNow(!!force, r);
             this._unifiedAppPulseInFlight = false;
@@ -2513,6 +2578,7 @@
             if (this._unifiedAppPulseTimer) clearTimeout(this._unifiedAppPulseTimer);
           } catch (e) {}
           this._unifiedAppPulseTimer = null;
+          this._unifiedAppPulseDueAt = 0;
         },
 
     _sendUnifiedAppLeaveBeacon: function (reason) {
