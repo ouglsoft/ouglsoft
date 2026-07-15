@@ -2249,6 +2249,18 @@
             this._lastOfficialLobbyView = view;
             this._lastOfficialLobbyViewAt = nowTs();
             if (view.players && typeof view.players === "object") this._lastPlayersFullSyncAt = nowTs();
+            // The official active-room map is the canonical acceptance signal.
+            // Navigate before rendering lobby rows so an accepted match cannot
+            // stop at a visible "return to match" button. Presence fields such
+            // as isActive/gameId may already have been updated by the server on
+            // the lobby page; they are not an active browser match session.
+            try {
+              const activeGameId = this._activeOfficialGameForCurrentPlayer(view);
+              if (activeGameId && !isGamePage()) {
+                this._handleOutgoingInviteAccepted(activeGameId).catch(function () {});
+              }
+            } catch (e) {}
+
             if (view.players && this._lobbyPlayersCb) {
               try { this._lobbyPlayersCb(this._makeCompatSnapshot(view.players)); } catch (e) {}
             }
@@ -2258,18 +2270,6 @@
             if (view.invites && this._inviteOfficialHandler) {
               try { this._inviteOfficialHandler(view.invites); } catch (e) {}
             }
-
-            // The official lobby view is the canonical acceptance signal. If
-            // it already maps the current user to an active room, start the
-            // existing navigation handler immediately in this pulse. The
-            // handler reaches location.href synchronously on lobby pages, so
-            // rendering a "return to match" row can never be the only outcome.
-            try {
-              const activeGameId = this._activeOfficialGameForCurrentPlayer(view);
-              if (activeGameId && !isGamePage() && !(this.isActive && this.gameId)) {
-                this._handleOutgoingInviteAccepted(activeGameId).catch(function () {});
-              }
-            } catch (e) {}
             return true;
           } catch (e) {
             return false;
@@ -3416,9 +3416,10 @@
           const gid = String(gameId || "").trim();
           if (!gid) return false;
 
-          // A stale gameId in lobby presence must not prevent navigation. Only
-          // an actually active browser match owns the current page session.
-          if (this.isActive && this.gameId) return false;
+          // Presence may already report an active room while this browser is
+          // still on the lobby page. Suppress navigation only for an actual
+          // in-page match session, never for lobby presence alone.
+          if (isGamePage() && this.isActive && this.gameId) return false;
           if (this._acceptedGameNavigationId === gid) return true;
           this._acceptedGameNavigationId = gid;
 

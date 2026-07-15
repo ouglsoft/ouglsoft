@@ -791,7 +791,7 @@ async function cleanupDeletedUserRealtime(env, uid, deletedAt) {
   return { ok: failed.length === 0, uid, removed, gameCleanups, failed };
 }
 
-const gameRoutes = createGameRouteHandlers({ requireSession, requestBody, cleanPath, getRealtimeStub, json, bad, writeRealtime });
+const gameRoutes = createGameRouteHandlers({ requireSession, requestBody, cleanPath, getRealtimeStub, json, bad, writeRealtime, readRealtimeValue });
 const lobbyRoutes = createLobbyRouteHandlers({ requireSession, requestBody, cleanPath, getRealtimeStub, json, bad, randomToken, now });
 
 async function gameMoveEndpoint(request, env, ctx) {

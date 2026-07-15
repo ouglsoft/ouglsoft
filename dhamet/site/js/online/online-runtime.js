@@ -2238,6 +2238,7 @@
 
     _applyRemoteState: function (data, options) {
           this._isApplyingRemote = true;
+          let officialBoardInstalled = false;
           try {
             const applyOptions = options && typeof options === "object" ? options : {};
             const skipFx = !!applyOptions.skipFx;
@@ -2275,6 +2276,7 @@
               ? rules.boardsEqual(Game.board, board)
               : JSON.stringify(Game.board) === JSON.stringify(board);
             if (!boardApplied) throw new Error("official/snapshot-board-not-applied");
+            officialBoardInstalled = true;
 
             const lm = data && data.lastMove ? data.lastMove : null;
             const curSide = typeof snap.player === "number"
@@ -2284,63 +2286,74 @@
                 : null;
             const lastSide = curSide != null ? -curSide : lm && typeof lm.by === "number" ? lm.by : null;
 
-            if (lm && lm.kind === "undo" && typeof Visual !== "undefined" && Visual) {
-              const fr = lm.undoneFrom != null ? lm.undoneFrom : null;
-              const path = Array.isArray(lm.undonePath) ? lm.undonePath : null;
-              if (fr != null && path && path.length && typeof Visual.setUndoMovePath === "function") {
-                Visual.setUndoMovePath(fr, path, true);
-              } else if (fr != null && path && path.length && typeof Visual.setUndoMove === "function") {
-                Visual.setUndoMove(fr, path[path.length - 1], true);
-              } else if (typeof Visual.setUndoMove === "function") {
-                Visual.setUndoMove(null, null, true);
-              }
-              if (typeof Visual.markTurnBoundary === "function") Visual.markTurnBoundary();
-            } else {
-              if (lastSide != null) Game.lastMoveSide = lastSide;
-              let from = null;
-              let path = null;
-              if (lm && lm.from != null && Array.isArray(lm.path) && lm.path.length) {
-                from = lm.from;
-                path = lm.path;
-              } else {
-                from = snap.lastMoveFrom != null
-                  ? snap.lastMoveFrom
-                  : snap.lastMovedFrom != null
-                    ? snap.lastMovedFrom
-                    : null;
-                path = Array.isArray(snap.lastMovePath) && snap.lastMovePath.length
-                  ? snap.lastMovePath
-                  : snap.lastMovedTo != null
-                    ? [snap.lastMovedTo]
-                    : null;
-              }
-              if (from != null && path && path.length && typeof Visual !== "undefined" && Visual) {
-                if (typeof Visual.setLastMovePath === "function") Visual.setLastMovePath(from, path, lastSide);
-                else if (typeof Visual.setLastMove === "function") Visual.setLastMove(from, path[path.length - 1], lastSide);
+            // Previous-move markers are presentation metadata. A malformed or
+            // unavailable visual helper must never discard an already verified
+            // official board or leave the canvas without its pieces.
+            try {
+              if (lm && lm.kind === "undo" && typeof Visual !== "undefined" && Visual) {
+                const fr = lm.undoneFrom != null ? lm.undoneFrom : null;
+                const path = Array.isArray(lm.undonePath) ? lm.undonePath : null;
+                if (fr != null && path && path.length && typeof Visual.setUndoMovePath === "function") {
+                  Visual.setUndoMovePath(fr, path, true);
+                } else if (fr != null && path && path.length && typeof Visual.setUndoMove === "function") {
+                  Visual.setUndoMove(fr, path[path.length - 1], true);
+                } else if (typeof Visual.setUndoMove === "function") {
+                  Visual.setUndoMove(null, null, true);
+                }
                 if (typeof Visual.markTurnBoundary === "function") Visual.markTurnBoundary();
-              } else if (typeof Visual !== "undefined" && Visual && typeof Visual.setLastMove === "function") {
-                Visual.setLastMove(null, null);
-              }
-            }
-
-            if (typeof UI !== "undefined" && UI && typeof UI.updateCounts === "function") {
-              let top = 0;
-              let bot = 0;
-              let tKings = 0;
-              let bKings = 0;
-              for (const row of Game.board) {
-                for (const value of row) {
-                  if (!value) continue;
-                  if (value > 0) {
-                    top++;
-                    if (Math.abs(value) === 2) tKings++;
-                  } else {
-                    bot++;
-                    if (Math.abs(value) === 2) bKings++;
-                  }
+              } else {
+                if (lastSide != null) Game.lastMoveSide = lastSide;
+                let from = null;
+                let path = null;
+                if (lm && lm.from != null && Array.isArray(lm.path) && lm.path.length) {
+                  from = lm.from;
+                  path = lm.path;
+                } else {
+                  from = snap.lastMoveFrom != null
+                    ? snap.lastMoveFrom
+                    : snap.lastMovedFrom != null
+                      ? snap.lastMovedFrom
+                      : null;
+                  path = Array.isArray(snap.lastMovePath) && snap.lastMovePath.length
+                    ? snap.lastMovePath
+                    : snap.lastMovedTo != null
+                      ? [snap.lastMovedTo]
+                      : null;
+                }
+                if (from != null && path && path.length && typeof Visual !== "undefined" && Visual) {
+                  if (typeof Visual.setLastMovePath === "function") Visual.setLastMovePath(from, path, lastSide);
+                  else if (typeof Visual.setLastMove === "function") Visual.setLastMove(from, path[path.length - 1], lastSide);
+                  if (typeof Visual.markTurnBoundary === "function") Visual.markTurnBoundary();
+                } else if (typeof Visual !== "undefined" && Visual && typeof Visual.setLastMove === "function") {
+                  Visual.setLastMove(null, null);
                 }
               }
-              UI.updateCounts({ top, bot, tKings, bKings });
+            } catch (error) {
+              try { Logger.warn("official_move_visual_ignored", { gameId: this.gameId, error: String(error && (error.message || error)) }); } catch (_) {}
+            }
+
+            try {
+              if (typeof UI !== "undefined" && UI && typeof UI.updateCounts === "function") {
+                let top = 0;
+                let bot = 0;
+                let tKings = 0;
+                let bKings = 0;
+                for (const row of Game.board) {
+                  for (const value of row) {
+                    if (!value) continue;
+                    if (value > 0) {
+                      top++;
+                      if (Math.abs(value) === 2) tKings++;
+                    } else {
+                      bot++;
+                      if (Math.abs(value) === 2) bKings++;
+                    }
+                  }
+                }
+                UI.updateCounts({ top, bot, tKings, bKings });
+              }
+            } catch (error) {
+              try { Logger.warn("official_piece_counts_ignored", { gameId: this.gameId, error: String(error && (error.message || error)) }); } catch (_) {}
             }
 
             const queue = deferredPromotionQueue(data && data.state);
@@ -2348,8 +2361,12 @@
             Game.deferredPromotion = queue.length ? Object.assign({}, queue[0]) : null;
 
             if (!skipFx && data.state && Array.isArray(data.state.capturedOrder)) {
-              if (typeof Visual !== "undefined" && Visual && typeof Visual.setCapturedOrder === "function") {
-                Visual.setCapturedOrder(data.state.capturedOrder, true);
+              try {
+                if (typeof Visual !== "undefined" && Visual && typeof Visual.setCapturedOrder === "function") {
+                  Visual.setCapturedOrder(data.state.capturedOrder, true);
+                }
+              } catch (error) {
+                try { Logger.warn("official_captured_order_ignored", { gameId: this.gameId, error: String(error && (error.message || error)) }); } catch (_) {}
               }
             }
 
@@ -2359,35 +2376,51 @@
             const officialSouflaFx = lm && lm.kind === "soufla" && lm.souflaMeta && lm.souflaMeta.fx
               ? lm.souflaMeta.fx
               : null;
-            if (!skipFx && officialSouflaFx && typeof Visual !== "undefined" && Visual) {
-              if (typeof Visual.applySouflaFXBatch !== "function") {
-                throw new Error("official/soufla-fx-batch-missing");
+            try {
+              if (!skipFx && officialSouflaFx && typeof Visual !== "undefined" && Visual) {
+                if (typeof Visual.applySouflaFXBatch === "function") {
+                  Visual.applySouflaFXBatch(officialSouflaFx, { noDraw: true });
+                  this._lastSouflaFXMoveIndex = moveFxIndex || this._lastSouflaFXMoveIndex;
+                }
+              } else if (
+                !skipFx &&
+                this._lastSouflaFXMoveIndex != null &&
+                moveFxIndex &&
+                moveFxIndex > this._lastSouflaFXMoveIndex
+              ) {
+                if (typeof Visual !== "undefined" && Visual && typeof Visual.clearSouflaFX === "function") {
+                  Visual.clearSouflaFX(true);
+                }
+                this._lastSouflaFXMoveIndex = null;
               }
-              Visual.applySouflaFXBatch(officialSouflaFx, { noDraw: true });
-              this._lastSouflaFXMoveIndex = moveFxIndex || this._lastSouflaFXMoveIndex;
-            } else if (
-              !skipFx &&
-              this._lastSouflaFXMoveIndex != null &&
-              moveFxIndex &&
-              moveFxIndex > this._lastSouflaFXMoveIndex
-            ) {
-              if (typeof Visual !== "undefined" && Visual && typeof Visual.clearSouflaFX === "function") {
-                Visual.clearSouflaFX(true);
-              }
-              this._lastSouflaFXMoveIndex = null;
+            } catch (error) {
+              try { Logger.warn("official_soufla_visual_ignored", { gameId: this.gameId, error: String(error && (error.message || error)) }); } catch (_) {}
             }
 
-            // The official board, turn metadata and all visual effects are now
-            // installed. Resume and redraw exactly once from the canonical UI path.
+            // Resume only after the authoritative board and turn-owned state
+            // have been installed. This canonical path performs the one redraw
+            // that reveals the pieces and releases the board for the correct side.
             this._resumeOfficialTurn();
 
-            if (moveFxIndex && moveFxIndex > (this._lastSeenMoveModal || 0)) {
-              this._lastSeenMoveModal = moveFxIndex;
-              if (lm.kind === "soufla" && lm.decision) this._showSouflaModalFromLastMove(lm);
-              else if (lm.kind === "undo") showOnlineNotice(window.I18N.translateArgs("undo.applied"));
+            try {
+              if (moveFxIndex && moveFxIndex > (this._lastSeenMoveModal || 0)) {
+                this._lastSeenMoveModal = moveFxIndex;
+                if (lm.kind === "soufla" && lm.decision) this._showSouflaModalFromLastMove(lm);
+                else if (lm.kind === "undo") showOnlineNotice(window.I18N.translateArgs("undo.applied"));
+              }
+            } catch (error) {
+              try { Logger.warn("official_move_notice_ignored", { gameId: this.gameId, error: String(error && (error.message || error)) }); } catch (_) {}
             }
             return true;
           } catch (error) {
+            // Once a verified official board has been restored, never leave the
+            // canvas empty merely because turn orchestration or presentation
+            // metadata failed. Draw it while the normal sync fallback retries.
+            if (officialBoardInstalled) {
+              try {
+                if (typeof UI !== "undefined" && UI && typeof UI.updateAll === "function") UI.updateAll();
+              } catch (_) {}
+            }
             try {
               Logger.warn("official_state_apply_failed", {
                 gameId: this.gameId,

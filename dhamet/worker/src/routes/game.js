@@ -20,6 +20,7 @@ export function createGameRouteHandlers(deps) {
   const json = deps && deps.json;
   const bad = deps && deps.bad;
   const writeRealtime = deps && deps.writeRealtime;
+  const readRealtimeValue = deps && deps.readRealtimeValue;
 
   if (typeof requireSession !== 'function') throw new Error('game routes require requireSession');
   if (typeof requestBody !== 'function') throw new Error('game routes require requestBody');
@@ -28,6 +29,7 @@ export function createGameRouteHandlers(deps) {
   if (typeof json !== 'function') throw new Error('game routes require json');
   if (typeof bad !== 'function') throw new Error('game routes require bad');
   if (typeof writeRealtime !== 'function') throw new Error('game routes require writeRealtime');
+  if (typeof readRealtimeValue !== 'function') throw new Error('game routes require readRealtimeValue');
 
   const StatsCore = globalThis.DhametStats;
   const PresenceCore = globalThis.DhametPresence || null;
@@ -71,9 +73,22 @@ export function createGameRouteHandlers(deps) {
       const players = ended.players && typeof ended.players === 'object' ? ended.players : {};
       const updates = { ['roomList/' + gid]: null };
       const at = Date.now();
-      for (const slot of ['white', 'black']) {
-        const uid = cleanPath(players[slot] && players[slot].uid);
-        if (!uid) continue;
+      const participantUids = ['white', 'black']
+        .map((slot) => cleanPath(players[slot] && players[slot].uid))
+        .filter(Boolean);
+      const currentRecords = await Promise.all(participantUids.map(async (uid) => {
+        try {
+          return { uid, value: await readRealtimeValue(env, 'global', 'players/' + uid) };
+        } catch (_) {
+          return { uid, value: null };
+        }
+      }));
+      for (const record of currentRecords) {
+        const uid = record.uid;
+        const currentRoomId = cleanPath(record.value && record.value.roomId);
+        // Never clear a newer match. Presence is released only while the
+        // player still belongs to the game that has just ended.
+        if (currentRoomId !== gid) continue;
         updates['players/' + uid + '/status'] = 'available';
         updates['players/' + uid + '/role'] = 'lobby';
         updates['players/' + uid + '/roomId'] = null;

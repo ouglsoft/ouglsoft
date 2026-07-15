@@ -1341,13 +1341,28 @@ body.z-mobile-on[data-mobile-page="lobby"] .z-lobby-refresh-btn {
   font-size: var(--m-text-sm) !important;
 }
 body.z-mobile-on[data-mobile-page="lobby"] .z-lobby-refresh-btn .btn-ico {
+  display: block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  flex: 0 0 auto;
   width: 17px;
   height: 17px;
 }
 body.z-mobile-on[data-mobile-orientation="portrait"][data-mobile-page="lobby"] .z-lobby-invite-controls.is-mobile-portrait {
+  display: inline-flex;
   flex: 0 1 auto;
-  max-width: calc(100vw - (var(--m-shell-size) * 2) - 34px);
-  margin-inline: 6px;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  max-width: calc(100vw - (var(--m-shell-size) * 2) - 20px);
+  margin-inline: 4px;
+}
+body.z-mobile-on[data-mobile-orientation="portrait"][data-mobile-page="lobby"] .z-lobby-invite-controls.is-mobile-portrait .z-invite-receive-row {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+body.z-mobile-on[data-mobile-orientation="portrait"][data-mobile-page="lobby"] .z-lobby-invite-controls.is-mobile-portrait .z-lobby-refresh-btn {
+  flex: 0 0 auto;
 }
 body.z-mobile-on[data-mobile-orientation="portrait"][data-mobile-page="lobby"] .z-lobby-invite-controls.is-mobile-portrait .z-invite-receive-label {
   max-width: 96px;
@@ -1356,7 +1371,16 @@ body.z-mobile-on[data-mobile-orientation="portrait"][data-mobile-page="lobby"] .
   white-space: nowrap;
 }
 body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="lobby"] .z-lobby-invite-controls.is-mobile-landscape {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  align-self: center;
+  width: 100%;
   margin-top: 6px;
+  gap: 6px;
+}
+body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="lobby"] .z-lobby-invite-controls.is-mobile-landscape .z-invite-receive-row,
+body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="lobby"] .z-lobby-invite-controls.is-mobile-landscape .z-lobby-refresh-btn {
   align-self: center;
 }
 body.z-mobile-on[data-mobile-orientation="portrait"][data-mobile-page="lobby"] .z-mobile-lobby-headbar {
