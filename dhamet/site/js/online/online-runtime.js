@@ -2624,18 +2624,32 @@
               clientSpectatorId: [uid, gid, "join", fallbackJoinedAt].join(":"),
             });
             if (!result || result.ok === false) {
-              return { ok: false, reason: result && /full/.test(String(result.error || "")) ? "full" : "error", error: result };
+              const resultCode = String((result && (result.error || result.code)) || "");
+              return {
+                ok: false,
+                reason: /player-cannot/.test(resultCode) ? "player" : (/full/.test(resultCode) ? "full" : "error"),
+                error: result,
+                game: result && result.game ? result.game : null,
+              };
             }
             const own = result.spectator || { uid, nickname: nick, joinedAt: fallbackJoinedAt };
             this._spectatorJoinedAt = Number(own.joinedAt || fallbackJoinedAt) || fallbackJoinedAt;
             this._spectatorRef = null;
             const count = Number(result.count || result.spectatorCount || 0) || 0;
             this._lastSpectatorRegistration = { ok: true, gameId: gid, uid, at, count };
-            return { ok: true, gameId: gid, uid, ref: null, count };
+            return { ok: true, gameId: gid, uid, ref: null, count, game: result.game || null };
           } catch (e) {
             const code = String((e && (e.code || e.message)) || "");
-            handleDbError(e, window.I18N.translateArgs("online.errors.spectatorJoinFailed"), { ctx: "spectator.join" });
-            return { ok: false, reason: /full/.test(code) ? "full" : "error", error: e };
+            const playerConflict = /player-cannot/.test(code);
+            if (!playerConflict) {
+              handleDbError(e, window.I18N.translateArgs("online.errors.spectatorJoinFailed"), { ctx: "spectator.join" });
+            }
+            return {
+              ok: false,
+              reason: playerConflict ? "player" : (/full/.test(code) ? "full" : "error"),
+              error: e,
+              game: e && e.data && e.data.game ? e.data.game : null,
+            };
           }
         },
 
@@ -5459,7 +5473,30 @@
             return;
           }
     
-          const g = await this._refreshStaleRoomBeforeEntry(gameId);
+          let preparedSpectatorRegistration = null;
+          let g = null;
+          if (forceSpectator) {
+            preparedSpectatorRegistration = await this._registerSpectatorInRoom(gameId);
+            if (!this._isEntryRequestCurrent(entryRequest)) {
+              try {
+                if (preparedSpectatorRegistration && preparedSpectatorRegistration.ok) {
+                  await this._removeSpectatorRegistration(gameId, this.myUid);
+                }
+              } catch (e) {}
+              return false;
+            }
+            if (preparedSpectatorRegistration && preparedSpectatorRegistration.ok) {
+              await this._startSpectator(gameId, entryRequest, preparedSpectatorRegistration.game || null, preparedSpectatorRegistration);
+              return;
+            }
+            if (!preparedSpectatorRegistration || preparedSpectatorRegistration.reason !== "player") {
+              await this._startSpectator(gameId, entryRequest, null, preparedSpectatorRegistration);
+              return;
+            }
+            g = preparedSpectatorRegistration.game || null;
+          }
+
+          if (!g) g = await this._refreshStaleRoomBeforeEntry(gameId);
           if (!this._isEntryRequestCurrent(entryRequest)) return false;
           if (!g) {
             if (this._lastOfficialReadError) {
@@ -5514,13 +5551,13 @@
           }
         },
 
-    _startSpectator: async function (gameId, entryRequest, initialGame) {
+    _startSpectator: async function (gameId, entryRequest, initialGame, preparedRegistration) {
           if (entryRequest && !this._isEntryRequestCurrent(entryRequest)) return false;
           const ok = await this.initPresence({ deferHeartbeat: true });
           if (entryRequest && !this._isEntryRequestCurrent(entryRequest)) return false;
           if (!ok) return false;
     
-          const registration = await this._registerSpectatorInRoom(gameId);
+          const registration = preparedRegistration || await this._registerSpectatorInRoom(gameId);
           if (entryRequest && !this._isEntryRequestCurrent(entryRequest)) {
             try { if (registration && registration.ok) await this._removeSpectatorRegistration(gameId, this.myUid); } catch (e) {}
             return false;
@@ -5569,7 +5606,10 @@
           } catch (e) {
             Logger.warn("spectator_presentation_reset_failed", { gameId, err: String(e && (e.message || e)) });
           }
-          const synced = await this._applyEntryOfficialState(gameId, initialGame, "spectator-entry");
+          let officialGame = initialGame || (registration && registration.game) || null;
+          if (!officialGame) officialGame = await this._refreshStaleRoomBeforeEntry(gameId);
+          if ((entryRequest && !this._isEntryRequestCurrent(entryRequest)) || !this._isAsyncContextCurrent(asyncContext)) return false;
+          const synced = await this._applyEntryOfficialState(gameId, officialGame, "spectator-entry");
           if ((entryRequest && !this._isEntryRequestCurrent(entryRequest)) || !this._isAsyncContextCurrent(asyncContext)) return false;
           if (!synced) return await this._abortOnlineEntry("spectator-sync-failed");
           try { this._startPresenceHeartbeat(); } catch (e) {}
