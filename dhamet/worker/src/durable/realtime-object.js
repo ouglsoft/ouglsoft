@@ -1698,10 +1698,17 @@ export class RealtimeObject {
       for (const entry of reduced.events) this._appendGameLog(game, entry);
     }
 
+    const spectatorsPath = 'spectators/' + gameId;
+    const rtcPath = 'rtc/' + gameId;
     this.root = setAt(this.root || {}, path, game);
-    bumpVersions(this.versions, [path]);
+    this.root = setAt(this.root || {}, spectatorsPath, null);
+    this.root = setAt(this.root || {}, rtcPath, null);
+    bumpVersions(this.versions, [path, spectatorsPath, rtcPath]);
     await this._save();
-    await this._broadcast([path], beforeRoot);
+    // Broadcast the terminal game before clients close their subscriptions;
+    // ephemeral spectator and RTC state is cleared in the same authoritative
+    // transaction so an ended room cannot leak into a later session.
+    await this._broadcast([path, spectatorsPath, rtcPath], beforeRoot);
     return json({ ok: true, committed: true, game, moveIndex: reduced.moveIndex || game.moveIndex || 0, ply: reduced.ply || game.ply || 0, result: reduced.result || game.result || null });
   }
 

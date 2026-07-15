@@ -443,6 +443,7 @@
       },
       "logFailed": "تعذر تحديث السجل.",
       "matchEndedByPlayer": "{player} أنهى المباراة{reason}.",
+      "matchEndedByYou": "تم إنهاء المباراة بنجاح. سيتم نقلك إلى اللوبي.",
       "matchEndedReason": {
         "absent": " بسبب غياب الخصم",
         "disconnect": " بسبب انقطاع الخصم"
@@ -1024,6 +1025,7 @@
       },
       "logFailed": "Failed to update the log.",
       "matchEndedByPlayer": "{player} ended the match{reason}.",
+      "matchEndedByYou": "The match ended successfully. You will be returned to the lobby.",
       "matchEndedReason": {
         "absent": " because the opponent was absent",
         "disconnect": " because the opponent disconnected"
@@ -1605,6 +1607,7 @@
       },
       "logFailed": "Échec de mise à jour du journal.",
       "matchEndedByPlayer": "{player} a terminé la partie{reason}.",
+      "matchEndedByYou": "La partie a été terminée. Vous allez retourner au lobby.",
       "matchEndedReason": {
         "absent": " car l’adversaire était absent",
         "disconnect": " car l’adversaire s’est déconnecté"

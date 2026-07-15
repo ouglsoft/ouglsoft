@@ -63,11 +63,26 @@ export function createGameRouteHandlers(deps) {
     return { side: '', player: null };
   }
 
-  async function removeGlobalRoomListEntry(env, gameId, reason) {
+  async function cleanupGlobalEndedMatch(env, gameId, game) {
     const gid = cleanPath(gameId);
     if (!gid) return false;
     try {
-      await writeRealtime(env, 'global', { op: 'remove', path: 'roomList/' + gid });
+      const ended = game && typeof game === 'object' ? game : {};
+      const players = ended.players && typeof ended.players === 'object' ? ended.players : {};
+      const updates = { ['roomList/' + gid]: null };
+      const at = Date.now();
+      for (const slot of ['white', 'black']) {
+        const uid = cleanPath(players[slot] && players[slot].uid);
+        if (!uid) continue;
+        updates['players/' + uid + '/status'] = 'available';
+        updates['players/' + uid + '/role'] = 'lobby';
+        updates['players/' + uid + '/roomId'] = null;
+        updates['players/' + uid + '/side'] = null;
+        updates['players/' + uid + '/mode'] = 'available';
+        updates['players/' + uid + '/page'] = 'loby';
+        updates['players/' + uid + '/updatedAt'] = at;
+      }
+      await writeRealtime(env, 'global', { op: 'update', path: '', updates, value: updates });
       return true;
     } catch (_) {
       return false;
@@ -157,7 +172,8 @@ export function createGameRouteHandlers(deps) {
     if (options && options.removeRoomOnEnd && forwarded.res && forwarded.res.ok && data && data.ok !== false) {
       const game = data && data.game && typeof data.game === 'object' ? data.game : null;
       if (game && String(game.status || '') === 'ended') {
-        data.roomListRemoved = await removeGlobalRoomListEntry(env, forwarded.gameId || (body && body.gameId), game.endedReason || triggerKind || 'ended');
+        data.globalMatchCleanup = await cleanupGlobalEndedMatch(env, forwarded.gameId || (body && body.gameId), game);
+        data.roomListRemoved = !!data.globalMatchCleanup;
       }
     }
     return json(data, forwarded.status || 200);

@@ -180,35 +180,6 @@
     window.Logger = Logger;
   } catch (e) {}
 
-  async function tryFinalizePvcResultOnExit(endReason, maxWaitMs) {
-    try {
-      if (window.__zamat_pvc_result_finalized) return false;
-      try {
-        if (window.Online && Online && Online.isSpectator) return false;
-      } catch (e) {}
-      if (window.Game && Game.gameOver) return false;
-      if (
-        typeof PvCResultRecorder === "undefined" ||
-        !PvCResultRecorder ||
-        typeof PvCResultRecorder.finalizeAndSubmit !== "function"
-      )
-        return false;
-
-      window.__zamat_pvc_result_finalized = true;
-      const ms = Number.isFinite(maxWaitMs) ? maxWaitMs : 900;
-      await Promise.race([
-        PvCResultRecorder.finalizeAndSubmit({
-          winner: null,
-          endReason: String(endReason || "disconnect"),
-        }),
-        new Promise((r) => setTimeout(r, ms)),
-      ]);
-      return true;
-    } catch (e) {
-      return false;
-    }
-  }
-
   function normalizeSouflaFx(fx) {
     try {
       if (!fx || typeof fx !== "object") return null;
@@ -2245,6 +2216,31 @@
         },
 
 
+    _activeOfficialGameForCurrentPlayer: function (view) {
+          try {
+            const uid = String(this.myUid || "").trim();
+            const lobbyView = view && typeof view === "object" ? view : {};
+            if (!uid) return null;
+
+            // The Worker derives this map from the same filtered official room
+            // list shown in the lobby. Prefer it so navigation and the visible
+            // "return to match" room can never disagree about membership.
+            const mapped = String((lobbyView.activePlayerRooms && lobbyView.activePlayerRooms[uid]) || "").trim();
+            if (mapped) return mapped;
+
+            const rooms = lobbyView.roomList && typeof lobbyView.roomList === "object"
+              ? lobbyView.roomList
+              : lobbyView;
+            for (const [gameId, game] of Object.entries(rooms || {})) {
+              if (!game || String(game.status || "") !== "active") continue;
+              const whiteUid = String((game.players && game.players.white && game.players.white.uid) || "").trim();
+              const blackUid = String((game.players && game.players.black && game.players.black.uid) || "").trim();
+              if (uid === whiteUid || uid === blackUid) return String(gameId || "").trim() || null;
+            }
+          } catch (e) {}
+          return null;
+        },
+
     _applyOfficialLobbyView: function (view) {
           try {
             if (!view || typeof view !== "object") return false;
@@ -2262,6 +2258,18 @@
             if (view.invites && this._inviteOfficialHandler) {
               try { this._inviteOfficialHandler(view.invites); } catch (e) {}
             }
+
+            // The official lobby view is the canonical acceptance signal. If
+            // it already maps the current user to an active room, start the
+            // existing navigation handler immediately in this pulse. The
+            // handler reaches location.href synchronously on lobby pages, so
+            // rendering a "return to match" row can never be the only outcome.
+            try {
+              const activeGameId = this._activeOfficialGameForCurrentPlayer(view);
+              if (activeGameId && !isGamePage() && !(this.isActive && this.gameId)) {
+                this._handleOutgoingInviteAccepted(activeGameId).catch(function () {});
+              }
+            } catch (e) {}
             return true;
           } catch (e) {
             return false;
@@ -3579,7 +3587,6 @@
 
   window.__ZAMAT_ONLINE_SHARED__ = {
     formatTpl: formatTpl,
-    tryFinalizePvcResultOnExit: tryFinalizePvcResultOnExit,
     normalizeSouflaFx: normalizeSouflaFx,
     isPermissionDenied: isPermissionDenied,
     _ctx: _ctx,

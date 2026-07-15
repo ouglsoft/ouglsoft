@@ -69,8 +69,7 @@
     playerAcceptsInvites,
     requireAuthUid,
     showOnlineNotice,
-    souflaToPlain,
-    tryFinalizePvcResultOnExit
+    souflaToPlain
   } = S;
 
   window.__ZAMAT_ONLINE_FULL_LOADED__ = true;
@@ -1409,28 +1408,13 @@
         },
 
     _releaseUiHoldSoon: function () {
-          try {
-            var root = document.documentElement;
-            if (!root || !root.classList) return;
-            var self = this;
-            var generation = Number(this._uiHoldGeneration || 0);
-            var done = function () {
-              try {
-                if (generation !== Number(self._uiHoldGeneration || 0)) return;
-                root.classList.remove("ui-hold");
-                root.classList.remove("role-pending");
-                root.classList.add("ui-ready");
-                if (window.UI && typeof UI.updateAll === "function") UI.updateAll();
-              } catch (e) {}
-            };
-            if (window.requestAnimationFrame) {
-              requestAnimationFrame(function () {
-                requestAnimationFrame(done);
-              });
-            } else {
-              setTimeout(done, 0);
-            }
-          } catch (e) {}
+          // Role/input blocking is owned by the entry transition itself. Once an
+          // official state has been accepted, release it synchronously so a
+          // missed animation frame can never leave the board or navigation
+          // controls permanently locked.
+          try { this._applyUiHold(false); } catch (e) {}
+          try { if (window.UI && typeof UI.updateAll === "function") UI.updateAll(); } catch (e) {}
+          return true;
         },
 
     _buildOnlineActionState: function (online) {
@@ -1472,7 +1456,7 @@
     _setOnlineButtonsState: function (on, options) {
           const stateOptions = options && typeof options === "object" ? options : {};
           try {
-            this._applyUiHold(true);
+            this._applyUiHold(!!(on && stateOptions.keepBlocked));
           } catch (e) {}
           try {
             this._setButtonsVisualDisabled(!!on);
@@ -1522,47 +1506,52 @@
 
     endOnline: async function () {
           const asyncContext = this._captureAsyncContext(this.gameId);
-          try {
-            this._localEndedOnline = true;
-          } catch (e) {}
-
-          try {
-            await tryFinalizePvcResultOnExit("abort", 900);
-          } catch (e) {}
-          if (!this._isAsyncContextCurrent(asyncContext)) return;
-
           const who = this.myNick || window.I18N.translateArgs("players.player");
           let res = null;
+          let requestError = null;
+
           try {
-            // A player ending an active official PvP match closes the match neutrally.
-            // GameRoom may adjudicate a winner only if the original late-exit
-            // board conditions show a nearly decided position. The browser does
-            // not write status, winner, result, log, or board state directly.
             res = await this._commitOfficialMatchEnd("leave", "ended_by_player");
-          } catch (e) {
+          } catch (error) {
+            requestError = error;
+            const serverGame = error && error.data && error.data.game;
+            if (serverGame && serverGame.status === "ended") res = { ok: true, committed: true, game: serverGame };
+          }
+
+          if (!this._isAsyncContextCurrent(asyncContext, { ignorePostMatch: true })) return false;
+
+          let endedGame = res && res.game && res.game.status === "ended"
+            ? res.game
+            : this._lastGameData && this._lastGameData.status === "ended"
+              ? this._lastGameData
+              : null;
+          if (!endedGame) {
+            // Resolve ambiguous transport responses against the official room
+            // once before showing an error. This prevents a false failure notice
+            // when the end action committed but the response was interrupted.
             try {
-              showOnlineNotice(window.I18N.translateArgs("online.endFail"));
-            } catch (_) {}
-            handleDbError(e, window.I18N.translateArgs("online.endFail"), { ctx: "matchEnd.resign" });
-            return;
+              await this.syncNow({ reason: "end-confirm", repairPresence: false, notifyFailure: false });
+              if (this._lastGameData && this._lastGameData.status === "ended") endedGame = this._lastGameData;
+            } catch (e) {}
           }
 
-          if (!res || res.committed === false || !res.game || res.game.status !== "ended") {
-            try { showOnlineNotice(window.I18N.translateArgs("online.endFail")); } catch (e) {}
-            try { this._forceResync(); } catch (e) {}
-            return;
+          if (!endedGame) {
+            try { Logger.warn("official_match_end_failed", { gameId: asyncContext.gameId, error: String(requestError && (requestError.message || requestError) || (res && res.error) || "not-ended") }); } catch (_) {}
+            try { showOnlineNotice(window.I18N.translateArgs("online.endFail")); } catch (_) {}
+            return false;
           }
 
-          try {
-            if (this.gameId) this._lastGameData = res.game;
-          } catch (e) {}
-
-          try {
-          } catch (e) {}
-
-          try {
-            this._enterPostMatch({ reason: res.game.endedReason || "ended_by_player", byUid: this.myUid, byNick: who, endedBy: res.game.endedBy || null });
-          } catch (e) {}
+          this._localEndedOnline = true;
+          this._lastGameData = endedGame;
+          this._enterPostMatch({
+            reason: endedGame.endedReason || "ended_by_player",
+            byUid: this.myUid,
+            byNick: who,
+            endedBy: endedGame.endedBy || null,
+            result: endedGame.result || null,
+            winner: endedGame.winner,
+          });
+          return true;
         },
 
     _clearPostMatchSession: function () {
@@ -1573,163 +1562,93 @@
         },
 
     _enterPostMatch: function (meta) {
-          try {
-            this._clearPostMatchSession();
-          } catch (e) {}
+          const info = meta && typeof meta === "object" ? meta : {};
+          const reason = String(info.reason || info.endedReason || "ended").trim();
+          const endedBy = info.endedBy && typeof info.endedBy === "object" ? info.endedBy : null;
+          const officialResult = info.result || (this._lastGameData && this._lastGameData.result) || null;
+          const winner = info.winner != null
+            ? Number(info.winner)
+            : this._lastGameData && this._lastGameData.winner != null
+              ? Number(this._lastGameData.winner)
+              : officialResult && officialResult.winner != null
+                ? Number(officialResult.winner)
+                : null;
+
           this._applySessionState({
             postMatch: true,
             phase: window.DhametMatchCoordinator ? DhametMatchCoordinator.phases.POST_MATCH : null,
             newEpoch: false,
             reason: "online-post-match",
           });
-    
-          if (this._postMatchShown) return;
+          if (this._postMatchShown) return true;
           this._applySessionState({ postMatchShown: true });
-          const asyncContext = this._captureAsyncContext(this.gameId);
-    
-          const reason = (meta && (meta.reason || meta.endedReason)) || null;
-          const endedBy = (meta && (meta.endedBy || meta.ended_by)) || null;
-          const officialResult = (meta && meta.result) || (this._lastGameData && this._lastGameData.result) || null;
-          const resultMeta = officialResult && officialResult.meta && typeof officialResult.meta === "object" ? officialResult.meta : {};
-          const resultCounted = !!(officialResult && resultMeta.countsAsResult !== false && (officialResult.terminal !== false || officialResult.status === "win" || officialResult.status === "draw"));
-          const resultRejected = !!(officialResult && resultMeta.countsAsResult === false);
-    
-          const byUid = (meta && meta.byUid) || (endedBy && endedBy.uid) || null;
-          let byNick = (meta && meta.byNick) || (endedBy && endedBy.nickname) || "";
+
+          try { this._applyUiHold(false); } catch (e) {}
+          try { this._clearPostMatchSession(); } catch (e) {}
+          try { this._stopOpponentAbsenceWatcher && this._stopOpponentAbsenceWatcher(); } catch (e) {}
+          try { this._markLocalCommitSettled && this._markLocalCommitSettled(); } catch (e) {}
           try {
-            byNick = String(byNick || "").trim();
-          } catch (e) {}
-          if (!byNick) byNick = window.I18N.translateArgs("online.opponent", "Opponent");
-    
-          let winner = null;
-          try {
-            if (officialResult && typeof officialResult.winner !== "undefined") winner = Number(officialResult.winner);
-            const g = this._lastGameData;
-            if (winner == null && g && typeof g.winner !== "undefined") winner = g.winner;
-          } catch (e) {}
-          try {
-            if (winner == null && typeof Game !== "undefined" && typeof Game.winner !== "undefined")
-              winner = Game.winner;
-          } catch (e) {}
-          try {
-            if (winner === 0) winner = null;
-          } catch (e) {}
-    
-          try {
-            const rr = String(reason || "").trim();
-            if (rr === "ended_by_player") {
-              try {
-                tryFinalizePvcResultOnExit("abort", 900);
-              } catch (e) {}
-            } else if (rr === "opponent_absent") {
-              try {
-                tryFinalizePvcResultOnExit("disconnect", 900);
-              } catch (e) {}
+            if (typeof Game !== "undefined" && Game) {
+              Game.gameOver = true;
+              Game.winner = winner === TOP || winner === BOT ? winner : null;
+              Game.terminationReason = reason;
+              Game.inChain = false;
+              Game.chainPos = null;
+              Game.awaitingPenalty = false;
+              Game.souflaPending = null;
+              Game.availableSouflaForHuman = null;
+              Game.killTimer && Game.killTimer.hardStop && Game.killTimer.hardStop();
             }
           } catch (e) {}
-    
-          if (resultCounted) {
+          try { if (typeof Input !== "undefined" && Input) Input.selected = null; } catch (e) {}
+          try { this.refreshPvpControls && this.refreshPvpControls(); } catch (e) {}
+
+          const byUid = String(info.byUid || (endedBy && endedBy.uid) || "").trim();
+          let byNick = String(info.byNick || (endedBy && endedBy.nickname) || "").trim();
+          if (!byNick) byNick = window.I18N.translateArgs("online.opponent", "Opponent");
+          const manual = reason === "ended_by_player";
+
+          if (manual) {
+            // A manually ended room cannot rematch. Close its live transports
+            // before notifying and returning every participant to the lobby.
+            try { this._unbindGameLiveSubscription && this._unbindGameLiveSubscription(); } catch (e) {}
+            try { this._teardownRoomComms && this._teardownRoomComms(); } catch (e) {}
+            const endedByMe = !!(byUid && this.myUid && byUid === String(this.myUid));
+            const message = endedByMe
+              ? window.I18N.translateArgs("online.matchEndedByYou")
+              : formatTpl(window.I18N.translateArgs("online.matchEndedByPlayer", "Player {player} ended the match{reason}."), {
+                  player: byNick,
+                  reason: "",
+                });
+            try { showOnlineNotice(message, { allowSpectator: true }); } catch (e) {}
+            const asyncContext = this._captureAsyncContext(this.gameId);
+            setTimeout(() => {
+              try {
+                if (this._isAsyncContextCurrent(asyncContext, { ignorePostMatch: true })) this.exitToLobby();
+              } catch (e) {}
+            }, 1200);
+            return true;
+          }
+
+          const resultMeta = officialResult && officialResult.meta && typeof officialResult.meta === "object" ? officialResult.meta : {};
+          const counted = !!(officialResult && resultMeta.countsAsResult !== false);
+          if (counted || this._isNaturalOnlineEndReason(reason)) {
             try {
               if (typeof UI !== "undefined" && UI && typeof UI.showGameOverModal === "function") {
                 UI.showGameOverModal(winner === TOP || winner === BOT ? winner : null);
-                return;
+                return true;
               }
             } catch (e) {}
           }
 
-          if (resultRejected) {
-            const rejection = String(resultMeta.rejectionReason || "").trim();
-            let key = "online.resultNotCounted.generic";
-            if (rejection === "administrative_early_or_midgame") key = "online.resultNotCounted.early";
-            else if (rejection === "administrative_position_not_clear") key = "online.resultNotCounted.unclear";
-            else if (rejection === "administrative_cancelled") key = "online.resultNotCounted.cancelled";
-            const message = window.I18N.translateArgs(key);
-            try { showOnlineNotice(message, { allowSpectator: true }); } catch (e) {}
+          try { showOnlineNotice(window.I18N.translateArgs("online.ended.generic"), { allowSpectator: true }); } catch (e) {}
+          const asyncContext = this._captureAsyncContext(this.gameId);
+          setTimeout(() => {
             try {
-              setTimeout(() => {
-                try { if (this._isAsyncContextCurrent(asyncContext)) this.exitToMode(); } catch (e) {}
-              }, 1400);
+              if (this._isAsyncContextCurrent(asyncContext, { ignorePostMatch: true })) this.exitToLobby();
             } catch (e) {}
-            return;
-          }
-
-          if (reason === "ended_by_player") {
-            if (byUid && this.myUid && byUid === this.myUid) {
-              try {
-                showOnlineNotice(window.I18N.translateArgs("buttons.endOnline"));
-              } catch (e) {}
-              return;
-            }
-    
-            const title = window.I18N.translateArgs("online.pvpEndTitle", window.I18N.translateArgs("modals.gameOver.drawTitle"));
-            const body = formatTpl(window.I18N.translateArgs("online.matchEndedByPlayer", "Player {player} ended the match{reason}."), {
-              player: byNick,
-              reason: "",
-            });
-    
-            const go = async () => {
-              try {
-                if (!this._isAsyncContextCurrent(asyncContext)) return;
-                await this.exitToMode();
-              } catch (e) {}
-            };
-    
-            try {
-              if (typeof Modal !== "undefined" && Modal && typeof Modal.alert === "function") {
-                Modal.alert({
-                  title,
-                  text: body,
-                  okLabel: window.I18N.translateArgs("actions.ok", "OK"),
-                  okClassName: "ok",
-                  allowSpectator: true,
-                  priority: 90,
-                  blocking: true,
-                  onClick: go,
-                  onClose: (reason) => {
-                    if (reason === "dismiss") go();
-                  },
-                });
-                return;
-              }
-            } catch (e) {}
-    
-            try {
-              showOnlineNotice(body);
-            } catch (e) {}
-            try {
-              go();
-            } catch (e) {}
-            return;
-          }
-    
-          if (!this._isNaturalOnlineEndReason(reason)) {
-            try {
-              const msg = reason === "opponent_absent"
-                ? formatTpl(window.I18N.translateArgs("online.matchEndedByPlayer"), {
-                    player: byNick || this.myNick || window.I18N.translateArgs("players.player"),
-                    reason: window.I18N.translateArgs("online.matchEndedReason.absent"),
-                  })
-                : window.I18N.translateArgs("online.errors.noGame");
-              showOnlineNotice(msg, { allowSpectator: true });
-            } catch (e) {}
-            try {
-              setTimeout(() => {
-                try { if (this._isAsyncContextCurrent(asyncContext)) this.exitToMode(); } catch (e) {}
-              }, 900);
-            } catch (e) {}
-            return;
-          }
-    
-          try {
-            if (typeof UI !== "undefined" && UI && typeof UI.showGameOverModal === "function") {
-              UI.showGameOverModal(winner == null ? null : winner);
-              return;
-            }
-          } catch (e) {}
-    
-          try {
-            showOnlineNotice(window.I18N.translateArgs("modals.gameOver.drawTitle"));
-          } catch (e) {}
+          }, 1200);
+          return true;
         },
 
     _onRematchStarted: function () {
@@ -2029,10 +1948,10 @@
           try { await this.exitToMode(); } catch (e) {}
         },
 
-    exitToMode: async function () {
+    _exitOnlineSessionTo: async function (pageName) {
           this._applySessionState({
             phase: window.DhametMatchCoordinator ? DhametMatchCoordinator.phases.LEAVING : null,
-            reason: "online-exit-to-mode",
+            reason: "online-exit",
           });
           try { if (typeof Modal !== "undefined" && Modal && Modal.close) Modal.close("state-change"); } catch (e) {}
           try { this._clearPostMatchSession(); } catch (e) {}
@@ -2040,12 +1959,10 @@
           const gid = this.gameId || this._presenceRoomId;
           const uid = this.myUid;
           const wasSpectator = !!this.isSpectator;
-
-          try {
-            if (gid && uid && wasSpectator) await this._removeSpectatorRegistration(gid, uid);
-          } catch (e) {}
+          try { if (gid && uid && wasSpectator) await this._removeSpectatorRegistration(gid, uid); } catch (e) {}
           try { this._unbindGameLiveSubscription && this._unbindGameLiveSubscription(); } catch (e) {}
           try { this._teardownRoomComms && this._teardownRoomComms(); } catch (e) {}
+          try { this._teardownGamePresence && this._teardownGamePresence(); } catch (e) {}
           try { this.gameRef && this.gameRef.off && this.gameRef.off(); } catch (e) {}
           try { this._clearCaptureDraft && this._clearCaptureDraft(); } catch (e) {}
           try { this._clearPersistedActiveGame && this._clearPersistedActiveGame(); } catch (e) {}
@@ -2057,19 +1974,29 @@
             gameId: null,
             gameRef: null,
             side: null,
+            postMatch: false,
+            postMatchShown: false,
             presenceRoomId: null,
           });
-          try {
-            if (window.DhametMatchCoordinator) DhametMatchCoordinator.resetPresentation({ draw: false });
-          } catch (e) {}
+          try { if (window.DhametMatchCoordinator) DhametMatchCoordinator.resetPresentation({ draw: false }); } catch (e) {}
           try { await this._setLobbyStatus("available"); } catch (e) {}
 
           try {
             const inPages = (location.pathname || "").includes("/pages/");
-            const target = inPages ? "mode.html" : "pages/mode.html";
+            const cleanPage = String(pageName || "mode.html").replace(/^.*\//, "");
+            const target = inPages ? cleanPage : "pages/" + cleanPage;
             if (typeof location.replace === "function") location.replace(target);
             else location.href = target;
           } catch (e) {}
+          return true;
+        },
+
+    exitToMode: async function () {
+          return this._exitOnlineSessionTo("mode.html");
+        },
+
+    exitToLobby: async function () {
+          return this._exitOnlineSessionTo("loby.html");
         },
 
     confirmLeaveRoom: async function () {
@@ -2118,20 +2045,14 @@
             }
     
             if (this.isSpectator) {
-              try {
-                await this._removeSpectatorRegistration(gid, uid);
-              } catch (e) {}
-              if (!this._isAsyncContextCurrent(asyncContext)) return;
-            } else {
-              try {
-                await this.endOnline();
-              } catch (e) {}
-              if (!this._isAsyncContextCurrent(asyncContext)) return;
-              try {
-                await this.exitToMode();
-              } catch (e) {}
+              try { await this._removeSpectatorRegistration(gid, uid); } catch (e) {}
+              if (!this._isAsyncContextCurrent(asyncContext, { ignorePostMatch: true })) return;
+              try { await this.exitToLobby(); } catch (e) {}
               return;
             }
+
+            try { await this.endOnline(); } catch (e) {}
+            return;
     
             try {
               this._teardownRoomComms();
@@ -2547,6 +2468,7 @@
               gameId: expectedGameId,
               version: res && res.version,
               rejectDuplicate: false,
+              allowPendingRollback: !!this._moveRetryGaveUp,
             });
 
             try { this._reconcilePendingMoveOutbox && this._reconcilePendingMoveOutbox(data); } catch (e) {}
@@ -4532,6 +4454,14 @@
           this._moveRetryAttempt = attempt;
           if (attempt > MAX_MOVE_SEND_RETRIES) {
             this._moveRetryGaveUp = true;
+            try {
+              this._requestOfficialSync({
+                reason: "move-retry-exhausted",
+                discardCaptureDraft: true,
+                repairPresence: false,
+                notifyFailure: true,
+              });
+            } catch (e) {}
             return;
           }
           const delay = Math.min(15000, 250 * Math.pow(2, Math.min(6, attempt - 1)));
@@ -5726,7 +5656,6 @@
     _handleMissingOfficialGame: function () {
           if (!this.isActive) return;
           const asyncContext = this._captureAsyncContext(this.gameId);
-          try { tryFinalizePvcResultOnExit("disconnect", 900); } catch (e) {}
           const title = window.I18N.translateArgs("online.pvpEndTitle");
           const body = window.I18N.translateArgs("online.ended.remoteOrCleaned");
           let completed = false;
@@ -5783,8 +5712,18 @@
             !isTerminalState &&
             !isNewRematch
           ) {
-            try { Logger.info("official_state_held_for_local_commit", { gameId: this.gameId, remoteMi, expected: this._expectedMoveIndex, source: source.source || "" }); } catch (_) {}
-            return false;
+            const allowPendingRollback = !!(source.allowPendingRollback || this._moveRetryGaveUp);
+            if (!allowPendingRollback) {
+              try { Logger.info("official_state_held_for_local_commit", { gameId: this.gameId, remoteMi, expected: this._expectedMoveIndex, source: source.source || "" }); } catch (_) {}
+              return false;
+            }
+            // The official state is still at the pre-move boundary after all
+            // retries were exhausted. Roll the speculative browser state back
+            // to that authoritative snapshot instead of leaving the turn and
+            // board locked indefinitely.
+            try { this._pendingSteps = []; } catch (_) {}
+            try { this._clearCaptureDraft && this._clearCaptureDraft(); } catch (_) {}
+            try { this._markLocalCommitSettled(); } catch (_) {}
           }
 
           const data = this._prepareOfficialState(rawData);
@@ -5841,7 +5780,16 @@
           try { this._handleOfficialRematchRequest(data); } catch (e) {}
 
           if (data.status && data.status !== "active") {
-            try { this._enterPostMatch({ reason: data.endedReason || data.status, endedBy: data.endedBy || null }); } catch (e) {}
+            try {
+              this._enterPostMatch({
+                reason: data.endedReason || data.status,
+                endedBy: data.endedBy || null,
+                byUid: data.endedBy && data.endedBy.uid,
+                byNick: data.endedBy && data.endedBy.nickname,
+                result: data.result || null,
+                winner: data.winner,
+              });
+            } catch (e) {}
             return true;
           }
 
@@ -5885,6 +5833,8 @@
             }
           }
 
+          try { this._applyUiHold(false); } catch (e) {}
+          try { this.refreshPvpControls && this.refreshPvpControls(); } catch (e) {}
           if (rematchAdvanced) {
             try { this._setOnlineButtonsState(true); } catch (e) {}
           }

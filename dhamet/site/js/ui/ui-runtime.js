@@ -275,6 +275,11 @@ const Visual = (() => {
     opts = opts || {};
     const noDraw = !!opts.noDraw;
 
+    // Soufla is a replacement visual state, not an addition to the ordinary
+    // move trace. Clear the normal move path, capture numbering, highlights,
+    // and any previous undo marker before installing the canonical Soufla FX.
+    _clearTurnFx(false);
+
     const redPaths = payload.redPaths;
     const removeIdx = payload.removeIdx;
     const forcePath = payload.forcePath;
@@ -2130,6 +2135,15 @@ function canPerformLocalUndoNow() {
 
 function performLocalUndo(options) {
   const opts = options && typeof options === "object" ? options : {};
+
+  if (Game.forcedEnabled && Number(Game.forcedPly || 0) < 10) {
+    Modal.alert({
+      title: t("modals.undo.notAllowedTitle"),
+      body: `<div>${t("modals.undo.notAllowedBody")}</div>`,
+      okLabel: t("actions.close"),
+    });
+    return false;
+  }
 
   if (Game.inChain || (Turn && Turn.ctx && Number(Turn.ctx.capturesDone || 0) > 0)) {
     Modal.alert({
