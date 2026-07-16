@@ -1530,6 +1530,8 @@
 
     _moveRetryNotified: false,
 
+    _moveCommitInFlight: null,
+
     _lobbyUnsub: null,
 
     _viewHooksInstalled: false,

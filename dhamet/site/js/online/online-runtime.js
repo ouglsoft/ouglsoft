@@ -75,15 +75,33 @@
 
   window.__ZAMAT_ONLINE_FULL_LOADED__ = true;
 
+  function gameCommitErrorDetails(err) {
+    const data = err && err.data && typeof err.data === 'object' ? err.data : {};
+    return {
+      status: Number(err && err.status) || 0,
+      code: String((err && (err.code || err.message)) || data.code || data.error || '').trim(),
+      error: String(data.error || '').trim(),
+      reason: String(data.reason || '').trim(),
+      data,
+    };
+  }
+
   function isNonRetriableGameCommitError(err) {
     try {
-      const status = Number(err && err.status);
-      const data = err && err.data && typeof err.data === 'object' ? err.data : {};
-      const code = String((err && (err.code || err.message)) || data.code || data.error || '').trim();
-      const inner = String(data.error || data.reason || '').trim();
-      if (status === 403 || /not-a-player|player-side-mismatch|not-a-participant|permission|forbidden/.test(code + ' ' + inner)) return true;
-      if (status === 400 && /invalid-move-intent|rule-validation-failed|forced-opening-mismatch|illegal-move|jumps-mismatch|turn-mismatch|snapshot-turn-mismatch|empty-source|invalid-move-path/.test(code + ' ' + inner)) return true;
-      return false;
+      const details = gameCommitErrorDetails(err);
+      if (details.status >= 400 && details.status < 500 && details.status !== 429) return true;
+      const text = [details.code, details.error, details.reason].join(' ');
+      return /invalid-move-intent|rule-validation-failed|forced-opening-mismatch|illegal-move|illegal-segment|jumps-mismatch|turn-mismatch|snapshot-turn-mismatch|empty-source|invalid-move-path|invalid-current-board|invalid-game-record|state-build-failed|not-a-player|player-side-mismatch|not-a-participant|permission|forbidden|not-active|not-found|transport-missing/.test(text);
+    } catch (_) { return false; }
+  }
+
+  function isRetriableGameCommitError(err) {
+    try {
+      const details = gameCommitErrorDetails(err);
+      if (details.status === 429 || details.status >= 500) return true;
+      if (details.status > 0) return false;
+      const text = [details.code, details.error, details.reason].join(' ');
+      return /request-timeout|network|failed to fetch|fetch failed|load failed|connection|offline/i.test(text);
     } catch (_) { return false; }
   }
 
@@ -1827,6 +1845,7 @@
           try { this._clearPersistedActiveGame(); } catch (e) {}
           try { this._clearPresenceUi(); } catch (e) {}
           try { this._markLocalCommitSettled(); } catch (e) {}
+          this._moveCommitInFlight = null;
           this._setOnlineButtonsState(false);
         },
 
@@ -1997,14 +2016,6 @@
             ) {
               return false;
             }
-            if (
-              this._awaitingLocalCommit &&
-              Number.isFinite(this._expectedMoveIndex) &&
-              remoteMI >= this._expectedMoveIndex
-            ) {
-              this._markLocalCommitSettled();
-            }
-
             const snap = data && data.state ? data.state.snapshot : null;
             const board = snap && snap.board;
             const validBoard = Array.isArray(board) && board.length === 9 && board.every((row) => Array.isArray(row) && row.length === 9);
@@ -4224,21 +4235,91 @@
           this._pendingMoveOutbox = null;
         },
 
+    _officialGameHasClientMove: function (game, clientMoveId) {
+          try {
+            const id = String(clientMoveId || "");
+            if (!game || !id) return false;
+            const ledger = game.appliedClientActions && typeof game.appliedClientActions === "object"
+              ? game.appliedClientActions
+              : null;
+            if (ledger && ledger["move:" + id]) return true;
+            const lastMove = game.lastMove || null;
+            return !!(lastMove && String(lastMove.clientMoveId || "") === id);
+          } catch (e) { return false; }
+        },
+
+    _reconcileLocalCommitAgainstOfficialGame: function (game, opts) {
+          try {
+            if (!this._awaitingLocalCommit || !game) return "none";
+            const cfg = opts && typeof opts === "object" ? opts : {};
+            const outbox = this._readPendingMoveOutbox && this._readPendingMoveOutbox();
+            const clientMoveId = String(
+              (outbox && outbox.clientMoveId) || this._moveCommitClientId || ""
+            );
+            if (clientMoveId && this._officialGameHasClientMove(game, clientMoveId)) {
+              try { this._markLocalCommitSettled(); } catch (e) {}
+              return "applied";
+            }
+            const base = Number(
+              (outbox && outbox.baseMoveIndex) != null
+                ? outbox.baseMoveIndex
+                : this._moveCommitBaseIndex
+            );
+            const remoteIndex = Number(game.moveIndex || 0) || 0;
+            if (Number.isFinite(base) && remoteIndex !== base) {
+              this._pendingSteps = [];
+              this._cachedSouflaPlain = null;
+              try { this._markLocalCommitSettled(); } catch (e) {}
+              if (cfg.notifyConflict !== false) {
+                try { showOnlineNotice(window.I18N.translateArgs("status.moveSendFail")); } catch (e) {}
+              }
+              return "superseded";
+            }
+            return "pending";
+          } catch (e) { return "none"; }
+        },
+
+    _commitMoveRequest: function (payload, expectedGameId, clientMoveId) {
+          const client = window.DhametGameRoomClient;
+          if (!client || typeof client.commitMove !== "function") {
+            const missing = new Error("gameroom-transport-missing");
+            missing.code = "gameroom-transport-missing";
+            missing.status = 0;
+            return Promise.reject(missing);
+          }
+          const gameId = String(expectedGameId || "");
+          const moveId = String(clientMoveId || "");
+          const key = gameId + ":" + moveId;
+          const existing = this._moveCommitInFlight;
+          if (existing && existing.key === key && existing.promise) return existing.promise;
+          if (existing && existing.promise) {
+            const busy = new Error("move-commit-already-in-flight");
+            busy.code = "move-commit-already-in-flight";
+            busy.status = 0;
+            return Promise.reject(busy);
+          }
+          const flight = { key, gameId, clientMoveId: moveId, promise: null };
+          const promise = Promise.resolve(client.commitMove(payload)).finally(() => {
+            if (this._moveCommitInFlight === flight) this._moveCommitInFlight = null;
+          });
+          flight.promise = promise;
+          this._moveCommitInFlight = flight;
+          return promise;
+        },
+
     _reconcilePendingMoveOutbox: function (game) {
           try {
             const outbox = this._readPendingMoveOutbox && this._readPendingMoveOutbox();
             if (!outbox || !game) return;
             const clientMoveId = String(outbox.clientMoveId || "");
-            const lastMove = game.lastMove || null;
-            const appliedById = !!(clientMoveId && lastMove && String(lastMove.clientMoveId || "") === clientMoveId);
+            const appliedById = this._officialGameHasClientMove(game, clientMoveId);
             const remoteIndex = Number(game.moveIndex || 0) || 0;
-            const expectedIndex = Number(outbox.expectedMoveIndex || ((Number(outbox.baseMoveIndex || 0) || 0) + 1)) || 0;
-            if (appliedById || (expectedIndex && remoteIndex >= expectedIndex)) {
+            const base = Number(outbox.baseMoveIndex || 0) || 0;
+            if (appliedById) {
               this._clearPendingMoveOutbox();
               try { this._markLocalCommitSettled(); } catch (e) {}
               return;
             }
-            const base = Number(outbox.baseMoveIndex || 0) || 0;
             if (remoteIndex !== base) {
               this._clearPendingMoveOutbox();
               this._pendingSteps = [];
@@ -4247,13 +4328,15 @@
               try { showOnlineNotice(window.I18N.translateArgs("status.moveSendFail")); } catch (e) {}
               return;
             }
+            const activeFlight = this._moveCommitInFlight;
+            const flightKey = String(this.gameId || "") + ":" + clientMoveId;
+            if (activeFlight && activeFlight.key === flightKey) return;
             if (outbox.replayedAfterResync) return;
-            if (!window.DhametGameRoomClient || typeof window.DhametGameRoomClient.commitMove !== "function") return;
             outbox.replayedAfterResync = true;
             outbox.replayedAt = nowTs();
             this._savePendingMoveOutbox(outbox);
             const asyncContext = this._captureAsyncContext(this.gameId);
-            window.DhametGameRoomClient.commitMove(outbox.payload)
+            this._commitMoveRequest(outbox.payload, this.gameId, clientMoveId)
               .then((res) => {
                 if (!this._isAsyncContextCurrent(asyncContext)) return;
                 const g = res && res.game ? res.game : null;
@@ -4261,9 +4344,48 @@
                   try { if (g) this._lastGameData = g; } catch (e) {}
                   this._clearPendingMoveOutbox();
                   try { this._markLocalCommitSettled(); } catch (e) {}
+                  return;
                 }
+                try {
+                  this._moveRetryGaveUp = true;
+                  if (g) this._ingestOfficialGame(g, {
+                    source: "outbox-replay-not-committed",
+                    gameId: this.gameId,
+                    rejectDuplicate: false,
+                    allowPendingRollback: true,
+                  });
+                } catch (e) {}
+                this._pendingSteps = [];
+                try { this._markLocalCommitSettled(); } catch (e) {}
               })
-              .catch(() => {});
+              .catch((err) => {
+                if (!this._isAsyncContextCurrent(asyncContext)) return;
+                if (isNonRetriableGameCommitError(err)) {
+                  try {
+                    const official = err && err.data && err.data.game ? err.data.game : game;
+                    this._moveRetryGaveUp = true;
+                    this._ingestOfficialGame(official, {
+                      source: "outbox-replay-rejected",
+                      gameId: this.gameId,
+                      rejectDuplicate: false,
+                      allowPendingRollback: true,
+                    });
+                  } catch (e) {}
+                  this._pendingSteps = [];
+                  try { this._markLocalCommitSettled(); } catch (e) {}
+                  return;
+                }
+                if (isRetriableGameCommitError(err)) {
+                  try {
+                    const current = this._readPendingMoveOutbox && this._readPendingMoveOutbox();
+                    if (current && String(current.clientMoveId || "") === clientMoveId) {
+                      current.replayedAfterResync = false;
+                      current.lastReplayFailedAt = nowTs();
+                      this._savePendingMoveOutbox(current);
+                    }
+                  } catch (e) {}
+                }
+              });
           } catch (e) {}
         },
 
@@ -4302,7 +4424,7 @@
           }
           try { if (this._moveRetryTimer) clearTimeout(this._moveRetryTimer); } catch (e) {}
 
-          const MAX_MOVE_SEND_RETRIES = 12;
+          const MAX_MOVE_SEND_RETRIES = 3;
           if (this._moveRetryGaveUp) return;
           const attempt = (this._moveRetryAttempt || 0) + 1;
           this._moveRetryAttempt = attempt;
@@ -4345,6 +4467,13 @@
           const attempt = Number.isFinite(_attempt) ? _attempt : 0;
           const self = this;
           const expectedGameId = String(this.gameId || "");
+          const activeFlight = this._moveCommitInFlight;
+          if (
+            activeFlight &&
+            activeFlight.gameId === expectedGameId &&
+            this._moveCommitClientId &&
+            activeFlight.clientMoveId === String(this._moveCommitClientId)
+          ) return activeFlight.promise;
           const epochToken = window.DhametMatchCoordinator ? DhametMatchCoordinator.token() : null;
           const taskIsCurrent = function () {
             return !!(
@@ -4461,53 +4590,91 @@
             });
           } catch (e) {}
 
-          const retryOrFail = function (err, serverGame) {
+          const retryOrFail = function (err, serverGame, response) {
             if (!taskIsCurrent()) return;
-            self._pendingSteps = steps.concat(self._pendingSteps || []);
-            try {
-              const remoteMi = Number((serverGame && serverGame.moveIndex) || 0);
-              if (serverGame) {
+            const clientMoveId = String(self._moveCommitClientId || (payload && payload.clientMoveId) || "");
+            const remoteMi = Number((serverGame && serverGame.moveIndex) || 0) || 0;
+            const appliedById = !!(serverGame && self._officialGameHasClientMove(serverGame, clientMoveId));
+            if (appliedById) {
+              try {
                 self._ingestOfficialGame(serverGame, {
-                  source: "move-commit-rejected",
+                  source: "move-already-applied",
                   gameId: expectedGameId,
                   version: serverGame.__transportVersion,
                   rejectDuplicate: false,
                 });
-              }
-              if (self._awaitingLocalCommit && Number.isFinite(self._expectedMoveIndex) && remoteMi >= self._expectedMoveIndex) {
-                try { self._markLocalCommitSettled(); } catch (e) {}
-                try { self._forceResync("move-already-applied"); } catch (e) {}
-                return;
-              }
-            } catch (e) {}
+              } catch (e) {}
+              try { self._markLocalCommitSettled(); } catch (e) {}
+              return;
+            }
 
-            try {
-              const RESYNC_AFTER = 2;
-              if (!self._moveRetryDidResync && attempt >= RESYNC_AFTER) {
-                self._moveRetryDidResync = true;
-                self._forceResync("move-retry");
-              }
-            } catch (e) {}
-
-            const MAX_MOVE_SEND_RETRIES = 12;
-            try { if (err) handleDbError(err, null, { ctx: "move.gameRoom" }); } catch (e) {}
-            if (attempt >= MAX_MOVE_SEND_RETRIES || (err && (isPermissionDenied(err) || isNonRetriableGameCommitError(err)))) {
+            const logicalRejection = !!(
+              (response && response.committed === false) ||
+              (err && (isPermissionDenied(err) || isNonRetriableGameCommitError(err)))
+            );
+            if (logicalRejection) {
               self._moveRetryGaveUp = true;
-              const nonRetriable = !!(err && (isPermissionDenied(err) || isNonRetriableGameCommitError(err)));
-              if (nonRetriable) {
-                self._pendingSteps = [];
-                try { self._clearPendingMoveOutbox && self._clearPendingMoveOutbox(); } catch (e) {}
-                try { self._markLocalCommitSettled(); } catch (e) {}
-              } else {
-                try {
-                  const outbox = self._readPendingMoveOutbox && self._readPendingMoveOutbox();
-                  if (outbox) {
-                    outbox.retryGaveUpAt = nowTs();
-                    outbox.attempts = attempt;
-                    self._savePendingMoveOutbox(outbox);
-                  }
-                } catch (e) {}
+              try {
+                const details = err ? gameCommitErrorDetails(err) : {
+                  status: 200,
+                  code: "move-not-committed",
+                  error: "",
+                  reason: String((response && response.reason) || "not-committed"),
+                };
+                Logger.warn("official_move_rejected", {
+                  gameId: expectedGameId,
+                  clientMoveId,
+                  baseMoveIndex: Number(self._moveCommitBaseIndex || 0) || 0,
+                  officialMoveIndex: remoteMi,
+                  status: details.status,
+                  code: details.code,
+                  error: details.error,
+                  reason: details.reason,
+                });
+              } catch (e) {}
+              try {
+                if (serverGame) self._ingestOfficialGame(serverGame, {
+                  source: "move-commit-rejected",
+                  gameId: expectedGameId,
+                  version: serverGame.__transportVersion,
+                  rejectDuplicate: false,
+                  allowPendingRollback: true,
+                  suppressMoveConflictNotice: true,
+                });
+              } catch (e) {}
+              self._pendingSteps = [];
+              self._cachedSouflaPlain = null;
+              try { self._markLocalCommitSettled(); } catch (e) {}
+              try { if (err) handleDbError(err, null, { ctx: "move.gameRoom" }); } catch (e) {}
+              try { showOnlineNotice(window.I18N.translateArgs("status.moveSendFail")); } catch (e) {}
+              if (!serverGame) {
+                try { self._forceResync("move-rejected-without-state"); } catch (e) {}
               }
+              return;
+            }
+
+            const retryable = !!(err && isRetriableGameCommitError(err));
+            if (!retryable) {
+              self._moveRetryGaveUp = true;
+              try { if (err) handleDbError(err, null, { ctx: "move.gameRoom" }); } catch (e) {}
+              try { showOnlineNotice(window.I18N.translateArgs("status.moveSendFail")); } catch (e) {}
+              try { self._forceResync("move-send-unknown-failure"); } catch (e) {}
+              return;
+            }
+
+            self._pendingSteps = steps.concat(self._pendingSteps || []);
+            const MAX_MOVE_SEND_RETRIES = 3;
+            if (attempt >= MAX_MOVE_SEND_RETRIES) {
+              self._moveRetryGaveUp = true;
+              try {
+                const outbox = self._readPendingMoveOutbox && self._readPendingMoveOutbox();
+                if (outbox) {
+                  outbox.retryGaveUpAt = nowTs();
+                  outbox.attempts = attempt;
+                  self._savePendingMoveOutbox(outbox);
+                }
+              } catch (e) {}
+              try { if (err) handleDbError(err, null, { ctx: "move.gameRoom" }); } catch (e) {}
               try { showOnlineNotice(window.I18N.translateArgs("status.moveSendFail")); } catch (e) {}
               try { self._forceResync("move-send-gave-up"); } catch (e) {}
               return;
@@ -4522,16 +4689,19 @@
           };
 
           if (!window.DhametGameRoomClient || typeof window.DhametGameRoomClient.commitMove !== "function") {
-            retryOrFail(new Error("gameroom-transport-missing"), null);
-            return;
+            const missing = new Error("gameroom-transport-missing");
+            missing.code = "gameroom-transport-missing";
+            missing.status = 0;
+            retryOrFail(missing, null, null);
+            return Promise.resolve(false);
           }
 
-          window.DhametGameRoomClient.commitMove(payload)
+          return this._commitMoveRequest(payload, expectedGameId, this._moveCommitClientId)
             .then(function (res) {
               if (!taskIsCurrent()) return;
               const g = res && res.game ? res.game : null;
               if (!res || res.committed === false) {
-                retryOrFail(null, g);
+                retryOrFail(null, g, res);
                 return;
               }
               try {
@@ -4548,7 +4718,7 @@
               try { self._touchRoomListActivity(expectedGameId, true); } catch (e) {}
             })
             .catch(function (err) {
-              retryOrFail(err, err && err.data && err.data.game ? err.data.game : null);
+              retryOrFail(err, err && err.data && err.data.game ? err.data.game : null, null);
             });
         },
 
@@ -5697,13 +5867,7 @@
             this._lastGameData = data;
             this.moveIndex = remoteMi;
             this.ply = Number(data.ply || 0) || 0;
-            if (
-              this._awaitingLocalCommit &&
-              Number.isFinite(this._expectedMoveIndex) &&
-              (remoteMi >= this._expectedMoveIndex || isTerminalState)
-            ) {
-              try { this._markLocalCommitSettled(); } catch (e) {}
-            }
+            try { this._reconcileLocalCommitAgainstOfficialGame(data, { notifyConflict: false }); } catch (e) {}
             return true;
           }
 
@@ -5761,13 +5925,11 @@
           if (restoreCaptureDraft) {
             try { this._restoreCaptureDraftIfValid && this._restoreCaptureDraftIfValid(data); } catch (e) {}
           }
-          if (
-            this._awaitingLocalCommit &&
-            Number.isFinite(this._expectedMoveIndex) &&
-            (remoteMi >= this._expectedMoveIndex || isTerminalState)
-          ) {
-            try { this._markLocalCommitSettled(); } catch (e) {}
-          }
+          try {
+            this._reconcileLocalCommitAgainstOfficialGame(data, {
+              notifyConflict: source.suppressMoveConflictNotice !== true,
+            });
+          } catch (e) {}
           try { this._applyUiHold(false); } catch (e) {}
           try { this.refreshPvpControls && this.refreshPvpControls(); } catch (e) {}
           return true;
