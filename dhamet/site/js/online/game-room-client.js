@@ -390,7 +390,13 @@
     var reconnectAttempt = 0;
     var connectionSeq = 0;
     var everOpened = false;
+    var heartbeatTimer = null;
+    var heartbeatDeadlineTimer = null;
+    var visibilityHandler = null;
     var delays = [1000, 2000, 5000, 10000, 20000];
+    var heartbeatMs = Math.max(0, Number(src.heartbeatMs || 0) || 0);
+    var heartbeatTimeoutMs = Math.max(5000, Number(src.heartbeatTimeoutMs || 15000) || 15000);
+    var terminalCloseCodes = { 4001: true, 4003: true, 4004: true };
 
     function clearReconnectTimer() {
       if (!reconnectTimer) return;
@@ -398,13 +404,72 @@
       reconnectTimer = null;
     }
 
+    function clearHeartbeatTimers() {
+      if (heartbeatTimer) {
+        try { clearTimeout(heartbeatTimer); } catch (_) {}
+        heartbeatTimer = null;
+      }
+      if (heartbeatDeadlineTimer) {
+        try { clearTimeout(heartbeatDeadlineTimer); } catch (_) {}
+        heartbeatDeadlineTimer = null;
+      }
+    }
+
+    function isPageVisible() {
+      try { return typeof document === 'undefined' || document.visibilityState !== 'hidden'; } catch (_) { return true; }
+    }
+
+    function scheduleHeartbeat(delayOverride) {
+      if (!heartbeatMs || closedByClient) return;
+      if (heartbeatTimer) {
+        try { clearTimeout(heartbeatTimer); } catch (_) {}
+      }
+      var delay = Math.max(1000, Number(delayOverride || heartbeatMs) || heartbeatMs);
+      heartbeatTimer = setTimeout(function () {
+        heartbeatTimer = null;
+        if (closedByClient) return;
+        var socket = ws;
+        if (!socket || socket.readyState !== WebSocket.OPEN) return;
+        if (!isPageVisible()) {
+          scheduleHeartbeat(Math.max(heartbeatMs, 60000));
+          return;
+        }
+        try {
+          socket.send(JSON.stringify({ type: 'ping', ts: Date.now() }));
+        } catch (_) {
+          try { socket.close(4000, 'heartbeat-send-failed'); } catch (_e) {}
+          return;
+        }
+        if (heartbeatDeadlineTimer) {
+          try { clearTimeout(heartbeatDeadlineTimer); } catch (_) {}
+        }
+        heartbeatDeadlineTimer = setTimeout(function () {
+          heartbeatDeadlineTimer = null;
+          if (closedByClient || socket !== ws || socket.readyState !== WebSocket.OPEN) return;
+          try { socket.close(4000, 'heartbeat-timeout'); } catch (_) {}
+        }, heartbeatTimeoutMs);
+      }, delay);
+    }
+
+    function markSocketAlive() {
+      if (heartbeatDeadlineTimer) {
+        try { clearTimeout(heartbeatDeadlineTimer); } catch (_) {}
+        heartbeatDeadlineTimer = null;
+      }
+      scheduleHeartbeat();
+    }
+
     function jitterDelay(base) {
       var spread = Math.max(100, Math.floor(base * 0.2));
       return Math.max(250, base + Math.floor(Math.random() * spread));
     }
 
+    function isTerminalClose(ev) {
+      return !!terminalCloseCodes[Number(ev && ev.code || 0)];
+    }
+
     function scheduleReconnect(ev) {
-      if (closedByClient || reconnectTimer) return;
+      if (closedByClient || reconnectTimer || isTerminalClose(ev)) return;
       var base = delays[Math.min(reconnectAttempt, delays.length - 1)];
       reconnectAttempt += 1;
       reconnectTimer = setTimeout(function () {
@@ -416,12 +481,14 @@
 
     function connect(previousCloseEvent) {
       if (closedByClient) return;
+      clearHeartbeatTimers();
       var seq = ++connectionSeq;
       var socket = new WebSocket(officialWsUrl(path, gameId));
       ws = socket;
       socket.onopen = function () {
         if (seq !== connectionSeq || closedByClient) return;
         reconnectAttempt = 0;
+        markSocketAlive();
         if (everOpened && typeof src.onReconnect === 'function') {
           try { src.onReconnect({ gameId: gameId, path: path, previousCloseEvent: previousCloseEvent || null }); } catch (_) {}
         }
@@ -432,9 +499,10 @@
       };
       socket.onmessage = function (ev) {
         if (seq !== connectionSeq || closedByClient) return;
+        markSocketAlive();
         var msg = null;
         try { msg = JSON.parse(String(ev.data || '{}')); } catch (_) { msg = null; }
-        if (!msg) return;
+        if (!msg || msg.type === 'pong') return;
         if (msg.type === 'value' && typeof src.onData === 'function') {
           try { src.onData(msg.value, msg); } catch (e) { setTimeout(function () { throw e; }, 0); }
         }
@@ -445,9 +513,22 @@
       };
       socket.onclose = function (ev) {
         if (seq !== connectionSeq || closedByClient) return;
-        if (typeof src.onClose === 'function') { try { src.onClose(ev); } catch (_) {} }
-        scheduleReconnect(ev);
+        clearHeartbeatTimers();
+        var terminal = isTerminalClose(ev);
+        if (typeof src.onClose === 'function') {
+          try { src.onClose(ev, { terminal: terminal, reconnecting: !terminal }); } catch (_) {}
+        }
+        if (!terminal) scheduleReconnect(ev);
       };
+    }
+
+    if (heartbeatMs && typeof document !== 'undefined' && document && typeof document.addEventListener === 'function') {
+      visibilityHandler = function () {
+        if (closedByClient) return;
+        clearHeartbeatTimers();
+        if (isPageVisible()) scheduleHeartbeat(1000);
+      };
+      try { document.addEventListener('visibilitychange', visibilityHandler); } catch (_) {}
     }
 
     connect(null);
@@ -457,6 +538,10 @@
         if (closedByClient) return;
         closedByClient = true;
         clearReconnectTimer();
+        clearHeartbeatTimers();
+        if (visibilityHandler && typeof document !== 'undefined' && document && typeof document.removeEventListener === 'function') {
+          try { document.removeEventListener('visibilitychange', visibilityHandler); } catch (_) {}
+        }
         try { if (ws) ws.close(1000, 'client-close'); } catch (_) {}
       },
       get socket() { return ws; },
@@ -466,7 +551,8 @@
   }
 
   function subscribeGameLive(options) {
-    return subscribeOfficialValue(options, '/dhamet/api/game/live', 'live/missing-game-id');
+    var src = Object.assign({ heartbeatMs: 45000, heartbeatTimeoutMs: 15000 }, options || {});
+    return subscribeOfficialValue(src, '/dhamet/api/game/live', 'live/missing-game-id');
   }
 
   function subscribeChatLive(options) {
@@ -493,7 +579,7 @@
   }
 
   window.DhametGameRoomClient = {
-    version: 'game-room-client-v1-live-reconnect',
+    version: 'game-room-client-v1-live-heartbeat',
     commitMove: commitMove,
     createClientMoveId: createClientMoveId,
     createCommitPayload: createCommitPayload,

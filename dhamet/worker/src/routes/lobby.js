@@ -378,10 +378,11 @@ export function createLobbyRouteHandlers(deps) {
     const acceptedGame = accepted.data.game || null;
     const players = acceptedGame && acceptedGame.players && typeof acceptedGame.players === 'object' ? acceptedGame.players : {};
     const at = now();
-    const addAcceptedPresence = (sideName, sideValue, fallbackUid, fallbackNick, registered) => {
+    const addAcceptedPresence = (sideName, sideValue, fallbackUid, fallbackNick, registered, previousPresence) => {
       const player = players && players[sideName] && typeof players[sideName] === 'object' ? players[sideName] : {};
       const id = cleanString(player.uid || fallbackUid || '', 160);
       if (!id) return;
+      const previous = previousPresence && typeof previousPresence === 'object' ? previousPresence : {};
       updates['players/' + id] = {
         uid: id,
         nickname: cleanDisplay(player.nickname || fallbackNick || '', 80),
@@ -393,13 +394,13 @@ export function createLobbyRouteHandlers(deps) {
         mode: 'inPvP',
         page: 'game',
         registered: !!registered,
-        acceptsInvites: true,
+        acceptsInvites: previous.acceptsInvites !== false,
         joinedAt: at,
         updatedAt: at,
       };
     };
-    addAcceptedPresence('white', -1, senderUidForPresence, cleanDisplay(invite.fromNick || invite.fromNickname || '', 80), senderRegistered);
-    addAcceptedPresence('black', 1, uid, identity.nickname, selfRegistered);
+    addAcceptedPresence('white', -1, senderUidForPresence, cleanDisplay(invite.fromNick || invite.fromNickname || '', 80), senderRegistered, senderPresence);
+    addAcceptedPresence('black', 1, uid, identity.nickname, selfRegistered, selfPresence);
     await writeRealtime(env, 'global', { op: 'update', path: '', updates, value: updates });
 
     return json({ ok: true, committed: true, gameId, game: acceptedGame, roomListEntry: accepted.data.roomListEntry || null });

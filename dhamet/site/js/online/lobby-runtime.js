@@ -3578,6 +3578,27 @@
           }
         },
 
+    _isDefinitiveInviteAcceptFailure: function (error) {
+          try {
+            const status = Number(error && error.status || 0) || 0;
+            const code = String(error && (error.code || (error.data && (error.data.code || error.data.error)) || error.message) || "").trim();
+            if (!status || status >= 500 || code === "request-timeout") return false;
+            return status >= 400 && status < 500;
+          } catch (e) {
+            return false;
+          }
+        },
+
+    _recoverAmbiguousInviteAccept: async function () {
+          try {
+            if (typeof this._runUnifiedAppPulse === "function") {
+              await this._runUnifiedAppPulse(true, "invite-accept-recovery");
+              return true;
+            }
+          } catch (e) {}
+          return false;
+        },
+
     _acceptInviteLobby: async function (inv, inviteRef) {
           try {
             if (!inv || !inv.gameId) return;
@@ -3611,16 +3632,19 @@
                 nick: this.myNick,
               });
             } catch (e) {
-              try {
-                await this._invalidateInviteLocally(inv, inviteRef);
-              } catch (_e) {}
-              showOnlineNotice(window.I18N.translateArgs("online.inviteInvalidated"));
+              // A timeout or transport/server failure is ambiguous: the
+              // authoritative accept may already have committed. Never send a
+              // destructive reject from this path. Refresh the official lobby
+              // once so an accepted room can navigate normally.
+              try { await this._recoverAmbiguousInviteAccept(); } catch (_e) {}
+              const definitive = this._isDefinitiveInviteAcceptFailure(e);
+              showOnlineNotice(definitive
+                ? window.I18N.translateArgs("online.inviteInvalidated")
+                : (window.I18N.translateArgs("status.reconnecting") || window.I18N.translateArgs("status.onlineInitFail")));
               return;
             }
             if (!accepted || accepted.ok === false) {
-              try {
-                await this._invalidateInviteLocally(inv, inviteRef);
-              } catch (e) {}
+              try { await this._recoverAmbiguousInviteAccept(); } catch (e) {}
               showOnlineNotice(window.I18N.translateArgs("online.inviteInvalidated"));
               return;
             }

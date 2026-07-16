@@ -135,24 +135,29 @@ export class RealtimeObject {
     this.sessions.delete(ws);
   }
 
-  _socketStillAuthorized(sess) {
+  _socketAuthorizedAgainstRoot(sess, rootValue) {
     if (!sess || !sess.official) return true;
     const gameId = cleanPath(sess.gameId || '');
     const uid = String(sess.uid || '').trim();
     if (!gameId || !uid) return false;
-    const game = getAt(this.root || {}, 'games/' + gameId);
+    const root = rootValue && typeof rootValue === 'object' ? rootValue : {};
+    const game = getAt(root, 'games/' + gameId);
     if (!game || typeof game !== 'object') return false;
     if (sess.official === 'game-rtc-live') {
       const allowed = RtcCore && typeof RtcCore.canUseRtc === 'function' ? RtcCore.canUseRtc(game, uid) : null;
       return !!(allowed && allowed.ok);
     }
-    const spectators = getAt(this.root || {}, 'spectators/' + gameId) || {};
+    const spectators = getAt(root, 'spectators/' + gameId) || {};
     if (sess.official === 'game-chat-live') {
       const allowed = ChatCore && typeof ChatCore.canParticipantChat === 'function' ? ChatCore.canParticipantChat(game, spectators, uid) : null;
       return !!(allowed && allowed.ok);
     }
     const allowed = LiveCore && typeof LiveCore.canSubscribeGame === 'function' ? LiveCore.canSubscribeGame(game, spectators, { gameId, uid }) : null;
     return !!(allowed && allowed.ok);
+  }
+
+  _socketStillAuthorized(sess) {
+    return this._socketAuthorizedAgainstRoot(sess, this.root || {});
   }
 
   _headers() { return jsonHeaders; }
@@ -1705,10 +1710,14 @@ export class RealtimeObject {
     this.root = setAt(this.root || {}, rtcPath, null);
     bumpVersions(this.versions, [path, spectatorsPath, rtcPath]);
     await this._save();
-    // Broadcast the terminal game before clients close their subscriptions;
-    // ephemeral spectator and RTC state is cleared in the same authoritative
-    // transaction so an ended room cannot leak into a later session.
-    await this._broadcast([path, spectatorsPath, rtcPath], beforeRoot);
+    // The terminal game must reach every participant who was authorized when
+    // the match ended. Spectator/RTC records are already removed from current
+    // storage, so authorize this one terminal broadcast against the pre-end
+    // snapshot, then close sockets whose authorization has now been revoked.
+    await this._broadcast([path, spectatorsPath, rtcPath], beforeRoot, {
+      authorizeAgainstRoot: beforeRoot,
+      closeRevokedAfter: true,
+    });
     return json({ ok: true, committed: true, game, moveIndex: reduced.moveIndex || game.moveIndex || 0, ply: reduced.ply || game.ply || 0, result: reduced.result || game.result || null });
   }
 
@@ -2323,15 +2332,20 @@ export class RealtimeObject {
     }
   }
 
-  async _broadcast(changedPaths, beforeRoot) {
+  async _broadcast(changedPaths, beforeRoot, options) {
     const sessions = Array.from(this.sessions.entries());
     const before = beforeRoot || {};
+    const opts = options && typeof options === 'object' ? options : {};
+    const authorizationRoot = opts.authorizeAgainstRoot && typeof opts.authorizeAgainstRoot === 'object'
+      ? opts.authorizeAgainstRoot
+      : (this.root || {});
+    const revokeAfter = [];
     for (const [ws, sess] of sessions) {
       if (this._isSocketExpired(sess)) {
         this._closeSocket(ws, 4001, 'session-expired');
         continue;
       }
-      if (!this._socketStillAuthorized(sess)) {
+      if (!this._socketAuthorizedAgainstRoot(sess, authorizationRoot)) {
         this._closeSocket(ws, 4003, 'authorization-revoked');
         continue;
       }
@@ -2350,7 +2364,9 @@ export class RealtimeObject {
           break;
         }
       }
+      if (opts.closeRevokedAfter && !this._socketStillAuthorized(sess)) revokeAfter.push([ws, sess]);
     }
+    for (const [ws] of revokeAfter) this._closeSocket(ws, 4003, 'authorization-revoked');
   }
 
   _sendChildDiff(ws, sub, beforeRoot) {

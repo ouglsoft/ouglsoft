@@ -2058,41 +2058,6 @@
 
             try { await this.endOnline(); } catch (e) {}
             return;
-    
-            try {
-              this._teardownRoomComms();
-            } catch (e) {}
-            try {
-              this.gameRef && this.gameRef.off();
-            } catch (e) {}
-    
-            try {
-              this._clearPersistedActiveGame();
-            } catch (e) {}
-            this._applySessionState({
-              active: false,
-              spectator: false,
-              gameId: null,
-              gameRef: null,
-              side: null,
-            });
-            try {
-              this._setOnlineButtonsState(false);
-            } catch (e) {}
-    
-            this._applySessionState({
-              presenceStatus: "available",
-              presenceRole: "lobby",
-              presenceRoomId: null,
-            });
-            try { await this._runUnifiedAppPulse(true); } catch (e) {}
-    
-            try {
-              const back = (location.pathname || "").includes("/pages/")
-                ? "./loby.html"
-                : "pages/loby.html";
-              location.href = back;
-            } catch (e) {}
           } catch (e) {}
         },
 
@@ -2155,6 +2120,24 @@
           this._gameLiveSub = null;
         },
 
+    _handleTerminalGameLiveClose: function (event, liveContext) {
+          try {
+            if (!this._isAsyncContextCurrent(liveContext, { ignorePostMatch: true })) return false;
+            if (this._postMatchShown || this._localEndedOnline) return true;
+            const code = Number(event && event.code || 0) || 0;
+            if (code === 4001) {
+              try { showOnlineNotice(window.I18N.translateArgs("status.onlineInitFail"), { allowSpectator: true }); } catch (e) {}
+              try { this.exitToLobby && this.exitToLobby(); } catch (e) {}
+              return true;
+            }
+            if (code === 4003 || code === 4004) {
+              try { this._showUnavailableGameAndLeave && this._showUnavailableGameAndLeave(); } catch (e) {}
+              return true;
+            }
+          } catch (e) {}
+          return false;
+        },
+
     _bindGameLiveSubscription: function (gameId) {
           const gid = String(gameId || this.gameId || "").trim();
           if (!gid) return false;
@@ -2188,9 +2171,11 @@
             this._gameLiveSub = window.DhametGameRoomClient.subscribeGameLive({
               gameId: gid,
               onData: onLiveGame,
-              onClose: () => {
+              onClose: (event, meta) => {
                 try {
-                  if (this._isAsyncContextCurrent(liveContext, { ignorePostMatch: true })) this._forceResync && this._forceResync("live-closed");
+                  if (!this._isAsyncContextCurrent(liveContext, { ignorePostMatch: true })) return;
+                  this._noteReconnectLoss && this._noteReconnectLoss("game-live");
+                  if (meta && meta.terminal) this._handleTerminalGameLiveClose(event, liveContext);
                 } catch (e) {}
               },
               onReconnect: () => {
@@ -2198,8 +2183,12 @@
                   if (this._isAsyncContextCurrent(liveContext, { ignorePostMatch: true })) this._forceResync && this._forceResync("live-reconnected");
                 } catch (e) {}
               },
-              onError: () => {
-                try { if (this._isAsyncContextCurrent(liveContext, { ignorePostMatch: true })) this._forceResync && this._forceResync("live-error"); } catch (e) {}
+              onError: (event) => {
+                try {
+                  if (!this._isAsyncContextCurrent(liveContext, { ignorePostMatch: true })) return;
+                  this._noteReconnectLoss && this._noteReconnectLoss("game-live");
+                  Logger.warn("game_live_transport_error", { gameId: gid, type: String(event && event.type || "error") });
+                } catch (e) {}
               },
             });
             return true;
