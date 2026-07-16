@@ -244,12 +244,11 @@
     const explicit = cleanString(g.roundId, 180);
     if (explicit) return explicit;
     const base = cleanString(g.matchId || g.gameId || g.id || g.roomId, 140);
-    const seq = Math.max(0, int(g.rematchSeq));
-    if (base) return cleanString(base + ':round:' + seq, 180);
+    if (base) return cleanString(base + ':round:0', 180);
     const createdAt = Math.max(0, Number(g.createdAt || 0) || 0);
     const acceptedAt = Math.max(0, Number(g.acceptedAt || 0) || 0);
     const players = playerEntriesFromGame(g).map((p) => p.uid).join('_');
-    return cleanString(['pvp', players, createdAt || acceptedAt || 'unknown', 'round', seq].filter(Boolean).join('_'), 180) || 'unknown_match:round:0';
+    return cleanString(['pvp', players, createdAt || acceptedAt || 'unknown', 'round', '0'].filter(Boolean).join('_'), 180) || 'unknown_match:round:0';
   }
 
   function officialMatchKey(game) {

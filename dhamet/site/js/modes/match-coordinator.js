@@ -68,7 +68,6 @@
     const data = input && typeof input === 'object' ? input : {};
     return {
       gameId: text(data.gameId || data.id).trim(),
-      rematchSeq: num(data.rematchSeq ?? data.rematchSequence, 0),
       moveIndex: num(data.moveIndex ?? data.ply, 0),
       version: num(data.version, -1),
     };
@@ -79,7 +78,6 @@
     if (!a) return -1;
     if (!b) return 1;
     if (a.gameId && b.gameId && a.gameId !== b.gameId) return 0;
-    if (a.rematchSeq !== b.rematchSeq) return a.rematchSeq > b.rematchSeq ? 1 : -1;
     if (a.moveIndex !== b.moveIndex) return a.moveIndex > b.moveIndex ? 1 : -1;
     if (a.version !== b.version) return a.version > b.version ? 1 : -1;
     return 0;
@@ -162,7 +160,6 @@
     const savedAt = num(draft.savedAt, NaN);
     const currentTime = num(value.now, Date.now());
     if (!Number.isFinite(savedAt) || currentTime - savedAt > 30 * 60 * 1000 || savedAt > currentTime + 60 * 1000) return reject('expired');
-    if (num(draft.rematchSeq, 0) !== num(value.rematchSeq, 0)) return reject('rematch');
     if (num(draft.baseMoveIndex, 0) !== num(value.moveIndex, 0)) return reject('move-index');
     if (official.inChain) return reject('official-not-turn-boundary');
     if (num(draft.side, 0) !== num(value.mySide, 0) || num(draft.side, 0) !== num(official.player, 0)) return reject('side');

@@ -30,7 +30,6 @@
     chatUserMetaTtlMs: 7 * 24 * 60 * 60 * 1000,
     chatMaxMessagesPerRoom: Number(ChatPolicy.maxMessagesPerRoom || 0) || 200,
     undoRequestTtlMs: 5 * 60 * 1000,
-    rematchRequestTtlMs: 10 * 60 * 1000,
   });
 
   const nowMs = Utils.nowMs;
@@ -64,7 +63,7 @@
     if (!req) return { action: 'keep', reason: 'none' };
     const status = cleanString(req.status || 'pending', 40).toLowerCase();
     if (status !== 'pending' && status !== 'active') return { action: 'remove', reason: kind + '-not-pending' };
-    const ttl = kind === 'rematch' ? POLICY.rematchRequestTtlMs : POLICY.undoRequestTtlMs;
+    const ttl = POLICY.undoRequestTtlMs;
     if (isExpired(req, ttl, nowValue)) return { action: 'expire', reason: kind + '-expired' };
     return { action: 'keep', reason: kind + '-fresh' };
   }

@@ -239,7 +239,10 @@
     });
 
     if (closeBtn) {
-      closeBtn.onclick = function () {
+      const hideClose = opts.hideClose === true;
+      closeBtn.style.display = hideClose ? "none" : "";
+      closeBtn.disabled = hideClose;
+      closeBtn.onclick = hideClose ? null : function () {
         close("dismiss");
       };
     }

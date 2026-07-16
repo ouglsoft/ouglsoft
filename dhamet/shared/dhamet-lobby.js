@@ -149,7 +149,6 @@
       lastMove: null,
       soufla: null,
       undoRequest: null,
-      rematchRequest: null,
       result: null,
       winner: null,
       endedAt: 0,

@@ -460,8 +460,7 @@
       "log": {
         "inviteAccepted": "{player} قبل الدعوة.",
         "inviteRejected": "{player} رفض الدعوة.",
-        "inviteSent": "{from} أرسل دعوة إلى {to}.",
-        "rematchStarted": "{player} بدأ إعادة المباراة."
+        "inviteSent": "{from} أرسل دعوة إلى {to}."
       },
       "logFailed": "تعذر تحديث السجل.",
       "matchEndedByPlayer": "{player} أنهى المباراة{reason}.",
@@ -487,14 +486,13 @@
       "absencePrompt": "اللاعب {player} غير متصل منذ دقيقتين ، هل تريد الانتظار ام انهاء المباراة؟",
       "opponent": "الخصم",
       "player": "لاعب",
-      "rematch": {
-        "accepted": "تم قبول إعادة المباراة.",
-        "body": "اللاعب <strong>${fromName}</strong> يريد إعادة المباراة من جديد.",
-        "fail": "تعذر إرسال طلب إعادة المباراة.",
-        "rejected": "تم رفض إعادة المباراة.",
-        "resetFail": "تعذر بدء إعادة المباراة.",
-        "sent": "تم إرسال طلب إعادة المباراة.",
-        "title": "إعادة المباراة"
+      "result": {
+        "win": "لقد فزت بالمباراة.",
+        "loss": "لقد خسرت المباراة.",
+        "draw": "انتهت المباراة بالتعادل.",
+        "ended": "انتهت المباراة.",
+        "spectatorWin": "فاز اللاعب {player} بالمباراة.",
+        "spectatorDraw": "انتهت المباراة بالتعادل."
       },
       "roomNamePlaceholder": "اسم الغرفة",
       "roomNamePrompt": "أدخل اسم الغرفة لتمييزها في قائمة الغرف.",
@@ -1064,8 +1062,7 @@
       "log": {
         "inviteAccepted": "{player} accepted the invite.",
         "inviteRejected": "{player} rejected the invite.",
-        "inviteSent": "{from} sent an invite to {to}.",
-        "rematchStarted": "{player} started a rematch."
+        "inviteSent": "{from} sent an invite to {to}."
       },
       "logFailed": "Failed to update the log.",
       "matchEndedByPlayer": "{player} ended the match{reason}.",
@@ -1091,14 +1088,13 @@
       "absencePrompt": "Player {player} has been offline for two minutes. Do you want to wait or end the match?",
       "opponent": "Opponent",
       "player": "Player",
-      "rematch": {
-        "accepted": "Rematch accepted.",
-        "body": "Player <strong>${fromName}</strong> wants a rematch.",
-        "fail": "Failed to send a rematch request.",
-        "rejected": "Rematch declined.",
-        "resetFail": "Couldn't start the rematch.",
-        "sent": "Rematch request sent.",
-        "title": "Rematch"
+      "result": {
+        "win": "You won the match.",
+        "loss": "You lost the match.",
+        "draw": "The match ended in a draw.",
+        "ended": "The match ended.",
+        "spectatorWin": "Player {player} won the match.",
+        "spectatorDraw": "The match ended in a draw."
       },
       "roomNamePlaceholder": "Room name",
       "roomNamePrompt": "Enter a room name to distinguish it in the rooms list.",
@@ -1668,8 +1664,7 @@
       "log": {
         "inviteAccepted": "{player} a accepté l’invitation.",
         "inviteRejected": "{player} a refusé l’invitation.",
-        "inviteSent": "{from} a envoyé une invitation à {to}.",
-        "rematchStarted": "{player} a lancé une revanche."
+        "inviteSent": "{from} a envoyé une invitation à {to}."
       },
       "logFailed": "Échec de mise à jour du journal.",
       "matchEndedByPlayer": "{player} a terminé la partie{reason}.",
@@ -1695,14 +1690,13 @@
       "absencePrompt": "Le joueur {player} est hors ligne depuis deux minutes. Voulez-vous attendre ou terminer la partie ?",
       "opponent": "Adversaire",
       "player": "Joueur",
-      "rematch": {
-        "accepted": "Revanche acceptée.",
-        "body": "Le joueur <strong>${fromName}</strong> veut une revanche.",
-        "fail": "Impossible d’envoyer la demande de revanche.",
-        "rejected": "Revanche refusée.",
-        "resetFail": "Impossible de démarrer la revanche.",
-        "sent": "Demande de revanche envoyée.",
-        "title": "Revanche"
+      "result": {
+        "win": "Vous avez gagné la partie.",
+        "loss": "Vous avez perdu la partie.",
+        "draw": "La partie s’est terminée par un match nul.",
+        "ended": "La partie est terminée.",
+        "spectatorWin": "Le joueur {player} a gagné la partie.",
+        "spectatorDraw": "La partie s’est terminée par un match nul."
       },
       "roomNamePlaceholder": "Nom de la salle",
       "roomNamePrompt": "Entrez un nom de salle pour la distinguer dans la liste.",

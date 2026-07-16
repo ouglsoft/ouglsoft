@@ -934,7 +934,6 @@
             gameId,
             postMatch: false,
             postMatchShown: false,
-            lastRematchSeq: null,
             presenceStatus: "inPvP",
             presenceRole: "player",
             presenceRoomId: gameId,
@@ -1348,7 +1347,6 @@
             gameId,
             postMatch: false,
             postMatchShown: false,
-            lastRematchSeq: null,
             presenceStatus: "inPvP",
             presenceRole: "player",
             presenceRoomId: gameId,
@@ -1578,7 +1576,6 @@
     _enterPostMatch: function (meta) {
           const info = meta && typeof meta === "object" ? meta : {};
           const reason = String(info.reason || info.endedReason || "ended").trim();
-          const endedBy = info.endedBy && typeof info.endedBy === "object" ? info.endedBy : null;
           const officialResult = info.result || (this._lastGameData && this._lastGameData.result) || null;
           const winner = info.winner != null
             ? Number(info.winner)
@@ -1591,16 +1588,23 @@
           this._applySessionState({
             postMatch: true,
             phase: window.DhametMatchCoordinator ? DhametMatchCoordinator.phases.POST_MATCH : null,
+            presenceStatus: "available",
+            presenceRole: "lobby",
+            presenceRoomId: null,
             newEpoch: false,
             reason: "online-post-match",
           });
           if (this._postMatchShown) return true;
           this._applySessionState({ postMatchShown: true });
 
+          try { this._stopUnifiedAppPulse && this._stopUnifiedAppPulse(); } catch (e) {}
           try { this._applyUiHold(false); } catch (e) {}
           try { this._clearPostMatchSession(); } catch (e) {}
           try { this._stopOpponentAbsenceWatcher && this._stopOpponentAbsenceWatcher(); } catch (e) {}
           try { this._markLocalCommitSettled && this._markLocalCommitSettled(); } catch (e) {}
+          try { this._unbindGameLiveSubscription && this._unbindGameLiveSubscription(); } catch (e) {}
+          try { this._teardownRoomComms && this._teardownRoomComms(); } catch (e) {}
+          try { this._teardownGamePresence && this._teardownGamePresence(); } catch (e) {}
           try {
             if (typeof Game !== "undefined" && Game) {
               Game.gameOver = true;
@@ -1617,83 +1621,45 @@
           try { if (typeof Input !== "undefined" && Input) Input.selected = null; } catch (e) {}
           try { this.refreshPvpControls && this.refreshPvpControls(); } catch (e) {}
 
-          const byUid = String(info.byUid || (endedBy && endedBy.uid) || "").trim();
-          let byNick = displayPlayerName(byUid, info.byNick || (endedBy && endedBy.nickname) || "");
-          if (!byNick) byNick = window.I18N.translateArgs("online.opponent", "Opponent");
-          const manual = reason === "ended_by_player";
-
-          if (manual) {
-            // A manually ended room cannot rematch. Close its live transports
-            // before notifying and returning every participant to the lobby.
-            try { this._unbindGameLiveSubscription && this._unbindGameLiveSubscription(); } catch (e) {}
-            try { this._teardownRoomComms && this._teardownRoomComms(); } catch (e) {}
-            const endedByMe = !!(byUid && this.myUid && byUid === String(this.myUid));
-            const message = endedByMe
-              ? window.I18N.translateArgs("online.matchEndedByYou")
-              : formatTpl(window.I18N.translateArgs("online.matchEndedByPlayer", "Player {player} ended the match{reason}."), {
-                  player: byNick,
-                  reason: "",
-                });
-            try { showOnlineNotice(message, { allowSpectator: true }); } catch (e) {}
-            const asyncContext = this._captureAsyncContext(this.gameId);
-            setTimeout(() => {
-              try {
-                if (this._isAsyncContextCurrent(asyncContext, { ignorePostMatch: true })) this.exitToLobby();
-              } catch (e) {}
-            }, 1200);
-            return true;
-          }
-
-          const resultMeta = officialResult && officialResult.meta && typeof officialResult.meta === "object" ? officialResult.meta : {};
-          const counted = !!(officialResult && resultMeta.countsAsResult !== false);
-          if (counted || this._isNaturalOnlineEndReason(reason)) {
-            try {
-              if (typeof UI !== "undefined" && UI && typeof UI.showGameOverModal === "function") {
-                UI.showGameOverModal(winner === TOP || winner === BOT ? winner : null);
-                return true;
-              }
-            } catch (e) {}
-          }
-
-          try { showOnlineNotice(window.I18N.translateArgs("online.ended.generic"), { allowSpectator: true }); } catch (e) {}
-          const asyncContext = this._captureAsyncContext(this.gameId);
-          setTimeout(() => {
-            try {
-              if (this._isAsyncContextCurrent(asyncContext, { ignorePostMatch: true })) this.exitToLobby();
-            } catch (e) {}
-          }, 1200);
-          return true;
-        },
-
-    _onRematchStarted: function () {
-          this._applySessionState({ postMatch: false, postMatchShown: false });
-          this._localEndedOnline = false;
-          this._rematchRequestedAt = 0;
-          this._rematchPending = false;
-          this._pendingSteps = [];
-          this._cachedSouflaPlain = null;
-          try { this._clearCaptureDraft(); } catch (e) {}
-          try { this._clearPendingMoveOutbox(); } catch (e) {}
-          try { this._markLocalCommitSettled(); } catch (e) {}
-          try {
-            if (typeof Modal !== "undefined" && Modal && typeof Modal.close === "function") Modal.close("state-change");
-          } catch (e) {}
-          try {
-            if (window.DhametMatchCoordinator) {
-              this._applySessionState({
-                phase: this.isSpectator ? DhametMatchCoordinator.phases.ONLINE_SPECTATOR : DhametMatchCoordinator.phases.ONLINE_PLAYER,
-                reason: "online-rematch",
+          const gameData = info.game && typeof info.game === "object"
+            ? info.game
+            : (this._lastGameData && typeof this._lastGameData === "object" ? this._lastGameData : {});
+          const resultStatus = String(officialResult && officialResult.status || "").toLowerCase();
+          let message = "";
+          if (this.isSpectator) {
+            if (winner === TOP || winner === BOT) {
+              const players = info.players || gameData.players || {};
+              const winnerRow = winner === BOT ? players.white : players.black;
+              const winnerName = winnerRow
+                ? displayPlayerName(winnerRow.uid, winnerRow.nickname)
+                : (winner === BOT ? (Game.names && Game.names.bot) : (Game.names && Game.names.top));
+              message = formatTpl(window.I18N.translateArgs("online.result.spectatorWin", "{player} won the match."), {
+                player: winnerName || window.I18N.translateArgs("players.player"),
               });
-              DhametMatchCoordinator.resetPresentation({ draw: true });
+            } else if (resultStatus === "draw" || reason === "draw" || this._isNaturalOnlineEndReason(reason)) {
+              message = window.I18N.translateArgs("online.result.spectatorDraw", "The match ended in a draw.");
+            } else {
+              message = window.I18N.translateArgs("online.result.ended", "The match ended.");
+            }
+          } else if (winner === TOP || winner === BOT) {
+            message = winner === Number(this.mySide)
+              ? window.I18N.translateArgs("online.result.win", "You won.")
+              : window.I18N.translateArgs("online.result.loss", "You lost.");
+          } else if (resultStatus === "draw" || reason === "draw" || this._isNaturalOnlineEndReason(reason)) {
+            message = window.I18N.translateArgs("online.result.draw", "The match ended in a draw.");
+          } else {
+            message = window.I18N.translateArgs("online.result.ended", "The match ended.");
+          }
+
+          try {
+            if (typeof UI !== "undefined" && UI && typeof UI.showOnlineGameOverModal === "function") {
+              const opened = UI.showOnlineGameOverModal({ message, title: window.I18N.translateArgs("online.pvpEndTitle") });
+              if (opened !== false) return true;
             }
           } catch (e) {}
-          try {
-            Turn && (Turn.ctx = null);
-            Game.inChain = false;
-            Game.chainPos = null;
-            Game.killTimer && Game.killTimer.hardStop && Game.killTimer.hardStop();
-          } catch (e) {}
-          try { this._setOnlineButtonsState(true, { keepBlocked: true }); } catch (e) {}
+
+          try { showOnlineNotice(message, { allowSpectator: true }); } catch (e) {}
+          return true;
         },
 
     _getOpponentInfoFromData: function (data) {
@@ -1712,254 +1678,6 @@
             if (b.uid) return { uid: b.uid || null, nick: displayPlayerName(b.uid, b.nickname) };
           } catch (e) {}
           return { uid: null, nick: "" };
-        },
-
-    _getOpponentInfo: async function () {
-          let opp = { uid: null, nick: "" };
-          try {
-            opp = this._getOpponentInfoFromData(this._lastGameData);
-          } catch (e) {}
-          if (!opp.uid && this.gameRef) {
-            try {
-              const ps = await this.gameRef.child("players").once("value");
-              const pl = ps && ps.val ? ps.val() : null;
-              opp = this._getOpponentInfoFromData(pl);
-            } catch (e) {}
-          }
-          return opp;
-        },
-
-
-    _commitOfficialRematch: async function (kind, options) {
-          if (!this.gameId || !window.DhametGameRoomClient || typeof window.DhametGameRoomClient.commitRematch !== "function") {
-            throw new Error("rematch/client-unavailable");
-          }
-          const opts = options && typeof options === "object" ? options : {};
-          const ts = Date.now();
-          const baseMoveIndex = Number(
-            opts.baseMoveIndex != null
-              ? opts.baseMoveIndex
-              : ((this._lastGameData && this._lastGameData.moveIndex) || 0)
-          ) || 0;
-          const clientRematchId =
-            opts.clientRematchId ||
-            ["rematch", kind || "action", this.myUid || "anon", this.gameId || "game", ts, Math.random().toString(36).slice(2, 8)].join(":");
-          return window.DhametGameRoomClient.commitRematch({
-            gameId: opts.gameId || this.gameId,
-            kind,
-            clientRematchId,
-            baseMoveIndex,
-            by: this.mySide,
-            nick: opts.nick || this.myNick || window.I18N.translateArgs("players.player"),
-            accept: opts.accept,
-            reason: opts.reason,
-          });
-        },
-
-    _respondOfficialRematch: async function (accept, requestLike) {
-          const req = requestLike && typeof requestLike === "object" ? requestLike : {};
-          const targetGameId = String(req.gameId || this.gameId || "");
-          const asyncContext = this._captureAsyncContext(targetGameId);
-          const me = this.myNick || window.I18N.translateArgs("players.player");
-          const data = await this._commitOfficialRematch("rematch-respond", {
-            gameId: targetGameId,
-            accept: !!accept,
-            nick: me,
-          });
-          if (!this._isAsyncContextCurrent(asyncContext)) return data;
-          try { this._noteOnlineGameTransportActivity && this._noteOnlineGameTransportActivity("rematch"); } catch (e) {}
-          if (data && data.game) {
-            const applied = this._ingestOfficialGame(data.game, {
-              source: "rematch-response",
-              gameId: targetGameId,
-              version: data.version != null ? data.version : data.game.__transportVersion,
-              rejectDuplicate: false,
-            });
-            if (!applied) try { this._forceResync("rematch-response"); } catch (e) {}
-          } else if (accept) {
-            try { this._forceResync("rematch-response-missing-game"); } catch (e) {}
-          }
-          showOnlineNotice(window.I18N.translateArgs(accept ? "online.rematch.accepted" : "online.rematch.rejected"));
-          return data;
-        },
-
-    _handleOfficialRematchRequest: function (data) {
-          try {
-            const rr = data && data.rematchRequest;
-            if (!rr || typeof rr !== "object") {
-              this._officialRematchPromptKey = null;
-              return;
-            }
-            const status = String(rr.status || "").toLowerCase();
-            const requesterUid = String(rr.requesterUid || "");
-            const key = [status, requesterUid, rr.requestedAt || 0, rr.respondedAt || 0].join(":");
-
-            if (status === "pending" || status === "active") {
-              if (requesterUid && requesterUid === String(this.myUid || "")) {
-                this._rematchPending = true;
-                return;
-              }
-              if (this.isSpectator || !this.isActive || !this.gameId) return;
-              if (this._officialRematchPromptKey === key) return;
-              this._officialRematchPromptKey = key;
-
-              const fromName = rr.requesterNick || window.I18N.translateArgs("players.player");
-              const title = window.I18N.translateArgs("online.rematch.title");
-              const body = window.I18N.translateArgs("online.rematch.body", { fromName: escapeHtml(fromName) });
-              const plainText = (html) => {
-                try {
-                  return String(html || "").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
-                } catch (e) {
-                  return String(html || "");
-                }
-              };
-
-              let modalSettled = false;
-              const accept = async () => {
-                modalSettled = true;
-                try { await this._respondOfficialRematch(true, rr); }
-                catch (e) {
-                  try { handleDbError(e); } catch (_) {}
-                  showOnlineNotice(window.I18N.translateArgs("online.rematch.resetFail"));
-                }
-              };
-              const reject = async () => {
-                modalSettled = true;
-                try { await this._respondOfficialRematch(false, rr); }
-                catch (e) {
-                  try { handleDbError(e); } catch (_) {}
-                  showOnlineNotice(window.I18N.translateArgs("online.rematch.rejected"));
-                }
-              };
-
-              if (typeof Modal === "undefined" || !Modal || typeof Modal.open !== "function") {
-                const ok = window.confirm(String(title || "") + "\n\n" + plainText(body));
-                if (ok) accept();
-                else reject();
-                return;
-              }
-
-              Modal.open({
-                title,
-                body: `<div>${body}</div>`,
-                priority: 75,
-                blocking: true,
-                buttons: [
-                  { label: window.I18N.translateArgs("actions.accept"), className: "ok", onClick: async () => { modalSettled = true; Modal.close("action"); await accept(); } },
-                  { label: window.I18N.translateArgs("actions.reject"), className: "ghost", onClick: async () => { modalSettled = true; Modal.close("action"); await reject(); } },
-                ],
-                onClose: async (reason) => {
-                  if (modalSettled || reason === "replaced" || reason === "state-change") return;
-                  try { await reject(); } catch (e) {}
-                },
-              });
-              return;
-            }
-
-            if (status === "rejected" && requesterUid && requesterUid === String(this.myUid || "")) {
-              if (this._officialRematchRejectedKey === key) return;
-              this._officialRematchRejectedKey = key;
-              this._rematchPending = false;
-              showOnlineNotice(window.I18N.translateArgs("online.rematch.rejected"));
-              try { this.exitToMode(); } catch (e) {}
-            }
-          } catch (e) {}
-        },
-
-    requestRematch: async function () {
-          if (!this.isActive || !this.gameId) return;
-          if (this.isSpectator) return;
-
-          const now = Date.now();
-          if (this._rematchRequestedAt && now - this._rematchRequestedAt < 1500) return;
-          this._rematchRequestedAt = now;
-          const asyncContext = this._captureAsyncContext(this.gameId);
-
-          let opp = { uid: null, nick: "" };
-          try { opp = await this._getOpponentInfo(); } catch (e) {}
-          if (!this._isAsyncContextCurrent(asyncContext)) return;
-          if (!opp.uid) {
-            showOnlineNotice(window.I18N.translateArgs("online.noOpponent"));
-            return;
-          }
-
-          const who = this.myNick || window.I18N.translateArgs("players.player");
-          try {
-            const data = await this._commitOfficialRematch("rematch-request", { nick: who });
-            if (!this._isAsyncContextCurrent(asyncContext)) return;
-            if (data && data.game) {
-              this._ingestOfficialGame(data.game, {
-                source: "rematch-request",
-                gameId: asyncContext.gameId,
-                version: data.version != null ? data.version : data.game.__transportVersion,
-                rejectDuplicate: false,
-              });
-            }
-            this._rematchPending = true;
-            showOnlineNotice(window.I18N.translateArgs("online.rematch.sent"));
-          } catch (e) {
-            try { handleDbError(e); } catch (e2) {}
-            showOnlineNotice(window.I18N.translateArgs("online.rematch.fail"));
-            try {
-              const st = this._lastGameData && this._lastGameData.status;
-              const ended = !!(this._inPostMatch || this._localEndedOnline || (st && st !== "active"));
-              if (ended) {
-                try { await this.exitToMode(); } catch (e2) {}
-              }
-            } catch (e2) {}
-          }
-        },
-
-    _resetRoomForRematch: async function (gameId, actorNick) {
-          const data = await this._commitOfficialRematch("rematch-respond", {
-            gameId,
-            accept: true,
-            nick: actorNick || this.myNick || window.I18N.translateArgs("players.player"),
-          });
-          return data;
-        },
-
-    _acceptRematchInvite: async function (inv, snapRef) {
-          if (!this.isActive || !this.gameId || (inv && inv.gameId && inv.gameId !== this.gameId)) return;
-          if (this.isSpectator) return;
-
-          const asyncContext = this._captureAsyncContext(this.gameId);
-          const me = this.myNick || window.I18N.translateArgs("players.player");
-          try {
-            const data = await this._resetRoomForRematch(asyncContext.gameId, me);
-            if (!this._isAsyncContextCurrent(asyncContext)) return;
-            if (data && data.game) {
-              const applied = this._ingestOfficialGame(data.game, {
-                source: "rematch-accept",
-                gameId: asyncContext.gameId,
-                version: data.version != null ? data.version : data.game.__transportVersion,
-                rejectDuplicate: false,
-              });
-              if (!applied) this._forceResync("rematch-accept");
-            } else {
-              this._forceResync("rematch-accept-missing-game");
-            }
-          } catch (e) {
-            if (!this._isAsyncContextCurrent(asyncContext)) return;
-            try { handleDbError(e); } catch (e2) {}
-            showOnlineNotice(window.I18N.translateArgs("online.rematch.resetFail"));
-          }
-        },
-
-    _rejectRematchInvite: async function (inv, snapRef) {
-          const asyncContext = this._captureAsyncContext((inv && inv.gameId) || this.gameId);
-          try {
-            if (this.isActive && this.gameId && (!inv || !inv.gameId || inv.gameId === this.gameId)) {
-              await this._respondOfficialRematch(false, inv || {});
-            } else {
-              showOnlineNotice(window.I18N.translateArgs("online.rematch.rejected"));
-            }
-          } catch (e) {
-            try { handleDbError(e); } catch (e2) {}
-            showOnlineNotice(window.I18N.translateArgs("online.rematch.rejected"));
-          }
-          if (!this._isAsyncContextCurrent(asyncContext)) return;
-          try { await this.exitToMode(); } catch (e) {}
         },
 
     _exitOnlineSessionTo: async function (pageName) {
@@ -4277,7 +3995,7 @@
 
               if (type === "invite_sent" || type === "invite_accepted" || type === "invite_rejected") return [];
               if (type === "soufla.detected") return [];
-              if (type === "game.created" || type === "rematch.started") {
+              if (type === "game.created") {
                 const baseId = String(it.id || type);
                 return [
                   { kind: "game_started", ts, displayId: baseId + ":started" },
@@ -5663,7 +5381,6 @@
             gameId,
             postMatch: false,
             postMatchShown: false,
-            lastRematchSeq: null,
             presenceStatus: "spectating",
             presenceRole: "spectator",
             presenceRoomId: gameId,
@@ -5755,7 +5472,6 @@
           const source = meta && typeof meta === "object" ? meta : {};
           return {
             gameId: String(source.gameId || this.gameId || ""),
-            rematchSeq: Number((data && data.rematchSeq) || 0) || 0,
             moveIndex: Number((data && data.moveIndex) || 0) || 0,
             version: Number(source.version != null ? source.version : (data && data.__transportVersion)),
           };
@@ -5861,22 +5577,12 @@
           const source = meta && typeof meta === "object" ? meta : {};
           const remoteMi = Number(rawData.moveIndex || 0) || 0;
           const localBaseMoveIndex = Number(this.moveIndex || 0) || 0;
-          const rs = Number(rawData.rematchSeq || 0) || 0;
-          const previousRematchSeq = this._lastRematchSeq;
-
-          if (previousRematchSeq != null && rs < Number(previousRematchSeq || 0)) {
-            try { Logger.info("official_state_rejected", { gameId: this.gameId, reason: "older-rematch", rematchSeq: rs, currentRematchSeq: previousRematchSeq }); } catch (_) {}
-            this._lastOfficialIngestFailureReason = "older-rematch";
-            return false;
-          }
           const isTerminalState = !!(rawData.status && rawData.status !== "active");
-          const isNewRematch = previousRematchSeq != null && rs > Number(previousRematchSeq || 0);
           if (
             this._awaitingLocalCommit &&
             Number.isFinite(this._expectedMoveIndex) &&
             remoteMi < this._expectedMoveIndex &&
-            !isTerminalState &&
-            !isNewRematch
+            !isTerminalState
           ) {
             const allowPendingRollback = !!(source.allowPendingRollback || this._moveRetryGaveUp);
             if (!allowPendingRollback) {
@@ -5964,11 +5670,6 @@
             }
           };
 
-          let rematchAdvanced = false;
-          if (previousRematchSeq != null && rs > Number(previousRematchSeq || 0)) {
-            rematchAdvanced = true;
-            try { this._onRematchStarted(); } catch (e) {}
-          }
 
           if (data.status && data.status !== "active") {
             let enteredPostMatch = false;
@@ -5980,6 +5681,8 @@
                 byNick: data.endedBy && data.endedBy.nickname,
                 result: data.result || null,
                 winner: data.winner,
+                game: data,
+                players: data.players || null,
               }) !== false;
             } catch (error) {
               this._lastOfficialIngestFailureReason = "apply-failed";
@@ -5991,15 +5694,13 @@
               return false;
             }
             if (!commitOfficialCursor()) return false;
-            this._lastRematchSeq = rs;
             this._lastGameData = data;
             this.moveIndex = remoteMi;
             this.ply = Number(data.ply || 0) || 0;
-            try { this._handleOfficialRematchRequest(data); } catch (e) {}
             if (
               this._awaitingLocalCommit &&
               Number.isFinite(this._expectedMoveIndex) &&
-              (remoteMi >= this._expectedMoveIndex || isTerminalState || isNewRematch)
+              (remoteMi >= this._expectedMoveIndex || isTerminalState)
             ) {
               try { this._markLocalCommitSettled(); } catch (e) {}
             }
@@ -6010,8 +5711,7 @@
             stateSnap &&
             Game && Game.inChain &&
             Array.isArray(this._pendingSteps) && this._pendingSteps.length &&
-            remoteMi === localBaseMoveIndex &&
-            rs === Number(previousRematchSeq || 0)
+            remoteMi === localBaseMoveIndex
           );
           let restoreCaptureDraft = false;
           if (preserveLocalCapture) {
@@ -6039,11 +5739,9 @@
           // Publish transport and match metadata only after the authoritative
           // board/turn state has been installed. A failed visual application
           // must not make the browser claim a move index it is not displaying.
-          this._lastRematchSeq = rs;
           this._lastGameData = data;
           this.moveIndex = remoteMi;
           this.ply = Number(data.ply || 0) || 0;
-          try { this._handleOfficialRematchRequest(data); } catch (e) {}
 
           try {
             const w = data.players && data.players.white ? displayPlayerName(data.players.white.uid, data.players.white.nickname) : "";
@@ -6066,15 +5764,12 @@
           if (
             this._awaitingLocalCommit &&
             Number.isFinite(this._expectedMoveIndex) &&
-            (remoteMi >= this._expectedMoveIndex || isTerminalState || isNewRematch)
+            (remoteMi >= this._expectedMoveIndex || isTerminalState)
           ) {
             try { this._markLocalCommitSettled(); } catch (e) {}
           }
           try { this._applyUiHold(false); } catch (e) {}
           try { this.refreshPvpControls && this.refreshPvpControls(); } catch (e) {}
-          if (rematchAdvanced) {
-            try { this._setOnlineButtonsState(true); } catch (e) {}
-          }
           return true;
         },
 
@@ -6117,7 +5812,6 @@
             const draft = {
               schema: 1,
               gameId: String(this.gameId),
-              rematchSeq: Number(this._lastRematchSeq || (this._lastGameData && this._lastGameData.rematchSeq) || 0) || 0,
               baseMoveIndex: Number(this.moveIndex || 0) || 0,
               side: Number(Game.player),
               baseFingerprint: coordinator.boardFingerprint(base),
@@ -6182,7 +5876,6 @@
             draft,
             officialSnapshot: officialData.state.snapshot,
             gameId: this.gameId,
-            rematchSeq: officialData.rematchSeq,
             moveIndex: officialData.moveIndex,
             mySide: this.mySide,
             hasOutbox: !!(this._readPendingMoveOutbox && this._readPendingMoveOutbox()),

@@ -8,7 +8,6 @@ import '../../shared/dhamet-control.js';
 import '../../shared/dhamet-events.js';
 import '../../shared/dhamet-result.js';
 import '../../shared/dhamet-match-end.js';
-import '../../shared/dhamet-rematch.js';
 import '../../shared/dhamet-lobby.js';
 import '../../shared/dhamet-spectators.js';
 import '../../shared/dhamet-presence.js';
@@ -52,7 +51,6 @@ const MoveCore = globalThis.DhametMove;
 const SouflaCore = globalThis.DhametSoufla;
 const ControlCore = globalThis.DhametControl;
 const MatchEndCore = globalThis.DhametMatchEnd;
-const RematchCore = globalThis.DhametRematch;
 const LobbyCore = globalThis.DhametLobby;
 const SpectatorCore = globalThis.DhametSpectators;
 const PresenceCore = globalThis.DhametPresence;
@@ -301,10 +299,6 @@ export class RealtimeObject {
     if (url.pathname.endsWith('/api/game/end') || url.pathname.endsWith('/game/end')) {
       const body = await requestBody(request);
       return this._commitGameEnd(body);
-    }
-    if (url.pathname.endsWith('/api/game/rematch') || url.pathname.endsWith('/game/rematch')) {
-      const body = await requestBody(request);
-      return this._commitGameRematch(body);
     }
     if (url.pathname.endsWith('/api/game/chat') || url.pathname.endsWith('/game/chat')) {
       const body = await requestBody(request);
@@ -936,7 +930,6 @@ export class RealtimeObject {
       removedChatReads: 0,
       removedChatMeta: 0,
       expiredUndoRequest: false,
-      expiredRematchRequest: false,
       endedGame: LifecycleCore.isTerminalStatus ? LifecycleCore.isTerminalStatus(game.status) : false,
     };
 
@@ -947,12 +940,6 @@ export class RealtimeObject {
       nextGame.undoRequest = null;
       summary.expiredUndoRequest = true;
       changed.push(gamePath + '/undoRequest');
-    }
-    const rematchCls = LifecycleCore.classifyPendingRequest(nextGame.rematchRequest, 'rematch', at);
-    if (rematchCls && (rematchCls.action === 'expire' || rematchCls.action === 'remove')) {
-      nextGame.rematchRequest = null;
-      summary.expiredRematchRequest = true;
-      changed.push(gamePath + '/rematchRequest');
     }
 
     const spectatorsPath = 'spectators/' + gid;
@@ -1461,6 +1448,36 @@ export class RealtimeObject {
     });
   }
 
+
+  async _persistCommittedGame(gameId, path, game, beforeRoot) {
+    const gid = cleanPath(gameId);
+    const changed = [path];
+    const terminal = !!(game && String(game.status || '') === 'ended');
+    this.root = setAt(this.root || {}, path, game);
+    if (terminal && gid) {
+      for (const transientPath of [
+        'spectators/' + gid,
+        'rtc/' + gid,
+        'chats/' + gid,
+        'meta/' + gid,
+        'ops/lifecycle/' + gid,
+      ]) {
+        if (getAt(this.root || {}, transientPath) != null) {
+          this.root = setAt(this.root || {}, transientPath, null);
+          changed.push(transientPath);
+        }
+      }
+    }
+    const uniqueChanged = Array.from(new Set(changed));
+    bumpVersions(this.versions, uniqueChanged);
+    await this._save();
+    await this._broadcast(uniqueChanged, beforeRoot, terminal ? {
+      authorizeAgainstRoot: beforeRoot,
+      closeRevokedAfter: true,
+    } : null);
+    return { terminal, changed: uniqueChanged };
+  }
+
   async _commitSouflaDecision(body) {
     const limited = this._limitGameAction(body, 'soufla', 8, 10 * 1000);
     if (limited) return limited;
@@ -1510,10 +1527,7 @@ export class RealtimeObject {
       for (const entry of reduced.events) this._appendGameLog(game, entry);
     }
 
-    this.root = setAt(this.root || {}, path, game);
-    bumpVersions(this.versions, [path]);
-    await this._save();
-    await this._broadcast([path], beforeRoot);
+    await this._persistCommittedGame(gameId, path, game, beforeRoot);
     return json({ ok: true, committed: true, game, moveIndex: reduced.moveIndex || game.moveIndex || 0, ply: reduced.ply || game.ply || 0 });
   }
 
@@ -1583,67 +1597,6 @@ export class RealtimeObject {
 
 
 
-  async _commitGameRematch(body) {
-    const limited = this._limitGameAction(body, 'rematch', 8, 10 * 1000);
-    if (limited) return limited;
-    const gameId = cleanPath(body && body.gameId);
-    const uid = String((body && body.uid) || '');
-    const path = gameId ? 'games/' + gameId : '';
-    if (!gameId || !uid) return json({ ok: false, error: 'game/missing-context' }, 400);
-
-    const current = getAt(this.root || {}, path);
-    if (!current || typeof current !== 'object') {
-      return json({ ok: false, error: 'game/not-found' }, 404);
-    }
-
-    const side = this._gamePlayerSide(current, uid);
-    if (!side) return json({ ok: false, error: 'game/not-a-player', game: current }, 403);
-
-    const payload = RematchCore && typeof RematchCore.normalizeRematchPayload === 'function'
-      ? RematchCore.normalizeRematchPayload(Object.assign({}, body, { uid, by: side }))
-      : Object.assign({}, body, { uid, by: side });
-    if (!payload || !payload.kind) return json({ ok: false, error: 'rematch/invalid-action', game: current }, 400);
-
-    const clientRematchId = String(payload.clientRematchId || payload.clientActionId || '').slice(0, 160);
-    if (clientRematchId) {
-      const duplicate = this._duplicateActionResponse(current, 'rematch', clientRematchId);
-      if (duplicate) return duplicate;
-      const lc = current.lastControl || null;
-      const rr = current.rematchRequest || null;
-      if ((lc && String(lc.clientActionId || lc.clientRematchId || '') === clientRematchId) ||
-          (rr && String(rr.clientRematchId || '') === clientRematchId)) {
-        return json({ ok: true, committed: true, duplicate: true, game: current, moveIndex: current.moveIndex || 0, ply: current.ply || 0 });
-      }
-    }
-
-    const reduced = AuthorityCore.applyRematchAction(current, Object.assign({}, payload, { uid, by: side }), { actor: uid, side, source: 'cloudflare-durable-object' });
-    if (!reduced || reduced.ok === false) {
-      const err = String((reduced && reduced.error) || '');
-      const status = /not-ended|match-not-ended|already-pending|stale|missing-player/.test(err)
-        ? 409
-        : (/not-player|not-last-mover|requester-cannot-respond|invalid-side/.test(err) ? 403 : 400);
-      return json(Object.assign({ ok: false, error: 'rematch/validation-failed', game: current }, reduced || {}), status);
-    }
-    if (reduced.committed === false) {
-      return json({ ok: true, committed: false, reason: reduced.reason || 'not-committed', game: reduced.game || current });
-    }
-
-    const beforeRoot = clone(this.root || {});
-    let game = reduced.game;
-    try { game = (this._touchGameActorPresence(game, uid, side, { kind: 'rematch', force: true }) || {}).game || game; } catch (_) {}
-    if (clientRematchId) this._recordAppliedClientAction(game, 'rematch', clientRematchId, reduced);
-
-    if (Array.isArray(reduced.events)) {
-      for (const entry of reduced.events) this._appendGameLog(game, entry);
-    }
-
-    this.root = setAt(this.root || {}, path, game);
-    bumpVersions(this.versions, [path]);
-    await this._save();
-    await this._broadcast([path], beforeRoot);
-    return json({ ok: true, committed: true, game, moveIndex: reduced.moveIndex || game.moveIndex || 0, ply: reduced.ply || game.ply || 0, rematchSeq: reduced.rematchSeq || game.rematchSeq || 0, rematchRequest: game.rematchRequest || null });
-  }
-
   async _commitGameEnd(body) {
     const limited = this._limitGameAction(body, 'end', 4, 10 * 1000);
     if (limited) return limited;
@@ -1703,21 +1656,7 @@ export class RealtimeObject {
       for (const entry of reduced.events) this._appendGameLog(game, entry);
     }
 
-    const spectatorsPath = 'spectators/' + gameId;
-    const rtcPath = 'rtc/' + gameId;
-    this.root = setAt(this.root || {}, path, game);
-    this.root = setAt(this.root || {}, spectatorsPath, null);
-    this.root = setAt(this.root || {}, rtcPath, null);
-    bumpVersions(this.versions, [path, spectatorsPath, rtcPath]);
-    await this._save();
-    // The terminal game must reach every participant who was authorized when
-    // the match ended. Spectator/RTC records are already removed from current
-    // storage, so authorize this one terminal broadcast against the pre-end
-    // snapshot, then close sockets whose authorization has now been revoked.
-    await this._broadcast([path, spectatorsPath, rtcPath], beforeRoot, {
-      authorizeAgainstRoot: beforeRoot,
-      closeRevokedAfter: true,
-    });
+    await this._persistCommittedGame(gameId, path, game, beforeRoot);
     return json({ ok: true, committed: true, game, moveIndex: reduced.moveIndex || game.moveIndex || 0, ply: reduced.ply || game.ply || 0, result: reduced.result || game.result || null });
   }
 
@@ -1773,10 +1712,7 @@ export class RealtimeObject {
       for (const entry of reduced.events) this._appendGameLog(game, entry);
     }
 
-    this.root = setAt(this.root || {}, path, game);
-    bumpVersions(this.versions, [path]);
-    await this._save();
-    await this._broadcast([path], beforeRoot);
+    await this._persistCommittedGame(gameId, path, game, beforeRoot);
     return json({ ok: true, committed: true, game, moveIndex: reduced.moveIndex || game.moveIndex || 0, ply: reduced.ply || game.ply || 0 });
   }
 

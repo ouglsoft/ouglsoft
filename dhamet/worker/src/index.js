@@ -814,9 +814,6 @@ async function gameEndEndpoint(request, env, ctx) {
   return gameRoutes.end(request, env, ctx);
 }
 
-async function gameRematchEndpoint(request, env) {
-  return gameRoutes.rematch(request, env);
-}
 
 async function gameChatEndpoint(request, env) {
   return gameRoutes.chat(request, env);
@@ -1151,7 +1148,6 @@ export default {
       if (url.pathname === '/api/game/soufla' && request.method === 'POST') return gameSouflaEndpoint(request, env, ctx);
       if (url.pathname === '/api/game/control' && request.method === 'POST') return gameControlEndpoint(request, env, ctx);
       if (url.pathname === '/api/game/end' && request.method === 'POST') return gameEndEndpoint(request, env, ctx);
-      if (url.pathname === '/api/game/rematch' && request.method === 'POST') return gameRematchEndpoint(request, env);
       if (url.pathname === '/api/game/chat' && request.method === 'POST') return gameChatEndpoint(request, env);
       if (url.pathname === '/api/game/rtc' && request.method === 'POST') return gameRtcEndpoint(request, env);
       if (url.pathname === '/api/game/live') return gameLiveEndpoint(request, env);

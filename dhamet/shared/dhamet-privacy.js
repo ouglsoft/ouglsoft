@@ -140,7 +140,6 @@
     const players = g.players && typeof g.players === 'object' ? clone(g.players) : {};
     for (const side of Object.keys(players)) players[side] = scrubPlayerRecord(players[side], uid, deletedAt);
     g.players = players;
-    if (g.rematchRequest && cleanUid(g.rematchRequest.requesterUid || g.rematchRequest.uid || g.rematchRequest.actor) === cleanUid(uid)) g.rematchRequest = null;
     if (g.undoRequest && cleanUid(g.undoRequest.requesterUid || g.undoRequest.uid || g.undoRequest.actor) === cleanUid(uid)) g.undoRequest = null;
     return g;
   }

@@ -20,7 +20,6 @@
   const Soufla = root.DhametSoufla;
   const Control = root.DhametControl;
   const MatchEnd = root.DhametMatchEnd;
-  const Rematch = root.DhametRematch;
 
   if (!Rules) throw new Error('DhametAuthority requires DhametRules');
   if (!State) throw new Error('DhametAuthority requires DhametState');
@@ -29,7 +28,6 @@
   if (!Soufla || typeof Soufla.normalizePending !== 'function' || typeof Soufla.normalizeDecisionPayload !== 'function' || typeof Soufla.matchingOption !== 'function') throw new Error('DhametAuthority requires DhametSoufla');
   if (!Control || typeof Control.normalizeControlPayload !== 'function' || typeof Control.normalizeUndoRequest !== 'function') throw new Error('DhametAuthority requires DhametControl');
   if (!MatchEnd || typeof MatchEnd.normalizeMatchEndPayload !== 'function' || typeof MatchEnd.policyForEnd !== 'function') throw new Error('DhametAuthority requires DhametMatchEnd');
-  if (!Rematch || typeof Rematch.normalizeRematchPayload !== 'function' || typeof Rematch.normalizeRematchRequest !== 'function') throw new Error('DhametAuthority requires DhametRematch');
 
   const TOP = Rules.TOP;
   const BOT = Rules.BOT;
@@ -329,6 +327,11 @@
       if (result.terminal) {
         nextGame.status = 'ended';
         nextGame.winner = result.winner || null;
+        nextGame.endedAt = Number(result.endedAt || ts) || ts;
+        nextGame.endedReason = result.reason || (nextGame.winner == null ? 'draw' : 'natural_win');
+        nextGame.endedBy = null;
+        nextGame.undoRequest = null;
+        nextGame.soufla = null;
       }
     }
 
@@ -531,177 +534,6 @@
 
 
 
-  function normalizeRematchPayload(payload) {
-    return Rematch.normalizeRematchPayload(payload);
-  }
-
-  function pendingRematchRequest(game) {
-    const rr = game && game.rematchRequest;
-    return Rematch.normalizeRematchRequest(rr);
-  }
-
-  function createRematchEvent(type, input) {
-    const src = input && typeof input === 'object' ? input : {};
-    if (!Events || typeof Events.normalizeEvent !== 'function') return null;
-    return Events.normalizeEvent({
-      type,
-      actor: cleanActor(src.actor),
-      side: src.side,
-      moveIndex: src.moveIndex,
-      ply: src.ply,
-      ts: src.ts,
-      data: src.data || {},
-    });
-  }
-
-  function applyRematchRequest(record, normalized, ctx) {
-    const check = Rematch.canRequestRematch(record);
-    if (!check.ok) return Object.assign({ game: record }, check);
-    const actorSide = side(normalized.by != null ? normalized.by : ctx.side);
-    if (actorSide == null) return { ok: false, error: 'rematch/invalid-side', game: record };
-    const baseMoveIndex = Number(normalized.baseMoveIndex);
-    if (Number.isFinite(baseMoveIndex) && baseMoveIndex >= 0 && Number(record.moveIndex || 0) !== baseMoveIndex) {
-      return { ok: true, committed: false, reason: 'stale-base', game: record };
-    }
-    const ts = nowMs();
-    const rematchSeq = Math.max(0, Number(record.rematchSeq || 0) || 0);
-    const rematchRequest = Rematch.createRematchRequest({
-      requesterUid: cleanActor(ctx.actor || normalized.actor),
-      requesterSide: actorSide,
-      requesterNick: normalized.nick,
-      requestedAt: ts,
-      moveIndex: record.moveIndex,
-      ply: record.ply,
-      rematchSeq,
-      clientRematchId: normalized.clientRematchId,
-    });
-    const nextGame = clone(record);
-    nextGame.rematchRequest = rematchRequest;
-    nextGame.updatedAt = ts;
-    nextGame.lastControl = {
-      kind: 'rematch-request',
-      by: actorSide,
-      requesterUid: rematchRequest.requesterUid,
-      moveIndex: record.moveIndex,
-      ply: record.ply,
-      clientActionId: normalized.clientRematchId || null,
-      authoritative: true,
-      serverValidated: true,
-      ts,
-    };
-    const ev = createRematchEvent('rematch.requested', {
-      actor: ctx.actor || normalized.actor,
-      side: actorSide,
-      moveIndex: record.moveIndex,
-      ply: record.ply,
-      ts,
-      data: { requesterUid: rematchRequest.requesterUid, requesterNick: rematchRequest.requesterNick },
-    });
-    return { ok: true, committed: true, controlOnly: true, game: nextGame, rematchRequest, moveIndex: nextGame.moveIndex, ply: nextGame.ply, events: ev ? [ev] : [] };
-  }
-
-  function applyRematchResponse(record, normalized, ctx) {
-    const rr = pendingRematchRequest(record);
-    if (!rr || (rr.status !== 'pending' && rr.status !== 'active')) return { ok: false, error: 'rematch/not-pending', game: record };
-    const actorSide = side(normalized.by != null ? normalized.by : ctx.side);
-    if (actorSide == null) return { ok: false, error: 'rematch/invalid-side', game: record };
-    if (rr.requesterSide != null && actorSide === side(rr.requesterSide)) return { ok: false, error: 'rematch/requester-cannot-respond', game: record };
-    const baseMoveIndex = Number(normalized.baseMoveIndex);
-    if (Number.isFinite(baseMoveIndex) && baseMoveIndex >= 0 && Number(record.moveIndex || 0) !== baseMoveIndex) {
-      return { ok: true, committed: false, reason: 'stale-base', game: record };
-    }
-    const ts = nowMs();
-    if (!normalized.accept) {
-      const nextGame = clone(record);
-      nextGame.rematchRequest = Object.assign({}, rr, {
-        status: 'rejected',
-        respondedAt: ts,
-        responderUid: cleanActor(ctx.actor || normalized.actor),
-        responderSide: actorSide,
-        responderNick: normalized.nick || '',
-      });
-      nextGame.updatedAt = ts;
-      nextGame.lastControl = {
-        kind: 'rematch-rejected',
-        by: actorSide,
-        requesterUid: rr.requesterUid || null,
-        responderUid: cleanActor(ctx.actor || normalized.actor),
-        moveIndex: record.moveIndex,
-        ply: record.ply,
-        clientActionId: normalized.clientRematchId || null,
-        authoritative: true,
-        serverValidated: true,
-        ts,
-      };
-      const ev = createRematchEvent('rematch.rejected', {
-        actor: ctx.actor || normalized.actor,
-        side: actorSide,
-        moveIndex: record.moveIndex,
-        ply: record.ply,
-        ts,
-        data: { requesterUid: rr.requesterUid || null, responderUid: cleanActor(ctx.actor || normalized.actor) },
-      });
-      return { ok: true, committed: true, controlOnly: true, game: nextGame, rematchRequest: nextGame.rematchRequest, moveIndex: nextGame.moveIndex, ply: nextGame.ply, events: ev ? [ev] : [] };
-    }
-
-    const starter = Rematch.nextStarterForGame(record, normalized.starter);
-    const initialState = Rematch.createInitialRematchState({ starter });
-    if (!initialState || !initialState.snapshot) return { ok: false, error: 'rematch/initial-state-failed', game: record };
-    const rematchSeq = Math.max(0, Number(record.rematchSeq || 0) || 0) + 1;
-    const nextGame = clone(record);
-    nextGame.status = 'active';
-    nextGame.acceptedAt = ts;
-    nextGame.startedAt = ts;
-    nextGame.endedAt = 0;
-    nextGame.endedReason = null;
-    nextGame.endedBy = null;
-    nextGame.result = null;
-    nextGame.winner = null;
-    nextGame.moveIndex = 0;
-    nextGame.ply = 0;
-    nextGame.turn = side(initialState.snapshot.player, starter);
-    nextGame.state = initialState;
-    nextGame.states = { 0: initialState };
-    nextGame.lastMove = null;
-    nextGame.lastControl = {
-      kind: 'rematch-started',
-      by: actorSide,
-      requesterUid: rr.requesterUid || null,
-      responderUid: cleanActor(ctx.actor || normalized.actor),
-      moveIndex: 0,
-      ply: 0,
-      clientActionId: normalized.clientRematchId || null,
-      authoritative: true,
-      serverValidated: true,
-      ts,
-    };
-    nextGame.soufla = null;
-    nextGame.undoRequest = null;
-    nextGame.rematchRequest = null;
-    nextGame.rematchSeq = rematchSeq;
-    nextGame.updatedAt = ts;
-    const ev = createRematchEvent('rematch.started', {
-      actor: ctx.actor || normalized.actor,
-      side: actorSide,
-      moveIndex: 0,
-      ply: 0,
-      ts,
-      data: { requesterUid: rr.requesterUid || null, responderUid: cleanActor(ctx.actor || normalized.actor), rematchSeq, starter: nextGame.turn },
-    });
-    return { ok: true, committed: true, game: nextGame, moveIndex: 0, ply: 0, rematchSeq, state: initialState, events: ev ? [ev] : [] };
-  }
-
-  function applyRematchAction(game, payload, context) {
-    const ctx = context && typeof context === 'object' ? context : {};
-    const record = normalizeGame(game);
-    if (!record || !record.state || !record.state.snapshot) return { ok: false, error: 'authority/invalid-game-record' };
-    const normalized = normalizeRematchPayload(payload);
-    if (!normalized || !normalized.kind) return { ok: false, error: 'rematch/invalid-action', game: record };
-    if (normalized.kind === 'rematch-request') return applyRematchRequest(record, normalized, ctx);
-    if (normalized.kind === 'rematch-respond') return applyRematchResponse(record, normalized, ctx);
-    return { ok: false, error: 'rematch/unsupported-action', game: record };
-  }
-
   function normalizeMatchEndPayload(payload) {
     return MatchEnd.normalizeMatchEndPayload(payload);
   }
@@ -779,7 +611,6 @@
     nextGame.result = result;
     nextGame.undoRequest = null;
     nextGame.soufla = null;
-    nextGame.rematchRequest = null;
     nextGame.updatedAt = ts;
     nextGame.moveIndex = mi;
     nextGame.lastMove = {
@@ -940,6 +771,11 @@
       if (result.terminal) {
         nextGame.status = 'ended';
         nextGame.winner = result.winner || null;
+        nextGame.endedAt = Number(result.endedAt || ts) || ts;
+        nextGame.endedReason = result.reason || (nextGame.winner == null ? 'draw' : 'natural_win');
+        nextGame.endedBy = null;
+        nextGame.undoRequest = null;
+        nextGame.soufla = null;
       }
     }
 
@@ -990,7 +826,5 @@
     applyControlAction,
     normalizeMatchEndPayload,
     applyMatchEndAction,
-    normalizeRematchPayload,
-    applyRematchAction,
   });
 })(typeof globalThis !== 'undefined' ? globalThis : this);

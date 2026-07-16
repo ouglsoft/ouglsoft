@@ -1645,6 +1645,50 @@ const UI = {
     set("#botCaptured", 40 - bot);
     set("#botCapturedM", 40 - bot);
   },
+  showOnlineGameOverModal(options) {
+    const opts = options && typeof options === "object" ? options : {};
+    const title = opts.title || t("online.pvpEndTitle") || t("modals.gameOver.drawTitle");
+    const bodyTxt = String(opts.message || t("online.ended.generic") || t("modals.gameOver.drawBody") || "").trim();
+    let leaving = false;
+    const leave = () => {
+      if (leaving) return;
+      leaving = true;
+      try {
+        if (window.Online && typeof window.Online.exitToLobby === "function") {
+          window.Online.exitToLobby();
+          return;
+        }
+      } catch (_) {}
+      try {
+        const href = (location.pathname || "").includes("/pages/") ? "loby.html" : "pages/loby.html";
+        if (typeof location.replace === "function") location.replace(href);
+        else location.href = href;
+      } catch (_) {}
+    };
+
+    return Modal.open({
+      title,
+      text: bodyTxt,
+      allowSpectator: true,
+      hideClose: true,
+      allowEsc: false,
+      buttons: [
+        {
+          label: t("actions.ok") || "موافق",
+          className: "ok",
+          onClick: () => {
+            try { Modal.close("action"); } catch (_) {}
+          },
+        },
+      ],
+      priority: 100,
+      blocking: true,
+      onClose: (reason) => {
+        if (reason !== "replaced" && reason !== "state-change") leave();
+      },
+    });
+  },
+
   showGameOverModal(winner) {
     const title = t("modals.gameOver.drawTitle");
     const resultModel = window.DhametMatchCoordinator && typeof DhametMatchCoordinator.createResultModel === "function"
@@ -1703,18 +1747,6 @@ const UI = {
           label: t("modals.newGame.title") || t("buttons.newGame"),
           className: "ok",
           onClick: () => {
-            try {
-              if (window.Online && window.Online.isActive) {
-                if (typeof window.Online.requestRematch === "function") {
-                  goHome = false;
-                  window.Online.requestRematch();
-                  Modal.close();
-                  return;
-                }
-                return;
-              }
-            } catch (_) {}
-
             goHome = false;
             try {
               SessionGame.clear();

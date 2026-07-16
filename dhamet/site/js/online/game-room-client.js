@@ -3,7 +3,7 @@
  *
  * Browser-only online transport for match moves. It deliberately knows nothing
  * about board rendering or local game rules. It accepts already-built
- * move intents, Soufla decisions, official control/rematch actions, lobby
+ * move intents, Soufla decisions, official control actions, lobby
  * view reads, spectator, chat, and RTC signaling actions from the mode controller, then sends only minimal official
  * intent payloads to Cloudflare GameRoom.
  */
@@ -159,30 +159,6 @@
     return fetchJson('/dhamet/api/game/end', createMatchEndPayload(payload));
   }
 
-
-  function createRematchPayload(payload) {
-    var src = payload && typeof payload === 'object' ? payload : {};
-    var normalized = null;
-    if (window.DhametRematch && typeof window.DhametRematch.normalizeRematchPayload === 'function') {
-      normalized = window.DhametRematch.normalizeRematchPayload(src);
-    }
-    normalized = normalized || src;
-    return {
-      gameId: normalized.gameId || src.gameId,
-      clientRematchId: normalized.clientRematchId || src.clientRematchId || src.clientActionId || src.clientRequestId,
-      baseMoveIndex: normalized.baseMoveIndex != null ? normalized.baseMoveIndex : src.baseMoveIndex,
-      kind: normalized.kind || src.kind || src.type,
-      by: normalized.by != null ? normalized.by : src.by,
-      nick: normalized.nick || src.nick || src.byNick,
-      accept: normalized.accept != null ? normalized.accept : src.accept,
-      starter: normalized.starter != null ? normalized.starter : src.starter,
-      reason: normalized.reason || src.reason,
-    };
-  }
-
-  function commitRematch(payload) {
-    return fetchJson('/dhamet/api/game/rematch', createRematchPayload(payload));
-  }
 
   function createLobbyInvitePayload(payload) {
     var src = payload && typeof payload === 'object' ? payload : {};
@@ -595,8 +571,6 @@
     commitControlAction: commitControlAction,
     createMatchEndPayload: createMatchEndPayload,
     commitMatchEnd: commitMatchEnd,
-    createRematchPayload: createRematchPayload,
-    commitRematch: commitRematch,
     createLobbyInvitePayload: createLobbyInvitePayload,
     createLobbyInvite: createLobbyInvite,
     createLobbyInviteResponsePayload: createLobbyInviteResponsePayload,

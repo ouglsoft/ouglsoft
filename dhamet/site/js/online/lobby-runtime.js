@@ -1641,7 +1641,6 @@
           if (has("gameRef")) this.gameRef = next.gameRef || null;
           if (has("postMatch")) this._inPostMatch = !!next.postMatch;
           if (has("postMatchShown")) this._postMatchShown = !!next.postMatchShown;
-          if (has("lastRematchSeq")) this._lastRematchSeq = next.lastRematchSeq == null ? null : Number(next.lastRematchSeq);
           if (has("presenceStatus")) this._presenceStatus = next.presenceStatus || "available";
           if (has("presenceRole")) this._presenceRole = next.presenceRole || null;
           if (has("presenceRoomId")) this._presenceRoomId = next.presenceRoomId ? String(next.presenceRoomId) : null;
@@ -3249,106 +3248,6 @@
                     return;
                   }
                 } catch (e) {}
-              }
-            } catch (e) {}
-
-            try {
-              const t = inv && (inv.type || inv.kind);
-
-              if (t === "rematch_request") {
-                if (!this.isActive || !this.gameId || inv.gameId !== this.gameId || this.isSpectator) {
-                  try { await this._invalidateInviteLocally(inv, snap.ref); } catch (e) {}
-                  return;
-                }
-
-                const fromName = displayPlayerName(inv.fromUid, inv.fromNick);
-                const title = window.I18N.translateArgs("online.rematch.title");
-                const body = window.I18N.translateArgs("online.rematch.body", { fromName: escapeHtml(fromName) });
-
-                const canModal =
-                  typeof Modal !== "undefined" && Modal && typeof Modal.open === "function";
-                const plainText = (html) => {
-                  try {
-                    return String(html || "")
-                      .replace(/<[^>]*>/g, " ")
-                      .replace(/\s+/g, " ")
-                      .trim();
-                  } catch (e) {
-                    return String(html || "");
-                  }
-                };
-
-                if (!canModal) {
-                  const ok = window.confirm(String(title || "") + "\n\n" + plainText(body));
-                  if (ok) {
-                    try {
-                      await this._acceptRematchInvite(inv, null);
-                    } catch (e) {}
-                  } else {
-                    try {
-                      await this._rejectRematchInvite(inv, null);
-                    } catch (e) {}
-                  }
-                  return;
-                }
-
-                let rematchModalSettled = false;
-                Modal.open({
-                  title,
-                  body: `<div>${body}</div>`,
-                  priority: 75,
-                  blocking: true,
-                  buttons: [
-                    {
-                      label: window.I18N.translateArgs("actions.accept"),
-                      className: "ok",
-                      onClick: async () => {
-                        rematchModalSettled = true;
-                        Modal.close("action");
-                        try {
-                          await this._acceptRematchInvite(inv, snap.ref);
-                        } catch (e) {}
-                      },
-                    },
-                    {
-                      label: window.I18N.translateArgs("actions.reject"),
-                      className: "ghost",
-                      onClick: async () => {
-                        rematchModalSettled = true;
-                        Modal.close("action");
-                        try {
-                          await this._rejectRematchInvite(inv, snap.ref);
-                        } catch (e) {}
-                      },
-                    },
-                  ],
-
-                  onClose: async (reason) => {
-                    if (rematchModalSettled || reason === "replaced" || reason === "state-change") return;
-                    try { await this._rejectRematchInvite(inv, snap.ref); } catch (e) {}
-                  },
-                });
-                return;
-              }
-
-              if (t === "rematch_accept") {
-                showOnlineNotice(window.I18N.translateArgs("online.rematch.accepted"));
-                return;
-              }
-
-              if (t === "rematch_reject") {
-                showOnlineNotice(window.I18N.translateArgs("online.rematch.rejected"));
-                try {
-                  const gid = inv && inv.gameId;
-                  if (gid && this.isActive && this.gameId && gid === this.gameId) {
-                    try {
-                    } catch (e) {}
-                    try {
-                      await this.exitToMode();
-                    } catch (e) {}
-                  }
-                } catch (e) {}
-                return;
               }
             } catch (e) {}
 

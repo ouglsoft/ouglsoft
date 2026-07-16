@@ -173,23 +173,21 @@ export function createGameRouteHandlers(deps) {
     const forwarded = await forwardGameData(request, env, internalPath, body);
     if (forwarded.response) return forwarded.response;
     const data = forwarded.data || {};
-    if (forwarded.res && forwarded.res.ok && data && data.ok !== false && data.committed !== false) {
-      const game = data && data.game && typeof data.game === 'object' ? data.game : null;
-      if (game && String(game.status || '') === 'ended') {
-        const officialStats = await ensureOfficialPvpResult(env, forwarded.gameId, triggerKind);
-        if (officialStats) data.officialStats = officialStats;
-      }
-
+    const game = data && data.game && typeof data.game === 'object' ? data.game : null;
+    const terminal = !!(game && String(game.status || '') === 'ended');
+    if (options && options.removeRoomOnEnd && forwarded.res && forwarded.res.ok && data && data.ok !== false && terminal) {
+      // Close the lobby room and release both participants before any secondary
+      // result-accounting work. A slow statistics write must never keep an
+      // already-ended room visible or leave its players marked as busy.
+      data.globalMatchCleanup = await cleanupGlobalEndedMatch(env, forwarded.gameId || (body && body.gameId), game);
+      data.roomListRemoved = !!data.globalMatchCleanup;
+    }
+    if (forwarded.res && forwarded.res.ok && data && data.ok !== false && data.committed !== false && terminal) {
+      const officialStats = await ensureOfficialPvpResult(env, forwarded.gameId, triggerKind);
+      if (officialStats) data.officialStats = officialStats;
     }
     if (options && options.touchActivity && forwarded.res && forwarded.res.ok && data && data.ok !== false) {
       data.activityTouched = await touchLightweightGameActivity(env, body, data, options.touchKind || triggerKind || 'game-activity');
-    }
-    if (options && options.removeRoomOnEnd && forwarded.res && forwarded.res.ok && data && data.ok !== false) {
-      const game = data && data.game && typeof data.game === 'object' ? data.game : null;
-      if (game && String(game.status || '') === 'ended') {
-        data.globalMatchCleanup = await cleanupGlobalEndedMatch(env, forwarded.gameId || (body && body.gameId), game);
-        data.roomListRemoved = !!data.globalMatchCleanup;
-      }
     }
     return json(data, forwarded.status || 200);
   }
@@ -201,7 +199,7 @@ export function createGameRouteHandlers(deps) {
     'winner', 'result', 'status', 'turn', 'nextTurn', 'ply', 'moveIndex',
     'players', 'presence', 'roomList', 'spectators', 'chats', 'rtc',
     'profile', 'profiles', 'leaderboard', 'leaderboardV1', 'stats', 'statsMarkers', 'statsMarkersV1', 'statsMarkersV2',
-    'lastMove', 'lastControl', 'lastChatRate', 'undoRequest', 'rematchRequest',
+    'lastMove', 'lastControl', 'lastChatRate', 'undoRequest',
   ]);
 
   function findClientTruthField(value, path = '') {
@@ -256,7 +254,7 @@ export function createGameRouteHandlers(deps) {
     const body = await requestBody(request);
     const blocked = rejectClientTruth(body);
     if (blocked) return blocked;
-    return forwardGameRequestAndRecordResult(request, env, '/api/game/move', { ...body, uid: session.user.id }, 'move', { touchActivity: true, touchKind: 'move' });
+    return forwardGameRequestAndRecordResult(request, env, '/api/game/move', { ...body, uid: session.user.id }, 'move', { touchActivity: true, touchKind: 'move', removeRoomOnEnd: true });
   }
 
   async function resync(request, env, ctx) {
@@ -264,7 +262,7 @@ export function createGameRouteHandlers(deps) {
     const body = await requestBody(request);
     const blocked = rejectClientTruth(body);
     if (blocked) return blocked;
-    return forwardGameRequestAndRecordResult(request, env, '/api/game/resync', { ...body, uid: session.user.id }, 'resync', { touchActivity: true, touchKind: 'resync' });
+    return forwardGameRequestAndRecordResult(request, env, '/api/game/resync', { ...body, uid: session.user.id }, 'resync', { touchActivity: true, touchKind: 'resync', removeRoomOnEnd: true });
   }
 
   async function soufla(request, env, ctx) {
@@ -272,7 +270,7 @@ export function createGameRouteHandlers(deps) {
     const body = await requestBody(request);
     const blocked = rejectClientTruth(body);
     if (blocked) return blocked;
-    return forwardGameRequestAndRecordResult(request, env, '/api/game/soufla', { ...body, uid: session.user.id }, 'soufla', { touchActivity: true, touchKind: 'soufla' });
+    return forwardGameRequestAndRecordResult(request, env, '/api/game/soufla', { ...body, uid: session.user.id }, 'soufla', { touchActivity: true, touchKind: 'soufla', removeRoomOnEnd: true });
   }
 
   async function control(request, env, ctx) {
@@ -280,7 +278,7 @@ export function createGameRouteHandlers(deps) {
     const body = await requestBody(request);
     const blocked = rejectClientTruth(body);
     if (blocked) return blocked;
-    return forwardGameRequestAndRecordResult(request, env, '/api/game/control', { ...body, uid: session.user.id }, 'control', { touchActivity: true, touchKind: 'control' });
+    return forwardGameRequestAndRecordResult(request, env, '/api/game/control', { ...body, uid: session.user.id }, 'control', { touchActivity: true, touchKind: 'control', removeRoomOnEnd: true });
   }
 
   async function end(request, env, ctx) {
@@ -289,14 +287,6 @@ export function createGameRouteHandlers(deps) {
     const blocked = rejectClientTruth(body);
     if (blocked) return blocked;
     return forwardGameRequestAndRecordResult(request, env, '/api/game/end', { ...body, uid: session.user.id }, 'end', { removeRoomOnEnd: true });
-  }
-
-  async function rematch(request, env) {
-    const session = await requireSession(env, request);
-    const body = await requestBody(request);
-    const blocked = rejectClientTruth(body);
-    if (blocked) return blocked;
-    return forwardGameRequest(request, env, '/api/game/rematch', { ...body, uid: session.user.id }, { touchActivity: true, touchKind: 'rematch' });
   }
 
   async function chat(request, env) {
@@ -351,7 +341,6 @@ export function createGameRouteHandlers(deps) {
     soufla,
     control,
     end,
-    rematch,
     chat,
     rtc,
     live,
