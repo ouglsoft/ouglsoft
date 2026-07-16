@@ -314,8 +314,14 @@
       "soufla": {
         "force": "سوفلة: إجبار ${from} على سلسلة (${path})",
         "remove": "سوفلة: إزالة ${cell}",
+        "removePiece": "سوفلة: تمت إزالة القطعة ${piece} عند النقطة ${cell}.",
+        "forcePiece": "سوفلة: أُجبرت القطعة ${piece} على الأسر من ${from} إلى ${to} (${n}).",
         "pressed": "ضغط على زر سوفلة"
       },
+      "pieceColorWhite": "البيضاء",
+      "pieceColorBlack": "السوداء",
+      "undoBySide": "تراجع ${side} عن النقلة.",
+      "gameEnded": "انتهت المباراة.",
       "turnMoveFmt": "${side}: حركة ${from}-${to}.",
       "turnCaptureFmt": "${side}: أسر ${from}-${to} (${n})."
     },
@@ -896,8 +902,14 @@
       "soufla": {
         "force": "Soufla: forcing ${from} to follow a chain (${path})",
         "remove": "Soufla: remove ${cell}",
+        "removePiece": "Soufla: the ${piece} piece was removed at ${cell}.",
+        "forcePiece": "Soufla: the ${piece} piece was forced to capture from ${from} to ${to} (${n}).",
         "pressed": "Pressed the Soufla button"
       },
+      "pieceColorWhite": "white",
+      "pieceColorBlack": "black",
+      "undoBySide": "${side} undid the move.",
+      "gameEnded": "The match ended.",
       "turnMoveFmt": "${side}: Move ${from}-${to}.",
       "turnCaptureFmt": "${side}: Capture ${from}-${to} (${n})."
     },
@@ -1478,8 +1490,14 @@
       "soufla": {
         "force": "Soufla : forcer ${from} à suivre une chaîne (${path})",
         "remove": "Soufla : retirer ${cell}",
+        "removePiece": "Soufla : la pièce ${piece} a été retirée au point ${cell}.",
+        "forcePiece": "Soufla : la pièce ${piece} a été forcée à capturer de ${from} à ${to} (${n}).",
         "pressed": "Bouton Soufla activé"
       },
+      "pieceColorWhite": "blanche",
+      "pieceColorBlack": "noire",
+      "undoBySide": "${side} a annulé le coup.",
+      "gameEnded": "La partie est terminée.",
       "turnMoveFmt": "${side} : Déplacement ${from}-${to}.",
       "turnCaptureFmt": "${side} : Prise ${from}-${to} (${n})."
     },

@@ -45,6 +45,7 @@
     chatLastReadKey,
     decodeSharedLogText,
     defaultNick,
+    displayPlayerName,
     encodeSharedLogText,
     ensureAuthReady,
     escapeHtml,
@@ -186,10 +187,12 @@
             const want = String(uid || "").trim();
             const players = this._lastGameData && this._lastGameData.players ? this._lastGameData.players : null;
             if (want && players) {
-              const whiteUid = players.white && players.white.uid ? String(players.white.uid) : "";
-              const blackUid = players.black && players.black.uid ? String(players.black.uid) : "";
-              if (want === blackUid) return this._resolveSlotDisplayName("top", fallback);
-              if (want === whiteUid) return this._resolveSlotDisplayName("bot", fallback);
+              const white = players.white || {};
+              const black = players.black || {};
+              const whiteUid = white.uid ? String(white.uid) : "";
+              const blackUid = black.uid ? String(black.uid) : "";
+              if (want === blackUid) return displayPlayerName(black.uid, black.nickname);
+              if (want === whiteUid) return displayPlayerName(white.uid, white.nickname);
             }
           } catch (e) {}
           try {
@@ -1047,7 +1050,7 @@
             }
     
             entries.forEach(([uid, p]) => {
-              const nick = p && p.nickname ? p.nickname : uid.slice(0, 6);
+              const nick = displayPlayerName(uid, p && p.nickname);
               const st = p && p.status ? p.status : "available";
               const statusInfo = lobbyStatusInfo(p, activeRoomMapFromView(this._lastOfficialLobbyView), uid);
               const acceptsInvites = statusInfo.acceptsInvites;
@@ -1609,7 +1612,7 @@
           try { this.refreshPvpControls && this.refreshPvpControls(); } catch (e) {}
 
           const byUid = String(info.byUid || (endedBy && endedBy.uid) || "").trim();
-          let byNick = String(info.byNick || (endedBy && endedBy.nickname) || "").trim();
+          let byNick = displayPlayerName(byUid, info.byNick || (endedBy && endedBy.nickname) || "");
           if (!byNick) byNick = window.I18N.translateArgs("online.opponent", "Opponent");
           const manual = reason === "ended_by_player";
 
@@ -1694,13 +1697,13 @@
             const w = players.white || {};
             const b = players.black || {};
             if (this.myUid) {
-              if (w.uid === this.myUid) return { uid: b.uid || null, nick: b.nickname || "" };
-              if (b.uid === this.myUid) return { uid: w.uid || null, nick: w.nickname || "" };
+              if (w.uid === this.myUid) return { uid: b.uid || null, nick: displayPlayerName(b.uid, b.nickname) };
+              if (b.uid === this.myUid) return { uid: w.uid || null, nick: displayPlayerName(w.uid, w.nickname) };
             }
-            if (this.mySide === -1) return { uid: b.uid || null, nick: b.nickname || "" };
-            if (this.mySide === +1) return { uid: w.uid || null, nick: w.nickname || "" };
-            if (w.uid) return { uid: w.uid || null, nick: w.nickname || "" };
-            if (b.uid) return { uid: b.uid || null, nick: b.nickname || "" };
+            if (this.mySide === -1) return { uid: b.uid || null, nick: displayPlayerName(b.uid, b.nickname) };
+            if (this.mySide === +1) return { uid: w.uid || null, nick: displayPlayerName(w.uid, w.nickname) };
+            if (w.uid) return { uid: w.uid || null, nick: displayPlayerName(w.uid, w.nickname) };
+            if (b.uid) return { uid: b.uid || null, nick: displayPlayerName(b.uid, b.nickname) };
           } catch (e) {}
           return { uid: null, nick: "" };
         },
@@ -2973,18 +2976,10 @@
             this._chat.unread = 0;
             this._chat.isOpen = true;
     
-            const wName =
-              (this._lastGameData &&
-                this._lastGameData.players &&
-                this._lastGameData.players.white &&
-                this._lastGameData.players.white.nickname) ||
-              "";
-            const bName =
-              (this._lastGameData &&
-                this._lastGameData.players &&
-                this._lastGameData.players.black &&
-                this._lastGameData.players.black.nickname) ||
-              "";
+            const whitePlayer = this._lastGameData && this._lastGameData.players && this._lastGameData.players.white;
+            const blackPlayer = this._lastGameData && this._lastGameData.players && this._lastGameData.players.black;
+            const wName = whitePlayer ? displayPlayerName(whitePlayer.uid, whitePlayer.nickname) : "";
+            const bName = blackPlayer ? displayPlayerName(blackPlayer.uid, blackPlayer.nickname) : "";
             const oppName = this._getOpponentInfoFromData(this._lastGameData).nick || window.I18N.translateArgs("online.opponent");
             const roomLabel = wName && bName ? wName + " × " + bName : oppName;
             const title = `${window.I18N.translateArgs("pvp.chat.title")} — ${roomLabel}`;
@@ -4172,7 +4167,7 @@
           try {
             this._oppOnline = online;
             this._oppLastSeenAt = lastSeen || this._oppLastSeenAt || 0;
-            if (pres && pres.nickname) this._oppName = String(pres.nickname);
+            if (pres) this._oppName = displayPlayerName(this._getGameSlotUid(this.mySide === -1 ? "top" : "bot"), pres.nickname);
             try {
               if (online) {
                 this._oppOfflineSince = null;
@@ -4192,143 +4187,209 @@
           } catch (e) {}
         },
 
+    _onlineDisplayNameForSide: function (side, data) {
+          try {
+            const g = data || this._lastGameData || {};
+            const players = g.players || {};
+            const row = Number(side) === -1 ? players.white : Number(side) === 1 ? players.black : null;
+            if (row) return displayPlayerName(row.uid, row.nickname);
+          } catch (_) {}
+          return window.I18N.translateArgs("players.player");
+        },
+
+    _onlinePieceColorLabel: function (pieceValue) {
+          const n = Number(pieceValue || 0);
+          if (n < 0) return window.I18N.translateArgs("log.pieceColorWhite");
+          if (n > 0) return window.I18N.translateArgs("log.pieceColorBlack");
+          return "";
+        },
+
+    _souflaPressDisplayId: function (actorUid, baseMoveIndex, offenderIdx) {
+          const raw = String(actorUid || "player");
+          let hash = 2166136261;
+          for (let i = 0; i < raw.length; i += 1) {
+            hash ^= raw.charCodeAt(i);
+            hash = Math.imul(hash, 16777619);
+          }
+          const actorToken = String(1000 + ((hash >>> 0) % 9000));
+          return ["soufla-press", String(this.gameId || ""), actorToken, Number(baseMoveIndex || 0), Number(offenderIdx == null ? -1 : offenderIdx)].join(":");
+        },
+
+    recordSouflaButtonPress: function (pending) {
+          try {
+            if (!this.isActive || this.isSpectator || !pending) return false;
+            const offenders = Array.isArray(pending.offenders) ? pending.offenders : [];
+            const offenderIdx = offenders.length ? Number(offenders[0]) : -1;
+            const displayId = this._souflaPressDisplayId(this.myUid, this.moveIndex, offenderIdx);
+            const list = Array.isArray(this._localDisplayLogEvents) ? this._localDisplayLogEvents : (this._localDisplayLogEvents = []);
+            if (!list.some((ev) => ev && ev.displayId === displayId)) {
+              list.push({
+                kind: "actor_i18n",
+                actor: displayPlayerName(this.myUid, this.myNick),
+                key: "log.soufla.pressed",
+                vars: {},
+                ts: nowTs(),
+                displayId,
+              });
+              if (list.length > 12) list.splice(0, list.length - 12);
+            }
+            this._lastRenderedLogKey = "";
+            this._renderSharedLog(this._lastGameData && this._lastGameData.log || []);
+            return true;
+          } catch (_) { return false; }
+        },
+
     _renderSharedLog: function (logArr) {
           try {
             const arr = Array.isArray(logArr) ? logArr : [];
+            const gameKey = String(this.gameId || "");
+            if (this._displayLogGameId !== gameKey) {
+              this._displayLogGameId = gameKey;
+              this._localDisplayLogEvents = [];
+              this._lastRenderedLogKey = "";
+            }
+            const localEvents = Array.isArray(this._localDisplayLogEvents) ? this._localDisplayLogEvents : [];
             const last = arr.length ? arr[arr.length - 1] : null;
-            const key = `${arr.length}:${last && last.ts ? last.ts : ""}`;
+            const localLast = localEvents.length ? localEvents[localEvents.length - 1] : null;
+            const key = `${arr.length}:${last && (last.id || last.ts) ? (last.id || last.ts) : ""}:${localEvents.length}:${localLast && localLast.displayId || ""}`;
             if (key === this._lastRenderedLogKey) return;
             this._lastRenderedLogKey = key;
-    
+
+            const gameData = this._lastGameData || {};
+            const playerNameFor = (uid, side) => {
+              try {
+                const players = gameData.players || {};
+                const want = String(uid || "");
+                const white = players.white || {};
+                const black = players.black || {};
+                if (want && want === String(white.uid || "")) return displayPlayerName(white.uid, white.nickname);
+                if (want && want === String(black.uid || "")) return displayPlayerName(black.uid, black.nickname);
+              } catch (_) {}
+              return this._onlineDisplayNameForSide(side, gameData);
+            };
+            const pieceValueAt = (event, idx) => {
+              try {
+                const board = event && event.data && event.data.stateBefore && event.data.stateBefore.board;
+                return Array.isArray(board) ? Number(board[Number(idx)] || 0) : 0;
+              } catch (_) { return 0; }
+            };
+
+            const convertOfficialEvent = (it) => {
+              if (!it || typeof it !== "object") return [];
+              const type = String(it.type || it.kind || "");
+              const data = it.data && typeof it.data === "object" ? it.data : {};
+              const ts = Number(it.ts || 0) || nowTs();
+              const actor = playerNameFor(it.actor, it.side);
+
+              if (type === "invite_sent") {
+                const players = gameData.players || {};
+                return [{ kind: "i18n", key: "online.log.inviteSent", vars: {
+                  from: displayPlayerName(players.white && players.white.uid, players.white && players.white.nickname),
+                  to: displayPlayerName(players.black && players.black.uid, players.black && players.black.nickname),
+                }, ts, displayId: it.id || "" }];
+              }
+              if (type === "invite_accepted") {
+                const black = gameData.players && gameData.players.black;
+                return [{ kind: "i18n", key: "online.log.inviteAccepted", vars: { player: displayPlayerName(black && black.uid, black && black.nickname) }, ts, displayId: it.id || "" }];
+              }
+              if (type === "invite_rejected") {
+                return [{ kind: "i18n", key: "online.log.inviteRejected", vars: { player: actor }, ts, displayId: it.id || "" }];
+              }
+              if (type === "soufla.detected") return [];
+              if (type === "game.created") return [];
+              if (type === "turn.applied") {
+                const move = data.move && typeof data.move === "object" ? data.move : {};
+                const from = data.from != null ? data.from : move.from;
+                const to = data.to != null ? data.to : move.to;
+                if (from == null || to == null) return [];
+                return [{ kind: "turn", actor, side: it.side, from, to, captures: Number(data.captures || 0) || 0, ts, displayId: it.id || "" }];
+              }
+              if (type === "undo.applied") {
+                return [{ kind: "undo", side: it.side, actor, ts, displayId: it.id || "" }];
+              }
+              if (type === "soufla.resolved") {
+                const decision = data.result && data.result.decision ? data.result.decision : {};
+                const offenderIdx = data.offenderIdx != null ? Number(data.offenderIdx) : Number(decision.offenderIdx);
+                const baseMoveIndex = Math.max(0, Number(it.moveIndex || 0) - 1);
+                const pressed = {
+                  kind: "actor_i18n", actor, key: "log.soufla.pressed", vars: {}, ts: Math.max(0, ts - 1),
+                  displayId: this._souflaPressDisplayId(it.actor, baseMoveIndex, offenderIdx),
+                };
+                const piece = this._onlinePieceColorLabel(pieceValueAt(it, offenderIdx));
+                if (String(data.penalty || decision.kind || "") === "remove") {
+                  return [pressed, { kind: "soufla_remove", idx: offenderIdx, piece, ts, displayId: it.id || "" }];
+                }
+                const path = Array.isArray(decision.path) ? decision.path : [];
+                const to = path.length ? path[path.length - 1] : offenderIdx;
+                const captures = Array.isArray(decision.jumps) ? decision.jumps.length : Number(decision.captures || 0) || 0;
+                return [pressed, { kind: "soufla_force", from: offenderIdx, to, captures, piece, ts, displayId: it.id || "" }];
+              }
+              if (type === "turn" || type === "move") {
+                const from = it.from != null ? it.from : it.f;
+                const to = it.to != null ? it.to : it.t;
+                const side = it.side != null ? it.side : (it.by != null ? it.by : it.s);
+                if (from != null && to != null) return [{ kind: "turn", actor: playerNameFor(it.actor, side), side, from, to, captures: Number(it.captures != null ? it.captures : it.c || 0) || 0, ts, displayId: it.id || "" }];
+              }
+              if (type === "undo") return [{ kind: "undo", side: it.side != null ? it.side : it.by, actor, ts, displayId: it.id || "" }];
+              if (type === "soufla_remove" && it.idx != null) return [{ kind: "soufla_remove", idx: it.idx, piece: "", ts, displayId: it.id || "" }];
+              if (type === "soufla_force") return [{ kind: "soufla_force", from: it.from, to: Array.isArray(it.path) && it.path.length ? it.path[it.path.length - 1] : it.to, captures: Number(it.captures || 0) || 0, piece: "", ts, displayId: it.id || "" }];
+              if (type === "actor_i18n" && it.key) return [{ kind: "actor_i18n", actor, key: it.key, vars: it.vars || {}, ts, displayId: it.id || "" }];
+              if (type === "i18n" && it.key) return [{ kind: "i18n", key: it.key, vars: it.vars || {}, ts, displayId: it.id || "" }];
+              if (type === "game.ended") {
+                return [{ kind: "i18n", key: "log.gameEnded", vars: {}, ts, displayId: it.id || "" }];
+              }
+
+              // Legacy display records are decoded, but opaque identifiers and
+              // unknown structured objects are never exposed to the player.
+              if (typeof it.text === "string") {
+                const dec = decodeSharedLogText(it.text);
+                if (dec) {
+                  dec.ts = ts;
+                  dec.displayId = it.id || "";
+                  if (dec.kind === "actor_i18n") dec.actor = playerNameFor(it.actor, it.side);
+                  if (dec.kind === "turn") dec.actor = playerNameFor(it.actor, dec.side);
+                  return [dec];
+                }
+              }
+              return [];
+            };
+
+            const officialEvents = arr.slice(-80).flatMap(convertOfficialEvent);
+            const merged = officialEvents.concat(localEvents);
+            const byId = new Map();
+            const withoutId = [];
+            for (const ev of merged) {
+              if (!ev) continue;
+              const id = String(ev.displayId || "");
+              if (id) byId.set(id, ev);
+              else withoutId.push(ev);
+            }
+            const evs = withoutId.concat(Array.from(byId.values())).sort((a, b) => Number(a.ts || 0) - Number(b.ts || 0)).slice(-100);
+
             if (window.LogMgr && typeof window.LogMgr.setEvents === "function") {
-              const slice = arr.slice(-80);
-    
-              const inferTextLogEvent = (o) => {
-                try {
-                  if (!o || typeof o !== "object") return null;
-                  const pick = (a, b) => (a !== undefined && a !== null ? a : b);
-                  const k = String(o.kind || o.type || "");
-    
-                  const side = pick(o.side, pick(o.by, o.s));
-                  const from = pick(o.from, o.f);
-                  const to = pick(o.to, o.t);
-                  const captures = pick(o.captures, o.c);
-    
-                  if (
-                    k === "turn" ||
-                    (from != null && to != null && side != null && (k === "" || k === "move"))
-                  ) {
-                    return { kind: "turn", side: side, from: from, to: to, captures: captures | 0 };
-                  }
-                  if (k === "undo" && (from != null || to != null)) {
-                    return { kind: "undo", from: from, to: to };
-                  }
-                  if (k === "promote" && o.idx != null) {
-                    return { kind: "promote", side: side, idx: o.idx };
-                  }
-                  if (k === "soufla_remove" && o.idx != null) {
-                    return { kind: "soufla_remove", idx: o.idx };
-                  }
-                  if (k === "soufla_force" && from != null) {
-                    return { kind: "soufla_force", from: from, path: o.path };
-                  }
-                  if (k === "actor_i18n" || o.actor) {
-                    return { kind: "actor_i18n", actor: o.actor, key: o.key, vars: o.vars };
-                  }
-                  if (k === "i18n" || o.key) {
-                    return { kind: "i18n", key: o.key, vars: o.vars };
-                  }
-                } catch (e) {}
-                return null;
-              };
-    
-              const evs = slice.map((it) => {
-                if (!it || typeof it !== "object") {
-                  return { kind: "raw", text: String(it ?? ""), ts: nowTs() };
-                }
-    
-                if (it.kind) {
-                  if (it.ts == null) it.ts = nowTs();
-                  return it;
-                }
-    
-                if (it.key) {
-                  if (it.actor)
-                    return {
-                      kind: "actor_i18n",
-                      actor: it.actor,
-                      key: it.key,
-                      vars: it.vars,
-                      ts: it.ts,
-                    };
-                  return { kind: "i18n", key: it.key, vars: it.vars, ts: it.ts };
-                }
-    
-                if (typeof it.text === "string") {
-                  const dec = decodeSharedLogText(it.text);
-                  if (dec) {
-                    dec.ts = it.ts;
-                    return dec;
-                  }
-    
-                  const decodedLogEvent = inferTextLogEvent(it);
-                  if (decodedLogEvent) {
-                    decodedLogEvent.ts = it.ts;
-                    return decodedLogEvent;
-                  }
-    
-                  return { kind: "raw", text: it.text, ts: it.ts };
-                }
-    
-                const decodedLogEvent = inferTextLogEvent(it);
-                if (decodedLogEvent) {
-                  decodedLogEvent.ts = it.ts;
-                  return decodedLogEvent;
-                }
-    
-                return { kind: "raw", text: "", ts: it.ts };
-              });
-    
               window.LogMgr.setEvents(evs);
               return;
             }
-    
+
             const logEl = document.getElementById("log");
             if (!logEl) return;
-    
-            const slice = arr.slice(-80).reverse();
-    
             logEl.innerHTML = "";
-            slice.forEach((it) => {
+            evs.slice().reverse().forEach((ev) => {
               const row = document.createElement("div");
               row.className = "log-item";
-    
               const timeEl = document.createElement("span");
               timeEl.className = "time";
-              const ts = it && typeof it.ts === "number" ? it.ts : null;
-              timeEl.textContent =
-                ts != null ? new Date(ts).toLocaleTimeString("en-GB", { hour12: false }) : "";
-    
+              timeEl.textContent = ev.ts ? new Date(ev.ts).toLocaleTimeString("en-GB", { hour12: false }) : "";
               const msgEl = document.createElement("span");
               msgEl.className = "msg";
-              const rawText = it && typeof it.text === "string" ? it.text : "";
-              const dec = decodeSharedLogText(rawText);
-              if (dec && dec.kind === "i18n") {
-                msgEl.textContent = window.I18N.translateArgs(
-                  dec.key,
-                  dec.vars && typeof dec.vars === "object" ? dec.vars : {},
-                );
-              } else if (dec && dec.kind === "actor_i18n") {
-                const msg = window.I18N.translateArgs(dec.key, dec.vars && typeof dec.vars === "object" ? dec.vars : {});
-                msgEl.textContent = (dec.actor ? String(dec.actor) : window.I18N.translateArgs("players.player")) + ": " + msg;
-              } else {
-                msgEl.textContent = rawText ? String(rawText) : "";
+              if (ev.kind === "actor_i18n") {
+                msgEl.textContent = `${ev.actor}: ${window.I18N.translateArgs(ev.key, ev.vars || {})}`;
+              } else if (ev.kind === "i18n") {
+                msgEl.textContent = window.I18N.translateArgs(ev.key, ev.vars || {});
               }
-    
               row.appendChild(timeEl);
               row.appendChild(document.createTextNode(" "));
               row.appendChild(msgEl);
-    
               logEl.appendChild(row);
             });
           } catch (e) {}
@@ -5157,7 +5218,7 @@
                     if (!isSelf) continue;
                   }
     
-                  const nick = (p.nickname || "").trim() || defaultNick(uid);
+                  const nick = displayPlayerName(uid, p.nickname);
                   const statusInfo = lobbyStatusInfo(p, this._lobbyActivePlayerRooms || {}, uid);
                   const canInvite = !isSelf && statusInfo.canInvite;
                   rows.push({
@@ -5269,8 +5330,8 @@
                   activePlayerRooms[String(buid)] = String(gid);
     
                   const name = (g.roomName || g.name || "").trim() || window.I18N.translateArgs("lobby.roomDefault");
-                  const w = g.players && g.players.white ? g.players.white.nickname || "" : "";
-                  const b = g.players && g.players.black ? g.players.black.nickname || "" : "";
+                  const w = g.players && g.players.white ? displayPlayerName(g.players.white.uid, g.players.white.nickname) : "";
+                  const b = g.players && g.players.black ? displayPlayerName(g.players.black.uid, g.players.black.nickname) : "";
                   const spectatorCount = Math.max(0, Math.min(3, Number(g.spectatorCount || 0) || 0));
                   const spectatorCountUpdatedAt = Number(g.spectatorCountUpdatedAt || 0) || 0;
                   const spectatorCountFresh = isPresenceFresh(spectatorCountUpdatedAt, SPECTATOR_COUNT_STALE_MS);
@@ -5975,8 +6036,8 @@
           try { this._handleOfficialRematchRequest(data); } catch (e) {}
 
           try {
-            const w = data.players && data.players.white ? data.players.white.nickname || "" : "";
-            const b = data.players && data.players.black ? data.players.black.nickname || "" : "";
+            const w = data.players && data.players.white ? displayPlayerName(data.players.white.uid, data.players.white.nickname) : "";
+            const b = data.players && data.players.black ? displayPlayerName(data.players.black.uid, data.players.black.nickname) : "";
             Game.names.bot = w || "";
             Game.names.top = b || "";
             if (window.ZGamePlayers && typeof window.ZGamePlayers.refresh === "function") window.ZGamePlayers.refresh();

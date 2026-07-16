@@ -2428,6 +2428,11 @@ async function souflaPressed() {
   }
 
   if (Game.availableSouflaForHuman) {
+    try {
+      if (window.Online && Online.isActive && typeof Online.recordSouflaButtonPress === "function") {
+        Online.recordSouflaButtonPress(Game.availableSouflaForHuman);
+      }
+    } catch (_) {}
     Game.awaitingPenalty = true;
     Game.souflaPending = Game.availableSouflaForHuman;
     UI.showSouflaModal(Game.souflaPending);

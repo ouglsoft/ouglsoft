@@ -2402,16 +2402,22 @@ if (typeof window !== "undefined") window.AI = AI;
 
           if (ev.kind === "soufla_remove") {
             const cell = _isoLtr(_rc(ev.idx));
+            if (ev.piece) return _t("log.soufla.removePiece", { piece: ev.piece, cell });
             return _t("log.soufla.remove", { cell });
           }
 
           if (ev.kind === "soufla_force") {
             const from = _isoLtr(_rc(ev.from));
+            if (ev.to != null) {
+              const to = _isoLtr(_rc(ev.to));
+              return _t("log.soufla.forcePiece", { piece: ev.piece || "", from, to, n: ev.captures | 0 });
+            }
             const path = Array.isArray(ev.path) ? ev.path.map((v) => _isoLtr(_rc(v))).join("→") : _isoLtr(String(ev.path || ""));
             return _t("log.soufla.force", { from, path });
           }
 
           if (ev.kind === "undo") {
+            if (ev.side != null) return _t("log.undoBySide", { side: _plainSide(ev.side) });
             const from = ev.from != null ? _isoLtr(_rc(ev.from)) : "";
             const to = ev.to != null ? _isoLtr(_rc(ev.to)) : "";
             return _t("undo.applied", { movePart: (from && to) ? _t("undo.appliedMovePart", { from, to }) : "" });

@@ -730,6 +730,14 @@
     return `${base} ${nickSuffixFromUid(uid)}`;
   }
 
+  // Online display names are intentionally derived locally from the stable UID.
+  // The server nickname remains untouched; this is presentation-only and creates
+  // no read, write, pulse, or additional network request.
+  function displayPlayerName(uid, _nickname) {
+    const id = String(uid || "").trim();
+    return defaultNick(id || String(_nickname || "player"));
+  }
+
   const NICK_KEY = "zamat.nick";
   const NICK_EXPLICIT_KEY = "zamat.nickExplicit";
 
@@ -1551,6 +1559,10 @@
     _oppName: "",
 
     _lastRenderedLogKey: "",
+
+    _localDisplayLogEvents: [],
+
+    _displayLogGameId: "",
 
     _wasConnected: true,
 
@@ -3170,7 +3182,7 @@
                   return;
                 }
 
-                const fromName = inv.fromNick || window.I18N.translateArgs("players.player");
+                const fromName = displayPlayerName(inv.fromUid, inv.fromNick);
                 const title = window.I18N.translateArgs("online.rematch.title");
                 const body = window.I18N.translateArgs("online.rematch.body", { fromName: escapeHtml(fromName) });
 
@@ -3261,7 +3273,7 @@
               }
             } catch (e) {}
 
-            const name = inv.fromNick || window.I18N.translateArgs("players.player");
+            const name = displayPlayerName(inv.fromUid, inv.fromNick);
             const title = window.I18N.translateArgs("online.newInviteTitle");
             const roomName = (inv.roomName || "").trim();
             const body = roomName
@@ -3705,6 +3717,7 @@
     lsSet: lsSet,
     chatLastReadKey: chatLastReadKey,
     defaultNick: defaultNick,
+    displayPlayerName: displayPlayerName,
     readMigrationVersion: readMigrationVersion,
     writeMigrationVersion: writeMigrationVersion,
     runMigrationsOnline: runMigrationsOnline,
