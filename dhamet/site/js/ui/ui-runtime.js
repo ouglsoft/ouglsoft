@@ -1690,6 +1690,8 @@ const UI = {
   },
 
   showGameOverModal(winner) {
+    if (!isLocalPvCActionAllowed()) return false;
+
     const title = t("modals.gameOver.drawTitle");
     const resultModel = window.DhametMatchCoordinator && typeof DhametMatchCoordinator.createResultModel === "function"
       ? DhametMatchCoordinator.createResultModel({
@@ -1712,17 +1714,6 @@ const UI = {
     let goHome = true;
 
     const goMode = () => {
-      try {
-        if (
-          window.Online &&
-          window.Online.isActive &&
-          typeof window.Online.exitToMode === "function"
-        ) {
-          window.Online.exitToMode();
-          return;
-        }
-      } catch (_) {}
-
       try {
         SessionGame.clear();
       } catch (_) {}
