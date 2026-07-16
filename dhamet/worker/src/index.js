@@ -1169,7 +1169,7 @@ export default {
       if (status >= 500) {
         let path = '';
         try { path = new URL(request.url).pathname; } catch (_) {}
-        console.error(JSON.stringify({ level: 'error', area: 'worker', event: 'request-failed', path, method: request.method, code, message: String(err && err.message || err) }));
+        console.error(JSON.stringify({ level: 'error', area: 'worker', event: 'request-failed', path, method: request.method, code, stage: err && err.stage ? String(err.stage) : undefined, message: String(err && err.message || err) }));
       }
       return json({ ok: false, error: code }, status);
     }

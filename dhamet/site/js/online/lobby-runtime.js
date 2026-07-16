@@ -2498,7 +2498,7 @@
             if (result && result.notifications) {
               try { await this._applyPulseNotifications(result.notifications); } catch (e) {}
             }
-            if (result && result.lobbyView) {
+            if (result && result.lobbyView && !result.lobbyView.error) {
               try { this._applyOfficialLobbyView(result.lobbyView); } catch (e) {}
               try { await this._applyOfficialOutgoingInviteUpdates(result.lobbyView.outgoingGames); } catch (e) {}
             }
@@ -2718,28 +2718,32 @@
           }
         },
 
-    _markPlayerBusyWithRoom: async function (gameId, ctx) {
+    _markPlayerBusyWithRoom: async function (gameId, ctx, options) {
           const gid = String(gameId || "").trim();
           if (!gid || !this.myUid) return false;
+          const cfg = options && typeof options === "object" ? options : {};
           this._applySessionState({
             presenceStatus: "inPvP",
             presenceRole: "player",
             presenceRoomId: gid,
           });
-          try { await this._runUnifiedAppPulse(true, "enter-game"); } catch (e) {}
+          if (!cfg.deferPulse) {
+            try { await this._runUnifiedAppPulse(true, "enter-game"); } catch (e) {}
+          }
           return true;
         },
 
-    _markBusyIfActivePlayerRoom: async function (ctx) {
+    _markBusyIfActivePlayerRoom: async function (ctx, options) {
           const gid = this._getKnownActivePlayerRoomId ? this._getKnownActivePlayerRoomId() : "";
           if (!gid) return false;
-          return await this._markPlayerBusyWithRoom(gid, ctx || "players.activeRoom");
+          return await this._markPlayerBusyWithRoom(gid, ctx || "players.activeRoom", options);
         },
 
-    _syncLobbyAvailabilityFromActiveGame: async function () {
-          const busy = await this._markBusyIfActivePlayerRoom("players.lobbyActiveRoom");
+    _syncLobbyAvailabilityFromActiveGame: async function (options) {
+          const cfg = options && typeof options === "object" ? options : {};
+          const busy = await this._markBusyIfActivePlayerRoom("players.lobbyActiveRoom", cfg);
           if (busy) return true;
-          await this._setLobbyStatus("available");
+          await this._setLobbyStatus("available", cfg);
           return false;
         },
 
@@ -2930,13 +2934,16 @@
           } catch (e) {}
         },
 
-    initInvitesPassive: async function () {
+    initInvitesPassive: async function (options) {
           try {
+            const cfg = options && typeof options === "object" ? options : {};
+            const deferHeartbeat = !!cfg.deferHeartbeat;
+            const deferPulse = !!cfg.deferPulse;
             if (!ensureCloudflareAuth()) return;
             const authReady = await ensureAuthReady();
             if (!authReady) return;
             if (!this._presenceInited) {
-              await this.initPresence();
+              await this.initPresence({ deferHeartbeat });
             }
             const user = auth && auth.currentUser;
             if (!user) return;
@@ -2947,7 +2954,7 @@
             this._invitesPassiveOn = true;
     
             if (typeof this._listenInvites === "function") {
-              this._listenInvites();
+              this._listenInvites({ deferPulse });
             }
     
             try {
@@ -2961,9 +2968,9 @@
           } catch (e) {}
         },
 
-    _listenInvites: function () {
+    _listenInvites: function (options) {
           try {
-            this._bindInviteListener();
+            this._bindInviteListener(options);
           } catch (e) {}
         },
 
@@ -3017,6 +3024,44 @@
           return false;
         },
 
+    _isSuccessfulLobbyPulseResult: function (result) {
+          try {
+            const view = result && result.lobbyView;
+            return !!(
+              result &&
+              result !== true &&
+              result.ok !== false &&
+              !result.deferred &&
+              view &&
+              !view.error &&
+              view.players && typeof view.players === "object" &&
+              view.roomList && typeof view.roomList === "object"
+            );
+          } catch (e) {
+            return false;
+          }
+        },
+
+    _showLobbyLoadFailure: function (force) {
+          try {
+            if (typeof document === "undefined") return false;
+            const msg = window.I18N.translateArgs("lobby.loadFailed");
+            let changed = false;
+            ["playersList", "roomsList"].forEach((id) => {
+              const el = document.getElementById(id);
+              if (!el) return;
+              const isLoading = !!el.querySelector(".z-loading");
+              const alreadyFailed = !!el.querySelector("[data-lobby-load-error]");
+              if (!force && !isLoading && !alreadyFailed) return;
+              el.innerHTML = `<div class="z-empty" data-lobby-load-error="true">${msg}</div>`;
+              changed = true;
+            });
+            return changed;
+          } catch (e) {
+            return false;
+          }
+        },
+
     _handleManualLobbyRefresh: async function () {
           try {
             const now = nowTs();
@@ -3029,7 +3074,15 @@
             if (btn) btn.disabled = true;
             try {
               this._noteLobbyUserActivity && this._noteLobbyUserActivity("manual-lobby-refresh");
-              await this._runUnifiedAppPulse(true, "manual-lobby-refresh");
+              const result = await this._runUnifiedAppPulse(true, "manual-lobby-refresh");
+              const success = this._isSuccessfulLobbyPulseResult(result);
+              if (!success) {
+                const replacedLoading = this._showLobbyLoadFailure(false);
+                if (!replacedLoading) {
+                  try { showOnlineNotice(window.I18N.translateArgs("lobby.loadFailed")); } catch (e) {}
+                }
+                return false;
+              }
               return true;
             } finally {
               this._lobbyRefreshInFlight = false;
@@ -3126,10 +3179,11 @@
           } catch (e) {}
         },
 
-    _setLobbyStatus: async function (status) {
+    _setLobbyStatus: async function (status, options) {
           try {
+            const cfg = options && typeof options === "object" ? options : {};
             if (status === "available") {
-              const busy = await this._markBusyIfActivePlayerRoom("players.lobbyStatus.activeRoom");
+              const busy = await this._markBusyIfActivePlayerRoom("players.lobbyStatus.activeRoom", cfg);
               if (busy) return;
             }
             this._applySessionState({
@@ -3144,7 +3198,7 @@
                       : null,
               presenceRoomId: null,
             });
-            await this._runUnifiedAppPulse(true, "lobby-status");
+            if (!cfg.deferPulse) await this._runUnifiedAppPulse(true, "lobby-status");
           } catch (e) {}
         },
 
@@ -3164,7 +3218,8 @@
           return true;
         },
 
-    _bindInviteListener: function () {
+    _bindInviteListener: function (options) {
+          const cfg = options && typeof options === "object" ? options : {};
           const handler = async (snap) => {
             const inv = snap.val();
             if (!inv || !inv.gameId) return;
@@ -3398,9 +3453,11 @@
           try {
             if (this._lastOfficialLobbyView && this._lastOfficialLobbyView.invites) this._inviteOfficialHandler(this._lastOfficialLobbyView.invites);
           } catch (e) {}
-          try {
-            this._ensureUnifiedAppPulse("official-invites", true);
-          } catch (e) {}
+          if (!cfg.deferPulse) {
+            try {
+              this._ensureUnifiedAppPulse("official-invites", true);
+            } catch (e) {}
+          }
         },
 
     _loadOutgoingInvites: function () {

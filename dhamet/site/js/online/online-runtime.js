@@ -5175,13 +5175,10 @@
             setLoading(roomsEl, window.I18N.translateArgs("lobby.loadingRooms"));
           } catch (e) {}
     
-          const ok = await this.initPresence();
+          const ok = await this.initPresence({ deferHeartbeat: true });
           if (!ok) {
-            try {
-              if (playersEl)
-                playersEl.innerHTML = `<div class="z-empty">${window.I18N.translateArgs("status.onlineInitFail")}</div>`;
-            } catch (e) {}
-            return;
+            try { this._showLobbyLoadFailure && this._showLobbyLoadFailure(true); } catch (e) {}
+            return false;
           }
     
           try {
@@ -5197,14 +5194,10 @@
             }
           } catch (e) {}
     
-          await this._syncLobbyAvailabilityFromActiveGame();
-    
+          await this._syncLobbyAvailabilityFromActiveGame({ deferPulse: true });
+
           try {
-            this._bindInviteListener();
-          } catch (e) {}
-          try {
-            this._rememberUnifiedPulseReason && this._rememberUnifiedPulseReason("lobby-init");
-            this._ensureUnifiedAppPulse && this._ensureUnifiedAppPulse("lobby-init", true);
+            await this.initInvitesPassive({ deferHeartbeat: true, deferPulse: true });
           } catch (e) {}
     
           try {
@@ -5317,7 +5310,6 @@
                 this._applyOfficialLobbyView(this._lastOfficialLobbyView);
               }
             } catch (e) {}
-            try { await this._runUnifiedAppPulse(true); } catch (e) {}
           } catch (e) {}
     
           try {
@@ -5419,9 +5411,16 @@
                 this._applyOfficialLobbyView(this._lastOfficialLobbyView);
               }
             } catch (e) {}
-            try { await this._runUnifiedAppPulse(true); } catch (e) {};
-    
           } catch (e) {}
+
+          try { this._ensureUnifiedAppPulse && this._ensureUnifiedAppPulse("lobby-ready", false); } catch (e) {}
+          let firstResult = false;
+          try { firstResult = await this._runUnifiedAppPulse(true, "lobby-enter"); } catch (e) {}
+          const loaded = this._isSuccessfulLobbyPulseResult && this._isSuccessfulLobbyPulseResult(firstResult);
+          if (!loaded) {
+            try { this._showLobbyLoadFailure && this._showLobbyLoadFailure(true); } catch (e) {}
+          }
+          return !!loaded;
         },
 
     _isCurrentUserPlayerInGame: function (g) {
@@ -6257,8 +6256,6 @@
       }
       return;
     }
-    try { Online.initInvitesPassive(); } catch (_) {}
-
     if (document.getElementById("roomsList") && document.getElementById("playersList")) {
       Online.initLobbyPage({ roomsListId: "roomsList", playersListId: "playersList" }).catch(function () {
         var msg = window.I18N.translateArgs("status.onlineInitFail", "تعذر تشغيل اللعب عبر الإنترنت الآن.");
@@ -6269,5 +6266,6 @@
       });
       return;
     }
+    try { Online.initInvitesPassive(); } catch (_) {}
   });
 })();

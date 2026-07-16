@@ -241,15 +241,30 @@ export function createLobbyRouteHandlers(deps) {
     return { res, data };
   }
 
+  function realtimeUnavailable(operation, res, data) {
+    const detail = cleanString(data && (data.error || data.code) || '', 120);
+    const error = new Error(`lobby realtime ${operation} failed${detail ? `: ${detail}` : ''}`);
+    error.status = 503;
+    error.code = 'lobby/realtime-unavailable';
+    error.operation = operation;
+    error.upstreamStatus = Number(res && res.status || 0) || 0;
+    return error;
+  }
+
   async function readRealtimeValue(env, scope, path) {
     const url = 'https://realtime.internal/read?path=' + encodeURIComponent(cleanPath(path));
     const res = await getRealtimeStub(env, scope).fetch(url, { method: 'GET' });
     const data = await res.json().catch(() => ({}));
-    return data && data.ok ? data.value : null;
+    if (!res.ok || !data || data.ok !== true) throw realtimeUnavailable('read', res, data);
+    return data.value;
   }
 
   async function writeRealtime(env, scope, body) {
-    return internalJson(env, scope, '/write', body);
+    const result = await internalJson(env, scope, '/write', body);
+    if (!result || !result.res || !result.res.ok || !result.data || result.data.ok !== true) {
+      throw realtimeUnavailable('write', result && result.res, result && result.data);
+    }
+    return result;
   }
 
   async function createInvite(request, env, session, body) {
@@ -794,9 +809,9 @@ export function createLobbyRouteHandlers(deps) {
     const outgoingIds = Array.from(new Set((Array.isArray(opts.outgoingGameIds) ? opts.outgoingGameIds : [])
       .map((x) => cleanPath(x)).filter(Boolean))).slice(0, 12);
     const [players, roomList, invites] = await Promise.all([
-      includePlayers ? readRealtimeValue(env, 'global', 'players').catch(() => ({})) : Promise.resolve(null),
-      includeRooms ? readRealtimeValue(env, 'global', 'roomList').catch(() => ({})) : Promise.resolve(null),
-      includeInvites && uid ? readRealtimeValue(env, 'global', 'invites/' + uid).catch(() => ({})) : Promise.resolve(null),
+      includePlayers ? readRealtimeValue(env, 'global', 'players') : Promise.resolve(null),
+      includeRooms ? readRealtimeValue(env, 'global', 'roomList') : Promise.resolve(null),
+      includeInvites && uid ? readRealtimeValue(env, 'global', 'invites/' + uid) : Promise.resolve(null),
     ]);
     const outgoingGames = {};
     for (const gid of outgoingIds) {
@@ -878,7 +893,10 @@ export function createLobbyRouteHandlers(deps) {
   }
 
   async function pulse(request, env) {
+    let stage = 'session';
+    try {
     const session = await requireSession(env, request);
+    stage = 'request-body';
     const body = await requestBody(request);
     const identity = sessionIdentity(session);
     const uid = identity.uid;
@@ -944,6 +962,7 @@ export function createLobbyRouteHandlers(deps) {
       });
     }
 
+    stage = 'presence-read';
     const previous = await readRealtimeValue(env, 'global', 'players/' + uid);
     if (previous && previous.lastBusyVerifiedAt && !presence.lastBusyVerifiedAt) presence.lastBusyVerifiedAt = Number(previous.lastBusyVerifiedAt || 0) || 0;
     let presenceReconcile = { ok: true, action: 'none' };
@@ -964,6 +983,7 @@ export function createLobbyRouteHandlers(deps) {
         presenceContradictsPrevious
       );
       if (shouldReconcileBusy) {
+        stage = 'busy-reconcile';
         const resolved = await resolvePlayerBusy(env, uid, presence, { clean: false });
         presence.lastBusyVerifiedAt = at;
         if (!resolved.busy) {
@@ -999,6 +1019,7 @@ export function createLobbyRouteHandlers(deps) {
     if (shouldWrite) {
       if (previous && previous.joinedAt && !presence.joinedAt) presence.joinedAt = previous.joinedAt;
       if (!presence.joinedAt) presence.joinedAt = at;
+      stage = 'presence-write';
       await writeRealtime(env, 'global', { op: 'set', path: 'players/' + uid, value: presence });
       wrotePresence = true;
     }
@@ -1020,8 +1041,9 @@ export function createLobbyRouteHandlers(deps) {
     }
 
     let lobbyView = null;
-    try {
-      if (scope === 'lobby-sync' && normalized.includeLobbyView !== false) {
+    if (scope === 'lobby-sync' && normalized.includeLobbyView !== false) {
+      stage = 'lobby-view';
+      try {
         lobbyView = await buildLobbyView(env, uid, {
           players: normalized.includePlayers !== false,
           rooms: normalized.includeRooms !== false,
@@ -1029,9 +1051,13 @@ export function createLobbyRouteHandlers(deps) {
           outgoingGameIds: normalized.outgoingGameIds || [],
           roomLimit: 50,
         });
+      } catch (error) {
+        if (error && typeof error === 'object') {
+          error.status = Number(error.status || 0) >= 500 ? Number(error.status) : 503;
+          error.code = 'lobby/view-temporarily-unavailable';
+        }
+        throw error;
       }
-    } catch (_) {
-      lobbyView = { error: 'lobby-view-failed' };
     }
 
     let notifications = null;
@@ -1069,6 +1095,10 @@ export function createLobbyRouteHandlers(deps) {
       lobbyView,
       nextPulseMs,
     });
+    } catch (error) {
+      if (error && typeof error === 'object') error.stage = `lobby-pulse:${stage}`;
+      throw error;
+    }
   }
 
 
