@@ -2261,6 +2261,14 @@
             joinedAt: includeGamePulse ? (this._gamePresenceJoinedAt || this._spectatorJoinedAt || 0) : 0,
             hidden: !!(typeof document !== "undefined" && document.hidden),
             foreground: !(typeof document !== "undefined" && document.hidden),
+            rtcParticipantActive: !!(
+              includeGamePulse &&
+              !this.isSpectator &&
+              this._voice &&
+              this._voice.enabled === true &&
+              this._voiceParticipantsReady === true &&
+              this._voice.writeDenied !== true
+            ),
             includeLobbyView,
             includePlayers: needFullPlayers,
             includeRooms: includeLobbyView,

@@ -249,6 +249,7 @@
       joinedAt: normalized.joinedAt || src.joinedAt,
       hidden: normalized.hidden != null ? normalized.hidden : src.hidden,
       foreground: normalized.foreground != null ? normalized.foreground : src.foreground,
+      rtcParticipantActive: normalized.rtcParticipantActive != null ? normalized.rtcParticipantActive : src.rtcParticipantActive,
       force: !!(normalized.force || src.force),
       clientPulseId: normalized.clientPulseId || src.clientPulseId || src.clientActionId,
       includeLobbyView: normalized.includeLobbyView != null ? normalized.includeLobbyView : src.includeLobbyView,
@@ -318,6 +319,7 @@
       toUid: normalized.toUid || src.toUid || src.targetUid || src.recipientUid,
       fromUid: normalized.fromUid || src.fromUid || src.senderUid,
       signalId: normalized.signalId || src.signalId || src.id,
+      signalIds: Array.isArray(normalized.signalIds || src.signalIds) ? (normalized.signalIds || src.signalIds).slice(0, 32) : null,
       clientSignalId: normalized.clientSignalId || src.clientSignalId || src.clientRtcId || src.clientActionId,
       nickname: normalized.nickname || src.nickname || src.nick || src.name || src.fromNick,
       micMuted: normalized.micMuted != null ? normalized.micMuted : src.micMuted,
@@ -346,6 +348,10 @@
 
   function commitRtcAck(payload) {
     return commitRtc(Object.assign({}, payload || {}, { kind: 'ack' }));
+  }
+
+  function commitRtcAcks(payload) {
+    return commitRtc(Object.assign({}, payload || {}, { kind: 'acks-batch' }));
   }
 
 
@@ -589,5 +595,6 @@
     commitRtcLeave: commitRtcLeave,
     commitRtcSignal: commitRtcSignal,
     commitRtcAck: commitRtcAck,
+    commitRtcAcks: commitRtcAcks,
   };
 })();

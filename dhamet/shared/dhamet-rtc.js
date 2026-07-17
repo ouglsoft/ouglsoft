@@ -50,6 +50,7 @@
     if (raw === 'signal' || raw === 'offer' || raw === 'answer' || raw === 'ice') return 'signal';
     if (raw === 'signals-batch' || raw === 'signal-batch' || raw === 'batch') return 'signals-batch';
     if (raw === 'ack' || raw === 'signal-ack' || raw === 'read') return 'ack';
+    if (raw === 'acks-batch' || raw === 'ack-batch' || raw === 'batch-ack') return 'acks-batch';
     return raw || 'signal';
   }
 
@@ -63,6 +64,9 @@
       toUid: cleanUid(src.toUid || src.targetUid || src.recipientUid),
       fromUid: cleanUid(src.fromUid || src.senderUid),
       signalId: cleanString(src.signalId || src.id || src.messageId, 220),
+      signalIds: Array.isArray(src.signalIds)
+        ? src.signalIds.map((id) => cleanString(id, 220)).filter(Boolean).slice(0, 32)
+        : null,
       clientSignalId: cleanString(src.clientSignalId || src.clientRtcId || src.clientActionId, 220),
       nickname: cleanString(src.nickname || src.nick || src.name || src.fromNick, POLICY.maxNicknameLength),
       micMuted: !!src.micMuted,

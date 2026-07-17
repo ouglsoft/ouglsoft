@@ -1071,19 +1071,36 @@ async function turnEndpoint(request, env) {
   const iceServers = [];
   const turnUrls = turnUrlsFromEnv(env);
   const uid = uidRaw.replace(/[^A-Za-z0-9._:@-]/g, '').slice(0, 80) || 'user';
+  let credentialMode = 'none';
+  let expiresAt = null;
 
   if (env.EXPRESS_TURN_SECRET || env.TURN_SHARED_SECRET) {
     const expiry = Math.floor(Date.now() / 1000) + ttl;
     const username = `${expiry}:${uid}`;
     const credential = await hmacSha1Base64(env.EXPRESS_TURN_SECRET || env.TURN_SHARED_SECRET, username);
     iceServers.push({ urls: turnUrls, username, credential });
+    credentialMode = 'shared-secret';
+    expiresAt = expiry * 1000;
   } else if (env.EXPRESS_TURN_USERNAME && env.EXPRESS_TURN_CREDENTIAL) {
     iceServers.push({ urls: turnUrls, username: env.EXPRESS_TURN_USERNAME, credential: env.EXPRESS_TURN_CREDENTIAL });
+    credentialMode = 'static';
   }
 
   const stunUrls = stunUrlsFromEnv(env);
   if (stunUrls.length) iceServers.push({ urls: stunUrls });
-  return json({ ok: true, provider: 'external-turn', ttl, gameId, iceServers });
+  const turnAvailable = credentialMode !== 'none' && turnUrls.length > 0;
+  return json({
+    ok: true,
+    provider: turnAvailable ? 'expressturn' : 'stun',
+    mode: turnAvailable ? 'turn' : 'stun-only',
+    turnAvailable,
+    credentialMode,
+    reason: turnAvailable ? null : 'turn-not-configured',
+    ttl,
+    expiresAt,
+    gameId,
+    iceServers,
+  });
 }
 
 

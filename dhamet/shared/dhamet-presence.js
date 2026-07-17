@@ -129,6 +129,7 @@
     out.includePlayers = src.includePlayers != null ? !!src.includePlayers : scope === 'lobby-sync';
     out.includeCleanup = src.includeCleanup != null ? !!src.includeCleanup : scope === 'lobby-sync';
     out.includeGamePulse = src.includeGamePulse != null ? !!src.includeGamePulse : scope === 'game-presence';
+    out.rtcParticipantActive = !!src.rtcParticipantActive;
     out.leave = !!src.leave || rawKind === 'leave' || rawKind === 'app-leave' || rawKind === 'presence-leave' || rawKind === 'logout' || rawKind === 'offline';
     out.clientPulseId = cleanString(src.clientPulseId || src.clientActionId, 160);
     return out;

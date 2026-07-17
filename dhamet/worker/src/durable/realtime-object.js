@@ -802,6 +802,7 @@ export class RealtimeObject {
     let game = clone(currentGame || {});
     const at = now();
     let spectatorResult = null;
+    let rtcParticipantRefreshed = false;
 
     if (side) {
       const presence = game.presence && typeof game.presence === 'object' ? clone(game.presence) : {};
@@ -829,6 +830,15 @@ export class RealtimeObject {
         game.lastPresencePulseAt = at;
         this.root = setAt(this.root || {}, gamePath, game);
         changed.push(gamePath);
+      }
+
+      if (payload && payload.rtcParticipantActive === true) {
+        const participantPath = 'rtc/' + gameId + '/participants/' + uid;
+        const participant = getAt(this.root || {}, participantPath);
+        if (participant && typeof participant === 'object' && String(participant.role || 'player') === 'player') {
+          this.root = setAt(this.root || {}, participantPath, Object.assign({}, participant, { lastSeen: at }));
+          rtcParticipantRefreshed = true;
+        }
       }
     } else if (isSpectator && SpectatorCore && typeof SpectatorCore.applySpectatorAction === 'function') {
       spectatorResult = SpectatorCore.applySpectatorAction(currentGame, currentSpectators, {
@@ -869,10 +879,10 @@ export class RealtimeObject {
       };
     }
 
-    if (changed.length) {
-      bumpVersions(this.versions, changed);
+    if (changed.length || rtcParticipantRefreshed) {
+      if (changed.length) bumpVersions(this.versions, changed);
       await this._save();
-      await this._broadcast(changed, beforeRoot);
+      if (changed.length) await this._broadcast(changed, beforeRoot);
     }
 
     let lifecycle = { ran: false, reason: 'skipped' };
@@ -883,7 +893,8 @@ export class RealtimeObject {
 
     return json({
       ok: true,
-      committed: changed.length > 0 || !!(lifecycle && lifecycle.committed),
+      committed: changed.length > 0 || rtcParticipantRefreshed || !!(lifecycle && lifecycle.committed),
+      rtcParticipantRefreshed,
       uid,
       viewerUid: uid,
       gameId,
@@ -1163,6 +1174,27 @@ export class RealtimeObject {
       await this._save();
       await this._broadcast(changed, beforeRoot);
       return json({ ok: true, committed: true, kind: 'ack', gameId, uid, fromUid, signalId });
+    }
+
+    if (kind === 'acks-batch') {
+      const fromUid = String(payload.fromUid || payload.toUid || '').trim();
+      const signalIds = Array.isArray(payload.signalIds)
+        ? Array.from(new Set(payload.signalIds.map((id) => String(id || '').trim()).filter(Boolean))).slice(0, 32)
+        : [];
+      if (!fromUid || !signalIds.length) return json({ ok: false, error: 'rtc/missing-ack-context' }, 400);
+      const removed = [];
+      for (const signalId of signalIds) {
+        const path = signalsPath + '/' + uid + '/' + fromUid + '/' + signalId;
+        if (getAt(this.root || {}, path) == null) continue;
+        this.root = setAt(this.root || {}, path, null);
+        changed.push(path);
+        removed.push(signalId);
+      }
+      if (!changed.length) return json({ ok: true, committed: false, kind: 'acks-batch', gameId, uid, fromUid, signalIds: [] });
+      bumpVersions(this.versions, changed);
+      await this._save();
+      await this._broadcast(changed, beforeRoot);
+      return json({ ok: true, committed: true, kind: 'acks-batch', gameId, uid, fromUid, signalIds: removed });
     }
 
     if (kind !== 'signal' && kind !== 'signals-batch') return json({ ok: false, error: 'rtc/unknown-kind' }, 400);

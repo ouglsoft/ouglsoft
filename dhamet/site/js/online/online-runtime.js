@@ -2684,11 +2684,7 @@
                     nickname: this.myNick || "",
                     micMuted: nextMicMuted,
                     clientSignalId: [this.myUid || "u", this.gameId || "g", "mic", Date.now()].join(":"),
-                  }).catch(() => {
-                    try {
-                      if (this._voice) this._voice.writeDenied = true;
-                    } catch (_) {}
-                  });
+                  }).catch((error) => { this._voiceHandleWriteFailure(error, "participant-mic"); });
                 }
               }
             } catch (e) {}
@@ -3207,12 +3203,40 @@
           } catch (e) {}
         },
 
-    _voiceShowFailureNotice: function () {
+    _voiceShowFailureNotice: function (kind, error) {
           try {
+            const rawKind = String(kind || "generic").trim().toLowerCase();
+            const keyByKind = {
+              permission: "pvp.voice.failure.permission",
+              "no-device": "pvp.voice.failure.noDevice",
+              busy: "pvp.voice.failure.busy",
+              unsupported: "pvp.voice.failure.unsupported",
+              session: "pvp.voice.failure.session",
+              service: "pvp.voice.failure.service",
+              generic: "pvp.voice.failure.generic",
+            };
+            const fallbackByKind = {
+              permission: "تعذر الوصول إلى الميكروفون. اسمح للموقع باستخدامه ثم أعد المحاولة.",
+              "no-device": "لم يعثر المتصفح على ميكروفون متاح.",
+              busy: "تعذر فتح الميكروفون لأنه مستخدم أو غير متاح حاليًا.",
+              unsupported: "الدردشة الصوتية غير مدعومة في هذا المتصفح أو في هذا السياق.",
+              session: "تعذر بدء الدردشة الصوتية لأن جلسة المباراة غير جاهزة. أعد فتح المباراة ثم حاول مجددًا.",
+              service: "تعذر بدء الاتصال الصوتي الآن. تحقق من الاتصال ثم أعد المحاولة.",
+              generic: "تعذر تشغيل الدردشة الصوتية. حاول مرة أخرى.",
+            };
+            const resolvedKind = keyByKind[rawKind] ? rawKind : "generic";
+            try {
+              Logger.warn("voice_start_failed", {
+                kind: resolvedKind,
+                name: String(error && error.name || ""),
+                code: String(error && error.code || ""),
+                status: Number(error && error.status || 0) || 0,
+              });
+            } catch (_) {}
             showOnlineNotice(
               window.I18N.translateArgs(
-                "pvp.voice.failedBody",
-                "تعذر تشغيل الدردشة الصوتية. تحقق من إذن الميكروفون ثم أعد المحاولة.",
+                keyByKind[resolvedKind],
+                fallbackByKind[resolvedKind],
               ),
               {
                 title: window.I18N.translateArgs("pvp.voice.failedTitle", "فشل الدردشة الصوتية"),
@@ -3220,6 +3244,55 @@
               },
             );
           } catch (e) {}
+        },
+
+    _voiceCommitParticipant: async function (opts) {
+          opts = opts || {};
+          if (!this.isActive || !this.gameId || this.isSpectator || !this._voice) return false;
+          if (!window.DhametGameRoomClient || typeof window.DhametGameRoomClient.commitRtcParticipant !== "function") {
+            const missing = new Error("rtc_transport_unavailable");
+            missing.code = "rtc_transport_unavailable";
+            throw missing;
+          }
+          const res = await window.DhametGameRoomClient.commitRtcParticipant({
+            gameId: this.gameId,
+            nickname: this.myNick || "",
+            micMuted: !!this._voice.micMuted,
+            clientSignalId: [this.myUid || "u", this.gameId || "g", opts.reason || "participant", Date.now()].join(":"),
+          });
+          if (!res || res.ok === false) {
+            const failed = new Error((res && res.error) || "rtc_participant_failed");
+            failed.code = (res && res.error) || "rtc_participant_failed";
+            throw failed;
+          }
+          this._voiceParticipantsReady = true;
+          this._voiceLastParticipantMicMuted = !!this._voice.micMuted;
+          if (this._voice) this._voice.writeDenied = false;
+          return true;
+        },
+
+    _voiceHandleWriteFailure: function (error, context) {
+          try {
+            const status = Number(error && error.status || 0) || 0;
+            const code = String(error && (error.code || error.message) || "");
+            const permanent = status === 401 || status === 403 || status === 404 ||
+              (status === 409 && /game-not-active|not-player|not-authorized/i.test(code));
+            if (permanent && this._voice) {
+              this._voice.writeDenied = true;
+              this._voiceParticipantsReady = false;
+            }
+            try {
+              Logger.warn("voice_transport_write_failed", {
+                context: String(context || "rtc"),
+                status,
+                code,
+                permanent,
+              });
+            } catch (_) {}
+            return permanent;
+          } catch (e) {
+            return false;
+          }
         },
 
     _voiceWatchRemoteStart: function () {
@@ -3290,12 +3363,16 @@
             authReady = await ensureAuthReady();
           } catch (e) {}
           if (!authReady || !requireAuthUid(this.myUid)) {
-            this._voiceShowFailureNotice();
+            this._voiceShowFailureNotice("session");
             return false;
           }
     
           let acquiredLocalStream = false;
           if (!opts.noMicPrompt) {
+            if (!navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== "function") {
+              this._voiceShowFailureNotice("unsupported");
+              return false;
+            }
             try {
               const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
               this._voice.localStream = stream;
@@ -3309,7 +3386,17 @@
             } catch (e) {
               this._voice.localStream = null;
               this._voice.micMuted = true;
-              this._voiceShowFailureNotice();
+              const mediaErrorName = String(e && e.name || "");
+              const kind = /^(NotAllowedError|SecurityError)$/.test(mediaErrorName)
+                ? "permission"
+                : /^(NotFoundError|DevicesNotFoundError)$/.test(mediaErrorName)
+                  ? "no-device"
+                  : /^(NotReadableError|TrackStartError|AbortError)$/.test(mediaErrorName)
+                    ? "busy"
+                    : /^(NotSupportedError|TypeError)$/.test(mediaErrorName)
+                      ? "unsupported"
+                      : "generic";
+              this._voiceShowFailureNotice(kind, e);
               return false;
             }
           }
@@ -3334,24 +3421,11 @@
 
           this._voiceParticipantsReady = false;
           try {
-            if (!window.DhametGameRoomClient || typeof window.DhametGameRoomClient.commitRtcParticipant !== "function") {
-              throw new Error("rtc_transport_unavailable");
-            }
-            const res = await window.DhametGameRoomClient.commitRtcParticipant({
-              gameId: this.gameId,
-              nickname: this.myNick || "",
-              micMuted: !!this._voice.micMuted,
-              clientSignalId: [this.myUid || "u", this.gameId || "g", "participant", Date.now()].join(":"),
-            });
-            if (res && res.ok !== false) {
-              this._voiceParticipantsReady = true;
-              this._voiceLastParticipantMicMuted = !!this._voice.micMuted;
-            }
-            else throw new Error((res && res.error) || "rtc_participant_failed");
+            await this._voiceCommitParticipant({ reason: "participant" });
           } catch (e) {
-            try { if (this._voice) this._voice.writeDenied = true; } catch (_) {}
+            this._voiceHandleWriteFailure(e, "participant-join");
             if (acquiredLocalStream) this._voiceReleaseLocalStream();
-            this._voiceShowFailureNotice();
+            this._voiceShowFailureNotice("service", e);
             return false;
           }
 
@@ -3397,6 +3471,7 @@
                 : {};
               for (const fromUid of Object.keys(incomingRoot)) {
                 const queue = incomingRoot[fromUid] && typeof incomingRoot[fromUid] === "object" ? incomingRoot[fromUid] : {};
+                const ackIds = [];
                 const ids = Object.keys(queue).sort((a, b) => {
                   const av = queue[a] && typeof queue[a].ts === "number" ? queue[a].ts : 0;
                   const bv = queue[b] && typeof queue[b].ts === "number" ? queue[b].ts : 0;
@@ -3405,15 +3480,25 @@
                 for (const signalId of ids) {
                   try {
                     const seenKey = String(fromUid) + ":" + String(signalId);
-                    if (this._voiceSeenSignals && this._voiceSeenSignals.has(seenKey)) continue;
+                    if (this._voiceSeenSignals && this._voiceSeenSignals.has(seenKey)) {
+                      ackIds.push(signalId);
+                      continue;
+                    }
                     const msg = queue[signalId];
                     if (!msg) continue;
                     this._voiceSeenSignals.add(seenKey);
                     await this._voiceHandleSignal(fromUid, msg);
-                    if (window.DhametGameRoomClient && typeof window.DhametGameRoomClient.commitRtcAck === "function") {
-                      window.DhametGameRoomClient.commitRtcAck({ gameId: this.gameId, fromUid: fromUid, signalId: signalId }).catch(() => {});
-                    }
+                    ackIds.push(signalId);
                   } catch (e) {}
+                }
+                if (ackIds.length && window.DhametGameRoomClient) {
+                  if (typeof window.DhametGameRoomClient.commitRtcAcks === "function") {
+                    window.DhametGameRoomClient.commitRtcAcks({ gameId: this.gameId, fromUid: fromUid, signalIds: ackIds }).catch(() => {});
+                  } else if (typeof window.DhametGameRoomClient.commitRtcAck === "function") {
+                    ackIds.forEach((signalId) => {
+                      window.DhametGameRoomClient.commitRtcAck({ gameId: this.gameId, fromUid: fromUid, signalId: signalId }).catch(() => {});
+                    });
+                  }
                 }
               }
             } catch (e) {}
@@ -3433,12 +3518,27 @@
                 onData: (value) => { applyRtcSnapshot(value); },
                 onError: () => {},
                 onClose: () => {},
+                onReconnect: () => {
+                  try {
+                    this._voiceParticipantsReady = false;
+                    this._voiceCommitParticipant({ reason: "reconnect" }).then(() => {
+                      try {
+                        if (!this._voiceKnownParticipants || !this._voiceKnownParticipants.forEach) return;
+                        this._voiceKnownParticipants.forEach((uid) => {
+                          if (String(uid) !== String(this.myUid || "")) this._voiceConnectTo(String(uid));
+                        });
+                      } catch (_) {}
+                    }).catch((error) => {
+                      try { Logger.warn("voice_participant_reconnect_failed", { code: String(error && (error.code || error.message) || "") }); } catch (_) {}
+                    });
+                  } catch (_) {}
+                },
               });
             }
           } catch (e) {
-            try { if (this._voice) this._voice.writeDenied = true; } catch (_) {}
+            this._voiceHandleWriteFailure(e, "rtc-live-subscribe");
             if (acquiredLocalStream) this._voiceReleaseLocalStream();
-            this._voiceShowFailureNotice();
+            this._voiceShowFailureNotice("service", e);
             return false;
           }
 
@@ -3453,6 +3553,8 @@
           try {
             if (!this._voice) return;
             this._voice.enabled = false;
+            this._voiceParticipantsReady = false;
+            this._voiceLastParticipantMicMuted = null;
     
             try { if (this._rtcLiveSub && this._rtcLiveSub.close) this._rtcLiveSub.close(); } catch (e) {}
             this._rtcLiveSub = null;
@@ -3470,6 +3572,7 @@
               }
             } catch (e) {}
             this._voiceIceBatches = new Map();
+            this._voicePendingRemoteIce = new Map();
     
             try {
               if (this._voice.reconnectTimers && this._voice.reconnectTimers.forEach) {
@@ -3577,6 +3680,19 @@
             });
             if (!res || !res.ok) return fallback;
             const data = await res.json().catch(() => null);
+            try {
+              if (this._voice) {
+                this._voice.iceMode = String(data && data.mode || "stun-only");
+                this._voice.turnAvailable = !!(data && data.turnAvailable);
+                this._voice.credentialMode = String(data && data.credentialMode || "none");
+                this._voice.iceExpiresAt = Number(data && data.expiresAt || 0) || 0;
+                this._voice.iceFetchedAt = Date.now();
+              }
+              if (data && data.turnAvailable === false && !this._voiceTurnUnavailableLogged) {
+                this._voiceTurnUnavailableLogged = true;
+                try { Logger.warn("voice_turn_unavailable", { mode: String(data.mode || "stun-only"), reason: String(data.reason || "turn-not-configured") }); } catch (_) {}
+              }
+            } catch (_) {}
             const iceServers = this._voiceFilterIceServers(data && data.iceServers);
             return iceServers;
           } catch (e) {
@@ -3699,9 +3815,7 @@
                   toUid: key,
                   signals: signals,
                   clientSignalId: [this.myUid || "u", key, "icebatch", Date.now(), Math.random().toString(36).slice(2, 8)].join(":"),
-                }).catch(() => {
-                  try { if (this._voice) this._voice.writeDenied = true; } catch (e) {}
-                });
+                }).catch((error) => { this._voiceHandleWriteFailure(error, "ice-batch"); });
               } catch (e) {}
             };
             if (!entry.timer) {
@@ -3759,12 +3873,44 @@
               toUid: String(toUid),
               signal: msg,
               clientSignalId: [this.myUid || "u", String(toUid || "to"), Date.now(), Math.random().toString(36).slice(2, 8)].join(":"),
-            }).catch(() => {
-              try {
-                if (this._voice) this._voice.writeDenied = true;
-              } catch (e) {}
-            });
+            }).catch((error) => { this._voiceHandleWriteFailure(error, "signal"); });
           } catch (e) {}
+        },
+
+    _voiceRemoteIceKey: function (otherUid, callId) {
+          return String(otherUid || "") + "::" + String(callId || "");
+        },
+
+    _voiceQueueRemoteIce: function (otherUid, callId, candidate) {
+          try {
+            if (!otherUid || !candidate) return false;
+            this._voicePendingRemoteIce = this._voicePendingRemoteIce || new Map();
+            const key = this._voiceRemoteIceKey(otherUid, callId);
+            const queue = this._voicePendingRemoteIce.get(key) || [];
+            queue.push(candidate);
+            if (queue.length > 64) queue.splice(0, queue.length - 64);
+            this._voicePendingRemoteIce.set(key, queue);
+            return true;
+          } catch (e) {
+            return false;
+          }
+        },
+
+    _voiceFlushRemoteIce: async function (otherUid, callId, pc) {
+          try {
+            if (!otherUid || !pc || !pc.remoteDescription) return false;
+            this._voicePendingRemoteIce = this._voicePendingRemoteIce || new Map();
+            const key = this._voiceRemoteIceKey(otherUid, callId);
+            const queue = this._voicePendingRemoteIce.get(key) || [];
+            if (!queue.length) return true;
+            this._voicePendingRemoteIce.delete(key);
+            for (const candidate of queue) {
+              try { await pc.addIceCandidate(candidate); } catch (_) {}
+            }
+            return true;
+          } catch (e) {
+            return false;
+          }
         },
 
     _voiceEnsurePeer: function (otherUid, opts) {
@@ -3909,6 +4055,14 @@
                 this._voice.callIds && this._voice.callIds.delete(uid);
               } catch (e) {}
             }
+            try {
+              if (this._voicePendingRemoteIce && this._voicePendingRemoteIce.forEach) {
+                const prefix = String(uid || "") + "::";
+                Array.from(this._voicePendingRemoteIce.keys()).forEach((key) => {
+                  if (String(key).indexOf(prefix) === 0) this._voicePendingRemoteIce.delete(key);
+                });
+              }
+            } catch (e) {}
           } catch (e) {}
         },
 
@@ -3940,6 +4094,7 @@
               if (iOffer && pc.signalingState !== "stable") return;
     
               await pc.setRemoteDescription({ type: "offer", sdp: msg.sdp });
+              await this._voiceFlushRemoteIce(fromUid, this._voice.callIds.get(fromUid), pc);
               const ans = await pc.createAnswer();
               await pc.setLocalDescription(ans);
               this._voiceSendSignal(fromUid, {
@@ -3958,13 +4113,17 @@
     
             if (msg.type === "answer" && msg.sdp) {
               await pc.setRemoteDescription({ type: "answer", sdp: msg.sdp });
+              await this._voiceFlushRemoteIce(fromUid, knownCallId || incomingCallId, pc);
               return;
             }
     
             if (msg.type === "ice" && msg.candidate) {
-              try {
-                await pc.addIceCandidate(msg.candidate);
-              } catch (e) {}
+              const callId = incomingCallId || knownCallId || "";
+              if (!pc.remoteDescription) {
+                this._voiceQueueRemoteIce(fromUid, callId, msg.candidate);
+                return;
+              }
+              try { await pc.addIceCandidate(msg.candidate); } catch (e) {}
               return;
             }
           } catch (e) {}
