@@ -1647,8 +1647,9 @@ const UI = {
   },
   showOnlineGameOverModal(options) {
     const opts = options && typeof options === "object" ? options : {};
-    const title = opts.title || t("online.pvpEndTitle") || t("modals.gameOver.drawTitle");
-    const bodyTxt = String(opts.message || t("online.ended.generic") || t("modals.gameOver.drawBody") || "").trim();
+    const title = String(opts.title || t("online.pvpEndTitle") || "").trim();
+    const bodyTxt = String(opts.text || opts.message || "").trim();
+    if (!bodyTxt) return false;
     let leaving = false;
     const leave = () => {
       if (leaving) return;
@@ -1683,65 +1684,89 @@ const UI = {
       ],
       priority: 100,
       blocking: true,
+      forceReplace: true,
       onClose: (reason) => {
         if (reason !== "replaced" && reason !== "state-change") leave();
       },
     });
   },
 
+  buildComputerGameEndPresentation(winner) {
+    const validWinner = Number(winner) === TOP || Number(winner) === BOT ? Number(winner) : null;
+    const nameForSide = (side) => {
+      try {
+        if (typeof sideLabel === "function") {
+          const value = String(sideLabel(side) || "").replace(/\s*\((?:أنت|You|Vous)\)\s*/giu, " ").trim();
+          if (value) return value;
+        }
+      } catch (_) {}
+      try {
+        const value = side === TOP ? Game.names.top : side === BOT ? Game.names.bot : "";
+        if (String(value || "").trim()) return String(value).trim();
+      } catch (_) {}
+      return side === aiSide() ? t("players.computer") : t("players.you");
+    };
+    const winnerName = validWinner != null ? nameForSide(validWinner) : "";
+    const loserSide = validWinner === TOP ? BOT : validWinner === BOT ? TOP : null;
+    const loserName = loserSide != null ? nameForSide(loserSide) : t("players.player");
+    const reason = String(Game && Game.terminationReason || (validWinner == null ? "draw" : "natural_win")).trim();
+    const lines = [];
+    const add = (text) => {
+      const clean = String(text || "").trim();
+      if (clean && !lines.includes(clean)) lines.push(clean);
+    };
+
+    if (validWinner != null) add(formatTpl(t("modals.gameOver.winner"), { player: winnerName }));
+    else add(t("modals.gameOver.draw"));
+
+    if (reason === "no_pieces") {
+      add(formatTpl(t("modals.gameOver.reason.noPieces"), { player: loserName }));
+    } else if (reason === "no_legal_moves") {
+      add(formatTpl(t("modals.gameOver.reason.noLegalMoves"), { player: loserName }));
+    } else if (reason === "one_king_each") {
+      add(t("modals.gameOver.reason.oneKingEach"));
+    }
+
+    return {
+      title: t("modals.gameOver.title"),
+      primary: lines[0],
+      details: lines.slice(1),
+      text: lines.join("\n\n"),
+      winner: validWinner,
+      reason,
+    };
+  },
+
   showGameOverModal(winner) {
     if (!isLocalPvCActionAllowed()) return false;
 
-    const title = t("modals.gameOver.drawTitle");
-    const resultModel = window.DhametMatchCoordinator && typeof DhametMatchCoordinator.createResultModel === "function"
-      ? DhametMatchCoordinator.createResultModel({
-          winner,
-          localSide: humanSide(),
-          online: !!(window.Online && window.Online.isActive),
-          reason: Game && Game.terminationReason,
-        })
-      : { result: winner == null ? "draw" : winner === humanSide() ? "win" : "loss" };
-
-    const bodyTxt =
-      resultModel.result === "draw"
-        ? t("modals.gameOver.drawBody") || t("status.draw")
-        : resultModel.result === "win"
-          ? t("modals.gameOver.winBody") || t("status.win")
-          : resultModel.result === "ended"
-            ? (winner === TOP ? (t("status.topWon") || "انتهت المباراة بفوز اللاعب العلوي") : (t("status.bottomWon") || "انتهت المباراة بفوز اللاعب السفلي"))
-            : t("modals.gameOver.loseBody") || t("status.lose");
-
+    const presentation = this.buildComputerGameEndPresentation(winner);
+    try {
+      if (typeof Game !== "undefined" && Game) Game.endStatusText = presentation.primary;
+      this.updateStatus();
+    } catch (_) {}
     let goHome = true;
 
     const goMode = () => {
-      try {
-        SessionGame.clear();
-      } catch (_) {}
-      try {
-        localStorage.removeItem("zamat.activeGameId");
-      } catch (_) {}
-      try {
-        localStorage.removeItem("zamat.activeGameTs");
-      } catch (_) {}
-
+      try { SessionGame.clear(); } catch (_) {}
+      try { localStorage.removeItem("zamat.activeGameId"); } catch (_) {}
+      try { localStorage.removeItem("zamat.activeGameTs"); } catch (_) {}
       const href = (location.pathname || "").includes("/pages/") ? "mode.html" : "pages/mode.html";
-      try {
-        location.href = href;
-      } catch (_) {}
+      try { location.href = href; } catch (_) {}
     };
 
-    Modal.open({
-      title: title,
-      text: bodyTxt,
+    return Modal.open({
+      title: presentation.title,
+      text: presentation.text,
+      hideClose: true,
+      allowEsc: false,
       buttons: [
         {
           label: t("modals.newGame.title") || t("buttons.newGame"),
           className: "ok",
           onClick: () => {
             goHome = false;
-            try {
-              SessionGame.clear();
-            } catch (_) {}
+            try { SessionGame.clear(); } catch (_) {}
             try {
               if (window.DhametMatchCoordinator) DhametMatchCoordinator.begin(DhametMatchCoordinator.phases.PVC, "new-local-game");
             } catch (_) {}
@@ -1750,22 +1775,14 @@ const UI = {
               if (window.DhametMatchCoordinator) DhametMatchCoordinator.resetPresentation({ draw: true });
               else Visual.draw();
             } catch (_) {}
+            try { Turn.start(); } catch (_) {}
+            try { scheduleForcedOpeningAutoIfNeeded(); } catch (_) {}
             try {
-              Turn.start();
-            } catch (_) {}
-            try {
-              scheduleForcedOpeningAutoIfNeeded();
-            } catch (_) {}
-            try {
-              if (
-                !Game.gameOver &&
-                Game.player === aiSide() &&
-                !(Game.forcedEnabled && Game.forcedPly < 10)
-              ) {
+              if (!Game.gameOver && Game.player === aiSide() && !(Game.forcedEnabled && Game.forcedPly < 10)) {
                 window.AI && window.AI.scheduleMove();
               }
             } catch (_) {}
-            Modal.close();
+            Modal.close("action");
           },
         },
         {
@@ -1773,20 +1790,13 @@ const UI = {
           className: "ghost",
           onClick: () => {
             goHome = true;
-            Modal.close();
-          },
-        },
-        {
-          label: t("actions.close"),
-          className: "ghost",
-          onClick: () => {
-            goHome = true;
-            Modal.close();
+            Modal.close("action");
           },
         },
       ],
       priority: 100,
       blocking: true,
+      forceReplace: true,
       onClose: (reason) => {
         if (goHome && reason !== "replaced" && reason !== "state-change") goMode();
       },

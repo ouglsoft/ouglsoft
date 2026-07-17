@@ -663,33 +663,34 @@
         },
 
         _endByAbsence: async function () {
-          if (!this.gameId || !this.myUid) return false;
+          if (!this.gameId || !this.myUid) return null;
           try {
             const res = await this._commitOfficialMatchEnd("opponent-absent", "opponent_absent");
-            const ended = !!(res && res.committed !== false && res.game && res.game.status === "ended");
-            if (ended) {
-              try { await this._runUnifiedAppPulse(true); } catch (e) {}
-            }
-            return ended;
+            const endedGame = res && res.committed !== false && res.game && res.game.status === "ended"
+              ? res.game
+              : null;
+            return endedGame;
           } catch (e) {
             handleDbError(e, window.I18N.translateArgs("online.endFail"), { ctx: "matchEnd.absence" });
-            return false;
+            return null;
           }
         },
 
     _endByAbsenceAndEnterPostMatch: async function () {
-          const ended = await this._endByAbsence();
-          if (!ended) {
-            try {
-              await this.syncNow();
-            } catch (e) {}
+          const endedGame = await this._endByAbsence();
+          if (!endedGame) {
+            try { await this.syncNow(); } catch (e) {}
             return false;
           }
-    
-          try {
-          } catch (e) {}
-          this._enterPostMatch({ reason: "opponent_absent", winner: null, countsAsResult: false });
-          return true;
+          this._lastGameData = endedGame;
+          return this._enterPostMatch({
+            game: endedGame,
+            result: endedGame.result || null,
+            winner: endedGame.winner,
+            reason: endedGame.endedReason,
+            endedBy: endedGame.endedBy || null,
+            players: endedGame.players || null,
+          }) !== false;
         },
 
     refreshPresenceUi: function () {
@@ -1574,12 +1575,14 @@
           this._localEndedOnline = true;
           this._lastGameData = endedGame;
           this._enterPostMatch({
+            game: endedGame,
             reason: endedGame.endedReason || "ended_by_player",
             byUid: this.myUid,
             byNick: who,
             endedBy: endedGame.endedBy || null,
             result: endedGame.result || null,
             winner: endedGame.winner,
+            players: endedGame.players || null,
           });
           return true;
         },
@@ -1591,17 +1594,129 @@
           try { this._clearPersistedActiveGame && this._clearPersistedActiveGame(); } catch (e) {}
         },
 
+    _buildOnlineEndPresentation: function (meta) {
+          const info = meta && typeof meta === "object" ? meta : {};
+          const gameData = info.game && typeof info.game === "object"
+            ? info.game
+            : (this._lastGameData && typeof this._lastGameData === "object" ? this._lastGameData : {});
+          const result = info.result && typeof info.result === "object"
+            ? info.result
+            : (gameData.result && typeof gameData.result === "object" ? gameData.result : {});
+          const resultMeta = result.meta && typeof result.meta === "object" ? result.meta : {};
+          const reason = String(result.reason || info.reason || info.endedReason || gameData.endedReason || "ended").trim();
+          const winnerValue = info.winner != null ? info.winner : (gameData.winner != null ? gameData.winner : result.winner);
+          const winner = Number(winnerValue) === TOP || Number(winnerValue) === BOT ? Number(winnerValue) : null;
+          const players = info.players || gameData.players || {};
+          const endedBy = info.endedBy || gameData.endedBy || null;
+          const endedBySide = endedBy && (Number(endedBy.side) === TOP || Number(endedBy.side) === BOT)
+            ? Number(endedBy.side)
+            : null;
+          const actionKind = String(resultMeta.kind || (gameData.lastMove && gameData.lastMove.action) || info.kind || "").trim();
+          const resultStatus = String(result.status || "").toLowerCase();
+          const countsAsResult = resultMeta.countsAsResult !== false;
+          const rejectionReason = String(resultMeta.rejectionReason || "").trim();
+          const missingOfficial = info.missingOfficial === true || reason === "room_unavailable";
+
+          const rowForSide = (side) => side === BOT ? players.white : side === TOP ? players.black : null;
+          const nameForSide = (side) => {
+            const row = rowForSide(side);
+            const name = row ? displayPlayerName(row.uid, row.nickname) : "";
+            if (name) return name;
+            try {
+              if (typeof Game !== "undefined" && Game && Game.names) {
+                const fallback = side === BOT ? Game.names.bot : side === TOP ? Game.names.top : "";
+                if (String(fallback || "").trim()) return String(fallback).trim();
+              }
+            } catch (e) {}
+            return window.I18N.translateArgs("players.player");
+          };
+          const actorName = (() => {
+            if (endedBy) {
+              const direct = displayPlayerName(endedBy.uid, endedBy.nickname);
+              if (direct) return direct;
+            }
+            if (endedBySide != null) return nameForSide(endedBySide);
+            const direct = displayPlayerName(info.byUid, info.byNick);
+            return direct || "";
+          })();
+          const otherSide = endedBySide === TOP ? BOT : endedBySide === BOT ? TOP : null;
+          const otherName = otherSide != null ? nameForSide(otherSide) : window.I18N.translateArgs("online.opponent");
+          const winnerName = winner != null ? nameForSide(winner) : "";
+          const loserSide = winner === TOP ? BOT : winner === BOT ? TOP : null;
+          const loserName = loserSide != null ? nameForSide(loserSide) : window.I18N.translateArgs("players.player");
+          const isDraw = resultStatus === "draw" || reason === "draw" || reason === "one_king_each";
+          const isAbsence = reason === "opponent_absent" || reason === "opponent_absent_late" || actionKind === "opponent-absent";
+          const isManual = isAbsence || reason === "ended_by_player" || reason === "late_exit" || ["leave", "resign"].includes(actionKind);
+          const isCancelled = ["cancel", "abort", "void", "administrative_cancelled"].includes(reason) || ["cancel", "abort", "void"].includes(actionKind);
+          const adminCounted = countsAsResult && (reason === "late_exit" || reason === "opponent_absent_late" || resultMeta.adjudicated === true);
+
+          const lines = [];
+          const add = (text) => {
+            const clean = String(text || "").trim();
+            if (clean && !lines.includes(clean)) lines.push(clean);
+          };
+
+          if (missingOfficial) {
+            add(window.I18N.translateArgs("online.endPresentation.roomUnavailable"));
+          } else if (winner != null) {
+            add(formatTpl(window.I18N.translateArgs("online.endPresentation.winner"), { player: winnerName }));
+          } else if (isDraw) {
+            add(window.I18N.translateArgs("online.endPresentation.draw"));
+          } else if (isCancelled) {
+            add(window.I18N.translateArgs("online.resultNotCounted.cancelled"));
+          } else if (isManual && actorName) {
+            add(isAbsence
+              ? formatTpl(window.I18N.translateArgs("online.endPresentation.endedByAbsence"), { player: actorName, opponent: otherName })
+              : formatTpl(window.I18N.translateArgs("online.endPresentation.endedBy"), { player: actorName }));
+          } else {
+            add(window.I18N.translateArgs("online.endPresentation.noRecordedResult"));
+          }
+
+          if (!missingOfficial) {
+            if (reason === "no_pieces") {
+              add(formatTpl(window.I18N.translateArgs("online.endPresentation.reason.noPieces"), { player: loserName }));
+            } else if (reason === "no_legal_moves") {
+              add(formatTpl(window.I18N.translateArgs("online.endPresentation.reason.noLegalMoves"), { player: loserName }));
+            } else if (reason === "one_king_each") {
+              add(window.I18N.translateArgs("online.endPresentation.reason.oneKingEach"));
+            }
+
+            if (winner != null && isManual) {
+              add(isAbsence
+                ? formatTpl(window.I18N.translateArgs("online.endPresentation.endedByAbsence"), { player: actorName || window.I18N.translateArgs("players.player"), opponent: otherName })
+                : formatTpl(window.I18N.translateArgs("online.endPresentation.endedBy"), { player: actorName || window.I18N.translateArgs("players.player") }));
+            }
+
+            if (countsAsResult === false) {
+              const key = rejectionReason === "administrative_early_or_midgame"
+                ? "online.resultNotCounted.early"
+                : rejectionReason === "administrative_position_not_clear"
+                  ? "online.resultNotCounted.unclear"
+                  : rejectionReason === "administrative_cancelled"
+                    ? "online.resultNotCounted.cancelled"
+                    : "online.resultNotCounted.generic";
+              add(window.I18N.translateArgs(key));
+            } else if (adminCounted) {
+              add(window.I18N.translateArgs("online.endPresentation.reason.positionDecisive"));
+            }
+          }
+
+          const primary = lines[0] || window.I18N.translateArgs("online.endPresentation.noRecordedResult");
+          return {
+            title: window.I18N.translateArgs("online.pvpEndTitle"),
+            primary,
+            details: lines.slice(1),
+            text: lines.join("\n\n"),
+            reason,
+            winner,
+            countsAsResult,
+          };
+        },
+
     _enterPostMatch: function (meta) {
           const info = meta && typeof meta === "object" ? meta : {};
-          const reason = String(info.reason || info.endedReason || "ended").trim();
-          const officialResult = info.result || (this._lastGameData && this._lastGameData.result) || null;
-          const winner = info.winner != null
-            ? Number(info.winner)
-            : this._lastGameData && this._lastGameData.winner != null
-              ? Number(this._lastGameData.winner)
-              : officialResult && officialResult.winner != null
-                ? Number(officialResult.winner)
-                : null;
+          const presentation = this._buildOnlineEndPresentation(info);
+          const winner = presentation.winner;
 
           this._applySessionState({
             postMatch: true,
@@ -1627,7 +1742,8 @@
             if (typeof Game !== "undefined" && Game) {
               Game.gameOver = true;
               Game.winner = winner === TOP || winner === BOT ? winner : null;
-              Game.terminationReason = reason;
+              Game.terminationReason = presentation.reason;
+              Game.endStatusText = presentation.primary;
               Game.inChain = false;
               Game.chainPos = null;
               Game.awaitingPenalty = false;
@@ -1637,46 +1753,17 @@
             }
           } catch (e) {}
           try { if (typeof Input !== "undefined" && Input) Input.selected = null; } catch (e) {}
+          try { if (typeof UI !== "undefined" && UI && typeof UI.updateStatus === "function") UI.updateStatus(); } catch (e) {}
           try { this.refreshPvpControls && this.refreshPvpControls(); } catch (e) {}
-
-          const gameData = info.game && typeof info.game === "object"
-            ? info.game
-            : (this._lastGameData && typeof this._lastGameData === "object" ? this._lastGameData : {});
-          const resultStatus = String(officialResult && officialResult.status || "").toLowerCase();
-          let message = "";
-          if (this.isSpectator) {
-            if (winner === TOP || winner === BOT) {
-              const players = info.players || gameData.players || {};
-              const winnerRow = winner === BOT ? players.white : players.black;
-              const winnerName = winnerRow
-                ? displayPlayerName(winnerRow.uid, winnerRow.nickname)
-                : (winner === BOT ? (Game.names && Game.names.bot) : (Game.names && Game.names.top));
-              message = formatTpl(window.I18N.translateArgs("online.result.spectatorWin", "{player} won the match."), {
-                player: winnerName || window.I18N.translateArgs("players.player"),
-              });
-            } else if (resultStatus === "draw" || reason === "draw" || this._isNaturalOnlineEndReason(reason)) {
-              message = window.I18N.translateArgs("online.result.spectatorDraw", "The match ended in a draw.");
-            } else {
-              message = window.I18N.translateArgs("online.result.ended", "The match ended.");
-            }
-          } else if (winner === TOP || winner === BOT) {
-            message = winner === Number(this.mySide)
-              ? window.I18N.translateArgs("online.result.win", "You won.")
-              : window.I18N.translateArgs("online.result.loss", "You lost.");
-          } else if (resultStatus === "draw" || reason === "draw" || this._isNaturalOnlineEndReason(reason)) {
-            message = window.I18N.translateArgs("online.result.draw", "The match ended in a draw.");
-          } else {
-            message = window.I18N.translateArgs("online.result.ended", "The match ended.");
-          }
 
           try {
             if (typeof UI !== "undefined" && UI && typeof UI.showOnlineGameOverModal === "function") {
-              const opened = UI.showOnlineGameOverModal({ message, title: window.I18N.translateArgs("online.pvpEndTitle") });
+              const opened = UI.showOnlineGameOverModal(presentation);
               if (opened !== false) return true;
             }
           } catch (e) {}
 
-          try { showOnlineNotice(message, { allowSpectator: true }); } catch (e) {}
+          try { showOnlineNotice(presentation.text, { allowSpectator: true }); } catch (e) {}
           return true;
         },
 
@@ -4064,17 +4151,6 @@
               if (type === "actor_i18n" && it.key === "log.soufla.pressed") return [{ kind: "soufla_pressed", actor, side: it.side, ts, displayId: it.id || "" }];
               if (type === "actor_i18n" && it.key) return [{ kind: "actor_i18n", actor, key: it.key, vars: it.vars || {}, ts, displayId: it.id || "" }];
               if (type === "i18n" && it.key) return [{ kind: "i18n", key: it.key, vars: it.vars || {}, ts, displayId: it.id || "" }];
-              if (type === "game.ended") {
-                const result = data.result && typeof data.result === "object" ? data.result : {};
-                const reason = String(data.reason || result.reason || "");
-                const manual = !!it.actor && ["ended_by_player", "late_exit", "opponent_absent", "opponent_absent_late", "cancel", "abort", "leave", "resign"].includes(reason);
-                if (manual) return [{ kind: "match_ended_by", actor, side: it.side, ts, displayId: it.id || "" }];
-                const winnerSide = Number(result.winner || 0) || (it.side === -1 || it.side === 1 ? Number(it.side) : null);
-                const players = gameData.players || {};
-                const winnerRow = winnerSide === -1 ? players.white : winnerSide === 1 ? players.black : null;
-                const winner = winnerRow ? playerNameFor(winnerRow.uid, winnerSide) : "";
-                return [{ kind: "game_result", winner: winnerSide, actor: winner, ts, displayId: it.id || "" }];
-              }
 
               // Legacy display records are decoded, but opaque identifiers and
               // unknown structured objects are never exposed to the player.
@@ -5407,10 +5483,6 @@
           return null;
         },
 
-    _isNaturalOnlineEndReason: function (reason) {
-          const r = String(reason || "").trim();
-          return r === "natural_win" || r === "draw" || r === "no_legal_moves";
-        },
 
     _autoEnterFromUrl: async function () {
           if (!isGamePage()) return;
@@ -5701,41 +5773,16 @@
         },
 
     _handleMissingOfficialGame: function () {
-          if (!this.isActive) return;
+          if (!this.isActive) return false;
           const asyncContext = this._captureAsyncContext(this.gameId);
-          const title = window.I18N.translateArgs("online.pvpEndTitle");
-          const body = window.I18N.translateArgs("online.ended.remoteOrCleaned");
-          let completed = false;
-          const go = async () => {
-            if (completed || !this._isAsyncContextCurrent(asyncContext, { ignorePostMatch: true })) return;
-            completed = true;
-            try { this._clearPersistedActiveGame(); } catch (e) {}
-            try { await this.exitToMode(); } catch (e) {
-              try {
-                const inPages = (location.pathname || "").includes("/pages/");
-                location.href = inPages ? "mode.html" : "pages/mode.html";
-              } catch (_) {}
-            }
-          };
-          if (typeof Modal !== "undefined" && Modal && typeof Modal.alert === "function") {
-            try { setTimeout(go, 1800); } catch (e) {}
-            Modal.alert({
-              title,
-              body: `<div>${body}</div>`,
-              okLabel: window.I18N.translateArgs("buttons.home"),
-              okClassName: "ok",
-              allowSpectator: true,
-              priority: 90,
-              blocking: true,
-              onClick: go,
-              onClose: (reason) => {
-                if (reason === "dismiss") go();
-              },
-            });
-          } else {
-            try { showOnlineNotice(body); } catch (e) {}
-            go();
-          }
+          if (!this._isAsyncContextCurrent(asyncContext, { ignorePostMatch: true })) return false;
+          return this._enterPostMatch({
+            missingOfficial: true,
+            reason: "room_unavailable",
+            winner: null,
+            result: null,
+            game: null,
+          });
         },
 
     _ingestOfficialGame: function (rawData, meta) {

@@ -58,7 +58,15 @@
     const sideLabel = typeof opts.sideLabel === "function" ? opts.sideLabel : function (side) { return String(side); };
     const statusEl = qs(opts.statusSelector || "#statusText");
     if (!statusEl) return;
-    if (!game || (game.player !== top && game.player !== bot)) {
+    if (!game) {
+      setStatusWithPawn("", null, opts);
+      return;
+    }
+    if (game.gameOver) {
+      setStatusWithPawn(String(game.endStatusText || ""), null, opts);
+      return;
+    }
+    if (game.player !== top && game.player !== bot) {
       setStatusWithPawn("", null, opts);
       return;
     }

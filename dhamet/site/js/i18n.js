@@ -153,7 +153,6 @@
       "endKill": "إنهاء الأسر",
       "undo": "تراجع",
       "endMatch": "خروج",
-      "endOnline": "تم إنهاء المباراة"
     },
     "dashboard": {
       "draws": "التعادل",
@@ -239,10 +238,14 @@
     },
     "modals": {
       "gameOver": {
-        "drawTitle": "انتهت المباراة",
-        "winBody": "تهانينا، لقد فزت. هل تريد بدء مباراة جديدة؟",
-        "loseBody": "خسرت. هل تريد بدء مباراة جديدة؟",
-        "drawBody": "تعادل. هل تريد بدء مباراة جديدة؟"
+        "title": "نهاية المباراة",
+        "winner": "انتهت المباراة. فاز اللاعب {player}.",
+        "draw": "انتهت المباراة بالتعادل.",
+        "reason": {
+          "noPieces": "نفدت قطع اللاعب {player}.",
+          "noLegalMoves": "لم يعد اللاعب {player} يملك نقلة قانونية.",
+          "oneKingEach": "تحقق التعادل ببقاء ظائم واحد لكل لاعب."
+        }
       },
       "newGame": {
         "title": "بدء لعبة جديدة",
@@ -334,7 +337,6 @@
       "undoSelf": "${actor}: تراجعت عن النقلة.",
       "matchEndedByActor": "${actor}: أنهى المباراة.",
       "matchEndedBySelf": "${actor}: أنهيت المباراة.",
-      "gameEnded": "انتهت المباراة.",
       "gameWinner": "انتهت المباراة. الفائز: ${winner}.",
       "gameDraw": "انتهت المباراة دون فائز.",
       "turnMoveFmt": "${side}: حركة ${from}-${to}.",
@@ -382,12 +384,9 @@
       "aiThinkingMoveWaitLine": "انتظر... الحاسوب يفكر في اختيار الحركة المناسبة.",
       "currentLevel": "المستوى الحالي",
       "aiThinkingMoveLevelDuration": "المستوى: ${level} (مدة تفكير الحاسوب من ${min} إلى ${max} ثانية لكل نقلة)",
-      "win": "انتهت المباراة — الفائز:",
       "turn": "الدور الآن على:",
       "forcedChainIncomplete": "أكمل سلسلة الأسر ثم اضغط «إنهاء الأسر».",
       "forcedMove": "الافتتاح الإجباري: النقلة المسموحة ${from}→${to}",
-      "draw": "انتهت المباراة بالتعادل",
-      "lose": "خسارة",
       "moveSendFail": "فشل إرسال النقلة، يرجى إعادتها من جديد.",
       "aiThinkingMoveLevelNote": "ملاحظة: كلما كان المستوى أعلى، قد يستغرق التفكير وقتًا أطول."
     },
@@ -437,9 +436,19 @@
         "disconnected": "انقطع الاتصال"
       },
       "endFail": "تعذر إنهاء المباراة الآن.",
-      "ended": {
-        "generic": "انتهت المباراة.",
-        "remoteOrCleaned": "انتهت هذه المباراة أو تم إنهاؤها من الطرف الآخر. سيتم إخراجك من الرقعة."
+      "endPresentation": {
+        "winner": "انتهت المباراة. فاز اللاعب {player}.",
+        "draw": "انتهت المباراة بالتعادل.",
+        "endedBy": "اللاعب {player} أنهى المباراة.",
+        "endedByAbsence": "اللاعب {player} أنهى المباراة بسبب غياب اللاعب {opponent}.",
+        "noRecordedResult": "لم تُسجّل نتيجة للمباراة.",
+        "roomUnavailable": "لم تعد الغرفة متاحة، وتعذر استرجاع نتيجة المباراة.",
+        "reason": {
+          "noPieces": "نفدت قطع اللاعب {player}.",
+          "noLegalMoves": "لم يعد اللاعب {player} يملك نقلة قانونية.",
+          "oneKingEach": "تحقق التعادل ببقاء ظائم واحد لكل لاعب.",
+          "positionDecisive": "احتُسبت النتيجة لأن وضع المباراة كان حاسمًا."
+        }
       },
       "errors": {
         "joinFailed": "تعذر الانضمام إلى المباراة عبر الإنترنت. تحقّق من صلاحيات قاعدة البيانات أو أعد المحاولة.",
@@ -463,12 +472,6 @@
         "inviteSent": "{from} أرسل دعوة إلى {to}."
       },
       "logFailed": "تعذر تحديث السجل.",
-      "matchEndedByPlayer": "{player} أنهى المباراة{reason}.",
-      "matchEndedByYou": "تم إنهاء المباراة بنجاح. سيتم نقلك إلى اللوبي.",
-      "matchEndedReason": {
-        "absent": " بسبب غياب الخصم",
-        "disconnect": " بسبب انقطاع الخصم"
-      },
       "pvpEndTitle": "نهاية المباراة",
       "resultNotCounted": {
         "early": "انتهت المباراة دون إضافتها إلى النتائج لأن الانسحاب أو الغياب وقع قبل المرحلة المتقدمة.",
@@ -486,14 +489,6 @@
       "absencePrompt": "اللاعب {player} غير متصل منذ دقيقتين ، هل تريد الانتظار ام انهاء المباراة؟",
       "opponent": "الخصم",
       "player": "لاعب",
-      "result": {
-        "win": "لقد فزت بالمباراة.",
-        "loss": "لقد خسرت المباراة.",
-        "draw": "انتهت المباراة بالتعادل.",
-        "ended": "انتهت المباراة.",
-        "spectatorWin": "فاز اللاعب {player} بالمباراة.",
-        "spectatorDraw": "انتهت المباراة بالتعادل."
-      },
       "roomNamePlaceholder": "اسم الغرفة",
       "roomNamePrompt": "أدخل اسم الغرفة لتمييزها في قائمة الغرف.",
       "roomNameTitle": "تسمية الغرفة",
@@ -755,7 +750,6 @@
       "endKill": "End capture",
       "undo": "Undo",
       "endMatch": "Exit",
-      "endOnline": "Match ended"
     },
     "dashboard": {
       "draws": "Draws",
@@ -841,10 +835,14 @@
     },
     "modals": {
       "gameOver": {
-        "drawTitle": "Game over",
-        "winBody": "You won. Start a new match?",
-        "loseBody": "You lost. Start a new match?",
-        "drawBody": "Draw. Start a new match?"
+        "title": "Match result",
+        "winner": "The match ended. Player {player} won.",
+        "draw": "The match ended in a draw.",
+        "reason": {
+          "noPieces": "Player {player} ran out of pieces.",
+          "noLegalMoves": "Player {player} had no legal move left.",
+          "oneKingEach": "The draw was reached with one king remaining for each player."
+        }
       },
       "newGame": {
         "title": "New game",
@@ -936,7 +934,6 @@
       "undoSelf": "${actor}: Undid the move.",
       "matchEndedByActor": "${actor}: Ended the match.",
       "matchEndedBySelf": "${actor}: Ended the match.",
-      "gameEnded": "The match ended.",
       "gameWinner": "The match ended. Winner: ${winner}.",
       "gameDraw": "The match ended without a winner.",
       "turnMoveFmt": "${side}: Move ${from}-${to}.",
@@ -984,12 +981,9 @@
       "aiThinkingMoveWaitLine": "Please wait… The computer is thinking about the appropriate move.",
       "currentLevel": "Current level",
       "aiThinkingMoveLevelDuration": "Level: ${level} (computer thinking time from ${min} to ${max} seconds per move)",
-      "win": "Game over – winner:",
       "turn": "Turn:",
       "forcedChainIncomplete": "Finish the capture chain, then press “End capture”.",
       "forcedMove": "Forced opening: the allowed move is ${from}→${to}",
-      "draw": "Game over – draw",
-      "lose": "Loss",
       "moveSendFail": "Failed to send the move. Please retry it again.",
       "aiThinkingMoveLevelNote": "Note: higher levels may take longer to think."
     },
@@ -1039,9 +1033,19 @@
         "disconnected": "Disconnected"
       },
       "endFail": "Couldn't end the match right now.",
-      "ended": {
-        "generic": "Match ended.",
-        "remoteOrCleaned": "This match has ended or was ended by the other player. You will be taken out of the board."
+      "endPresentation": {
+        "winner": "The match ended. Player {player} won.",
+        "draw": "The match ended in a draw.",
+        "endedBy": "Player {player} ended the match.",
+        "endedByAbsence": "Player {player} ended the match because player {opponent} was absent.",
+        "noRecordedResult": "No result was recorded for the match.",
+        "roomUnavailable": "The room is no longer available, and the match result could not be retrieved.",
+        "reason": {
+          "noPieces": "Player {player} ran out of pieces.",
+          "noLegalMoves": "Player {player} had no legal move left.",
+          "oneKingEach": "The draw was reached with one king remaining for each player.",
+          "positionDecisive": "The result was counted because the position was decisive."
+        }
       },
       "errors": {
         "joinFailed": "Couldn't join the online match. Check Cloudflare backend permissions or try again.",
@@ -1065,12 +1069,6 @@
         "inviteSent": "{from} sent an invite to {to}."
       },
       "logFailed": "Failed to update the log.",
-      "matchEndedByPlayer": "{player} ended the match{reason}.",
-      "matchEndedByYou": "The match ended successfully. You will be returned to the lobby.",
-      "matchEndedReason": {
-        "absent": " because the opponent was absent",
-        "disconnect": " because the opponent disconnected"
-      },
       "pvpEndTitle": "Match ended",
       "resultNotCounted": {
         "early": "The match ended without being added to the results because the withdrawal or absence occurred before the advanced stage.",
@@ -1088,14 +1086,6 @@
       "absencePrompt": "Player {player} has been offline for two minutes. Do you want to wait or end the match?",
       "opponent": "Opponent",
       "player": "Player",
-      "result": {
-        "win": "You won the match.",
-        "loss": "You lost the match.",
-        "draw": "The match ended in a draw.",
-        "ended": "The match ended.",
-        "spectatorWin": "Player {player} won the match.",
-        "spectatorDraw": "The match ended in a draw."
-      },
       "roomNamePlaceholder": "Room name",
       "roomNamePrompt": "Enter a room name to distinguish it in the rooms list.",
       "roomNameTitle": "Name the room",
@@ -1357,7 +1347,6 @@
       "endKill": "Terminer la prise",
       "undo": "Annuler",
       "endMatch": "Quitter",
-      "endOnline": "Partie terminée"
     },
     "dashboard": {
       "draws": "Nuls",
@@ -1443,10 +1432,14 @@
     },
     "modals": {
       "gameOver": {
-        "drawTitle": "Partie terminée",
-        "winBody": "Vous avez gagné. Nouvelle partie ?",
-        "loseBody": "Vous avez perdu. Nouvelle partie ?",
-        "drawBody": "Match nul. Nouvelle partie ?"
+        "title": "Résultat de la partie",
+        "winner": "La partie est terminée. Le joueur {player} a gagné.",
+        "draw": "La partie s’est terminée par un match nul.",
+        "reason": {
+          "noPieces": "Le joueur {player} n’avait plus de pièces.",
+          "noLegalMoves": "Le joueur {player} n’avait plus de coup légal.",
+          "oneKingEach": "Le match nul a été atteint avec un roi restant pour chaque joueur."
+        }
       },
       "newGame": {
         "title": "Nouvelle partie",
@@ -1538,7 +1531,6 @@
       "undoSelf": "${actor} : avez annulé le coup.",
       "matchEndedByActor": "${actor} : a terminé la partie.",
       "matchEndedBySelf": "${actor} : avez terminé la partie.",
-      "gameEnded": "La partie est terminée.",
       "gameWinner": "La partie est terminée. Vainqueur : ${winner}.",
       "gameDraw": "La partie est terminée sans vainqueur.",
       "turnMoveFmt": "${side} : Déplacement ${from}-${to}.",
@@ -1586,12 +1578,9 @@
       "aiThinkingMoveWaitLine": "Veuillez patienter… L’ordinateur réfléchit au coup approprié.",
       "currentLevel": "Niveau actuel",
       "aiThinkingMoveLevelDuration": "Niveau : ${level} (temps de réflexion de l’ordinateur de ${min} à ${max} secondes par coup)",
-      "win": "Partie terminée – vainqueur :",
       "turn": "Au tour de :",
       "forcedChainIncomplete": "Terminez la chaîne de prises, puis appuyez sur « Terminer la prise ».",
       "forcedMove": "Ouverture obligatoire : le coup autorisé est ${from}→${to}",
-      "draw": "Partie terminée – match nul",
-      "lose": "Défaite",
       "moveSendFail": "Échec de l’envoi du coup. Veuillez le refaire.",
       "aiThinkingMoveLevelNote": "Remarque : plus le niveau est élevé, plus la réflexion peut durer."
     },
@@ -1641,9 +1630,19 @@
         "disconnected": "Connexion coupée"
       },
       "endFail": "Impossible de terminer la partie pour le moment.",
-      "ended": {
-        "generic": "Partie terminée.",
-        "remoteOrCleaned": "Cette partie est terminée ou a été terminée par l’autre joueur. Vous allez quitter le plateau."
+      "endPresentation": {
+        "winner": "La partie est terminée. Le joueur {player} a gagné.",
+        "draw": "La partie s’est terminée par un match nul.",
+        "endedBy": "Le joueur {player} a terminé la partie.",
+        "endedByAbsence": "Le joueur {player} a terminé la partie en raison de l’absence du joueur {opponent}.",
+        "noRecordedResult": "Aucun résultat n’a été enregistré pour la partie.",
+        "roomUnavailable": "La salle n’est plus disponible et le résultat de la partie n’a pas pu être récupéré.",
+        "reason": {
+          "noPieces": "Le joueur {player} n’avait plus de pièces.",
+          "noLegalMoves": "Le joueur {player} n’avait plus de coup légal.",
+          "oneKingEach": "Le match nul a été atteint avec un roi restant pour chaque joueur.",
+          "positionDecisive": "Le résultat a été comptabilisé parce que la position était décisive."
+        }
       },
       "errors": {
         "joinFailed": "Impossible de rejoindre la partie en ligne. Vérifiez les règles/autorisations de la base de données ou réessayez.",
@@ -1667,12 +1666,6 @@
         "inviteSent": "{from} a envoyé une invitation à {to}."
       },
       "logFailed": "Échec de mise à jour du journal.",
-      "matchEndedByPlayer": "{player} a terminé la partie{reason}.",
-      "matchEndedByYou": "La partie a été terminée. Vous allez retourner au lobby.",
-      "matchEndedReason": {
-        "absent": " car l’adversaire était absent",
-        "disconnect": " car l’adversaire s’est déconnecté"
-      },
       "pvpEndTitle": "Partie terminée",
       "resultNotCounted": {
         "early": "La partie s’est terminée sans être ajoutée aux résultats, car l’abandon ou l’absence a eu lieu avant la phase avancée.",
@@ -1690,14 +1683,6 @@
       "absencePrompt": "Le joueur {player} est hors ligne depuis deux minutes. Voulez-vous attendre ou terminer la partie ?",
       "opponent": "Adversaire",
       "player": "Joueur",
-      "result": {
-        "win": "Vous avez gagné la partie.",
-        "loss": "Vous avez perdu la partie.",
-        "draw": "La partie s’est terminée par un match nul.",
-        "ended": "La partie est terminée.",
-        "spectatorWin": "Le joueur {player} a gagné la partie.",
-        "spectatorDraw": "La partie s’est terminée par un match nul."
-      },
       "roomNamePlaceholder": "Nom de la salle",
       "roomNamePrompt": "Entrez un nom de salle pour la distinguer dans la liste.",
       "roomNameTitle": "Nommer la salle",
