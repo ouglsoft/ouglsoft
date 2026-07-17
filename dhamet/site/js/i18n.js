@@ -440,14 +440,14 @@
         "winner": "انتهت المباراة. فاز اللاعب {player}.",
         "draw": "انتهت المباراة بالتعادل.",
         "endedBy": "اللاعب {player} أنهى المباراة.",
-        "endedByAbsence": "اللاعب {player} أنهى المباراة بسبب غياب اللاعب {opponent}.",
+        "endedByAbsence": "طلب اللاعب {player} إنهاء المباراة بعد استمرار غياب اللاعب {opponent}.",
         "noRecordedResult": "لم تُسجّل نتيجة للمباراة.",
         "roomUnavailable": "لم تعد الغرفة متاحة، وتعذر استرجاع نتيجة المباراة.",
         "reason": {
           "noPieces": "نفدت قطع اللاعب {player}.",
           "noLegalMoves": "لم يعد اللاعب {player} يملك نقلة قانونية.",
           "oneKingEach": "تحقق التعادل ببقاء ظائم واحد لكل لاعب.",
-          "positionDecisive": "احتُسبت النتيجة لأن وضع المباراة كان حاسمًا."
+          "positionDecisive": "حُسمت المباراة لصالح الفائز لأن وضع المباراة كان حاسمًا عند الإنهاء."
         }
       },
       "errors": {
@@ -474,10 +474,9 @@
       "logFailed": "تعذر تحديث السجل.",
       "pvpEndTitle": "نهاية المباراة",
       "resultNotCounted": {
-        "early": "انتهت المباراة دون إضافتها إلى النتائج لأن الانسحاب أو الغياب وقع قبل المرحلة المتقدمة.",
-        "unclear": "انتهت المباراة دون إضافتها إلى النتائج لأن وضعها لم يكن حاسمًا بما يكفي.",
-        "cancelled": "أُلغيت المباراة ولم تُضف إلى النتائج.",
-        "generic": "انتهت المباراة دون إضافتها إلى النتائج."
+        "early": "لم يُحدَّد فائز لأن الانسحاب أو الغياب وقع قبل المرحلة المتقدمة.",
+        "unclear": "لم يُحدَّد فائز لأن وضع المباراة لم يكن حاسمًا بما يكفي.",
+        "generic": "انتهت المباراة دون اعتماد فائز."
       },
       "newInviteBody": "يدعوك اللاعب <strong>${fromName}</strong> للعب${roomPart}.",
       "newInviteRoomPart": " في غرفة <strong>${roomName}</strong>",
@@ -1037,14 +1036,14 @@
         "winner": "The match ended. Player {player} won.",
         "draw": "The match ended in a draw.",
         "endedBy": "Player {player} ended the match.",
-        "endedByAbsence": "Player {player} ended the match because player {opponent} was absent.",
+        "endedByAbsence": "Player {player} requested to end the match after player {opponent} remained absent.",
         "noRecordedResult": "No result was recorded for the match.",
         "roomUnavailable": "The room is no longer available, and the match result could not be retrieved.",
         "reason": {
           "noPieces": "Player {player} ran out of pieces.",
           "noLegalMoves": "Player {player} had no legal move left.",
           "oneKingEach": "The draw was reached with one king remaining for each player.",
-          "positionDecisive": "The result was counted because the position was decisive."
+          "positionDecisive": "The match was decided in favor of the winner because the position was decisive when it ended."
         }
       },
       "errors": {
@@ -1071,10 +1070,9 @@
       "logFailed": "Failed to update the log.",
       "pvpEndTitle": "Match ended",
       "resultNotCounted": {
-        "early": "The match ended without being added to the results because the withdrawal or absence occurred before the advanced stage.",
-        "unclear": "The match ended without being added to the results because the position was not decisive enough.",
-        "cancelled": "The match was cancelled and was not added to the results.",
-        "generic": "The match ended without being added to the results."
+        "early": "No winner was declared because the withdrawal or absence occurred before the advanced stage.",
+        "unclear": "No winner was declared because the position was not decisive enough.",
+        "generic": "The match ended without an official winner."
       },
       "newInviteBody": "Player <strong>${fromName}</strong> invited you to play${roomPart}.",
       "newInviteRoomPart": " in room <strong>${roomName}</strong>",
@@ -1634,14 +1632,14 @@
         "winner": "La partie est terminée. Le joueur {player} a gagné.",
         "draw": "La partie s’est terminée par un match nul.",
         "endedBy": "Le joueur {player} a terminé la partie.",
-        "endedByAbsence": "Le joueur {player} a terminé la partie en raison de l’absence du joueur {opponent}.",
+        "endedByAbsence": "Le joueur {player} a demandé la fin de la partie après l’absence prolongée du joueur {opponent}.",
         "noRecordedResult": "Aucun résultat n’a été enregistré pour la partie.",
         "roomUnavailable": "La salle n’est plus disponible et le résultat de la partie n’a pas pu être récupéré.",
         "reason": {
           "noPieces": "Le joueur {player} n’avait plus de pièces.",
           "noLegalMoves": "Le joueur {player} n’avait plus de coup légal.",
           "oneKingEach": "Le match nul a été atteint avec un roi restant pour chaque joueur.",
-          "positionDecisive": "Le résultat a été comptabilisé parce que la position était décisive."
+          "positionDecisive": "La partie a été tranchée en faveur du gagnant parce que la position était décisive au moment de la fin."
         }
       },
       "errors": {
@@ -1668,10 +1666,9 @@
       "logFailed": "Échec de mise à jour du journal.",
       "pvpEndTitle": "Partie terminée",
       "resultNotCounted": {
-        "early": "La partie s’est terminée sans être ajoutée aux résultats, car l’abandon ou l’absence a eu lieu avant la phase avancée.",
-        "unclear": "La partie s’est terminée sans être ajoutée aux résultats, car la position n’était pas assez décisive.",
-        "cancelled": "La partie a été annulée et n’a pas été ajoutée aux résultats.",
-        "generic": "La partie s’est terminée sans être ajoutée aux résultats."
+        "early": "Aucun gagnant n’a été déclaré, car l’abandon ou l’absence a eu lieu avant la phase avancée.",
+        "unclear": "Aucun gagnant n’a été déclaré, car la position n’était pas assez décisive.",
+        "generic": "La partie s’est terminée sans gagnant officiel."
       },
       "newInviteBody": "Le joueur <strong>${fromName}</strong> vous invite à jouer${roomPart}.",
       "newInviteRoomPart": " dans la salle <strong>${roomName}</strong>",

@@ -1647,7 +1647,6 @@
           const isDraw = resultStatus === "draw" || reason === "draw" || reason === "one_king_each";
           const isAbsence = reason === "opponent_absent" || reason === "opponent_absent_late" || actionKind === "opponent-absent";
           const isManual = isAbsence || reason === "ended_by_player" || reason === "late_exit" || ["leave", "resign"].includes(actionKind);
-          const isCancelled = ["cancel", "abort", "void", "administrative_cancelled"].includes(reason) || ["cancel", "abort", "void"].includes(actionKind);
           const adminCounted = countsAsResult && (reason === "late_exit" || reason === "opponent_absent_late" || resultMeta.adjudicated === true);
 
           const lines = [];
@@ -1662,8 +1661,6 @@
             add(formatTpl(window.I18N.translateArgs("online.endPresentation.winner"), { player: winnerName }));
           } else if (isDraw) {
             add(window.I18N.translateArgs("online.endPresentation.draw"));
-          } else if (isCancelled) {
-            add(window.I18N.translateArgs("online.resultNotCounted.cancelled"));
           } else if (isManual && actorName) {
             add(isAbsence
               ? formatTpl(window.I18N.translateArgs("online.endPresentation.endedByAbsence"), { player: actorName, opponent: otherName })
@@ -1692,9 +1689,7 @@
                 ? "online.resultNotCounted.early"
                 : rejectionReason === "administrative_position_not_clear"
                   ? "online.resultNotCounted.unclear"
-                  : rejectionReason === "administrative_cancelled"
-                    ? "online.resultNotCounted.cancelled"
-                    : "online.resultNotCounted.generic";
+                  : "online.resultNotCounted.generic";
               add(window.I18N.translateArgs(key));
             } else if (adminCounted) {
               add(window.I18N.translateArgs("online.endPresentation.reason.positionDecisive"));
