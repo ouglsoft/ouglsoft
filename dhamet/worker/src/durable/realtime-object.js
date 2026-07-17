@@ -66,6 +66,12 @@ if (!Rules) throw new Error('DhametRules shared engine failed to load');
 if (!AuthorityCore) throw new Error('DhametAuthority shared reducer failed to load');
 if (!StatsCore) throw new Error('DhametStats shared helpers failed to load');
 
+const ENDED_GAME_RETENTION_MS = 60 * 60 * 1000;
+const REJECTED_GAME_RETENTION_MS = 15 * 60 * 1000;
+const ABANDONED_GAME_RETENTION_MS = 30 * 60 * 1000;
+const PENDING_GAME_RETENTION_MS = 2 * 24 * 60 * 60 * 1000;
+const DEFAULT_MAINTENANCE_MS = 24 * 60 * 60 * 1000;
+
 function gameIdOrRoom(payload) { return payload && (payload.gameId || payload.roomId || payload.gid); }
 
 function normalizeGameMoveBody(body) {
@@ -96,17 +102,101 @@ export class RealtimeObject {
     if (!this.versions) this.versions = (await this.ctx.storage.get('versions')) || { '': now() };
     if (!this.pendingOfficialStats) this.pendingOfficialStats = (await this.ctx.storage.get('pendingOfficialStats')) || {};
   }
+  _officialPlayerUids(game) {
+    const players = game && game.players && typeof game.players === 'object' ? game.players : {};
+    return ['white', 'black']
+      .map((slot) => cleanPath(players[slot] && players[slot].uid || ''))
+      .filter(Boolean);
+  }
+
+  _hasOfficialPlayerSocket(gameId, game) {
+    const gid = cleanPath(gameId || '');
+    const players = new Set(this._officialPlayerUids(game));
+    if (!gid || !players.size) return false;
+    for (const sess of this.sessions.values()) {
+      if (!sess || cleanPath(sess.gameId || '') !== gid) continue;
+      if (!players.has(cleanPath(sess.uid || ''))) continue;
+      if (String(sess.official || '') === 'game-live') return true;
+    }
+    return false;
+  }
+
+  _playerPresenceTimestamp(game, uid) {
+    const presence = game && game.presence && typeof game.presence === 'object' ? game.presence : {};
+    const row = uid && presence[uid] && typeof presence[uid] === 'object' ? presence[uid] : {};
+    return Number(row.updatedAt || row.joinedAt || 0) || 0;
+  }
+
+  _gameMaintenanceDeadline(gameId, game, atValue) {
+    const at = Number(atValue || now()) || now();
+    const row = game && typeof game === 'object' ? game : {};
+    const status = String(row.status || 'pending');
+    if (status === 'ended') {
+      const endedAt = Number(row.endedAt || row.cancelledAt || 0) || 0;
+      return endedAt ? endedAt + ENDED_GAME_RETENTION_MS : at + ENDED_GAME_RETENTION_MS;
+    }
+    if (status === 'rejected') {
+      const rejectedAt = Number(row.rejectedAt || row.endedAt || row.updatedAt || row.createdAt || 0) || 0;
+      return rejectedAt ? rejectedAt + REJECTED_GAME_RETENTION_MS : at + REJECTED_GAME_RETENTION_MS;
+    }
+    if (status === 'active') {
+      if (this._hasOfficialPlayerSocket(gameId, row)) return at + DEFAULT_MAINTENANCE_MS;
+      const uids = this._officialPlayerUids(row);
+      const fallback = Number(row.lastActivityAt || row.updatedAt || row.acceptedAt || row.createdAt || 0) || at;
+      if (uids.length < 2) return fallback + PENDING_GAME_RETENTION_MS;
+      const latest = uids.reduce((max, uid) => Math.max(max, this._playerPresenceTimestamp(row, uid) || fallback), fallback);
+      return latest + ABANDONED_GAME_RETENTION_MS;
+    }
+    const lastActivity = Number(row.lastActivityAt || row.updatedAt || row.rejectedAt || row.createdAt || 0) || at;
+    return lastActivity + PENDING_GAME_RETENTION_MS;
+  }
+
+  _isAbandonedActiveGame(gameId, game, atValue) {
+    const at = Number(atValue || now()) || now();
+    const row = game && typeof game === 'object' ? game : {};
+    if (String(row.status || '') !== 'active') return false;
+    if (this._hasOfficialPlayerSocket(gameId, row)) return false;
+    const uids = this._officialPlayerUids(row);
+    if (uids.length < 2) return false;
+    const fallback = Number(row.lastActivityAt || row.updatedAt || row.acceptedAt || row.createdAt || 0) || 0;
+    if (!fallback) return false;
+    return uids.every((uid) => {
+      const lastSeen = this._playerPresenceTimestamp(row, uid) || fallback;
+      return at - lastSeen >= ABANDONED_GAME_RETENTION_MS;
+    });
+  }
+
+  _nextMaintenanceDelay(explicitDelayMs) {
+    const at = now();
+    const deadlines = [];
+    const explicit = Number(explicitDelayMs || 0) || 0;
+    if (explicit > 0) deadlines.push(at + explicit);
+    if (this.root && this.root.kind === 'rate-limit') {
+      const purgeAt = Number(this.root.purgeAt || 0) || 0;
+      if (purgeAt) deadlines.push(purgeAt);
+    }
+    const games = this.root && this.root.games && typeof this.root.games === 'object' ? this.root.games : {};
+    for (const [gameId, game] of Object.entries(games)) deadlines.push(this._gameMaintenanceDeadline(gameId, game, at));
+    const pending = this.pendingOfficialStats && typeof this.pendingOfficialStats === 'object' ? Object.values(this.pendingOfficialStats) : [];
+    for (const row of pending) {
+      const nextRetryAt = Number(row && row.nextRetryAt || 0) || 0;
+      deadlines.push(nextRetryAt || at + 60 * 1000);
+    }
+    const nextAt = deadlines.filter((value) => Number.isFinite(value) && value > 0).reduce((min, value) => min == null || value < min ? value : min, null);
+    return nextAt == null ? DEFAULT_MAINTENANCE_MS : Math.max(60 * 1000, nextAt - at);
+  }
+
   async _save(maintenanceDelayMs) {
     await this.ctx.storage.put({
       root: this.root || {},
       versions: this.versions || { '': now() },
       pendingOfficialStats: this.pendingOfficialStats || {},
     });
-    if (!this._inAlarm) await this._scheduleMaintenance(maintenanceDelayMs);
+    if (!this._inAlarm) await this._scheduleMaintenance(this._nextMaintenanceDelay(maintenanceDelayMs));
   }
 
   async _scheduleMaintenance(delayMs) {
-    const delay = Math.max(60 * 1000, Number(delayMs || 24 * 60 * 60 * 1000) || 24 * 60 * 60 * 1000);
+    const delay = Math.max(60 * 1000, Number(delayMs || DEFAULT_MAINTENANCE_MS) || DEFAULT_MAINTENANCE_MS);
     const target = now() + delay;
     try {
       const existing = typeof this.ctx.storage.getAlarm === 'function' ? await this.ctx.storage.getAlarm() : null;
@@ -115,6 +205,17 @@ export class RealtimeObject {
     } catch (err) {
       this._maintenanceScheduled = false;
       console.error(JSON.stringify({ level: 'error', area: 'durable-maintenance', event: 'schedule-failed', message: String(err && err.message || err) }));
+    }
+  }
+
+  async _replaceMaintenanceSchedule(delayMs) {
+    const delay = Math.max(60 * 1000, Number(delayMs || DEFAULT_MAINTENANCE_MS) || DEFAULT_MAINTENANCE_MS);
+    try {
+      await this.ctx.storage.setAlarm(now() + delay);
+      this._maintenanceScheduled = true;
+    } catch (err) {
+      this._maintenanceScheduled = false;
+      console.error(JSON.stringify({ level: 'error', area: 'durable-maintenance', event: 'reschedule-failed', message: String(err && err.message || err) }));
     }
   }
 
@@ -332,6 +433,10 @@ export class RealtimeObject {
       const body = await requestBody(request);
       return this._cleanupGameLifecycle(body);
     }
+    if (url.pathname.endsWith('/api/lifecycle/cleanup-global-game-references') || url.pathname.endsWith('/lifecycle/cleanup-global-game-references')) {
+      const body = await requestBody(request);
+      return this._cleanupGlobalGameReferencesRecord(body);
+    }
     if (url.pathname.endsWith('/api/privacy/user-deleted') || url.pathname.endsWith('/privacy/user-deleted')) {
       const body = await requestBody(request);
       return this._cleanupDeletedUser(body);
@@ -526,6 +631,7 @@ export class RealtimeObject {
     };
     try { server.serializeAttachment(sess); } catch (_) {}
     this.sessions.set(server, sess);
+    await this._replaceMaintenanceSchedule(this._nextMaintenanceDelay());
     try {
       server.send(JSON.stringify({
         type: 'value',
@@ -1804,6 +1910,66 @@ export class RealtimeObject {
     return this.env.REALTIME.get(this.env.REALTIME.idFromName('global'));
   }
 
+  async _cleanupGlobalGameReferencesRecord(body) {
+    const gid = cleanPath(body && body.gameId || '');
+    const uids = Array.from(new Set((Array.isArray(body && body.uids) ? body.uids : [])
+      .map((uid) => cleanPath(uid || ''))
+      .filter(Boolean)))
+      .slice(0, 2);
+    if (!gid) return json({ ok: false, error: 'lifecycle/missing-game-id' }, 400);
+    const beforeRoot = clone(this.root || {});
+    const changed = [];
+    if (getAt(this.root || {}, 'roomList/' + gid) != null) {
+      this.root = setAt(this.root || {}, 'roomList/' + gid, null);
+      changed.push('roomList/' + gid);
+    }
+    const at = now();
+    for (const uid of uids) {
+      const path = 'players/' + uid;
+      const current = getAt(this.root || {}, path);
+      if (cleanPath(current && current.roomId || '') !== gid) continue;
+      this.root = updateAt(this.root || {}, path, {
+        status: 'available', role: 'lobby', roomId: null, side: null,
+        mode: 'available', page: 'loby', updatedAt: at,
+      });
+      changed.push(path);
+    }
+    if (changed.length) {
+      const uniqueChanged = Array.from(new Set(changed));
+      bumpVersions(this.versions, uniqueChanged);
+      await this._save();
+      await this._broadcast(uniqueChanged, beforeRoot);
+    }
+    return json({ ok: true, gameId: gid, changed: changed.length });
+  }
+
+  async _cleanupGlobalGameReferences(gameId, game) {
+    const gid = cleanPath(gameId || '');
+    if (!gid) return { ok: false, skipped: true, reason: 'missing-game-id' };
+    const response = await this._globalStatsStub().fetch('https://realtime.internal/api/lifecycle/cleanup-global-game-references', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-internal-secret': this.env.INTERNAL_API_SECRET || '' },
+      body: JSON.stringify({ gameId: gid, uids: this._officialPlayerUids(game) }),
+    });
+    const payload = await response.json().catch(() => ({ ok: false, error: 'lifecycle/invalid-global-cleanup-response' }));
+    return Object.assign({ ok: response.ok }, payload || {}, { gameId: gid });
+  }
+
+  async _deleteGameStorageIfUnused() {
+    const hasGameNamespace = !!(this.root && Object.prototype.hasOwnProperty.call(this.root, 'games'));
+    const hasGames = !!(hasGameNamespace && this.root.games && Object.keys(this.root.games).length);
+    const hasPendingStats = !!(this.pendingOfficialStats && Object.keys(this.pendingOfficialStats).length);
+    if (!hasGameNamespace || hasGames || hasPendingStats) return false;
+    for (const ws of Array.from(this.sessions.keys())) this._closeSocket(ws, 4004, 'game-expired');
+    await this.ctx.storage.deleteAll();
+    if (typeof this.ctx.storage.deleteAlarm === 'function') await this.ctx.storage.deleteAlarm().catch(() => {});
+    this.root = {};
+    this.versions = { '': now() };
+    this.pendingOfficialStats = {};
+    this._maintenanceScheduled = false;
+    return true;
+  }
+
   _officialStatsRetryDelay(attempts) {
     const n = Math.max(1, Number(attempts || 1) || 1);
     return Math.min(60 * 60 * 1000, 60 * 1000 * Math.pow(2, Math.min(5, n - 1)));
@@ -1871,7 +2037,7 @@ export class RealtimeObject {
       const rows = await this._registeredRowsForPendingStats(pending);
       if (!rows.length) {
         delete this.pendingOfficialStats[id];
-        await this._save();
+        if (!await this._deleteGameStorageIfUnused()) await this._save();
         return { ok: true, skipped: true, reason: 'no-registered-players', roundId: id };
       }
       const response = await this._globalStatsStub().fetch('https://realtime.internal/api/stats/record-result', {
@@ -1890,7 +2056,7 @@ export class RealtimeObject {
       const payload = await response.json().catch(() => ({ ok: false, error: 'stats/invalid-response' }));
       if (!response.ok || !payload || payload.ok === false) throw new Error(payload && payload.error || `stats/http-${response.status}`);
       delete this.pendingOfficialStats[id];
-      await this._save();
+      if (!await this._deleteGameStorageIfUnused()) await this._save();
       return Object.assign({}, payload, { pending: false, durableCommitted: true });
     } catch (error) {
       const attempts = Math.max(0, Number(pending.attempts || 0) || 0) + 1;
@@ -2168,13 +2334,10 @@ export class RealtimeObject {
         for (const gameId of Object.keys(games)) {
           const game = games[gameId] || {};
           const status = String(game.status || 'pending');
-          const endedAt = Number(game.endedAt || game.rejectedAt || game.cancelledAt) || 0;
-          const lastActivity = Number(game.lastActivityAt || game.updatedAt || game.acceptedAt || game.createdAt) || 0;
-          const expired = status === 'ended'
-            ? !!endedAt && at - endedAt >= 7 * 24 * 60 * 60 * 1000
-            : (status === 'active'
-              ? !!lastActivity && at - lastActivity >= 30 * 24 * 60 * 60 * 1000
-              : !!lastActivity && at - lastActivity >= 2 * 24 * 60 * 60 * 1000);
+          const deadline = this._gameMaintenanceDeadline(gameId, game, at);
+          const expired = status === 'active'
+            ? this._isAbandonedActiveGame(gameId, game, at)
+            : at >= deadline;
           if (!expired) {
             const turnRate = this.root && this.root.rtc && this.root.rtc[gameId] && this.root.rtc[gameId].turnRate;
             if (turnRate && typeof turnRate === 'object') {
@@ -2188,11 +2351,24 @@ export class RealtimeObject {
             }
             continue;
           }
+          if (status === 'active') {
+            let globalCleanup = null;
+            try { globalCleanup = await this._cleanupGlobalGameReferences(gameId, game); } catch (error) {
+              console.error(JSON.stringify({ level: 'error', area: 'durable-maintenance', event: 'abandoned-global-cleanup-failed', gameId, message: String(error && error.message || error) }));
+            }
+            if (!globalCleanup || globalCleanup.ok === false) continue;
+          }
           for (const key of ['games', 'chats', 'rtc', 'spectators', 'meta']) {
             if (this.root[key] && Object.prototype.hasOwnProperty.call(this.root[key], gameId)) {
               delete this.root[key][gameId];
               changed = true;
             }
+          }
+          if (this.root.ops && this.root.ops.lifecycle && Object.prototype.hasOwnProperty.call(this.root.ops.lifecycle, gameId)) {
+            delete this.root.ops.lifecycle[gameId];
+            if (!Object.keys(this.root.ops.lifecycle).length) delete this.root.ops.lifecycle;
+            if (!Object.keys(this.root.ops).length) delete this.root.ops;
+            changed = true;
           }
           for (const [ws, sess] of Array.from(this.sessions.entries())) {
             if (cleanPath(sess && sess.gameId || '') === gameId) this._closeSocket(ws, 4004, 'game-expired');
@@ -2216,21 +2392,10 @@ export class RealtimeObject {
           }
         }
       }
-      if (games) {
-        const hasGames = this.root.games && Object.keys(this.root.games).length > 0;
-        if (!hasGames) {
-          for (const ws of Array.from(this.sessions.keys())) this._closeSocket(ws, 4004, 'game-expired');
-          const hasPendingStats = this.pendingOfficialStats && Object.keys(this.pendingOfficialStats).length > 0;
-          if (!hasPendingStats) {
-            await this.ctx.storage.deleteAll();
-            this.root = {};
-            this.versions = { '': at };
-            this.pendingOfficialStats = {};
-            changed = false;
-            shouldReschedule = false;
-            return;
-          }
-        }
+      if (games && await this._deleteGameStorageIfUnused()) {
+        changed = false;
+        shouldReschedule = false;
+        return;
       }
       if (changed) {
         bumpVersions(this.versions, ['']);
@@ -2240,16 +2405,7 @@ export class RealtimeObject {
       console.error(JSON.stringify({ level: 'error', area: 'durable-maintenance', event: 'alarm-failed', message: String(err && err.message || err) }));
     } finally {
       this._inAlarm = false;
-      if (shouldReschedule) {
-        const rateDelay = this.root && this.root.kind === 'rate-limit' ? Math.max(60 * 1000, Number(this.root.purgeAt || 0) - now()) : 24 * 60 * 60 * 1000;
-        const pending = this.pendingOfficialStats && typeof this.pendingOfficialStats === 'object' ? Object.values(this.pendingOfficialStats) : [];
-        const nextPendingAt = pending.reduce((min, row) => {
-          const value = Math.max(now() + 60 * 1000, Number(row && row.nextRetryAt || 0) || now() + 60 * 1000);
-          return min == null || value < min ? value : min;
-        }, null);
-        const pendingDelay = nextPendingAt == null ? rateDelay : Math.max(60 * 1000, nextPendingAt - now());
-        await this._scheduleMaintenance(Math.min(rateDelay, pendingDelay));
-      }
+      if (shouldReschedule) await this._scheduleMaintenance(this._nextMaintenanceDelay());
     }
   }
 
@@ -2363,6 +2519,14 @@ export class RealtimeObject {
     }
   }
 
-  async webSocketClose(ws) { this.sessions.delete(ws); }
-  async webSocketError(ws) { this.sessions.delete(ws); }
+  async _handleSocketGone(ws) {
+    const sess = this.sessions.get(ws) || null;
+    this.sessions.delete(ws);
+    if (!sess || String(sess.official || '') !== 'game-live' || !cleanPath(sess.gameId || '')) return;
+    await this._load();
+    await this._scheduleMaintenance(this._nextMaintenanceDelay());
+  }
+
+  async webSocketClose(ws) { await this._handleSocketGone(ws); }
+  async webSocketError(ws) { await this._handleSocketGone(ws); }
 }

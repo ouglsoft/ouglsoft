@@ -843,8 +843,8 @@ async function lobbySpectatorEndpoint(request, env) {
   return lobbyRoutes.spectator(request, env);
 }
 
-async function lobbyPulseEndpoint(request, env) {
-  return lobbyRoutes.pulse(request, env);
+async function lobbyPulseEndpoint(request, env, ctx) {
+  return lobbyRoutes.pulse(request, env, ctx);
 }
 
 async function lobbyViewEndpoint(request, env) {
@@ -1172,7 +1172,7 @@ export default {
       if (url.pathname === '/api/game/rtc-live') return gameRtcLiveEndpoint(request, env);
       if (url.pathname === '/api/lobby/invite' && request.method === 'POST') return lobbyInviteEndpoint(request, env);
       if (url.pathname === '/api/lobby/spectator' && request.method === 'POST') return lobbySpectatorEndpoint(request, env);
-      if (url.pathname === '/api/lobby/pulse' && request.method === 'POST') return lobbyPulseEndpoint(request, env);
+      if (url.pathname === '/api/lobby/pulse' && request.method === 'POST') return lobbyPulseEndpoint(request, env, ctx);
       if (url.pathname === '/api/lobby/view' && (request.method === 'GET' || request.method === 'POST')) return lobbyViewEndpoint(request, env);
       if (url.pathname.startsWith('/api/rtdb/')) return json({ ok: false, error: 'realtime/generic-api-removed' }, 410);
       return json({ ok: false, error: 'not-found' }, 404);

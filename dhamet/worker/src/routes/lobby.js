@@ -4,6 +4,24 @@ import '../../shared/dhamet-state.js';
 import '../../shared/dhamet-presence.js';
 import '../../shared/dhamet-lobby.js';
 
+function selectDueCleanupTask(metaValue, startedAtValue, intervalsValue) {
+  const meta = metaValue && typeof metaValue === 'object' ? metaValue : {};
+  const startedAt = Number(startedAtValue || 0) || Date.now();
+  const intervals = intervalsValue && typeof intervalsValue === 'object' ? intervalsValue : {};
+  const tasks = [
+    { name: 'presence', key: 'lastPresenceCleanupAt', every: Number(intervals.presence || 0) || 40 * 1000 },
+    { name: 'invites', key: 'lastInviteCleanupAt', every: Number(intervals.invites || 0) || 40 * 1000 },
+    { name: 'rooms', key: 'lastRoomCleanupAt', every: Number(intervals.rooms || 0) || 60 * 1000 },
+  ];
+  const lastTask = String(meta.lastTask || '').trim();
+  const lastIndex = tasks.findIndex((task) => task.name === lastTask);
+  const ordered = tasks.slice(lastIndex + 1).concat(tasks.slice(0, lastIndex + 1));
+  return ordered.find((task) => {
+    const last = Number(meta[task.key] || 0) || 0;
+    return !last || startedAt - last >= task.every;
+  }) || null;
+}
+
 /*
  * Lobby/invite API routes for Cloudflare Worker.
  *
@@ -596,7 +614,6 @@ export function createLobbyRouteHandlers(deps) {
       } catch (_) { return { removed: false, reason: 'mark-failed' }; }
     }
     if (cls.action === 'inspect-active-room') {
-      try { await internalJson(env, 'game:' + gid, '/api/lifecycle/cleanup-game', { gameId: gid, force: true, source: 'room-list-inspection' }); } catch (_) {}
       try {
         const g = await readRealtimeValue(env, 'game:' + gid, 'games/' + gid);
         if (g && g.status === 'active') {
@@ -619,7 +636,6 @@ export function createLobbyRouteHandlers(deps) {
       return { removed: true, reason: cls.reason };
     }
     if (cls.action === 'remove-room-list') {
-      try { await internalJson(env, 'game:' + gid, '/api/lifecycle/cleanup-game', { gameId: gid, source: 'room-list-removal' }); } catch (_) {}
       await writeRealtime(env, 'global', { op: 'remove', path: 'roomList/' + gid });
       return { removed: true, reason: cls.reason };
     }
@@ -703,23 +719,20 @@ export function createLobbyRouteHandlers(deps) {
     const presenceEvery = Number(PresencePolicy.presenceCleanupIntervalMs || 0) || 40 * 1000;
     const inviteEvery = Number(PresencePolicy.inviteCleanupIntervalMs || PresencePolicy.cleanupMinIntervalMs || 0) || 40 * 1000;
     const roomEvery = Number(PresencePolicy.roomCleanupIntervalMs || 0) || 60 * 1000;
-    const due = (key, interval) => {
-      const last = Number(meta && meta[key]) || 0;
-      return !last || startedAt - last >= interval;
-    };
+    const selectedTask = selectDueCleanupTask(meta, startedAt, {
+      presence: presenceEvery,
+      invites: inviteEvery,
+      rooms: roomEvery,
+    });
 
     let taskResult = null;
     let taskKey = '';
     try {
-      if (due('lastPresenceCleanupAt', presenceEvery)) {
-        taskResult = await cleanupPresenceBatch(env, meta, startedAt);
-        taskKey = 'lastPresenceCleanupAt';
-      } else if (due('lastInviteCleanupAt', inviteEvery)) {
-        taskResult = await cleanupInviteBatch(env, meta, startedAt);
-        taskKey = 'lastInviteCleanupAt';
-      } else if (due('lastRoomCleanupAt', roomEvery)) {
-        taskResult = await cleanupRoomBatch(env, meta);
-        taskKey = 'lastRoomCleanupAt';
+      if (selectedTask) {
+        if (selectedTask.name === 'presence') taskResult = await cleanupPresenceBatch(env, meta, startedAt);
+        else if (selectedTask.name === 'invites') taskResult = await cleanupInviteBatch(env, meta, startedAt);
+        else if (selectedTask.name === 'rooms') taskResult = await cleanupRoomBatch(env, meta);
+        taskKey = selectedTask.key;
       }
     } catch (_) {
       return { ran: false, reason: 'failed' };
@@ -892,7 +905,7 @@ export function createLobbyRouteHandlers(deps) {
     };
   }
 
-  async function pulse(request, env) {
+  async function pulse(request, env, ctx) {
     let stage = 'session';
     try {
     const session = await requireSession(env, request);
@@ -1037,7 +1050,13 @@ export function createLobbyRouteHandlers(deps) {
 
     let cleanup = { ran: false, reason: scope === 'lobby-sync' ? 'not-due' : 'scope-skipped' };
     if (scope === 'lobby-sync' && normalized.includeCleanup !== false) {
-      try { cleanup = await runOpportunisticCleanup(env); } catch (_) { cleanup = { ran: false, reason: 'failed' }; }
+      const cleanupWork = runOpportunisticCleanup(env).catch(() => ({ ran: false, reason: 'failed' }));
+      if (ctx && typeof ctx.waitUntil === 'function') {
+        ctx.waitUntil(cleanupWork);
+        cleanup = { ran: false, scheduled: true, reason: 'background' };
+      } else {
+        cleanup = await cleanupWork;
+      }
     }
 
     let lobbyView = null;
