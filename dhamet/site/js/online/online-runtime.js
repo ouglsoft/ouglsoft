@@ -780,8 +780,10 @@
             const lastSeen = Number((pres && (pres.updatedAt || pres.joinedAt)) || 0) || 0;
             const oppOnline = !!(pres && isPresenceFresh(lastSeen, GAME_PRESENCE_ONLINE_TTL_MS));
     
+            const previousOnline = this._oppOnline;
             this._oppOnline = oppOnline;
             if (lastSeen) this._oppLastSeenAt = lastSeen;
+            try { this._voiceSyncOpponentAvailability(oppUid, oppOnline, previousOnline); } catch (e) {}
     
             if (oppOnline) {
               this._oppOfflineSince = null;
@@ -3282,17 +3284,61 @@
               this._voiceParticipantsReady = false;
             }
             try {
-              Logger.warn("voice_transport_write_failed", {
-                context: String(context || "rtc"),
-                status,
-                code,
-                permanent,
-              });
+              const at = Date.now();
+              const logKey = [String(context || "rtc"), status, code].join(":");
+              this._voice = this._voice || {};
+              this._voice.transportFailureLogAt = this._voice.transportFailureLogAt || new Map();
+              const lastLogAt = Number(this._voice.transportFailureLogAt.get(logKey) || 0) || 0;
+              if (at - lastLogAt >= 15000) {
+                this._voice.transportFailureLogAt.set(logKey, at);
+                Logger.warn("voice_transport_write_failed", {
+                  context: String(context || "rtc"),
+                  status,
+                  code,
+                  permanent,
+                });
+              }
             } catch (_) {}
             return permanent;
           } catch (e) {
             return false;
           }
+        },
+
+    _voiceRememberSignal: function (seenKey) {
+          try {
+            const key = String(seenKey || "");
+            if (!key) return false;
+            this._voiceSeenSignals = this._voiceSeenSignals || new Set();
+            this._voiceSeenSignalOrder = this._voiceSeenSignalOrder || [];
+            if (this._voiceSeenSignals.has(key)) return false;
+            this._voiceSeenSignals.add(key);
+            this._voiceSeenSignalOrder.push(key);
+            while (this._voiceSeenSignalOrder.length > 512) {
+              const oldest = this._voiceSeenSignalOrder.shift();
+              if (oldest) this._voiceSeenSignals.delete(oldest);
+            }
+            return true;
+          } catch (e) {
+            return false;
+          }
+        },
+
+    _voiceSyncOpponentAvailability: function (oppUid, online, previousOnline) {
+          try {
+            const uid = String(oppUid || "");
+            if (!uid || !this._voice || !this._voice.enabled) return;
+            if (!online) {
+              if (previousOnline !== false) this._voiceDropPeer(uid);
+              return;
+            }
+            if (previousOnline === false) {
+              this._voiceClearReconnect(uid, { reset: true });
+              if (this._voiceKnownParticipants && this._voiceKnownParticipants.has(uid)) {
+                this._voiceConnectTo(uid);
+              }
+            }
+          } catch (e) {}
         },
 
     _voiceWatchRemoteStart: function () {
@@ -3417,6 +3463,7 @@
           this._voiceSignalsToMeRef = null;
           this._voiceKnownParticipants = new Set();
           this._voiceSeenSignals = this._voiceSeenSignals || new Set();
+          this._voiceSeenSignalOrder = this._voiceSeenSignalOrder || [];
           try { if (this.myUid) this._voiceKnownParticipants.add(this.myUid); } catch (e) {}
 
           this._voiceParticipantsReady = false;
@@ -3480,30 +3527,70 @@
                 for (const signalId of ids) {
                   try {
                     const seenKey = String(fromUid) + ":" + String(signalId);
-                    if (this._voiceSeenSignals && this._voiceSeenSignals.has(seenKey)) {
-                      ackIds.push(signalId);
-                      continue;
+                    const isNewSignal = this._voiceRememberSignal(seenKey);
+                    if (isNewSignal) {
+                      const msg = queue[signalId];
+                      if (!msg) continue;
+                      await this._voiceHandleSignal(fromUid, msg);
                     }
-                    const msg = queue[signalId];
-                    if (!msg) continue;
-                    this._voiceSeenSignals.add(seenKey);
-                    await this._voiceHandleSignal(fromUid, msg);
+                    // A duplicate means a previous ACK was lost or not committed.
+                    // Re-ACK it without re-running its WebRTC side effects.
                     ackIds.push(signalId);
                   } catch (e) {}
                 }
                 if (ackIds.length && window.DhametGameRoomClient) {
                   if (typeof window.DhametGameRoomClient.commitRtcAcks === "function") {
-                    window.DhametGameRoomClient.commitRtcAcks({ gameId: this.gameId, fromUid: fromUid, signalIds: ackIds }).catch(() => {});
+                    try {
+                      await window.DhametGameRoomClient.commitRtcAcks({
+                        gameId: this.gameId,
+                        fromUid: fromUid,
+                        signalIds: ackIds,
+                      });
+                    } catch (error) {
+                      this._voiceHandleWriteFailure(error, "ack-batch");
+                    }
                   } else if (typeof window.DhametGameRoomClient.commitRtcAck === "function") {
-                    ackIds.forEach((signalId) => {
-                      window.DhametGameRoomClient.commitRtcAck({ gameId: this.gameId, fromUid: fromUid, signalId: signalId }).catch(() => {});
+                    const ackResults = await Promise.allSettled(ackIds.map((signalId) =>
+                      window.DhametGameRoomClient.commitRtcAck({
+                        gameId: this.gameId,
+                        fromUid: fromUid,
+                        signalId: signalId,
+                      })
+                    ));
+                    ackResults.forEach((result) => {
+                      if (result && result.status === "rejected") {
+                        this._voiceHandleWriteFailure(result.reason, "ack");
+                      }
                     });
                   }
                 }
               }
             } catch (e) {}
           };
-          this._voiceApplyRtcSnapshot = applyRtcSnapshot;
+          let rtcSnapshotRunning = false;
+          let rtcSnapshotQueued = false;
+          let rtcSnapshotPending = null;
+          const queueRtcSnapshot = (value) => {
+            rtcSnapshotPending = value;
+            rtcSnapshotQueued = true;
+            if (rtcSnapshotRunning) return;
+            rtcSnapshotRunning = true;
+            Promise.resolve().then(async () => {
+              while (rtcSnapshotQueued) {
+                const nextValue = rtcSnapshotPending;
+                rtcSnapshotPending = null;
+                rtcSnapshotQueued = false;
+                if (!this.isActive || !this._voice || !this._voice.enabled) break;
+                await applyRtcSnapshot(nextValue);
+              }
+            }).catch(() => {}).finally(() => {
+              rtcSnapshotRunning = false;
+              if (rtcSnapshotQueued && this.isActive && this._voice && this._voice.enabled) {
+                queueRtcSnapshot(rtcSnapshotPending);
+              }
+            });
+          };
+          this._voiceApplyRtcSnapshot = queueRtcSnapshot;
 
           try {
             if (!this._rtcLiveSub || this._rtcLiveGameId !== this.gameId) {
@@ -3515,7 +3602,7 @@
               }
               this._rtcLiveSub = window.DhametGameRoomClient.subscribeRtcLive({
                 gameId: this.gameId,
-                onData: (value) => { applyRtcSnapshot(value); },
+                onData: (value) => { queueRtcSnapshot(value); },
                 onError: () => {},
                 onClose: () => {},
                 onReconnect: () => {
@@ -3584,6 +3671,11 @@
               }
             } catch (e) {}
             this._voice.reconnectTimers = new Map();
+            this._voice.reconnectAttempts = new Map();
+            this._voice.reconnectInFlight = new Set();
+            this._voice.connectInFlight = new Set();
+            this._voiceSeenSignals = new Set();
+            this._voiceSeenSignalOrder = [];
     
             try {
               if (this._voice.peers && this._voice.peers.forEach) {
@@ -3709,82 +3801,110 @@
           return [Date.now(), String(this.myUid || ""), String(otherUid || ""), Math.random().toString(36).slice(2)].join(":");
         },
 
-    _voiceClearReconnect: function (otherUid) {
+    _voiceClearReconnect: function (otherUid, opts) {
+          opts = opts || {};
           try {
-            if (!this._voice || !this._voice.reconnectTimers) return;
-            const timer = this._voice.reconnectTimers.get(otherUid);
+            const timer = this._voice && this._voice.reconnectTimers && this._voice.reconnectTimers.get(otherUid);
             if (timer) clearTimeout(timer);
           } catch (e) {}
           try {
             if (this._voice && this._voice.reconnectTimers) this._voice.reconnectTimers.delete(otherUid);
+            if (opts.reset && this._voice) {
+              try { this._voice.reconnectAttempts && this._voice.reconnectAttempts.delete(otherUid); } catch (_) {}
+              try { this._voice.reconnectInFlight && this._voice.reconnectInFlight.delete(otherUid); } catch (_) {}
+            }
           } catch (e) {}
         },
 
     _voiceScheduleReconnect: function (otherUid, reason) {
           try {
-            if (!otherUid || !this._voice || !this._voice.enabled || this.isSpectator) return;
+            const uid = String(otherUid || "");
+            if (!uid || !this._voice || !this._voice.enabled || this.isSpectator) return;
+            if (this._oppOnline === false) return;
+            if (String(this.myUid || "") >= uid) return;
+            try {
+              if (this._voiceKnownParticipants && !this._voiceKnownParticipants.has(uid)) return;
+            } catch (_) {}
+
             this._voice.reconnectTimers = this._voice.reconnectTimers || new Map();
-            if (this._voice.reconnectTimers.has(otherUid)) return;
-            const delay = reason === "failed" ? 350 : 1500;
+            this._voice.reconnectAttempts = this._voice.reconnectAttempts || new Map();
+            this._voice.reconnectInFlight = this._voice.reconnectInFlight || new Set();
+            if (this._voice.reconnectTimers.has(uid) || this._voice.reconnectInFlight.has(uid)) return;
+
+            const attempts = Math.max(0, Number(this._voice.reconnectAttempts.get(uid) || 0) || 0);
+            const maxAttempts = 3;
+            if (attempts >= maxAttempts) return;
+            const delays = reason === "failed" ? [1500, 5000, 12000] : [4000, 8000, 15000];
+            const delay = delays[Math.min(attempts, delays.length - 1)];
             const asyncContext = this._captureAsyncContext(this.gameId);
             const timer = setTimeout(async () => {
               try {
-                this._voiceClearReconnect(otherUid);
+                if (this._voice && this._voice.reconnectTimers) this._voice.reconnectTimers.delete(uid);
                 if (!this._isAsyncContextCurrent(asyncContext)) return;
-                await this._voiceRestartPeer(otherUid, reason);
-              } catch (e) {}
+                if (!this._voice || !this._voice.enabled || this._oppOnline === false) return;
+                try {
+                  if (this._voiceKnownParticipants && !this._voiceKnownParticipants.has(uid)) return;
+                } catch (_) {}
+
+                const currentAttempts = Math.max(0, Number(this._voice.reconnectAttempts.get(uid) || 0) || 0);
+                if (currentAttempts >= maxAttempts) return;
+                this._voice.reconnectInFlight.add(uid);
+                this._voice.reconnectAttempts.set(uid, currentAttempts + 1);
+                await this._voiceRestartPeer(uid, reason);
+              } catch (e) {
+              } finally {
+                try { this._voice && this._voice.reconnectInFlight && this._voice.reconnectInFlight.delete(uid); } catch (_) {}
+                try {
+                  const pc = this._voice && this._voice.peers && this._voice.peers.get(uid);
+                  const state = pc && pc.connectionState;
+                  const used = Number(this._voice && this._voice.reconnectAttempts && this._voice.reconnectAttempts.get(uid) || 0) || 0;
+                  if (this._voice && this._voice.enabled && this._oppOnline !== false &&
+                      (state === "failed" || state === "disconnected") && used < maxAttempts) {
+                    this._voiceScheduleReconnect(uid, state);
+                  }
+                } catch (_) {}
+              }
             }, delay);
-            this._voice.reconnectTimers.set(otherUid, timer);
+            this._voice.reconnectTimers.set(uid, timer);
           } catch (e) {}
         },
 
     _voiceRestartPeer: async function (otherUid, reason) {
           try {
-            if (!otherUid || !this._voice || !this._voice.enabled) return;
-            const iOffer = String(this.myUid || "") < String(otherUid || "");
-            const current = this._voice.peers && this._voice.peers.get(otherUid);
-            if (current && (current.connectionState === "connected" || current.connectionState === "completed")) {
-              return;
-            }
-            if (!iOffer) {
-              if (current && typeof current.restartIce === "function") {
-                try {
-                  current.restartIce();
-                } catch (e) {}
-              }
-              return;
-            }
-    
+            const uid = String(otherUid || "");
+            if (!uid || !this._voice || !this._voice.enabled || this._oppOnline === false) return false;
+            if (String(this.myUid || "") >= uid) return false;
+            const current = this._voice.peers && this._voice.peers.get(uid);
+            if (current && current.connectionState === "connected") return true;
+
             let pc = current;
             if (!pc || pc.signalingState === "closed") {
-              pc = this._voiceEnsurePeer(otherUid, { forceNew: true });
+              pc = this._voiceEnsurePeer(uid, { forceNew: true, preserveReconnectState: true });
             }
             if (pc && pc.signalingState !== "stable") {
-              try {
-                this._voiceDropPeer(otherUid, { preserveCallId: false });
-              } catch (e) {}
-              pc = this._voiceEnsurePeer(otherUid, { forceNew: true });
+              try { this._voiceDropPeer(uid, { preserveCallId: false, preserveReconnectState: true }); } catch (e) {}
+              pc = this._voiceEnsurePeer(uid, { forceNew: true, preserveReconnectState: true });
             }
-            if (!pc) return;
-    
-            const callId = this._voiceNewCallId(otherUid);
-            try {
-              this._voice.callIds.set(otherUid, callId);
-            } catch (e) {}
-    
+            if (!pc) return false;
+
+            const callId = this._voiceNewCallId(uid);
+            try { this._voice.callIds.set(uid, callId); } catch (e) {}
             const offer = await pc.createOffer({ iceRestart: true });
+            if (!this._voice || this._voice.peers.get(uid) !== pc || this._oppOnline === false) return false;
             await pc.setLocalDescription(offer);
-            this._voiceSendSignal(otherUid, { type: "offer", sdp: offer.sdp, callId: callId, restart: !!reason });
-          } catch (e) {}
+            return this._voiceSendSignal(uid, { type: "offer", sdp: offer.sdp, callId: callId, restart: !!reason }) !== false;
+          } catch (e) {
+            return false;
+          }
         },
 
     _voiceQueueIceSignal: function (toUid, payload) {
           try {
-            if (!this.gameId || !toUid || !this.myUid) return;
-            if (!requireAuthUid(this.myUid)) return;
-            if (!this._voiceParticipantsReady) return;
+            if (!this.gameId || !toUid || !this.myUid) return false;
+            if (!requireAuthUid(this.myUid)) return false;
+            if (!this._voiceParticipantsReady || this._oppOnline === false) return false;
             try {
-              if (this._voiceKnownParticipants && !this._voiceKnownParticipants.has(String(toUid))) return;
+              if (this._voiceKnownParticipants && !this._voiceKnownParticipants.has(String(toUid))) return false;
             } catch (e) {}
             this._voiceIceBatches = this._voiceIceBatches || new Map();
             const key = String(toUid);
@@ -3805,7 +3925,7 @@
                 const cur = this._voiceIceBatches && this._voiceIceBatches.get(key);
                 if (!cur) return;
                 this._voiceIceBatches.delete(key);
-                if (!this._isAsyncContextCurrent(cur.asyncContext)) return;
+                if (!this._isAsyncContextCurrent(cur.asyncContext) || this._oppOnline === false) return;
                 const signals = (cur.signals || []).splice(0, 16).filter(Boolean);
                 if (!signals.length) return;
                 if (!window.DhametGameRoomClient || typeof window.DhametGameRoomClient.commitRtcSignal !== "function") return;
@@ -3826,24 +3946,26 @@
               entry.timer = null;
               flush();
             }
-          } catch (e) {}
+            return true;
+          } catch (e) {
+            return false;
+          }
         },
 
     _voiceSendSignal: function (toUid, payload) {
           try {
-            if (!this.gameId) return;
-            if (!toUid || !this.myUid) return;
-            if (this._voice && this._voice.writeDenied) return;
+            if (!this.gameId) return false;
+            if (!toUid || !this.myUid || this._oppOnline === false) return false;
+            if (this._voice && this._voice.writeDenied) return false;
             if (payload && payload.type === "ice") {
-              this._voiceQueueIceSignal(toUid, payload);
-              return;
+              return this._voiceQueueIceSignal(toUid, payload);
             }
     
-            if (!requireAuthUid(this.myUid)) return;
-            if (!this._voiceParticipantsReady) return;
+            if (!requireAuthUid(this.myUid)) return false;
+            if (!this._voiceParticipantsReady) return false;
             try {
               if (this._voiceKnownParticipants && !this._voiceKnownParticipants.has(String(toUid)))
-                return;
+                return false;
             } catch (e) {}
     
             const msg = Object.assign({ ts: Date.now() }, payload || {});
@@ -3867,14 +3989,17 @@
                 msg.sdpChunked = true;
               }
             } catch (e) {}
-            if (!window.DhametGameRoomClient || typeof window.DhametGameRoomClient.commitRtcSignal !== "function") return;
+            if (!window.DhametGameRoomClient || typeof window.DhametGameRoomClient.commitRtcSignal !== "function") return false;
             window.DhametGameRoomClient.commitRtcSignal({
               gameId: this.gameId,
               toUid: String(toUid),
               signal: msg,
               clientSignalId: [this.myUid || "u", String(toUid || "to"), Date.now(), Math.random().toString(36).slice(2, 8)].join(":"),
             }).catch((error) => { this._voiceHandleWriteFailure(error, "signal"); });
-          } catch (e) {}
+            return true;
+          } catch (e) {
+            return false;
+          }
         },
 
     _voiceRemoteIceKey: function (otherUid, callId) {
@@ -3934,7 +4059,10 @@
     
           if (opts.forceNew) {
             try {
-              this._voiceDropPeer(otherUid, { preserveCallId: true });
+              this._voiceDropPeer(otherUid, {
+                preserveCallId: true,
+                preserveReconnectState: !!opts.preserveReconnectState,
+              });
             } catch (e) {}
           }
     
@@ -3955,11 +4083,15 @@
           } catch (e) {}
     
           pc.onicecandidate = (ev) => {
-            if (ev.candidate) this._voiceSendSignal(otherUid, { type: "ice", candidate: ev.candidate });
+            try {
+              if (!this._voice || this._voice.peers.get(otherUid) !== pc || this._oppOnline === false) return;
+              if (ev.candidate) this._voiceSendSignal(otherUid, { type: "ice", candidate: ev.candidate });
+            } catch (e) {}
           };
     
           pc.ontrack = (ev) => {
             try {
+              if (!this._voice || this._voice.peers.get(otherUid) !== pc) return;
               const stream = ev.streams && ev.streams[0] ? ev.streams[0] : null;
               if (!stream) return;
     
@@ -3987,9 +4119,10 @@
     
           pc.onconnectionstatechange = () => {
             try {
+              if (!this._voice || this._voice.peers.get(otherUid) !== pc) return;
               const state = pc.connectionState;
               if (state === "connected") {
-                this._voiceClearReconnect(otherUid);
+                this._voiceClearReconnect(otherUid, { reset: true });
               } else if (state === "failed" || state === "disconnected") {
                 this._voiceScheduleReconnect(otherUid, state);
               } else if (state === "closed") {
@@ -4006,23 +4139,26 @@
         },
 
     _voiceConnectTo: async function (otherUid) {
+          const uid = String(otherUid || "");
+          if (!uid || !this._voice || !this._voice.enabled || this.isSpectator || this._oppOnline === false) return false;
+          if (String(this.myUid || "") >= uid) return false;
+          this._voice.connectInFlight = this._voice.connectInFlight || new Set();
+          if (this._voice.connectInFlight.has(uid)) return false;
+          this._voice.connectInFlight.add(uid);
           try {
-            if (!this._voice || !this._voice.enabled || this.isSpectator) return;
-            const pc = this._voiceEnsurePeer(otherUid);
-    
-            const iOffer = String(this.myUid || "") < String(otherUid || "");
-            if (!iOffer) return;
-    
-            if (pc.signalingState !== "stable") return;
-    
-            const callId = this._voiceNewCallId(otherUid);
-            try {
-              this._voice.callIds.set(otherUid, callId);
-            } catch (e) {}
+            const pc = this._voiceEnsurePeer(uid);
+            if (!pc || pc.signalingState !== "stable") return false;
+            const callId = this._voiceNewCallId(uid);
+            try { this._voice.callIds.set(uid, callId); } catch (e) {}
             const offer = await pc.createOffer();
+            if (!this._voice || this._voice.peers.get(uid) !== pc || this._oppOnline === false) return false;
             await pc.setLocalDescription(offer);
-            this._voiceSendSignal(otherUid, { type: "offer", sdp: offer.sdp, callId: callId });
-          } catch (e) {}
+            return this._voiceSendSignal(uid, { type: "offer", sdp: offer.sdp, callId: callId }) !== false;
+          } catch (e) {
+            return false;
+          } finally {
+            try { this._voice && this._voice.connectInFlight && this._voice.connectInFlight.delete(uid); } catch (_) {}
+          }
         },
 
     _voiceDropPeer: function (uid, opts) {
@@ -4030,8 +4166,14 @@
           try {
             if (!this._voice) return;
             try {
-              this._voiceClearReconnect(uid);
+              this._voiceClearReconnect(uid, { reset: !opts.preserveReconnectState });
             } catch (e) {}
+            try {
+              const batch = this._voiceIceBatches && this._voiceIceBatches.get(String(uid));
+              if (batch && batch.timer) clearTimeout(batch.timer);
+              if (this._voiceIceBatches) this._voiceIceBatches.delete(String(uid));
+            } catch (e) {}
+            try { this._voice.connectInFlight && this._voice.connectInFlight.delete(String(uid)); } catch (e) {}
             const pc = this._voice.peers && this._voice.peers.get(uid);
             if (pc) {
               try {
@@ -4141,6 +4283,7 @@
           const online = !!(pres && isPresenceFresh(lastSeen, GAME_PRESENCE_ONLINE_TTL_MS));
     
           try {
+            const previousOnline = this._oppOnline;
             this._oppOnline = online;
             this._oppLastSeenAt = lastSeen || this._oppLastSeenAt || 0;
             if (pres) this._oppName = displayPlayerName(this._getGameSlotUid(this.mySide === -1 ? "top" : "bot"), pres.nickname);
@@ -4157,6 +4300,7 @@
               }
             } catch (e) {}
             this._updatePresenceUi();
+            try { this._voiceSyncOpponentAvailability(oppUid, online, previousOnline); } catch (e) {}
             try {
               this._checkMoveCommitHealth();
             } catch (e) {}
