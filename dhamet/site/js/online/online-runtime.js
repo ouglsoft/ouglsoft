@@ -74,6 +74,8 @@
   } = S;
 
   window.__ZAMAT_ONLINE_FULL_LOADED__ = true;
+  const SPECTATOR_RECONNECT_REGISTRATION_MS = 95 * 1000;
+  const SPECTATOR_RECONNECT_RETRY_MS = 30 * 1000;
 
   function gameCommitErrorDetails(err) {
     const data = err && err.data && typeof err.data === 'object' ? err.data : {};
@@ -102,6 +104,19 @@
       if (details.status > 0) return false;
       const text = [details.code, details.error, details.reason].join(' ');
       return /request-timeout|network|failed to fetch|fetch failed|load failed|connection|offline/i.test(text);
+    } catch (_) { return false; }
+  }
+
+  function isDefinitiveGameEntryError(err) {
+    try {
+      const details = gameCommitErrorDetails(err);
+      if (details.status === 404 || details.status === 410) return true;
+      if (details.status === 403) {
+        const denied = [details.code, details.error, details.reason].join(' ');
+        return /game\/not-a-participant|live\/not-authorized|spectator\/not-allowed|forbidden|not-a-participant/.test(denied);
+      }
+      const text = [details.code, details.error, details.reason].join(' ');
+      return /game\/not-found|game\/expired|game\/deleted|game\/not-active|match\/not-found/.test(text);
     } catch (_) { return false; }
   }
 
@@ -1954,6 +1969,49 @@
           } catch (e) { return false; }
         },
 
+    _maybeRestoreSpectatorRegistration: function (expectedGameId) {
+          try {
+            const gid = String(expectedGameId || this.gameId || "").trim();
+            if (!this.isActive || !this.isSpectator || !gid || String(this.gameId || "") !== gid) return Promise.resolve(false);
+            const disconnectedAt = Number(this._gameDisconnectedAt || 0) || 0;
+            const at = nowTs();
+            if (!disconnectedAt || at - disconnectedAt < SPECTATOR_RECONNECT_REGISTRATION_MS) return Promise.resolve(false);
+            if (this._spectatorRecoveryRegistrationPromise) return this._spectatorRecoveryRegistrationPromise;
+            if (this._spectatorRecoveryRegistrationAttemptAt && at - this._spectatorRecoveryRegistrationAttemptAt < SPECTATOR_RECONNECT_RETRY_MS) return Promise.resolve(false);
+            this._spectatorRecoveryRegistrationAttemptAt = at;
+            this._lastSpectatorRegistration = null;
+            const context = this._captureAsyncContext(gid);
+            const promise = Promise.resolve(this._registerSpectatorInRoom(gid)).then(async (registration) => {
+              if (!this._isAsyncContextCurrent(context, { ignorePostMatch: true }) || !this.isSpectator) return false;
+              if (registration && registration.ok) {
+                this._spectatorRecoveryRegistrationAttemptAt = 0;
+                this._unbindGameLiveSubscription();
+                this._bindGameLiveSubscription(gid);
+                this._scheduleGameLiveRecoverySync(250);
+                return true;
+              }
+              if (registration && registration.reason === "full") {
+                showOnlineNotice(window.I18N.translateArgs("lobby.spectatorFull"), { allowSpectator: true });
+                await this._abortOnlineEntry("spectator-reconnect-full");
+                return false;
+              }
+              const registrationError = registration && registration.error;
+              if (registrationError && this._isDefinitiveGameEntryError(registrationError)) {
+                await this._showUnavailableGameAndLeave();
+                return false;
+              }
+              return false;
+            }).catch((error) => {
+              try { Logger.warn("spectator_reconnect_registration_failed", { gameId: gid, err: String(error && (error.message || error)) }); } catch (_) {}
+              return false;
+            }).finally(() => {
+              if (this._spectatorRecoveryRegistrationPromise === promise) this._spectatorRecoveryRegistrationPromise = null;
+            });
+            this._spectatorRecoveryRegistrationPromise = promise;
+            return promise;
+          } catch (e) { return Promise.resolve(false); }
+        },
+
     _scheduleGameLiveRecoverySync: function (delayMs) {
           try {
             if (!this._gameLiveRecoveryActive || !this.isActive || !this.gameId) return false;
@@ -1980,6 +2038,9 @@
                   this._finishGameLiveRecovery("socket-and-sync-restored");
                   return;
                 }
+                if (!applied && this.isSpectator) {
+                  this._maybeRestoreSpectatorRegistration(expectedGameId).catch(() => false);
+                }
                 const delays = [5000, 10000, 15000];
                 this._scheduleGameLiveRecoverySync(delays[Math.min(attempt, delays.length - 1)]);
               }).catch(() => {
@@ -1999,6 +2060,7 @@
             this._gameLiveRecoveryGameId = gid;
             this._gameLiveSocketOpen = false;
             this._gameLiveRecoveryAttempt = 0;
+            this._spectatorRecoveryRegistrationAttemptAt = 0;
             this._noteReconnectLoss && this._noteReconnectLoss(reason || "game-live");
             this._notifyGameLiveRecovery();
             try { this._applyUiHold(true); } catch (e) {}
@@ -2024,6 +2086,8 @@
           this._gameLiveRecoveryTimer = null;
           this._gameLiveRecoveryActive = false;
           this._gameLiveRecoveryAttempt = 0;
+          this._spectatorRecoveryRegistrationAttemptAt = 0;
+          this._spectatorRecoveryRegistrationPromise = null;
           this._gameLiveRecoveryGameId = null;
           this._gameDisconnectedAt = null;
           try { this._applyUiHold(false); } catch (e) {}
@@ -2036,6 +2100,8 @@
           this._gameLiveRecoveryTimer = null;
           this._gameLiveRecoveryActive = false;
           this._gameLiveRecoveryAttempt = 0;
+          this._spectatorRecoveryRegistrationAttemptAt = 0;
+          this._spectatorRecoveryRegistrationPromise = null;
           this._gameLiveRecoveryGameId = null;
           this._gameLiveSocketOpen = false;
           try { this._applyUiHold(false); } catch (e) {}
@@ -4581,7 +4647,11 @@
               const msgEl = document.createElement("span");
               msgEl.className = "msg";
               if (ev.kind === "actor_i18n") {
-                msgEl.textContent = `${ev.actor}: ${window.I18N.translateArgs(ev.key, ev.vars || {})}`;
+                const actorEl = document.createElement("span");
+                actorEl.className = "actor-word";
+                actorEl.textContent = String(ev.actor || "");
+                msgEl.appendChild(actorEl);
+                msgEl.appendChild(document.createTextNode(`: ${window.I18N.translateArgs(ev.key, ev.vars || {})}`));
               } else if (ev.kind === "i18n") {
                 msgEl.textContent = window.I18N.translateArgs(ev.key, ev.vars || {});
               } else {
@@ -5437,7 +5507,7 @@
             const name = ur.requesterNick || window.I18N.translateArgs("online.opponent");
             Modal.twoAction({
               title: window.I18N.translateArgs("undo.request.title"),
-              body: `<div>${formatTpl(window.I18N.translateArgs("undo.request.body"), { name: escapeHtml(name) })}</div>`,
+              body: `<div>${formatTpl(window.I18N.translateArgs("undo.request.body"), { name: `<span class="z-player-name">${escapeHtml(name)}</span>` })}</div>`,
               firstLabel: window.I18N.translateArgs("actions.accept"),
               firstClassName: "ok",
               onFirst: () => {
@@ -5632,7 +5702,7 @@
                     return `
                       <div class="z-row" data-uid="${r.uid}">
                         <div class="z-row-main">
-                          <div class="z-row-title"><img class="z-avatar" src="${r.icon}" alt="" />${escapeHtml(r.nick)}</div>
+                          <div class="z-row-title"><img class="z-avatar" src="${r.icon}" alt="" /><span class="z-player-name">${escapeHtml(r.nick)}</span></div>
                           <div class="z-row-sub">${escapeHtml(r.stLabel)}</div>
                         </div>
                         <div class="z-row-actions">
@@ -5648,7 +5718,7 @@
                   return `
                     <div class="z-row" data-uid="${r.uid}">
                       <div class="z-row-main">
-                        <div class="z-row-title"><img class="z-avatar" src="${r.icon}" alt="" />${escapeHtml(r.nick)}</div>
+                        <div class="z-row-title"><img class="z-avatar" src="${r.icon}" alt="" /><span class="z-player-name">${escapeHtml(r.nick)}</span></div>
                         <div class="z-row-sub">${escapeHtml(r.stLabel)}</div>
                       </div>
                       <div class="z-row-actions">
@@ -5708,7 +5778,16 @@
                   const spectatorCountUpdatedAt = Number(g.spectatorCountUpdatedAt || 0) || 0;
                   const spectatorCountFresh = isPresenceFresh(spectatorCountUpdatedAt, SPECTATOR_COUNT_STALE_MS);
                   const visibility = normalizeRoomVisibility(g.visibility);
-                  rooms.push({ gid, name, w, b, wuid, buid, visibility, createdAt: g.createdAt || g.acceptedAt || 0, spectatorCount, spectatorCountUpdatedAt, spectatorCountFresh });
+                  const reconnectGraceUntil = Number(g.reconnectGraceUntil || 0) || 0;
+                  const reconnecting = g.reconnecting === true && reconnectGraceUntil > nowTs();
+                  rooms.push({
+                    gid, name, w, b, wuid, buid, visibility,
+                    ownerOnly: g.ownerOnly === true || g.listed === false,
+                    reconnecting,
+                    reconnectGraceUntil,
+                    createdAt: g.createdAt || g.acceptedAt || 0,
+                    spectatorCount, spectatorCountUpdatedAt, spectatorCountFresh
+                  });
                 }
               }
               this._lobbyActivePlayerRooms = activePlayerRooms;
@@ -5746,10 +5825,19 @@
                          <span>${spectatorLabel}</span>
                        </button>`
                     : "";
+                  const roomState = r.reconnecting
+                    ? window.I18N.translateArgs("lobby.reconnectingRoom")
+                    : (r.ownerOnly && isMePlayer ? window.I18N.translateArgs("lobby.yourActiveMatch") : "");
+                  const playerLine = [r.w, r.b]
+                    .filter(Boolean)
+                    .map((name) => `<span class="z-player-name">${escapeHtml(name)}</span>`)
+                    .join(" · ");
                   return `
-                    <div class="z-row z-room-row" data-gid="${r.gid}">
+                    <div class="z-row z-room-row${r.ownerOnly ? " z-room-owner-only" : ""}${r.reconnecting ? " z-room-reconnecting" : ""}" data-gid="${r.gid}">
                       <div class="z-row-main">
                         <div class="z-row-title z-room-title"><span>${window.I18N.translateArgs("lobby.roomLabel")} : </span><span>${escapeHtml(r.name)}</span></div>
+                        ${playerLine ? `<div class="z-row-sub z-room-players">${playerLine}</div>` : ""}
+                        ${roomState ? `<div class="z-row-sub z-room-state">${escapeHtml(roomState)}</div>` : ""}
                       </div>
                       <div class="z-row-actions">
                         ${joinBtn || spectateBtn}
@@ -5816,9 +5904,63 @@
           }
         },
 
+    _setOnlineEntryLoading: function (enabled, messageKey) {
+          try {
+            if (typeof document === "undefined" || !isGamePage()) return false;
+            let overlay = document.getElementById("zOnlineEntryOverlay");
+            if (enabled && !overlay) {
+              overlay = document.createElement("div");
+              overlay.id = "zOnlineEntryOverlay";
+              overlay.className = "z-online-entry-overlay";
+              overlay.setAttribute("role", "status");
+              overlay.setAttribute("aria-live", "polite");
+              const text = document.createElement("div");
+              text.className = "z-online-entry-overlay-text";
+              overlay.appendChild(text);
+              (document.body || document.documentElement).appendChild(overlay);
+            }
+            if (!overlay) return false;
+            const textEl = overlay.querySelector(".z-online-entry-overlay-text");
+            if (textEl) textEl.textContent = window.I18N.translateArgs(messageKey || "status.loadingMatch");
+            overlay.hidden = !enabled;
+            document.body && document.body.classList.toggle("z-online-entry-pending", !!enabled);
+            return true;
+          } catch (e) { return false; }
+        },
+
+    _isDefinitiveGameEntryError: function (error) {
+          return isDefinitiveGameEntryError(error);
+        },
+
     _showUnavailableGameAndLeave: async function () {
-          try { showOnlineNotice(window.I18N.translateArgs("online.errors.noGame"), { allowSpectator: true }); } catch (e) {}
-          return await this._abortOnlineEntry("official-game-unavailable");
+          try { this._setOnlineEntryLoading(false); } catch (e) {}
+          try { this._clearPersistedActiveGame && this._clearPersistedActiveGame(); } catch (e) {}
+          await this._abortOnlineEntry("official-game-unavailable", { redirect: false });
+          let redirected = false;
+          const goToLobby = () => {
+            if (redirected) return;
+            redirected = true;
+            try {
+              if (typeof location !== "undefined" && isGamePage()) {
+                const back = (location.pathname || "").includes("/pages/") ? "./loby.html" : "pages/loby.html";
+                if (typeof location.replace === "function") location.replace(back);
+                else location.href = back;
+              }
+            } catch (e) {}
+          };
+          try {
+            const hasModal = typeof Modal !== "undefined" && Modal && typeof Modal.alert === "function";
+            showOnlineNotice(window.I18N.translateArgs("online.errors.noGame"), {
+              allowSpectator: true,
+              blocking: true,
+              onClick: goToLobby,
+              onClose: goToLobby,
+            });
+            if (!hasModal) goToLobby();
+          } catch (e) {
+            goToLobby();
+          }
+          return false;
         },
 
     _makeOfficialGameSnapshot: function (value) {
@@ -5905,9 +6047,11 @@
 
     _enterGameFromId: async function (gameId, forceSpectator) {
           const entryRequest = this._beginEntryRequest(gameId);
+          try { this._setOnlineEntryLoading(true, "status.loadingMatch"); } catch (e) {}
           const ok = await this.initPresence({ deferHeartbeat: true });
           if (!this._isEntryRequestCurrent(entryRequest)) return false;
           if (!ok) {
+            try { this._setOnlineEntryLoading(false); } catch (e) {}
             showOnlineNotice(window.I18N.translateArgs("status.onlineInitFail"));
             return;
           }
@@ -5939,12 +6083,18 @@
           if (!this._isEntryRequestCurrent(entryRequest)) return false;
           if (!g) {
             if (this._lastOfficialReadError) {
-              try { showOnlineNotice(window.I18N.translateArgs("status.reconnecting") || "تعذر الاتصال مؤقتًا. حاول مرة أخرى.", { allowSpectator: true }); } catch (e) {}
+              if (this._isDefinitiveGameEntryError(this._lastOfficialReadError)) {
+                await this._showUnavailableGameAndLeave();
+                return false;
+              }
+              try { this._setOnlineEntryLoading(true, "status.reconnecting"); } catch (e) {}
+              try { showOnlineNotice(window.I18N.translateArgs("status.reconnecting"), { allowSpectator: true }); } catch (e) {}
               return false;
             }
             await this._showUnavailableGameAndLeave();
             return false;
           }
+          try { this._setOnlineEntryLoading(false); } catch (e) {}
     
           const statusText = String((g && g.status) || "").trim();
           if (statusText && statusText !== "active" && statusText !== "pending") {
@@ -6002,6 +6152,11 @@
             return false;
           }
           if (!registration || !registration.ok) {
+            const registrationError = registration && registration.error;
+            if (registrationError && this._isDefinitiveGameEntryError(registrationError)) {
+              await this._showUnavailableGameAndLeave();
+              return false;
+            }
             const msg = registration && registration.reason === "full"
               ? window.I18N.translateArgs("lobby.spectatorFull")
               : window.I18N.translateArgs("online.errors.spectatorJoinFailed");
@@ -6068,7 +6223,8 @@
           } catch (e) {}
           return true;
         },
-    _abortOnlineEntry: async function (reason) {
+    _abortOnlineEntry: async function (reason, options) {
+          const abortOptions = options && typeof options === "object" ? options : {};
           const gid = String(this.gameId || this._presenceRoomId || "").trim();
           const uid = String(this.myUid || "").trim();
           const wasSpectator = !!this.isSpectator;
@@ -6105,13 +6261,15 @@
           try { this._setOnlineButtonsState(false); } catch (e) {}
           try { await this._setLobbyStatus("available"); } catch (e) {}
 
-          try {
-            if (typeof location !== "undefined" && isGamePage()) {
-              const back = (location.pathname || "").includes("/pages/") ? "./loby.html" : "pages/loby.html";
-              if (typeof location.replace === "function") location.replace(back);
-              else location.href = back;
-            }
-          } catch (e) {}
+          if (abortOptions.redirect !== false) {
+            try {
+              if (typeof location !== "undefined" && isGamePage()) {
+                const back = (location.pathname || "").includes("/pages/") ? "./loby.html" : "pages/loby.html";
+                if (typeof location.replace === "function") location.replace(back);
+                else location.href = back;
+              }
+            } catch (e) {}
+          }
           return false;
         },
 

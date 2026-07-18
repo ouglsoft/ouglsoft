@@ -602,6 +602,51 @@
     return out;
   }
 
+  function buildNoticeBody(msg, cfg) {
+    const text = String(msg == null ? "" : msg);
+    const div = document.createElement("div");
+    div.className = "z-notice-text";
+    div.style.whiteSpace = "pre-wrap";
+    const names = [];
+    const addName = (value) => {
+      const name = String(value || "").trim();
+      if (name && name.length >= 3 && !names.includes(name)) names.push(name);
+    };
+    try {
+      const supplied = cfg && Array.isArray(cfg.playerNames) ? cfg.playerNames : [];
+      supplied.forEach(addName);
+      const online = window.Online || null;
+      addName(online && online.myNick);
+      const game = online && online._lastGameData && typeof online._lastGameData === "object" ? online._lastGameData : null;
+      const gamePlayers = game && game.players && typeof game.players === "object" ? game.players : {};
+      addName(gamePlayers.white && gamePlayers.white.nickname);
+      addName(gamePlayers.black && gamePlayers.black.nickname);
+      const lobbyPlayers = online && online._lastOfficialLobbyView && online._lastOfficialLobbyView.players;
+      if (lobbyPlayers && typeof lobbyPlayers === "object") {
+        Object.values(lobbyPlayers).forEach((row) => addName(row && row.nickname));
+      }
+    } catch (e) {}
+    names.sort((a, b) => b.length - a.length);
+    if (!names.length) {
+      div.textContent = text;
+      return div;
+    }
+    const escaped = names.map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+    const re = new RegExp("(" + escaped.join("|") + ")", "gu");
+    let last = 0;
+    text.replace(re, (match, _group, offset) => {
+      if (offset > last) div.appendChild(document.createTextNode(text.slice(last, offset)));
+      const span = document.createElement("span");
+      span.className = "z-notice-player-name";
+      span.textContent = match;
+      div.appendChild(span);
+      last = offset + match.length;
+      return match;
+    });
+    if (last < text.length) div.appendChild(document.createTextNode(text.slice(last)));
+    return div;
+  }
+
   function showOnlineNotice(msg, opts) {
     const cfg = opts && typeof opts === "object" ? opts : {};
     try {
@@ -619,7 +664,7 @@
       if (window.Modal && typeof Modal.alert === "function") {
         Modal.alert({
           title: titleText,
-          text: safeMsg,
+          body: buildNoticeBody(safeMsg, cfg),
           okLabel: cfg.okLabel || window.I18N.translateArgs("actions.close"),
           okClassName: cfg.okClassName,
           allowSpectator: cfg.allowSpectator,
@@ -1642,6 +1687,10 @@
 
     _gameLiveRecoveryNoticeAt: 0,
 
+    _spectatorRecoveryRegistrationAttemptAt: 0,
+
+    _spectatorRecoveryRegistrationPromise: null,
+
     _applySessionState: function (input) {
           const next = input && typeof input === "object" ? input : {};
           const has = (key) => Object.prototype.hasOwnProperty.call(next, key);
@@ -2296,23 +2345,27 @@
     _applyOfficialLobbyView: function (view) {
           try {
             if (!view || typeof view !== "object") return false;
+            if (view.myActiveRoom && typeof view.myActiveRoom === "object") {
+              const activeRoomId = String(view.myActiveRoom.gameId || view.myActiveRoom.id || "").trim();
+              if (activeRoomId) {
+                view = Object.assign({}, view, {
+                  roomList: Object.assign({}, view.roomList || {}, {
+                    [activeRoomId]: Object.assign({}, view.myActiveRoom, {
+                      gameId: activeRoomId,
+                      ownerOnly: view.myActiveRoom.listed === false || view.myActiveRoom.ownerOnly === true,
+                    }),
+                  }),
+                });
+              }
+            }
             try { this._syncMyUidFromAuth && this._syncMyUidFromAuth(); } catch (e) {}
             try { this._syncMyUidFromOfficialResult && this._syncMyUidFromOfficialResult(view); } catch (e) {}
             this._lastOfficialLobbyView = view;
             this._lastOfficialLobbyViewAt = nowTs();
             if (view.players && typeof view.players === "object") this._lastPlayersFullSyncAt = nowTs();
-            // The official active-room map is the canonical acceptance signal.
-            // Navigate before rendering lobby rows so an accepted match cannot
-            // stop at a visible "return to match" button. Presence fields such
-            // as isActive/gameId may already have been updated by the server on
-            // the lobby page; they are not an active browser match session.
-            try {
-              const activeGameId = this._activeOfficialGameForCurrentPlayer(view);
-              if (activeGameId && !isGamePage()) {
-                this._handleOutgoingInviteAccepted(activeGameId).catch(function () {});
-              }
-            } catch (e) {}
-
+            // Active matches are rendered as explicit return cards in the lobby.
+            // Automatic navigation is reserved for newly accepted invitations,
+            // which are delivered through inviteResults.
             if (view.players && this._lobbyPlayersCb) {
               try { this._lobbyPlayersCb(this._makeCompatSnapshot(view.players)); } catch (e) {}
             }
@@ -2423,13 +2476,24 @@
     _handleAppLiveSnapshot: async function (snapshot) {
           try {
             const src = snapshot && typeof snapshot === "object" ? snapshot : {};
-            const roomList = src.roomList && typeof src.roomList === "object" ? src.roomList : {};
+            const roomList = src.roomList && typeof src.roomList === "object" ? Object.assign({}, src.roomList) : {};
+            const myActiveRoom = src.myActiveRoom && typeof src.myActiveRoom === "object" ? Object.assign({}, src.myActiveRoom) : null;
+            if (myActiveRoom) {
+              const myRoomId = String(myActiveRoom.gameId || myActiveRoom.id || "").trim();
+              if (myRoomId) roomList[myRoomId] = Object.assign({}, myActiveRoom, {
+                gameId: myRoomId,
+                ownerOnly: myActiveRoom.listed === false || myActiveRoom.ownerOnly === true,
+              });
+            }
             const view = {
               uid: src.uid || this.myUid || null,
               viewerUid: src.viewerUid || src.uid || this.myUid || null,
               players: src.players && typeof src.players === "object" ? src.players : {},
               roomList,
-              activePlayerRooms: this._activePlayerRoomsFromRoomList(roomList),
+              activePlayerRooms: src.activePlayerRooms && typeof src.activePlayerRooms === "object"
+                ? src.activePlayerRooms
+                : this._activePlayerRoomsFromRoomList(roomList),
+              myActiveRoom,
               invites: src.invites && typeof src.invites === "object" ? src.invites : {},
               generatedAt: Number(src.generatedAt || nowTs()) || nowTs(),
               source: src.source || "app-live-v1",
@@ -3348,10 +3412,10 @@
             const roomName = (inv.roomName || "").trim();
             const body = roomName
               ? window.I18N.translateArgs("online.newInviteBody", {
-                  fromName: escapeHtml(name),
+                  fromName: `<span class="z-player-name">${escapeHtml(name)}</span>`,
                   roomPart: window.I18N.translateArgs("online.newInviteRoomPart", { roomName: escapeHtml(roomName) }),
                 })
-              : window.I18N.translateArgs("online.newInviteBody", { fromName: escapeHtml(name), roomPart: "" });
+              : window.I18N.translateArgs("online.newInviteBody", { fromName: `<span class="z-player-name">${escapeHtml(name)}</span>`, roomPart: "" });
 
             const canModal = typeof Modal !== "undefined" && Modal && typeof Modal.open === "function";
             const plainText = (html) => {

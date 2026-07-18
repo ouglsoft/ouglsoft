@@ -101,7 +101,7 @@
     heartbeatTimeout: null,
     channel: null,
     tabStates: {},
-    cache: { players: {}, roomList: {}, invites: {}, inviteResults: {}, generatedAt: 0 },
+    cache: { players: {}, roomList: {}, activePlayerRooms: {}, myActiveRoom: null, invites: {}, inviteResults: {}, generatedAt: 0 },
     lastSentPresence: null,
     lastLobbyMode: null,
     lifecycleBound: false,
@@ -305,6 +305,20 @@
     }
     return true;
   }
+  function rebuildActivePlayerRooms() {
+    var mapped = {};
+    var rooms = state.cache.roomList && typeof state.cache.roomList === 'object' ? state.cache.roomList : {};
+    Object.keys(rooms).forEach(function (gameId) {
+      var room = rooms[gameId];
+      if (!room || String(room.status || '') !== 'active') return;
+      var players = room.players && typeof room.players === 'object' ? room.players : {};
+      ['white', 'black'].forEach(function (side) {
+        var uid = String(players[side] && players[side].uid || '').trim();
+        if (uid) mapped[uid] = String(gameId);
+      });
+    });
+    state.cache.activePlayerRooms = mapped;
+  }
   function applyChild(message) {
     var id = String(message.id || '');
     var key = String(message.key || '');
@@ -314,10 +328,32 @@
     else if (id.indexOf('app-invites-') === 0) target = state.cache.invites;
     else if (id.indexOf('app-invite-results-') === 0) target = state.cache.inviteResults;
     if (!target || !key) return false;
-    var roomHidden = id.indexOf('app-rooms-') === 0 && message.value && message.value.listed === false;
+    var roomEvent = id.indexOf('app-rooms-') === 0;
+    var roomHidden = roomEvent && message.value && message.value.listed === false;
+    var roomInactive = roomEvent && message.value && String(message.value.status || '') !== 'active';
     var playerOffline = id.indexOf('app-players-') === 0 && message.value && message.value.online === false;
-    if (message.event === 'child_removed' || roomHidden || playerOffline) delete target[key];
-    else target[key] = clone(message.value);
+    var viewerUid = String(state.cache.uid || state.cache.viewerUid || '').trim();
+    var roomPlayers = message.value && message.value.players && typeof message.value.players === 'object' ? message.value.players : {};
+    var viewerOwnsRoom = !!(viewerUid && (
+      String(roomPlayers.white && roomPlayers.white.uid || '').trim() === viewerUid ||
+      String(roomPlayers.black && roomPlayers.black.uid || '').trim() === viewerUid
+    ));
+    var removeRoom = roomEvent && (message.event === 'child_removed' || roomInactive || (roomHidden && !viewerOwnsRoom));
+    if (message.event === 'child_removed' || playerOffline || removeRoom) {
+      delete target[key];
+      if (roomEvent && state.cache.myActiveRoom && String(state.cache.myActiveRoom.gameId || '') === key) state.cache.myActiveRoom = null;
+    } else {
+      target[key] = clone(message.value);
+      if (roomHidden && viewerOwnsRoom) {
+        target[key].ownerOnly = true;
+        target[key].gameId = key;
+        state.cache.myActiveRoom = clone(target[key]);
+      } else if (roomEvent && viewerOwnsRoom) {
+        target[key].gameId = key;
+        state.cache.myActiveRoom = clone(target[key]);
+      }
+    }
+    if (roomEvent) rebuildActivePlayerRooms();
     state.cache.generatedAt = now();
     return true;
   }
@@ -332,15 +368,27 @@
     if (!message || typeof message !== 'object') return;
     if (message.type === 'app-snapshot') {
       var value = message.value && typeof message.value === 'object' ? message.value : {};
+      var roomList = clone(value.roomList || {});
+      var myActiveRoom = value.myActiveRoom && typeof value.myActiveRoom === 'object' ? clone(value.myActiveRoom) : null;
+      if (myActiveRoom) {
+        var myRoomId = String(myActiveRoom.gameId || myActiveRoom.id || '').trim();
+        if (myRoomId) {
+          myActiveRoom.gameId = myRoomId;
+          myActiveRoom.ownerOnly = myActiveRoom.listed === false || myActiveRoom.ownerOnly === true;
+          roomList[myRoomId] = clone(myActiveRoom);
+        }
+      }
       state.cache = {
         uid: value.uid || value.viewerUid || null,
         viewerUid: value.viewerUid || value.uid || null,
         players: clone(value.players || {}),
-        roomList: clone(value.roomList || {}),
+        roomList: roomList,
+        activePlayerRooms: clone(value.activePlayerRooms || {}),
+        myActiveRoom: myActiveRoom,
         invites: clone(value.invites || {}),
         inviteResults: clone(value.inviteResults || {}),
         generatedAt: Number(value.generatedAt || now()) || now(),
-        source: value.source || 'app-live-v1',
+        source: value.source || 'app-live-v2-active-room',
       };
       notifySnapshot(message);
       return;

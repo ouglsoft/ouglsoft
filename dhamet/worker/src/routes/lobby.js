@@ -225,9 +225,12 @@ export function createLobbyRouteHandlers(deps) {
 
   function playerFresh(player) {
     if (!player || typeof player !== 'object' || player.online === false) return false;
+    const at = now();
+    const pendingUntil = Number(player.disconnectPendingUntil || 0) || 0;
+    if (pendingUntil && pendingUntil <= at && player.live !== true) return false;
     if (player.live === true) return true;
     const ts = Number(player.updatedAt || player.connectedAt || player.joinedAt) || 0;
-    return !!(ts && now() - ts <= PRESENCE_LIST_TTL_MS);
+    return !!(ts && at - ts <= PRESENCE_LIST_TTL_MS);
   }
 
   function gamePresenceFresh(playerPresence) {
@@ -621,7 +624,7 @@ export function createLobbyRouteHandlers(deps) {
     const out = Object.create(null);
     const all = roomList && typeof roomList === 'object' ? roomList : {};
     for (const [gid, room] of Object.entries(all)) {
-      if (!room || typeof room !== 'object' || cleanString(room.status, 40) !== 'active' || room.listed === false) continue;
+      if (!room || typeof room !== 'object' || cleanString(room.status, 40) !== 'active') continue;
       const p = gamePlayerUids(room);
       if (p.white) out[p.white] = cleanPath(gid);
       if (p.black) out[p.black] = cleanPath(gid);
@@ -636,6 +639,8 @@ export function createLobbyRouteHandlers(deps) {
     const at = now();
     for (const [uid, p] of Object.entries(all)) {
       if (!p || typeof p !== 'object' || p.online === false) continue;
+      const pendingUntil = Number(p.disconnectPendingUntil || 0) || 0;
+      if (pendingUntil && pendingUntil <= at) continue;
       const ts = Number(p.updatedAt || p.joinedAt || 0) || 0;
       if (!ts || at - ts > PRESENCE_LIST_TTL_MS) continue;
       let next = p;
@@ -664,8 +669,11 @@ export function createLobbyRouteHandlers(deps) {
     const entries = Object.entries(all)
       .filter(([, room]) => room && typeof room === 'object' && String(room.status || '') === 'active' && room.listed !== false)
       .filter(([, room]) => {
+        const at = now();
+        const reconnectGraceUntil = Number(room.reconnectGraceUntil || 0) || 0;
+        if (room.reconnecting === true && reconnectGraceUntil && reconnectGraceUntil <= at) return false;
         const awaitingUntil = Number(room.awaitingPlayersUntil || 0) || 0;
-        return !(Number(room.livePlayerCount || 0) <= 0 && awaitingUntil && awaitingUntil <= now());
+        return !(Number(room.livePlayerCount || 0) <= 0 && awaitingUntil && awaitingUntil <= at);
       })
       .filter(([, room]) => !(PresenceCore && typeof PresenceCore.classifyRoomListEntry === 'function' && PresenceCore.classifyRoomListEntry(room, now()).action === 'remove-room-list'))
       .sort((a, b) => (Number((b[1] && (b[1].updatedAt || b[1].acceptedAt || b[1].createdAt)) || 0) || 0) - (Number((a[1] && (a[1].updatedAt || a[1].acceptedAt || a[1].createdAt)) || 0) || 0))
@@ -691,13 +699,18 @@ export function createLobbyRouteHandlers(deps) {
       try { outgoingGames[gid] = await readRealtimeValue(env, 'game:' + gid, 'games/' + gid); } catch (_) { outgoingGames[gid] = null; }
     }
     const filteredRoomList = includeRooms ? filterActiveRoomList(roomList, roomLimit) : null;
-    const activePlayerRooms = filteredRoomList ? mapActivePlayerRooms(filteredRoomList) : {};
+    const activePlayerRooms = roomList ? mapActivePlayerRooms(roomList) : {};
+    const myActiveRoomId = cleanPath(activePlayerRooms[cleanString(uid, 160)] || '');
+    const myActiveRoom = myActiveRoomId && roomList && roomList[myActiveRoomId] && String(roomList[myActiveRoomId].status || '') === 'active'
+      ? Object.assign({}, roomList[myActiveRoomId], { gameId: myActiveRoomId, ownerOnly: roomList[myActiveRoomId].listed === false })
+      : null;
     return {
       uid: cleanString(uid, 160),
       viewerUid: cleanString(uid, 160),
       players: includePlayers ? filterFreshPlayers(players, activePlayerRooms) : null,
       roomList: filteredRoomList,
       activePlayerRooms,
+      myActiveRoom,
       invites: includeInvites ? (invites && typeof invites === 'object' ? invites : {}) : null,
       outgoingGames,
       generatedAt: now(),

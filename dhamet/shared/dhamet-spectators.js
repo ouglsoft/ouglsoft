@@ -4,7 +4,7 @@
   const Utils = global.DhametUtils;
   if (!Utils) throw new Error('DhametSpectators requires DhametUtils');
 
-  const VERSION = 'shared-spectators-v1';
+  const VERSION = 'shared-spectators-v2';
   const MAX_SPECTATORS = 3;
 
   const cleanString = Utils.cleanStringTrim;
@@ -64,6 +64,11 @@
           authoritative: item.authoritative !== false,
           serverValidated: item.serverValidated !== false,
         };
+        if (item.connected != null) out[uid].connected = item.connected !== false;
+        const disconnectedAt = Number(item.disconnectedAt || 0) || 0;
+        const reconnectGraceUntil = Number(item.reconnectGraceUntil || 0) || 0;
+        if (disconnectedAt) out[uid].disconnectedAt = disconnectedAt;
+        if (reconnectGraceUntil) out[uid].reconnectGraceUntil = reconnectGraceUntil;
       }
     }
     return out;

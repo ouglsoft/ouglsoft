@@ -74,9 +74,12 @@ const DEFAULT_MAINTENANCE_MS = 24 * 60 * 60 * 1000;
 const ROOM_LEASE_RENEW_MS = 5 * 60 * 1000;
 const ROOM_LEASE_TTL_MS = 12 * 60 * 1000;
 const APP_DISCONNECT_GRACE_MS = 2 * 60 * 1000;
+const APP_TRANSITION_GRACE_MS = 15 * 1000;
 const SOCKET_HEARTBEAT_STALE_MS = 4 * 60 * 1000;
 const INVITE_RESULT_TTL_MS = 10 * 60 * 1000;
 const ROOM_LIVE_RETRY_MS = 60 * 1000;
+const ROOM_RECONNECT_GRACE_MS = 90 * 1000;
+const SPECTATOR_RECONNECT_GRACE_MS = 90 * 1000;
 const ROOM_AWAITING_PLAYERS_MS = Number(PresenceCore && PresenceCore.POLICY && PresenceCore.POLICY.roomAwaitingPlayersMs) || 90 * 1000;
 const STATS_ROOT_KEYS = new Set(['profiles', 'leaderboardV1', 'leaderboardOrderV2', 'leaderboardOrderSchema']);
 
@@ -273,13 +276,29 @@ export class RealtimeObject {
       if (purgeAt) deadlines.push(purgeAt);
     }
     const games = this.root && this.root.games && typeof this.root.games === 'object' ? this.root.games : {};
-    for (const [gameId, game] of Object.entries(games)) deadlines.push(this._gameMaintenanceDeadline(gameId, game, at));
+    for (const [gameId, game] of Object.entries(games)) {
+      deadlines.push(this._gameMaintenanceDeadline(gameId, game, at));
+      const spectators = this.root && this.root.spectators && this.root.spectators[gameId] && typeof this.root.spectators[gameId] === 'object'
+        ? this.root.spectators[gameId]
+        : {};
+      for (const spectator of Object.values(spectators)) {
+        const reconnectGraceUntil = Number(spectator && spectator.reconnectGraceUntil || 0) || 0;
+        if (reconnectGraceUntil) deadlines.push(reconnectGraceUntil);
+      }
+    }
     if (!Object.keys(games).length) {
       const players = this.root && this.root.players && typeof this.root.players === 'object' ? this.root.players : {};
       for (const [uid, row] of Object.entries(players)) {
         if (this._appSocketCount(uid) > 0) continue;
+        const pendingUntil = Number(row && row.disconnectPendingUntil || 0) || 0;
+        if (pendingUntil) {
+          deadlines.push(pendingUntil);
+          continue;
+        }
+        const disconnectedAt = Number(row && row.disconnectedAt || 0) || 0;
         const last = Number(row && (row.updatedAt || row.connectedAt || row.joinedAt) || 0) || 0;
-        if (last) deadlines.push(last + APP_DISCONNECT_GRACE_MS);
+        if (row && row.online === false && disconnectedAt) deadlines.push(disconnectedAt + APP_DISCONNECT_GRACE_MS);
+        else if (last) deadlines.push(last + APP_DISCONNECT_GRACE_MS);
       }
       const invites = this.root && this.root.invites && typeof this.root.invites === 'object' ? this.root.invites : {};
       for (const bucket of Object.values(invites)) for (const row of Object.values(bucket && typeof bucket === 'object' ? bucket : {})) {
@@ -300,6 +319,8 @@ export class RealtimeObject {
       for (const room of Object.values(roomList)) {
         const awaitingPlayersUntil = Number(room && room.awaitingPlayersUntil || 0) || 0;
         if (awaitingPlayersUntil && room && room.listed !== false && Number(room.livePlayerCount || 0) <= 0) deadlines.push(awaitingPlayersUntil);
+        const reconnectGraceUntil = Number(room && room.reconnectGraceUntil || 0) || 0;
+        if (reconnectGraceUntil && room && room.reconnecting === true) deadlines.push(reconnectGraceUntil);
         const leaseUntil = Number(room && (room.leaseUntil || room.cleanupAt) || 0) || 0;
         if (leaseUntil) deadlines.push(leaseUntil);
       }
@@ -317,7 +338,7 @@ export class RealtimeObject {
       deadlines.push(nextRetryAt || at + 60 * 1000);
     }
     const nextAt = deadlines.filter((value) => Number.isFinite(value) && value > 0).reduce((min, value) => min == null || value < min ? value : min, null);
-    return nextAt == null ? DEFAULT_MAINTENANCE_MS : Math.max(60 * 1000, nextAt - at);
+    return nextAt == null ? DEFAULT_MAINTENANCE_MS : Math.max(5 * 1000, nextAt - at);
   }
 
   async _save(maintenanceDelayMs, options = {}) {
@@ -351,7 +372,7 @@ export class RealtimeObject {
   }
 
   async _scheduleMaintenance(delayMs) {
-    const delay = Math.max(60 * 1000, Number(delayMs || DEFAULT_MAINTENANCE_MS) || DEFAULT_MAINTENANCE_MS);
+    const delay = Math.max(5 * 1000, Number(delayMs || DEFAULT_MAINTENANCE_MS) || DEFAULT_MAINTENANCE_MS);
     const target = now() + delay;
     try {
       const existing = typeof this.ctx.storage.getAlarm === 'function' ? await this.ctx.storage.getAlarm() : null;
@@ -364,7 +385,7 @@ export class RealtimeObject {
   }
 
   async _replaceMaintenanceSchedule(delayMs) {
-    const delay = Math.max(60 * 1000, Number(delayMs || DEFAULT_MAINTENANCE_MS) || DEFAULT_MAINTENANCE_MS);
+    const delay = Math.max(5 * 1000, Number(delayMs || DEFAULT_MAINTENANCE_MS) || DEFAULT_MAINTENANCE_MS);
     try {
       const target = now() + delay;
       const existing = typeof this.ctx.storage.getAlarm === 'function' ? await this.ctx.storage.getAlarm() : null;
@@ -897,6 +918,8 @@ export class RealtimeObject {
     for (const [gameId, room] of Object.entries(rooms)) {
       if (!room || typeof room !== 'object' || String(room.status || '') !== 'active') continue;
       if (room.listed === false) continue;
+      const reconnectGraceUntil = Number(room.reconnectGraceUntil || 0) || 0;
+      if (room.reconnecting === true && reconnectGraceUntil && reconnectGraceUntil <= at) continue;
       const awaitingPlayersUntil = Number(room.awaitingPlayersUntil || 0) || 0;
       if (Number(room.livePlayerCount || 0) <= 0 && awaitingPlayersUntil && awaitingPlayersUntil <= at) continue;
       const leaseUntil = Number(room.leaseUntil || room.cleanupAt || 0) || 0;
@@ -904,6 +927,38 @@ export class RealtimeObject {
       out[gameId] = room;
     }
     return out;
+  }
+
+  _activePlayerRoomsSnapshot() {
+    const rooms = this.root && this.root.roomList && typeof this.root.roomList === 'object' ? this.root.roomList : {};
+    const out = {};
+    for (const [gameId, room] of Object.entries(rooms)) {
+      if (!room || typeof room !== 'object' || String(room.status || '') !== 'active') continue;
+      for (const uid of this._officialPlayerUids(room)) out[uid] = gameId;
+    }
+    return out;
+  }
+
+  _myActiveRoomSnapshot(uid) {
+    const id = cleanPath(uid || '');
+    if (!id) return null;
+    const rooms = this.root && this.root.roomList && typeof this.root.roomList === 'object' ? this.root.roomList : {};
+    const player = getAt(this.root || {}, 'players/' + id);
+    const preferredRoomId = cleanPath(player && (player.roomId || player.gameId) || '');
+    const candidates = preferredRoomId
+      ? [[preferredRoomId, rooms[preferredRoomId]]]
+      : Object.entries(rooms);
+    for (const [gameId, room] of candidates) {
+      if (!room || typeof room !== 'object' || String(room.status || '') !== 'active') continue;
+      if (!this._officialPlayerUids(room).includes(id)) continue;
+      return Object.assign({}, room, { gameId, ownerOnly: room.listed === false });
+    }
+    for (const [gameId, room] of Object.entries(rooms)) {
+      if (preferredRoomId && gameId === preferredRoomId) continue;
+      if (!room || typeof room !== 'object' || String(room.status || '') !== 'active') continue;
+      if (this._officialPlayerUids(room).includes(id)) return Object.assign({}, room, { gameId, ownerOnly: room.listed === false });
+    }
+    return null;
   }
 
   _onlinePlayersSnapshot() {
@@ -914,9 +969,11 @@ export class RealtimeObject {
     for (const [uid, row] of Object.entries(players)) {
       if (!row || typeof row !== 'object') continue;
       const live = this._appSocketCount(uid) > 0;
+      const pendingUntil = Number(row.disconnectPendingUntil || 0) || 0;
+      const pendingOnline = !live && row.online !== false && pendingUntil > at;
       const ts = Number(row.updatedAt || row.connectedAt || row.joinedAt || 0) || 0;
-      if (!live && (row.online === false || !ts || at - ts > ttl)) continue;
-      out[uid] = Object.assign({}, row, { online: live || row.online !== false });
+      if (!live && !pendingOnline && (row.online === false || (pendingUntil && pendingUntil <= at) || !ts || at - ts > ttl)) continue;
+      out[uid] = Object.assign({}, row, { online: live || pendingOnline || row.online !== false });
     }
     return out;
   }
@@ -928,10 +985,12 @@ export class RealtimeObject {
       viewerUid: id,
       players: includeLobby ? this._onlinePlayersSnapshot() : null,
       roomList: includeLobby ? this._activeLobbyRoomsSnapshot() : null,
+      activePlayerRooms: includeLobby ? this._activePlayerRoomsSnapshot() : {},
+      myActiveRoom: includeLobby ? this._myActiveRoomSnapshot(id) : null,
       invites: id ? (getAt(this.root || {}, 'invites/' + id) || {}) : {},
       inviteResults: id ? (getAt(this.root || {}, 'inviteResults/' + id) || {}) : {},
       generatedAt: now(),
-      source: 'app-live-v1',
+      source: 'app-live-v2-active-room',
     };
   }
 
@@ -952,6 +1011,8 @@ export class RealtimeObject {
       updatedAt: at,
     });
     delete next.disconnectedAt;
+    delete next.disconnectPendingUntil;
+    delete next.transportDisconnectedAt;
     const material = !PresenceCore || typeof PresenceCore.hasMaterialPresenceChange !== 'function'
       ? !sameValue(previous, next)
       : PresenceCore.hasMaterialPresenceChange(previous, next);
@@ -965,24 +1026,36 @@ export class RealtimeObject {
     return { changed: true, presence: next };
   }
 
-  async _markAppPresenceDisconnected(uid, exceptSocket) {
+  async _markAppPresenceDisconnected(uid, exceptSocket, options = {}) {
     const id = cleanPath(uid || '');
     if (!id || this._appSocketCount(id, exceptSocket) > 0) return { changed: false };
     const path = 'players/' + id;
     const previous = getAt(this.root || {}, path);
     if (!previous || typeof previous !== 'object' || previous.online === false) return { changed: false, presence: previous || null };
     const at = now();
-    const next = Object.assign({}, previous, {
-      online: false,
-      disconnectedAt: at,
-      updatedAt: at,
-    });
+    const immediate = !!(options && options.immediate);
+    const next = immediate
+      ? Object.assign({}, previous, {
+          online: false,
+          disconnectedAt: at,
+          updatedAt: at,
+        })
+      : Object.assign({}, previous, {
+          online: true,
+          transportDisconnectedAt: at,
+          disconnectPendingUntil: at + APP_TRANSITION_GRACE_MS,
+        });
+    if (immediate) {
+      delete next.disconnectPendingUntil;
+      delete next.transportDisconnectedAt;
+    }
+    if (sameValue(previous, next)) return { changed: false, presence: previous };
     const beforeRoot = this._snapshotForPaths([path]);
     this.root = setAt(this.root || {}, path, next);
     bumpVersions(this.versions, [path]);
-    await this._save(APP_DISCONNECT_GRACE_MS);
-    await this._broadcast([path], beforeRoot);
-    return { changed: true, presence: next };
+    await this._save(immediate ? APP_DISCONNECT_GRACE_MS : APP_TRANSITION_GRACE_MS);
+    if (immediate) await this._broadcast([path], beforeRoot);
+    return { changed: true, pending: !immediate, presence: next };
   }
 
   _appLiveSubscriptions(uid, includeLobby) {
@@ -1113,21 +1186,43 @@ export class RealtimeObject {
     const currentGame = getAt(this.root || {}, gamePath);
     const currentSpectators = getAt(this.root || {}, spectatorsPath) || {};
     if (!currentGame || typeof currentGame !== 'object') return false;
-    const existing = currentSpectators && currentSpectators[id] && typeof currentSpectators[id] === 'object' ? currentSpectators[id] : {};
+    const existing = currentSpectators && currentSpectators[id] && typeof currentSpectators[id] === 'object' ? currentSpectators[id] : null;
+
+    if (!online) {
+      if (!existing) return false;
+      const at = now();
+      const nextSpectators = clone(currentSpectators || {});
+      nextSpectators[id] = Object.assign({}, existing, {
+        connected: false,
+        disconnectedAt: at,
+        reconnectGraceUntil: at + SPECTATOR_RECONNECT_GRACE_MS,
+        updatedAt: at,
+      });
+      if (sameValue(currentSpectators, nextSpectators)) return false;
+      const beforeRoot = this._snapshotForPaths([spectatorsPath]);
+      this.root = setAt(this.root || {}, spectatorsPath, nextSpectators);
+      bumpVersions(this.versions, [spectatorsPath, spectatorsPath + '/' + id]);
+      await this._save(SPECTATOR_RECONNECT_GRACE_MS);
+      await this._broadcast([spectatorsPath, spectatorsPath + '/' + id], beforeRoot);
+      return true;
+    }
+
     const result = SpectatorCore.applySpectatorAction(currentGame, currentSpectators, {
-      kind: online ? (existing.uid ? 'refresh' : 'join') : 'leave',
+      kind: existing && existing.uid ? 'refresh' : 'join',
       gameId: gid,
       uid: id,
-      nickname: String(existing.nickname || '').slice(0, 80),
-      joinedAt: Number(existing.joinedAt || now()) || now(),
+      nickname: String(existing && existing.nickname || '').slice(0, 80),
+      joinedAt: Number(existing && existing.joinedAt || now()) || now(),
     }, { now: now() });
     if (!result || !result.ok || result.committed === false) return false;
+    const nextSpectators = result.spectators || {};
+    if (nextSpectators[id]) nextSpectators[id] = Object.assign({}, nextSpectators[id], { connected: true });
     const beforeRoot = this._snapshotForPaths([spectatorsPath, gamePath]);
     const game = clone(currentGame);
     const patch = result.gamePatch || {};
     game.spectatorCount = Number(patch.spectatorCount || result.count || 0) || 0;
     game.spectatorCountUpdatedAt = patch.spectatorCountUpdatedAt || now();
-    this.root = setAt(this.root || {}, spectatorsPath, result.spectators || {});
+    this.root = setAt(this.root || {}, spectatorsPath, nextSpectators);
     this.root = setAt(this.root || {}, gamePath, game);
     bumpVersions(this.versions, [spectatorsPath, gamePath]);
     await this._save(ROOM_LEASE_RENEW_MS);
@@ -1242,9 +1337,11 @@ export class RealtimeObject {
       const stored = getAt(this.root || {}, 'players/' + cleanPath(uid));
       if (stored && typeof stored === 'object') {
         const live = this._appSocketCount(uid) > 0;
+        const pendingUntil = Number(stored.disconnectPendingUntil || 0) || 0;
+        const pendingOnline = !live && stored.online !== false && pendingUntil > now();
         players[uid] = Object.assign({}, stored, {
           live,
-          online: live || stored.online !== false,
+          online: live || pendingOnline || (stored.online !== false && !pendingUntil),
         });
         const roomId = cleanPath(stored.roomId || stored.gameId || '');
         if (roomId && !Object.prototype.hasOwnProperty.call(rooms, roomId)) {
@@ -1263,8 +1360,10 @@ export class RealtimeObject {
       const senderUid = String(invite.fromUid);
       const stored = getAt(this.root || {}, 'players/' + cleanPath(senderUid));
       const live = this._appSocketCount(senderUid) > 0;
+      const pendingUntil = Number(stored && stored.disconnectPendingUntil || 0) || 0;
+      const pendingOnline = !live && stored && stored.online !== false && pendingUntil > now();
       players[senderUid] = stored && typeof stored === 'object'
-        ? Object.assign({}, stored, { live, online: live || stored.online !== false })
+        ? Object.assign({}, stored, { live, online: live || pendingOnline || (stored.online !== false && !pendingUntil) })
         : null;
       const roomId = cleanPath(stored && (stored.roomId || stored.gameId) || '');
       if (roomId && !Object.prototype.hasOwnProperty.call(rooms, roomId)) rooms[roomId] = getAt(this.root || {}, 'roomList/' + roomId) || null;
@@ -2389,22 +2488,39 @@ export class RealtimeObject {
     }
     const at = now();
     const count = Math.max(0, Number(body && body.livePlayerCount || 0) || 0);
-    const listed = body && body.listed != null ? !!body.listed : count > 0;
+    const requestedListed = body && body.listed != null ? !!body.listed : count > 0;
+    const liveReason = String(body && body.reason || (requestedListed ? 'player-connected' : 'players-disconnected')).slice(0, 80);
+    const gracefulDisconnect = !requestedListed && count <= 0 && /player.*disconnected|session-expired/i.test(liveReason);
+    const listed = gracefulDisconnect ? true : requestedListed;
     const next = Object.assign({}, current, {
       livePlayerCount: count,
       listed,
       roomLiveUpdatedAt: at,
-      roomLiveReason: String(body && body.reason || (listed ? 'player-connected' : 'players-disconnected')).slice(0, 80),
+      roomLiveReason: liveReason,
     });
-    if (listed) {
+    if (count > 0 || requestedListed) {
       next.lastLiveAt = at;
       next.relistedAt = at;
+      next.reconnecting = false;
+      delete next.reconnectGraceUntil;
       delete next.unlistedAt;
       delete next.awaitingPlayersUntil;
       next.leaseRenewedAt = at;
       next.leaseUntil = Math.max(Number(next.leaseUntil || 0) || 0, at + ROOM_LEASE_TTL_MS);
       next.cleanupAt = next.leaseUntil;
+    } else if (gracefulDisconnect) {
+      next.reconnecting = true;
+      next.reconnectGraceUntil = at + ROOM_RECONNECT_GRACE_MS;
+      next.lastLiveAt = Number(current.lastLiveAt || at) || at;
+      delete next.unlistedAt;
+      // Keep the private return-to-match record for as long as the authoritative
+      // game itself remains recoverable. Public listing still ends after the
+      // short reconnect grace below.
+      next.leaseUntil = Math.max(Number(next.leaseUntil || 0) || 0, at + ABANDONED_GAME_RETENTION_MS);
+      next.cleanupAt = next.leaseUntil;
     } else {
+      next.reconnecting = false;
+      delete next.reconnectGraceUntil;
       next.unlistedAt = at;
     }
     if (sameValue(current, next)) return json({ ok: true, committed: false, reason: 'unchanged', listed, livePlayerCount: count });
@@ -2945,6 +3061,36 @@ export class RealtimeObject {
                 }
               }
             }
+            const spectatorBucket = this.root && this.root.spectators && this.root.spectators[gameId] && typeof this.root.spectators[gameId] === 'object'
+              ? this.root.spectators[gameId]
+              : null;
+            if (spectatorBucket) {
+              let removedSpectators = 0;
+              for (const [spectatorUid, spectator] of Object.entries(spectatorBucket)) {
+                const reconnectGraceUntil = Number(spectator && spectator.reconnectGraceUntil || 0) || 0;
+                if (!reconnectGraceUntil || reconnectGraceUntil > at) continue;
+                if (this._hasOfficialSpectatorSocketForUid(gameId, spectatorUid)) continue;
+                delete spectatorBucket[spectatorUid];
+                maintenanceChangedPaths.add('spectators/' + gameId + '/' + spectatorUid);
+                removedSpectators += 1;
+              }
+              if (removedSpectators) {
+                game.spectatorCount = Object.keys(spectatorBucket).length;
+                game.spectatorCountUpdatedAt = at;
+                game.lastSpectatorAction = {
+                  kind: 'disconnect-expired',
+                  at,
+                  authoritative: true,
+                  serverValidated: true,
+                };
+                games[gameId] = game;
+                maintenanceChangedPaths.add('spectators/' + gameId);
+                maintenanceChangedPaths.add('games/' + gameId);
+                const spectatorLeaseResult = await this._renewGlobalRoomLease(gameId, game, true).catch(() => null);
+                if (spectatorLeaseResult && spectatorLeaseResult.ok !== false) game.roomLeaseRenewedAt = at;
+                changed = true;
+              }
+            }
             const turnRate = this.root && this.root.rtc && this.root.rtc[gameId] && this.root.rtc[gameId].turnRate;
             if (turnRate && typeof turnRate === 'object') {
               for (const uid of Object.keys(turnRate)) {
@@ -2986,8 +3132,20 @@ export class RealtimeObject {
           const row = players[uid];
           if (!row || typeof row !== 'object') continue;
           if (this._appSocketCount(uid) > 0) continue;
-          const last = Number(row.updatedAt || row.connectedAt || row.joinedAt || 0) || 0;
-          if (!last || at - last >= APP_DISCONNECT_GRACE_MS) {
+          const pendingUntil = Number(row.disconnectPendingUntil || 0) || 0;
+          if (row.online !== false && pendingUntil && pendingUntil <= at) {
+            row.online = false;
+            row.disconnectedAt = at;
+            row.updatedAt = at;
+            delete row.disconnectPendingUntil;
+            delete row.transportDisconnectedAt;
+            maintenanceChangedPaths.add('players/' + uid);
+            changed = true;
+            continue;
+          }
+          if (row.online !== false) continue;
+          const disconnectedAt = Number(row.disconnectedAt || row.updatedAt || row.connectedAt || row.joinedAt || 0) || 0;
+          if (!disconnectedAt || at - disconnectedAt >= APP_DISCONNECT_GRACE_MS) {
             delete players[uid];
             maintenanceChangedPaths.add('players/' + uid);
             changed = true;
@@ -3032,8 +3190,19 @@ export class RealtimeObject {
         const roomList = this.root && this.root.roomList && typeof this.root.roomList === 'object' ? this.root.roomList : {};
         for (const gameId of Object.keys(roomList)) {
           const room = roomList[gameId];
+          const reconnectGraceUntil = Number(room && room.reconnectGraceUntil || 0) || 0;
+          if (room && room.reconnecting === true && Number(room.livePlayerCount || 0) <= 0 && reconnectGraceUntil && reconnectGraceUntil <= at) {
+            room.listed = false;
+            room.reconnecting = false;
+            room.unlistedAt = at;
+            room.roomLiveUpdatedAt = at;
+            room.roomLiveReason = 'reconnect-grace-expired';
+            delete room.reconnectGraceUntil;
+            maintenanceChangedPaths.add('roomList/' + gameId);
+            changed = true;
+          }
           const awaitingPlayersUntil = Number(room && room.awaitingPlayersUntil || 0) || 0;
-          if (room && room.listed !== false && Number(room.livePlayerCount || 0) <= 0 && awaitingPlayersUntil && awaitingPlayersUntil <= at) {
+          if (room && room.listed !== false && room.reconnecting !== true && Number(room.livePlayerCount || 0) <= 0 && awaitingPlayersUntil && awaitingPlayersUntil <= at) {
             room.listed = false;
             room.unlistedAt = at;
             room.roomLiveUpdatedAt = at;

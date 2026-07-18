@@ -2296,3 +2296,51 @@ body.z-game-page:not(.z-mobile-on) .side::-webkit-scrollbar-thumb,
 body.z-game-page:not(.z-mobile-on) .side::-webkit-scrollbar-thumb:hover {
   background: var(--accent) !important;
 }
+
+/* Online identity and recovery states */
+.z-player-name,
+.z-notice-player-name {
+  font-weight: 850;
+  color: var(--text-strong);
+}
+
+.z-room-state {
+  font-weight: 750;
+}
+
+.z-room-reconnecting .z-room-state {
+  color: var(--accent);
+}
+
+.z-room-owner-only {
+  border-inline-start: 3px solid var(--accent);
+}
+
+.z-online-entry-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9997;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: var(--bg);
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: blur(4px);
+}
+
+.z-online-entry-overlay[hidden] {
+  display: none;
+}
+
+.z-online-entry-overlay-text {
+  max-width: 36rem;
+  padding: 18px 22px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--panel);
+  color: var(--text-strong);
+  font-weight: 800;
+  text-align: center;
+  box-shadow: var(--shadow);
+}
+
