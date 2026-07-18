@@ -249,7 +249,6 @@
       joinedAt: normalized.joinedAt || src.joinedAt,
       hidden: normalized.hidden != null ? normalized.hidden : src.hidden,
       foreground: normalized.foreground != null ? normalized.foreground : src.foreground,
-      rtcParticipantActive: normalized.rtcParticipantActive != null ? normalized.rtcParticipantActive : src.rtcParticipantActive,
       force: !!(normalized.force || src.force),
       clientPulseId: normalized.clientPulseId || src.clientPulseId || src.clientActionId,
       includeLobbyView: normalized.includeLobbyView != null ? normalized.includeLobbyView : src.includeLobbyView,
@@ -258,7 +257,6 @@
       includeInvites: normalized.includeInvites != null ? normalized.includeInvites : src.includeInvites,
       includeNotifications: normalized.includeNotifications != null ? normalized.includeNotifications : src.includeNotifications,
       includeCleanup: normalized.includeCleanup != null ? normalized.includeCleanup : src.includeCleanup,
-      includeGamePulse: normalized.includeGamePulse != null ? normalized.includeGamePulse : src.includeGamePulse,
       outgoingGameIds: Array.isArray(normalized.outgoingGameIds || src.outgoingGameIds) ? (normalized.outgoingGameIds || src.outgoingGameIds).slice(0, 12) : [],
     };
   }
@@ -379,6 +377,7 @@
     var heartbeatMs = Math.max(0, Number(src.heartbeatMs || 0) || 0);
     var heartbeatTimeoutMs = Math.max(5000, Number(src.heartbeatTimeoutMs || 15000) || 15000);
     var terminalCloseCodes = { 4001: true, 4003: true, 4004: true };
+    var channelValues = {};
 
     function clearReconnectTimer() {
       if (!reconnectTimer) return;
@@ -401,6 +400,10 @@
       try { return typeof document === 'undefined' || document.visibilityState !== 'hidden'; } catch (_) { return true; }
     }
 
+    function heartbeatDelay() {
+      return isPageVisible() ? heartbeatMs : Math.max(heartbeatMs, 60000);
+    }
+
     function scheduleHeartbeat(delayOverride) {
       if (!heartbeatMs || closedByClient) return;
       if (heartbeatTimer) {
@@ -412,12 +415,8 @@
         if (closedByClient) return;
         var socket = ws;
         if (!socket || socket.readyState !== WebSocket.OPEN) return;
-        if (!isPageVisible()) {
-          scheduleHeartbeat(Math.max(heartbeatMs, 60000));
-          return;
-        }
         try {
-          socket.send(JSON.stringify({ type: 'ping', ts: Date.now() }));
+          socket.send('dhm-ping-v1');
         } catch (_) {
           try { socket.close(4000, 'heartbeat-send-failed'); } catch (_e) {}
           return;
@@ -438,7 +437,7 @@
         try { clearTimeout(heartbeatDeadlineTimer); } catch (_) {}
         heartbeatDeadlineTimer = null;
       }
-      scheduleHeartbeat();
+      scheduleHeartbeat(heartbeatDelay());
     }
 
     function jitterDelay(base) {
@@ -482,11 +481,31 @@
       socket.onmessage = function (ev) {
         if (seq !== connectionSeq || closedByClient) return;
         markSocketAlive();
+        var raw = String(ev.data == null ? '' : ev.data);
+        if (raw === 'dhm-pong-v1') return;
         var msg = null;
-        try { msg = JSON.parse(String(ev.data || '{}')); } catch (_) { msg = null; }
+        try { msg = JSON.parse(raw || '{}'); } catch (_) { msg = null; }
         if (!msg || msg.type === 'pong') return;
-        if (msg.type === 'value' && typeof src.onData === 'function') {
-          try { src.onData(msg.value, msg); } catch (e) { setTimeout(function () { throw e; }, 0); }
+        var id = String(msg.id || '');
+        var value = msg.value;
+        if (msg.type === 'value') {
+          channelValues[id] = value;
+        } else if (msg.type === 'patch') {
+          var base = channelValues[id] && typeof channelValues[id] === 'object' ? channelValues[id] : {};
+          var next = Object.assign({}, base);
+          var changed = msg.changed && typeof msg.changed === 'object' ? msg.changed : {};
+          Object.keys(changed).forEach(function (key) { next[key] = changed[key]; });
+          (Array.isArray(msg.removed) ? msg.removed : []).forEach(function (key) { delete next[key]; });
+          channelValues[id] = next;
+          value = next;
+        } else {
+          return;
+        }
+        var callback = src.onData;
+        if (id.indexOf('game-channel-chat:') === 0) callback = src.onChatData;
+        else if (id.indexOf('game-channel-rtc:') === 0) callback = src.onRtcData;
+        if (typeof callback === 'function') {
+          try { callback(value, msg); } catch (e) { setTimeout(function () { throw e; }, 0); }
         }
       };
       socket.onerror = function (ev) {
@@ -508,7 +527,7 @@
       visibilityHandler = function () {
         if (closedByClient) return;
         clearHeartbeatTimers();
-        if (isPageVisible()) scheduleHeartbeat(1000);
+        scheduleHeartbeat(isPageVisible() ? 1000 : heartbeatDelay());
       };
       try { document.addEventListener('visibilitychange', visibilityHandler); } catch (_) {}
     }
@@ -527,6 +546,15 @@
         try { if (ws) ws.close(1000, 'client-close'); } catch (_) {}
       },
       get socket() { return ws; },
+      send: function (message) {
+        if (!ws || ws.readyState !== 1) return false;
+        try {
+          ws.send(typeof message === 'string' ? message : JSON.stringify(message || {}));
+          return true;
+        } catch (_) {
+          return false;
+        }
+      },
       gameId: gameId,
       reconnecting: function () { return !!reconnectTimer; },
     };
@@ -536,15 +564,6 @@
     var src = Object.assign({ heartbeatMs: 45000, heartbeatTimeoutMs: 15000 }, options || {});
     return subscribeOfficialValue(src, '/dhamet/api/game/live', 'live/missing-game-id');
   }
-
-  function subscribeChatLive(options) {
-    return subscribeOfficialValue(options, '/dhamet/api/game/chat-live', 'chat-live/missing-game-id');
-  }
-
-  function subscribeRtcLive(options) {
-    return subscribeOfficialValue(options, '/dhamet/api/game/rtc-live', 'rtc-live/missing-game-id');
-  }
-
 
   function createClientMoveId(uid, gameId, seed) {
     if (window.DhametMove && typeof window.DhametMove.createClientMoveId === 'function') {
@@ -561,7 +580,7 @@
   }
 
   window.DhametGameRoomClient = {
-    version: 'game-room-client-v1-live-heartbeat',
+    version: 'game-room-client-v3-recovery-heartbeat',
     commitMove: commitMove,
     createClientMoveId: createClientMoveId,
     createCommitPayload: createCommitPayload,
@@ -569,8 +588,6 @@
     createMoveIntentPayload: createMoveIntentPayload,
     resyncGame: resyncGame,
     subscribeGameLive: subscribeGameLive,
-    subscribeChatLive: subscribeChatLive,
-    subscribeRtcLive: subscribeRtcLive,
     createSouflaDecisionPayload: createSouflaDecisionPayload,
     commitSouflaDecision: commitSouflaDecision,
     createControlActionPayload: createControlActionPayload,

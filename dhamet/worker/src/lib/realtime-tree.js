@@ -76,11 +76,14 @@ export function isAffected(subPath, changedPath) {
 
 export function bumpVersions(versions, changedPaths, nowFn = Date.now) {
   const t = nowFn();
-  for (const p0 of changedPaths) {
+  versions[''] = t;
+  for (const p0 of changedPaths || []) {
     const parts = splitPath(p0);
-    for (let i = 0; i <= parts.length; i++) {
-      const p = parts.slice(0, i).join('/');
-      versions[p] = t;
-    }
+    if (!parts.length) continue;
+    // Keep one version per logical domain and, for keyed collections, one per
+    // entity. Dynamic leaf paths (messages, signals, fields) must not make the
+    // version map grow without bound.
+    versions[parts[0]] = t;
+    if (parts.length > 1) versions[parts.slice(0, 2).join('/')] = t;
   }
 }

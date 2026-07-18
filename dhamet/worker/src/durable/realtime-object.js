@@ -71,6 +71,62 @@ const REJECTED_GAME_RETENTION_MS = 15 * 60 * 1000;
 const ABANDONED_GAME_RETENTION_MS = 30 * 60 * 1000;
 const PENDING_GAME_RETENTION_MS = 2 * 24 * 60 * 60 * 1000;
 const DEFAULT_MAINTENANCE_MS = 24 * 60 * 60 * 1000;
+const ROOM_LEASE_RENEW_MS = 5 * 60 * 1000;
+const ROOM_LEASE_TTL_MS = 12 * 60 * 1000;
+const APP_DISCONNECT_GRACE_MS = 2 * 60 * 1000;
+const SOCKET_HEARTBEAT_STALE_MS = 4 * 60 * 1000;
+const INVITE_RESULT_TTL_MS = 10 * 60 * 1000;
+const ROOM_LIVE_RETRY_MS = 60 * 1000;
+const ROOM_AWAITING_PLAYERS_MS = Number(PresenceCore && PresenceCore.POLICY && PresenceCore.POLICY.roomAwaitingPlayersMs) || 90 * 1000;
+const STATS_ROOT_KEYS = new Set(['profiles', 'leaderboardV1', 'leaderboardOrderV2', 'leaderboardOrderSchema']);
+
+function splitPersistedRoot(rootValue) {
+  const root = rootValue && typeof rootValue === 'object' ? rootValue : {};
+  const realtime = {};
+  const stats = {};
+  for (const [key, value] of Object.entries(root)) {
+    (STATS_ROOT_KEYS.has(key) ? stats : realtime)[key] = value;
+  }
+  return { realtime, stats };
+}
+
+function splitPersistedVersions(versionsValue, rootSplit) {
+  const versions = versionsValue && typeof versionsValue === 'object' ? versionsValue : {};
+  const domains = rootSplit && typeof rootSplit === 'object' ? rootSplit : { realtime: {}, stats: {} };
+  const realtime = {};
+  const stats = {};
+  let realtimeRootVersion = 0;
+  let statsRootVersion = 0;
+  for (const [key, value] of Object.entries(versions)) {
+    if (key === '') continue;
+    const domain = String(key || '').split('/')[0];
+    const numeric = Number(value || 0) || 0;
+    if (STATS_ROOT_KEYS.has(domain)) {
+      stats[key] = value;
+      statsRootVersion = Math.max(statsRootVersion, numeric);
+    } else {
+      realtime[key] = value;
+      realtimeRootVersion = Math.max(realtimeRootVersion, numeric);
+    }
+  }
+  const fallbackRootVersion = Number(versions[''] || 0) || now();
+  realtime[''] = realtimeRootVersion || (Object.keys(domains.realtime || {}).length ? fallbackRootVersion : 0);
+  stats[''] = statsRootVersion || (Object.keys(domains.stats || {}).length ? fallbackRootVersion : 0);
+  return { realtime, stats };
+}
+
+function mergePersistedState(realtimeState, statsState) {
+  const realtime = realtimeState && typeof realtimeState === 'object' ? realtimeState : {};
+  const stats = statsState && typeof statsState === 'object' ? statsState : {};
+  const realtimeVersions = realtime.versions && typeof realtime.versions === 'object' ? realtime.versions : {};
+  const statsVersions = stats.versions && typeof stats.versions === 'object' ? stats.versions : {};
+  const versions = Object.assign({}, realtimeVersions, statsVersions);
+  versions[''] = Math.max(Number(realtimeVersions[''] || 0) || 0, Number(statsVersions[''] || 0) || 0, Number(versions[''] || 0) || 0, now());
+  return {
+    root: Object.assign({}, realtime.root && typeof realtime.root === 'object' ? realtime.root : {}, stats.root && typeof stats.root === 'object' ? stats.root : {}),
+    versions,
+  };
+}
 
 function gameIdOrRoom(payload) { return payload && (payload.gameId || payload.roomId || payload.gid); }
 
@@ -91,16 +147,57 @@ export class RealtimeObject {
     this.requestWindows = new Map();
     this._maintenanceScheduled = false;
     try {
+      if (typeof this.ctx.setWebSocketAutoResponse === 'function' && typeof WebSocketRequestResponsePair !== 'undefined') {
+        this.ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair('dhm-ping-v1', 'dhm-pong-v1'));
+      }
+    } catch (_) {}
+    try {
       for (const ws of this.ctx.getWebSockets()) {
-        this.sessions.set(ws, (ws.deserializeAttachment && ws.deserializeAttachment()) || { subs: [] });
+        const sess = (ws.deserializeAttachment && ws.deserializeAttachment()) || { subs: [] };
+        if (!Number(sess.connectedAt || 0)) sess.connectedAt = now();
+        this.sessions.set(ws, sess);
       }
     } catch (_) {}
   }
 
+  _versionForPath(pathValue) {
+    const path = cleanPath(pathValue || '');
+    const parts = path ? path.split('/') : [];
+    const entityPath = parts.length >= 2 ? parts.slice(0, 2).join('/') : '';
+    const domainPath = parts.length ? parts[0] : '';
+    return Number(
+      (path && this.versions[path]) ||
+      (entityPath && this.versions[entityPath]) ||
+      (domainPath && this.versions[domainPath]) ||
+      this.versions[''] ||
+      0
+    ) || 0;
+  }
+
   async _load() {
-    if (!this.root) this.root = (await this.ctx.storage.get('root')) || {};
-    if (!this.versions) this.versions = (await this.ctx.storage.get('versions')) || { '': now() };
-    if (!this.pendingOfficialStats) this.pendingOfficialStats = (await this.ctx.storage.get('pendingOfficialStats')) || {};
+    if (this._loaded) return;
+    const stored = await this.ctx.storage.get(['state', 'statsState', 'root', 'versions', 'pendingOfficialStats']);
+    const packed = stored && stored.get ? stored.get('state') : null;
+    const packedStats = stored && stored.get ? stored.get('statsState') : null;
+    const legacyRoot = stored && stored.get ? stored.get('root') : null;
+    const legacyVersions = stored && stored.get ? stored.get('versions') : null;
+    const baseState = packed && typeof packed === 'object'
+      ? packed
+      : { root: legacyRoot && typeof legacyRoot === 'object' ? legacyRoot : {}, versions: legacyVersions && typeof legacyVersions === 'object' ? legacyVersions : { '': now() } };
+    const merged = mergePersistedState(baseState, packedStats);
+    this.root = merged.root;
+    this.versions = merged.versions;
+    const splitRoot = splitPersistedRoot(this.root);
+    const splitVersions = splitPersistedVersions(this.versions, splitRoot);
+    this._persistedState = clone({ root: splitRoot.realtime, versions: splitVersions.realtime });
+    this._persistedStatsState = clone({ root: splitRoot.stats, versions: splitVersions.stats });
+    const pending = stored && stored.get ? stored.get('pendingOfficialStats') : null;
+    this.pendingOfficialStats = pending && typeof pending === 'object' ? pending : {};
+    this._persistedPendingOfficialStats = clone(this.pendingOfficialStats || {});
+    this._legacyStorageLoaded = !packed && (!!legacyRoot || !!legacyVersions);
+    this._stateStorageMigrationPending = this._legacyStorageLoaded || !!(packed && packed.root && Object.keys(splitPersistedRoot(packed.root).stats).length);
+    this._statsStorageMigrationPending = !packedStats && Object.keys(splitRoot.stats).length > 0;
+    this._loaded = true;
   }
   _officialPlayerUids(game) {
     const players = game && game.players && typeof game.players === 'object' ? game.players : {};
@@ -140,7 +237,7 @@ export class RealtimeObject {
       return rejectedAt ? rejectedAt + REJECTED_GAME_RETENTION_MS : at + REJECTED_GAME_RETENTION_MS;
     }
     if (status === 'active') {
-      if (this._hasOfficialPlayerSocket(gameId, row)) return at + DEFAULT_MAINTENANCE_MS;
+      if (this._hasOfficialPlayerSocket(gameId, row)) return at + ROOM_LEASE_RENEW_MS;
       const uids = this._officialPlayerUids(row);
       const fallback = Number(row.lastActivityAt || row.updatedAt || row.acceptedAt || row.createdAt || 0) || at;
       if (uids.length < 2) return fallback + PENDING_GAME_RETENTION_MS;
@@ -177,6 +274,43 @@ export class RealtimeObject {
     }
     const games = this.root && this.root.games && typeof this.root.games === 'object' ? this.root.games : {};
     for (const [gameId, game] of Object.entries(games)) deadlines.push(this._gameMaintenanceDeadline(gameId, game, at));
+    if (!Object.keys(games).length) {
+      const players = this.root && this.root.players && typeof this.root.players === 'object' ? this.root.players : {};
+      for (const [uid, row] of Object.entries(players)) {
+        if (this._appSocketCount(uid) > 0) continue;
+        const last = Number(row && (row.updatedAt || row.connectedAt || row.joinedAt) || 0) || 0;
+        if (last) deadlines.push(last + APP_DISCONNECT_GRACE_MS);
+      }
+      const invites = this.root && this.root.invites && typeof this.root.invites === 'object' ? this.root.invites : {};
+      for (const bucket of Object.values(invites)) for (const row of Object.values(bucket && typeof bucket === 'object' ? bucket : {})) {
+        const expiresAt = Number(row && row.expiresAt || 0) || 0;
+        if (expiresAt) deadlines.push(expiresAt);
+      }
+      const results = this.root && this.root.inviteResults && typeof this.root.inviteResults === 'object' ? this.root.inviteResults : {};
+      for (const bucket of Object.values(results)) for (const row of Object.values(bucket && typeof bucket === 'object' ? bucket : {})) {
+        const purgeAt = Number(row && (row.purgeAt || row.expiresAt) || 0) || 0;
+        if (purgeAt) deadlines.push(purgeAt);
+      }
+      const matchClaims = this.root && this.root.matchClaims && typeof this.root.matchClaims === 'object' ? this.root.matchClaims : {};
+      for (const row of Object.values(matchClaims)) {
+        const expiresAt = Number(row && row.expiresAt || 0) || 0;
+        if (expiresAt) deadlines.push(expiresAt);
+      }
+      const roomList = this.root && this.root.roomList && typeof this.root.roomList === 'object' ? this.root.roomList : {};
+      for (const room of Object.values(roomList)) {
+        const awaitingPlayersUntil = Number(room && room.awaitingPlayersUntil || 0) || 0;
+        if (awaitingPlayersUntil && room && room.listed !== false && Number(room.livePlayerCount || 0) <= 0) deadlines.push(awaitingPlayersUntil);
+        const leaseUntil = Number(room && (room.leaseUntil || room.cleanupAt) || 0) || 0;
+        if (leaseUntil) deadlines.push(leaseUntil);
+      }
+    }
+    for (const [ws, sess] of this.sessions.entries()) {
+      if (!sess || !sess.official) continue;
+      const expiresAt = Number(sess.authExpiresAt || 0) || 0;
+      const lastSeenAt = this._socketLastSeenAt(ws, sess);
+      deadlines.push(expiresAt || at + 60 * 1000);
+      if (lastSeenAt) deadlines.push(lastSeenAt + SOCKET_HEARTBEAT_STALE_MS);
+    }
     const pending = this.pendingOfficialStats && typeof this.pendingOfficialStats === 'object' ? Object.values(this.pendingOfficialStats) : [];
     for (const row of pending) {
       const nextRetryAt = Number(row && row.nextRetryAt || 0) || 0;
@@ -186,13 +320,34 @@ export class RealtimeObject {
     return nextAt == null ? DEFAULT_MAINTENANCE_MS : Math.max(60 * 1000, nextAt - at);
   }
 
-  async _save(maintenanceDelayMs) {
-    await this.ctx.storage.put({
-      root: this.root || {},
-      versions: this.versions || { '': now() },
-      pendingOfficialStats: this.pendingOfficialStats || {},
-    });
+  async _save(maintenanceDelayMs, options = {}) {
+    const forceState = !!(options && options.forceState);
+    const forceStats = !!(options && options.forceStats);
+    const forcePending = !!(options && options.forcePending);
+    const splitRoot = splitPersistedRoot(this.root || {});
+    const splitVersions = splitPersistedVersions(this.versions || { '': now() }, splitRoot);
+    const nextState = { root: splitRoot.realtime, versions: splitVersions.realtime };
+    const nextStatsState = { root: splitRoot.stats, versions: splitVersions.stats };
+    const nextPending = this.pendingOfficialStats || {};
+    const stateChanged = forceState || this._stateStorageMigrationPending || !sameValue(this._persistedState || null, nextState);
+    const statsChanged = forceStats || this._statsStorageMigrationPending || !sameValue(this._persistedStatsState || null, nextStatsState);
+    const pendingChanged = forcePending || !sameValue(this._persistedPendingOfficialStats || null, nextPending);
+    const writes = {};
+    if (stateChanged) writes.state = nextState;
+    if (statsChanged && Object.keys(nextStatsState.root).length) writes.statsState = nextStatsState;
+    if (pendingChanged && Object.keys(nextPending).length) writes.pendingOfficialStats = nextPending;
+    if (Object.keys(writes).length) await this.ctx.storage.put(writes);
+    const deletes = [];
+    if (statsChanged && !Object.keys(nextStatsState.root).length) deletes.push('statsState');
+    if (pendingChanged && !Object.keys(nextPending).length) deletes.push('pendingOfficialStats');
+    if (this._legacyStorageLoaded) deletes.push('root', 'versions');
+    if (deletes.length && typeof this.ctx.storage.delete === 'function') await this.ctx.storage.delete(deletes);
+    if (stateChanged) { this._persistedState = clone(nextState); this._stateStorageMigrationPending = false; }
+    if (statsChanged) { this._persistedStatsState = clone(nextStatsState); this._statsStorageMigrationPending = false; }
+    if (pendingChanged) this._persistedPendingOfficialStats = clone(nextPending);
+    if (this._legacyStorageLoaded) this._legacyStorageLoaded = false;
     if (!this._inAlarm) await this._scheduleMaintenance(this._nextMaintenanceDelay(maintenanceDelayMs));
+    return { stateChanged, statsChanged, pendingChanged, wrote: stateChanged || statsChanged || pendingChanged };
   }
 
   async _scheduleMaintenance(delayMs) {
@@ -211,7 +366,9 @@ export class RealtimeObject {
   async _replaceMaintenanceSchedule(delayMs) {
     const delay = Math.max(60 * 1000, Number(delayMs || DEFAULT_MAINTENANCE_MS) || DEFAULT_MAINTENANCE_MS);
     try {
-      await this.ctx.storage.setAlarm(now() + delay);
+      const target = now() + delay;
+      const existing = typeof this.ctx.storage.getAlarm === 'function' ? await this.ctx.storage.getAlarm() : null;
+      if (!existing || Math.abs(Number(existing) - target) > 30 * 1000) await this.ctx.storage.setAlarm(target);
       this._maintenanceScheduled = true;
     } catch (err) {
       this._maintenanceScheduled = false;
@@ -229,6 +386,28 @@ export class RealtimeObject {
     return Number(atValue || now()) >= expiresAt;
   }
 
+  _socketLastSeenAt(ws, sess) {
+    let automatic = 0;
+    try {
+      if (typeof this.ctx.getWebSocketAutoResponseTimestamp === 'function') {
+        const value = this.ctx.getWebSocketAutoResponseTimestamp(ws);
+        automatic = value instanceof Date ? value.getTime() : (Number(value || 0) || 0);
+      }
+    } catch (_) {}
+    return Math.max(automatic, Number(sess && sess.lastMessageAt || 0) || 0, Number(sess && sess.connectedAt || 0) || 0);
+  }
+
+  _isSocketHeartbeatStale(ws, sess, atValue) {
+    if (!sess || !sess.official) return false;
+    const lastSeenAt = this._socketLastSeenAt(ws, sess);
+    if (!lastSeenAt) return false;
+    return Number(atValue || now()) - lastSeenAt >= SOCKET_HEARTBEAT_STALE_MS;
+  }
+
+  _isSocketUsable(ws, sess, atValue) {
+    return !!(sess && sess.official && !this._isSocketExpired(sess, atValue) && !this._isSocketHeartbeatStale(ws, sess, atValue));
+  }
+
   _closeSocket(ws, code, reason) {
     try { ws.close(Number(code || 4001), String(reason || 'session-ended').slice(0, 120)); } catch (_) {}
     this.sessions.delete(ws);
@@ -238,19 +417,12 @@ export class RealtimeObject {
     if (!sess || !sess.official) return true;
     const gameId = cleanPath(sess.gameId || '');
     const uid = String(sess.uid || '').trim();
+    if (sess.official === 'app-live') return !!uid;
     if (!gameId || !uid) return false;
     const root = rootValue && typeof rootValue === 'object' ? rootValue : {};
     const game = getAt(root, 'games/' + gameId);
     if (!game || typeof game !== 'object') return false;
-    if (sess.official === 'game-rtc-live') {
-      const allowed = RtcCore && typeof RtcCore.canUseRtc === 'function' ? RtcCore.canUseRtc(game, uid) : null;
-      return !!(allowed && allowed.ok);
-    }
     const spectators = getAt(root, 'spectators/' + gameId) || {};
-    if (sess.official === 'game-chat-live') {
-      const allowed = ChatCore && typeof ChatCore.canParticipantChat === 'function' ? ChatCore.canParticipantChat(game, spectators, uid) : null;
-      return !!(allowed && allowed.ok);
-    }
     const allowed = LiveCore && typeof LiveCore.canSubscribeGame === 'function' ? LiveCore.canSubscribeGame(game, spectators, { gameId, uid }) : null;
     return !!(allowed && allowed.ok);
   }
@@ -260,6 +432,27 @@ export class RealtimeObject {
   }
 
   _headers() { return jsonHeaders; }
+
+  _snapshotForPaths(paths) {
+    const list = Array.isArray(paths) ? paths : [paths];
+    if (list.some((path) => !cleanPath(path || ''))) return clone(this.root || {});
+    const out = {};
+    for (const path of list) {
+      const domain = cleanPath(path || '').split('/')[0];
+      if (!domain || Object.prototype.hasOwnProperty.call(out, domain)) continue;
+      if (this.root && Object.prototype.hasOwnProperty.call(this.root, domain)) out[domain] = clone(this.root[domain]);
+    }
+    return out;
+  }
+
+  _candidateWritePaths(body) {
+    const input = body && typeof body === 'object' ? body : {};
+    const path = cleanPath(input.path || '');
+    if (String(input.op || 'set') !== 'update') return [path];
+    const patch = input.updates && typeof input.updates === 'object' ? input.updates : input.value;
+    const keys = patch && typeof patch === 'object' ? Object.keys(patch) : [];
+    return keys.length ? keys.map((key) => path ? path + '/' + cleanPath(key) : cleanPath(key)) : [path];
+  }
 
   _appliedActionKey(kind, id) {
     const k = String(kind || '').trim().slice(0, 40);
@@ -345,18 +538,27 @@ export class RealtimeObject {
 
   _absenceClaimStatus(game, actorSide, atValue) {
     const at = Number(atValue || now()) || now();
+    const gameId = cleanPath(game && game.gameId || '');
     const players = game && game.players && typeof game.players === 'object' ? game.players : {};
     const opponentRow = Number(actorSide) === -1 ? players.black : players.white;
     const opponentUid = String(opponentRow && opponentRow.uid || '');
     if (!opponentUid) return { ok: false, error: 'match-end/opponent-missing' };
+    if (gameId && this._hasOfficialPlayerSocketForUid(gameId, opponentUid)) {
+      return { ok: false, error: 'match-end/absence-not-established', retryAfterMs: 0, opponentUid, online: true };
+    }
     const presence = game && game.presence && game.presence[opponentUid] ? game.presence[opponentUid] : null;
-    const lastSeenAt = Number(presence && (presence.updatedAt || presence.joinedAt)) || 0;
-    const ttl = Number(PresenceCore && PresenceCore.POLICY && PresenceCore.POLICY.gamePresenceTtlMs) || 45000;
     const absenceMs = Number(PresenceCore && PresenceCore.POLICY && PresenceCore.POLICY.opponentAbsenceMs) || 120000;
-    const baseline = lastSeenAt || Number(game && (game.acceptedAt || game.startedAt || game.createdAt)) || at;
-    const claimAt = baseline + ttl + absenceMs;
-    if (at < claimAt) return { ok: false, error: 'match-end/absence-not-established', retryAfterMs: claimAt - at, opponentUid, lastSeenAt: lastSeenAt || null };
-    return { ok: true, opponentUid, lastSeenAt: lastSeenAt || null, claimAt };
+    const disconnectedAt = Number(presence && presence.disconnectedAt) || 0;
+    const lastSeenAt = Number(presence && (presence.updatedAt || presence.connectedAt || presence.joinedAt)) || 0;
+    // A persisted online flag is only advisory. The active game socket above is
+    // authoritative; without it, the last persisted timestamp must age out.
+    // Legacy matches may not have disconnectedAt. Their last persisted presence
+    // remains a conservative fallback until the socket-based state is written.
+    const ttl = Number(PresenceCore && PresenceCore.POLICY && PresenceCore.POLICY.gamePresenceTtlMs) || 45000;
+    const baseline = disconnectedAt || lastSeenAt || Number(game && (game.acceptedAt || game.startedAt || game.createdAt)) || at;
+    const claimAt = baseline + absenceMs + (disconnectedAt ? 0 : ttl);
+    if (at < claimAt) return { ok: false, error: 'match-end/absence-not-established', retryAfterMs: claimAt - at, opponentUid, lastSeenAt: lastSeenAt || null, disconnectedAt: disconnectedAt || null };
+    return { ok: true, opponentUid, lastSeenAt: lastSeenAt || null, disconnectedAt: disconnectedAt || null, claimAt };
   }
 
   async fetch(request) {
@@ -372,14 +574,11 @@ export class RealtimeObject {
       this.sessions.set(server, sess);
       return new Response(null, { status: 101, webSocket: client });
     }
+    if (url.pathname.endsWith('/api/lobby/live') || url.pathname.endsWith('/lobby/live')) {
+      return this._openLobbyLiveSocket(request, url);
+    }
     if (url.pathname.endsWith('/api/game/live') || url.pathname.endsWith('/game/live')) {
       return this._openGameLiveSocket(request, url);
-    }
-    if (url.pathname.endsWith('/api/game/chat-live') || url.pathname.endsWith('/game/chat-live')) {
-      return this._openGameChatLiveSocket(request, url);
-    }
-    if (url.pathname.endsWith('/api/game/rtc-live') || url.pathname.endsWith('/game/rtc-live')) {
-      return this._openGameRtcLiveSocket(request, url);
     }
     if (url.pathname.endsWith('/api/game/move') || url.pathname.endsWith('/game/move')) {
       const body = await requestBody(request);
@@ -409,6 +608,18 @@ export class RealtimeObject {
       const body = await requestBody(request);
       return this._commitGameRtc(body);
     }
+    if (url.pathname.endsWith('/api/lobby/invite-context') || url.pathname.endsWith('/lobby/invite-context')) {
+      const body = await requestBody(request);
+      return this._lobbyInviteContext(body);
+    }
+    if (url.pathname.endsWith('/api/lobby/claim-match') || url.pathname.endsWith('/lobby/claim-match')) {
+      const body = await requestBody(request);
+      return this._claimMatchParticipants(body);
+    }
+    if (url.pathname.endsWith('/api/lobby/release-match-claim') || url.pathname.endsWith('/lobby/release-match-claim')) {
+      const body = await requestBody(request);
+      return this._releaseMatchClaim(body);
+    }
     if (url.pathname.endsWith('/api/lobby/create-game') || url.pathname.endsWith('/lobby/create-game')) {
       const body = await requestBody(request);
       return this._createLobbyGame(body);
@@ -425,13 +636,21 @@ export class RealtimeObject {
       const body = await requestBody(request);
       return this._commitSpectatorAction(body);
     }
-    if (url.pathname.endsWith('/api/lobby/pulse-game') || url.pathname.endsWith('/lobby/pulse-game')) {
+    if (url.pathname.endsWith('/api/lifecycle/remove-app-presence') || url.pathname.endsWith('/lifecycle/remove-app-presence')) {
       const body = await requestBody(request);
-      return this._commitGamePulse(body);
+      return this._removeAppPresence(body);
     }
     if (url.pathname.endsWith('/api/lifecycle/cleanup-game') || url.pathname.endsWith('/lifecycle/cleanup-game')) {
       const body = await requestBody(request);
       return this._cleanupGameLifecycle(body);
+    }
+    if (url.pathname.endsWith('/api/lobby/room-live-state') || url.pathname.endsWith('/lobby/room-live-state')) {
+      const body = await requestBody(request);
+      return this._setRoomLiveState(body);
+    }
+    if (url.pathname.endsWith('/api/lobby/renew-room-lease') || url.pathname.endsWith('/lobby/renew-room-lease')) {
+      const body = await requestBody(request);
+      return this._renewRoomLeaseRecord(body);
     }
     if (url.pathname.endsWith('/api/lifecycle/cleanup-global-game-references') || url.pathname.endsWith('/lifecycle/cleanup-global-game-references')) {
       const body = await requestBody(request);
@@ -471,30 +690,36 @@ export class RealtimeObject {
     }
     if (url.pathname.endsWith('/read')) {
       const path = cleanPath(url.searchParams.get('path') || '');
-      return json({ ok: true, value: getAt(this.root, path), version: this.versions[path] || this.versions[''] || 0 });
+      return json({ ok: true, value: getAt(this.root, path), version: this._versionForPath(path) });
     }
     if (url.pathname.endsWith('/write')) {
       const body = await requestBody(request);
-      const beforeRoot = clone(this.root || {});
+      const beforeRoot = this._snapshotForPaths(this._candidateWritePaths(body));
       const changed = await this._applyWrite(body);
-      await this._save();
-      await this._broadcast(changed, beforeRoot);
-      return json({ ok: true, version: this.versions[cleanPath(body.path || '')] || this.versions[''] || 0 });
+      if (changed.length) {
+        await this._save();
+        await this._broadcast(changed, beforeRoot);
+      }
+      return json({ ok: true, committed: changed.length > 0, changed, version: this._versionForPath(body.path || '') });
     }
     if (url.pathname.endsWith('/tx')) {
       const body = await requestBody(request);
       const path = cleanPath(body.path || '');
       const baseVersion = Number(body.baseVersion || 0);
-      const curVersion = Number(this.versions[path] || this.versions[''] || 0);
+      const curVersion = Number(this._versionForPath(path));
       if (baseVersion && curVersion !== baseVersion) {
         return json({ ok: true, committed: false, value: getAt(this.root, path), version: curVersion });
       }
-      const beforeRoot = clone(this.root || {});
-      this.root = setAt(this.root, path, body.value == null ? null : body.value);
+      const beforeRoot = this._snapshotForPaths([path]);
+      const nextValue = body.value == null ? null : body.value;
+      if (sameValue(getAt(this.root, path), nextValue)) {
+        return json({ ok: true, committed: false, value: getAt(this.root, path), version: curVersion });
+      }
+      this.root = setAt(this.root, path, nextValue);
       bumpVersions(this.versions, [path]);
       await this._save();
       await this._broadcast([path], beforeRoot);
-      return json({ ok: true, committed: true, value: getAt(this.root, path), version: this.versions[path] || this.versions[''] || 0 });
+      return json({ ok: true, committed: true, value: getAt(this.root, path), version: this._versionForPath(path) });
     }
     return json({ ok: false, error: 'not-found' }, 404);
   }
@@ -502,31 +727,45 @@ export class RealtimeObject {
   async _applyWrite(body) {
     const op = String(body.op || 'set');
     const path = cleanPath(body.path || '');
+    const current = getAt(this.root, path);
     let changed = [];
     if (op === 'remove') {
+      if (current == null) return [];
       this.root = setAt(this.root, path, null);
       changed.push(path);
     } else if (op === 'update') {
       const patch = body.updates && typeof body.updates === 'object' ? body.updates : body.value;
-      this.root = updateAt(this.root, path, patch || {});
-      changed = Object.keys(patch || {}).map((k) => path ? path + '/' + cleanPath(k) : cleanPath(k));
-      if (!changed.length) changed.push(path);
+      const cleanPatch = patch && typeof patch === 'object' ? patch : {};
+      const effective = {};
+      for (const [key, value] of Object.entries(cleanPatch)) {
+        const child = path ? path + '/' + cleanPath(key) : cleanPath(key);
+        if (!sameValue(getAt(this.root, child), value == null ? null : value)) effective[key] = value;
+      }
+      if (!Object.keys(effective).length) return [];
+      this.root = updateAt(this.root, path, effective);
+      changed = Object.keys(effective).map((k) => path ? path + '/' + cleanPath(k) : cleanPath(k));
     } else if (op === 'push') {
       const key = 'cf_' + randomToken(12);
       this.root = setAt(this.root, path ? path + '/' + key : key, body.value);
       changed.push(path ? path + '/' + key : key);
     } else {
-      this.root = setAt(this.root, path, body.value == null ? null : body.value);
+      const nextValue = body.value == null ? null : body.value;
+      if (sameValue(current, nextValue)) return [];
+      this.root = setAt(this.root, path, nextValue);
       changed.push(path);
     }
     if (changed.some((changedPath) => changedPath === 'leaderboardV1' || changedPath.startsWith('leaderboardV1/'))) {
       const data = this.root && this.root.leaderboardV1 && typeof this.root.leaderboardV1 === 'object' ? this.root.leaderboardV1 : {};
-      this.root.leaderboardOrderV2 = this._leaderboardOrder(data, null, false).order;
-      this.root.leaderboardOrderSchema = 2;
-      changed.push('leaderboardOrderV2');
+      const nextOrder = this._leaderboardOrder(data, null, false).order;
+      if (!sameValue(this.root.leaderboardOrderV2 || [], nextOrder) || Number(this.root.leaderboardOrderSchema || 0) !== 2) {
+        this.root.leaderboardOrderV2 = nextOrder;
+        this.root.leaderboardOrderSchema = 2;
+        changed.push('leaderboardOrderV2');
+      }
     }
-    bumpVersions(this.versions, changed);
-    return changed;
+    const uniqueChanged = Array.from(new Set(changed.filter(Boolean)));
+    if (uniqueChanged.length) bumpVersions(this.versions, uniqueChanged);
+    return uniqueChanged;
   }
 
 
@@ -600,6 +839,302 @@ export class RealtimeObject {
     }
   }
 
+  _appSocketCount(uid, exceptSocket) {
+    const id = String(uid || '').trim();
+    if (!id) return 0;
+    let count = 0;
+    for (const [socket, sess] of this.sessions.entries()) {
+      if (exceptSocket && socket === exceptSocket) continue;
+      if (!this._isSocketUsable(socket, sess)) continue;
+      if (sess && sess.official === 'app-live' && String(sess.uid || '') === id) count += 1;
+    }
+    return count;
+  }
+
+  _hasOfficialPlayerSocketForUid(gameId, uid, exceptSocket) {
+    const gid = cleanPath(gameId || '');
+    const id = String(uid || '').trim();
+    if (!gid || !id) return false;
+    for (const [socket, sess] of this.sessions.entries()) {
+      if (exceptSocket && socket === exceptSocket) continue;
+      if (!this._isSocketUsable(socket, sess)) continue;
+      if (!sess || sess.official !== 'game-live') continue;
+      if (cleanPath(sess.gameId || '') === gid && String(sess.uid || '') === id) return true;
+    }
+    return false;
+  }
+
+  _officialGamePlayerSocketCount(gameId, exceptSocket) {
+    const gid = cleanPath(gameId || '');
+    if (!gid) return 0;
+    const uids = new Set();
+    for (const [socket, sess] of this.sessions.entries()) {
+      if (exceptSocket && socket === exceptSocket) continue;
+      if (!this._isSocketUsable(socket, sess)) continue;
+      if (!sess || sess.official !== 'game-live' || String(sess.role || '') === 'spectator') continue;
+      if (cleanPath(sess.gameId || '') === gid && String(sess.uid || '').trim()) uids.add(String(sess.uid).trim());
+    }
+    return uids.size;
+  }
+
+  _hasVoiceActiveSocket(gameId, uid, exceptSocket) {
+    const gid = cleanPath(gameId || '');
+    const id = String(uid || '').trim();
+    if (!gid || !id) return false;
+    for (const [socket, sess] of this.sessions.entries()) {
+      if (exceptSocket && socket === exceptSocket) continue;
+      if (!this._isSocketUsable(socket, sess)) continue;
+      if (!sess || sess.official !== 'game-live' || sess.voiceActive !== true) continue;
+      if (cleanPath(sess.gameId || '') === gid && String(sess.uid || '') === id) return true;
+    }
+    return false;
+  }
+
+  _activeLobbyRoomsSnapshot() {
+    const at = now();
+    const rooms = this.root && this.root.roomList && typeof this.root.roomList === 'object' ? this.root.roomList : {};
+    const out = {};
+    for (const [gameId, room] of Object.entries(rooms)) {
+      if (!room || typeof room !== 'object' || String(room.status || '') !== 'active') continue;
+      if (room.listed === false) continue;
+      const awaitingPlayersUntil = Number(room.awaitingPlayersUntil || 0) || 0;
+      if (Number(room.livePlayerCount || 0) <= 0 && awaitingPlayersUntil && awaitingPlayersUntil <= at) continue;
+      const leaseUntil = Number(room.leaseUntil || room.cleanupAt || 0) || 0;
+      if (leaseUntil && leaseUntil <= at) continue;
+      out[gameId] = room;
+    }
+    return out;
+  }
+
+  _onlinePlayersSnapshot() {
+    const at = now();
+    const ttl = Number(PresenceCore && PresenceCore.POLICY && PresenceCore.POLICY.appPresenceTtlMs) || APP_DISCONNECT_GRACE_MS;
+    const players = this.root && this.root.players && typeof this.root.players === 'object' ? this.root.players : {};
+    const out = {};
+    for (const [uid, row] of Object.entries(players)) {
+      if (!row || typeof row !== 'object') continue;
+      const live = this._appSocketCount(uid) > 0;
+      const ts = Number(row.updatedAt || row.connectedAt || row.joinedAt || 0) || 0;
+      if (!live && (row.online === false || !ts || at - ts > ttl)) continue;
+      out[uid] = Object.assign({}, row, { online: live || row.online !== false });
+    }
+    return out;
+  }
+
+  _appSnapshot(uid, includeLobby) {
+    const id = cleanPath(uid || '');
+    return {
+      uid: id,
+      viewerUid: id,
+      players: includeLobby ? this._onlinePlayersSnapshot() : null,
+      roomList: includeLobby ? this._activeLobbyRoomsSnapshot() : null,
+      invites: id ? (getAt(this.root || {}, 'invites/' + id) || {}) : {},
+      inviteResults: id ? (getAt(this.root || {}, 'inviteResults/' + id) || {}) : {},
+      generatedAt: now(),
+      source: 'app-live-v1',
+    };
+  }
+
+  async _setAppPresence(uid, patch, options = {}) {
+    const id = cleanPath(uid || '');
+    if (!id) return { changed: false, presence: null };
+    const path = 'players/' + id;
+    const previous = getAt(this.root || {}, path) || {};
+    const normalized = PresenceCore && typeof PresenceCore.normalizePresencePayload === 'function'
+      ? PresenceCore.normalizePresencePayload(Object.assign({}, previous, patch || {}, { uid: id }))
+      : Object.assign({}, previous, patch || {}, { uid: id });
+    const at = now();
+    const next = Object.assign({}, previous, normalized, {
+      uid: id,
+      online: true,
+      connectedAt: Number(previous.connectedAt || at) || at,
+      joinedAt: Number(previous.joinedAt || at) || at,
+      updatedAt: at,
+    });
+    delete next.disconnectedAt;
+    const material = !PresenceCore || typeof PresenceCore.hasMaterialPresenceChange !== 'function'
+      ? !sameValue(previous, next)
+      : PresenceCore.hasMaterialPresenceChange(previous, next);
+    const changed = !!options.force || previous.online !== true || material;
+    if (!changed) return { changed: false, presence: previous };
+    const beforeRoot = this._snapshotForPaths([path]);
+    this.root = setAt(this.root || {}, path, next);
+    bumpVersions(this.versions, [path]);
+    await this._save(APP_DISCONNECT_GRACE_MS);
+    await this._broadcast([path], beforeRoot);
+    return { changed: true, presence: next };
+  }
+
+  async _markAppPresenceDisconnected(uid, exceptSocket) {
+    const id = cleanPath(uid || '');
+    if (!id || this._appSocketCount(id, exceptSocket) > 0) return { changed: false };
+    const path = 'players/' + id;
+    const previous = getAt(this.root || {}, path);
+    if (!previous || typeof previous !== 'object' || previous.online === false) return { changed: false, presence: previous || null };
+    const at = now();
+    const next = Object.assign({}, previous, {
+      online: false,
+      disconnectedAt: at,
+      updatedAt: at,
+    });
+    const beforeRoot = this._snapshotForPaths([path]);
+    this.root = setAt(this.root || {}, path, next);
+    bumpVersions(this.versions, [path]);
+    await this._save(APP_DISCONNECT_GRACE_MS);
+    await this._broadcast([path], beforeRoot);
+    return { changed: true, presence: next };
+  }
+
+  _appLiveSubscriptions(uid, includeLobby) {
+    const id = cleanPath(uid || '');
+    const subs = [];
+    if (includeLobby) {
+      for (const event of ['child_added', 'child_changed', 'child_removed']) {
+        subs.push({ id: 'app-players-' + event, path: 'players', event, official: true });
+        subs.push({ id: 'app-rooms-' + event, path: 'roomList', event, official: true });
+      }
+    }
+    for (const event of ['child_added', 'child_changed', 'child_removed']) {
+      subs.push({ id: 'app-invites-' + event, path: 'invites/' + id, event, official: true });
+      subs.push({ id: 'app-invite-results-' + event, path: 'inviteResults/' + id, event, official: true });
+    }
+    return subs;
+  }
+
+  _sendAppSnapshot(ws, sess) {
+    try {
+      ws.send(JSON.stringify({
+        type: 'app-snapshot',
+        value: this._appSnapshot(sess && sess.uid, !!(sess && sess.includeLobby)),
+        version: this.versions[''] || 0,
+        official: true,
+      }));
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  async _openLobbyLiveSocket(request, url) {
+    if (request.headers.get('upgrade') !== 'websocket') return bad('expected-websocket', 426);
+    const uid = cleanPath(request.headers.get('x-dhm-uid') || '');
+    if (!uid) return bad('app-live/missing-uid', 400, 'app-live/missing-uid');
+    const includeLobby = url.searchParams.get('lobby') === '1';
+    const pair = new WebSocketPair();
+    const client = pair[0], server = pair[1];
+    this.ctx.acceptWebSocket(server);
+    const sess = {
+      official: 'app-live',
+      uid,
+      includeLobby,
+      authExpiresAt: Math.max(0, Number(request.headers.get('x-dhm-auth-expires') || 0) || 0),
+      connectedAt: now(),
+      lastMessageAt: now(),
+      subs: [],
+    };
+    this.sessions.set(server, sess);
+    const presencePatch = {
+      status: url.searchParams.get('status') || 'available',
+      role: url.searchParams.get('role') || null,
+      roomId: url.searchParams.get('roomId') || null,
+      nickname: url.searchParams.get('nickname') || '',
+      icon: url.searchParams.get('icon') || '',
+      registered: url.searchParams.get('registered') !== '0',
+      acceptsInvites: url.searchParams.get('acceptsInvites') !== '0',
+      page: url.searchParams.get('page') || 'app',
+      mode: url.searchParams.get('mode') || '',
+      isSpectator: url.searchParams.get('isSpectator') === '1',
+    };
+    await this._setAppPresence(uid, presencePatch, { force: this._appSocketCount(uid, server) === 0 });
+    sess.subs = this._appLiveSubscriptions(uid, includeLobby);
+    try { server.serializeAttachment(sess); } catch (_) {}
+    this.sessions.set(server, sess);
+    this._sendAppSnapshot(server, sess);
+    await this._scheduleMaintenance(APP_DISCONNECT_GRACE_MS);
+    return new Response(null, { status: 101, webSocket: client });
+  }
+
+  async _updateGameSocketPresence(gameId, uid, online, exceptSocket) {
+    const gid = cleanPath(gameId || '');
+    const id = cleanPath(uid || '');
+    const path = gid ? 'games/' + gid : '';
+    const current = path ? getAt(this.root || {}, path) : null;
+    if (!gid || !id || !current || typeof current !== 'object') return false;
+    if (!this._gamePlayerSide(current, id)) return false;
+    if (!online && this._hasOfficialPlayerSocketForUid(gid, id, exceptSocket)) return false;
+    const beforeRoot = this._snapshotForPaths([path]);
+    const game = clone(current);
+    const presence = game.presence && typeof game.presence === 'object' ? clone(game.presence) : {};
+    const previous = presence[id] && typeof presence[id] === 'object' ? presence[id] : {};
+    const at = now();
+    const next = Object.assign({}, previous, {
+      uid: id,
+      online: !!online,
+      joinedAt: Number(previous.joinedAt || at) || at,
+      updatedAt: at,
+    });
+    if (online) {
+      next.connectedAt = at;
+      delete next.disconnectedAt;
+    } else {
+      next.disconnectedAt = at;
+    }
+    if (sameValue(previous, next)) return false;
+    presence[id] = next;
+    game.presence = presence;
+    game.lastPresenceChangeAt = at;
+    this.root = setAt(this.root || {}, path, game);
+    bumpVersions(this.versions, [path]);
+    await this._save(ROOM_LEASE_RENEW_MS);
+    await this._broadcast([path], beforeRoot);
+    return true;
+  }
+
+  _hasOfficialSpectatorSocketForUid(gameId, uid, exceptSocket) {
+    const gid = cleanPath(gameId || '');
+    const id = String(uid || '').trim();
+    if (!gid || !id) return false;
+    for (const [socket, sess] of this.sessions.entries()) {
+      if (exceptSocket && socket === exceptSocket) continue;
+      if (!this._isSocketUsable(socket, sess)) continue;
+      if (!sess || sess.official !== 'game-live' || String(sess.role || '') !== 'spectator') continue;
+      if (cleanPath(sess.gameId || '') === gid && String(sess.uid || '') === id) return true;
+    }
+    return false;
+  }
+
+  async _updateSpectatorSocketPresence(gameId, uid, online, exceptSocket) {
+    const gid = cleanPath(gameId || '');
+    const id = String(uid || '').trim();
+    if (!gid || !id || !SpectatorCore || typeof SpectatorCore.applySpectatorAction !== 'function') return false;
+    if (!online && this._hasOfficialSpectatorSocketForUid(gid, id, exceptSocket)) return false;
+    const gamePath = 'games/' + gid;
+    const spectatorsPath = 'spectators/' + gid;
+    const currentGame = getAt(this.root || {}, gamePath);
+    const currentSpectators = getAt(this.root || {}, spectatorsPath) || {};
+    if (!currentGame || typeof currentGame !== 'object') return false;
+    const existing = currentSpectators && currentSpectators[id] && typeof currentSpectators[id] === 'object' ? currentSpectators[id] : {};
+    const result = SpectatorCore.applySpectatorAction(currentGame, currentSpectators, {
+      kind: online ? (existing.uid ? 'refresh' : 'join') : 'leave',
+      gameId: gid,
+      uid: id,
+      nickname: String(existing.nickname || '').slice(0, 80),
+      joinedAt: Number(existing.joinedAt || now()) || now(),
+    }, { now: now() });
+    if (!result || !result.ok || result.committed === false) return false;
+    const beforeRoot = this._snapshotForPaths([spectatorsPath, gamePath]);
+    const game = clone(currentGame);
+    const patch = result.gamePatch || {};
+    game.spectatorCount = Number(patch.spectatorCount || result.count || 0) || 0;
+    game.spectatorCountUpdatedAt = patch.spectatorCountUpdatedAt || now();
+    this.root = setAt(this.root || {}, spectatorsPath, result.spectators || {});
+    this.root = setAt(this.root || {}, gamePath, game);
+    bumpVersions(this.versions, [spectatorsPath, gamePath]);
+    await this._save(ROOM_LEASE_RENEW_MS);
+    await this._broadcast([spectatorsPath, gamePath], beforeRoot);
+    return true;
+  }
+
   async _openGameLiveSocket(request, url) {
     if (request.headers.get('upgrade') !== 'websocket') return bad('expected-websocket', 426);
     const gameId = cleanPath(url.searchParams.get('gameId') || url.searchParams.get('gid') || '');
@@ -627,113 +1162,164 @@ export class RealtimeObject {
       gameId,
       role: allowed.role || 'participant',
       authExpiresAt: Math.max(0, Number(request.headers.get('x-dhm-auth-expires') || 0) || 0),
-      subs: [{ id: 'game-live:' + gameId, path: gamePath, event: 'value', official: true }],
+      connectedAt: now(),
+      lastMessageAt: now(),
+      voiceActive: false,
+      subs: [
+        { id: 'game-live:' + gameId, path: gamePath, event: 'value', official: true },
+        { id: 'game-channel-chat:' + gameId, path: 'chats/' + gameId, event: 'value', official: true },
+        { id: 'game-channel-rtc:' + gameId, path: 'rtc/' + gameId, event: 'value', official: true },
+      ],
     };
     try { server.serializeAttachment(sess); } catch (_) {}
     this.sessions.set(server, sess);
-    await this._replaceMaintenanceSchedule(this._nextMaintenanceDelay());
-    try {
-      server.send(JSON.stringify({
-        type: 'value',
-        id: 'game-live:' + gameId,
-        path: gamePath,
-        value: game || null,
-        version: this.versions[gamePath] || this.versions[''] || 0,
-        official: true,
-      }));
-    } catch (_) {}
+    if (String(sess.role || '') === 'spectator') {
+      await this._updateSpectatorSocketPresence(gameId, uid, true, server);
+    } else {
+      await this._updateGameSocketPresence(gameId, uid, true, server);
+      const relisted = await this._publishRoomLiveState(gameId, true, 'player-connected').catch(() => null);
+      if (!relisted || relisted.ok === false) await this._replaceMaintenanceSchedule(ROOM_LIVE_RETRY_MS);
+    }
+    await this._replaceMaintenanceSchedule(ROOM_LEASE_RENEW_MS);
+    for (const sub of sess.subs) {
+      try {
+        server.send(JSON.stringify({
+          type: 'value',
+          id: sub.id,
+          path: sub.path,
+          value: getAt(this.root || {}, sub.path) || null,
+          version: this._versionForPath(sub.path),
+          official: true,
+        }));
+      } catch (_) {}
+    }
     return new Response(null, { status: 101, webSocket: client });
   }
 
 
 
-  async _openGameChatLiveSocket(request, url) {
-    if (request.headers.get('upgrade') !== 'websocket') return bad('expected-websocket', 426);
-    const gameId = cleanPath(url.searchParams.get('gameId') || url.searchParams.get('gid') || '');
-    const uid = String(request.headers.get('x-dhm-uid') || url.searchParams.get('uid') || '').trim();
-    if (!gameId || !uid) return bad('chat-live/missing-context', 400, 'chat-live/missing-context');
-
-    const gamePath = 'games/' + gameId;
-    const chatPath = 'chats/' + gameId;
-    const game = getAt(this.root || {}, gamePath);
-    const spectators = getAt(this.root || {}, 'spectators/' + gameId) || {};
-    const allowed = ChatCore && typeof ChatCore.canParticipantChat === 'function'
-      ? ChatCore.canParticipantChat(game, spectators, uid)
-      : { ok: false, error: 'chat/helper-missing' };
-    if (!allowed || !allowed.ok) {
-      const status = allowed && allowed.error === 'chat/game-not-found' ? 404 : 403;
-      return json({ ok: false, error: (allowed && allowed.error) || 'chat-live/not-authorized' }, status);
+  async _removeAppPresence(body) {
+    const uid = cleanPath(body && body.uid || '');
+    if (!uid) return json({ ok: false, error: 'presence/missing-uid' }, 400);
+    const path = 'players/' + uid;
+    const previous = getAt(this.root || {}, path) || null;
+    const roomIds = new Set();
+    const directRoomId = cleanPath(previous && (previous.roomId || previous.gameId) || '');
+    if (directRoomId) roomIds.add(directRoomId);
+    const roomList = this.root && this.root.roomList && typeof this.root.roomList === 'object' ? this.root.roomList : {};
+    for (const [gameId, room] of Object.entries(roomList)) {
+      const players = room && room.players && typeof room.players === 'object' ? room.players : {};
+      const whiteUid = String(players.white && players.white.uid || '');
+      const blackUid = String(players.black && players.black.uid || '');
+      if (whiteUid === uid || blackUid === uid) roomIds.add(cleanPath(gameId));
     }
-
-    return this._openOfficialValueSocket({
-      request,
-      official: 'game-chat-live',
-      socketId: 'game-chat-live:' + gameId,
-      uid,
-      gameId,
-      role: allowed.role || 'participant',
-      path: chatPath,
-    });
+    let removed = false;
+    if (previous != null) {
+      const beforeRoot = this._snapshotForPaths([path]);
+      this.root = setAt(this.root || {}, path, null);
+      bumpVersions(this.versions, [path]);
+      await this._save();
+      await this._broadcast([path], beforeRoot);
+      removed = true;
+    }
+    let closedSockets = 0;
+    for (const [ws, sess] of Array.from(this.sessions.entries())) {
+      if (sess && sess.official === 'app-live' && String(sess.uid || '') === uid) {
+        this._closeSocket(ws, 4001, 'session-ended');
+        closedSockets += 1;
+      }
+    }
+    return json({ ok: true, removed, previous, roomIds: Array.from(roomIds).filter(Boolean), closedSockets });
   }
 
-  async _openGameRtcLiveSocket(request, url) {
-    if (request.headers.get('upgrade') !== 'websocket') return bad('expected-websocket', 426);
-    const gameId = cleanPath(url.searchParams.get('gameId') || url.searchParams.get('gid') || '');
-    const uid = String(request.headers.get('x-dhm-uid') || url.searchParams.get('uid') || '').trim();
-    if (!gameId || !uid) return bad('rtc-live/missing-context', 400, 'rtc-live/missing-context');
-
-    const gamePath = 'games/' + gameId;
-    const rtcPath = 'rtc/' + gameId;
-    const game = getAt(this.root || {}, gamePath);
-    const allowed = RtcCore && typeof RtcCore.canUseRtc === 'function'
-      ? RtcCore.canUseRtc(game, uid)
-      : { ok: false, error: 'rtc/helper-missing' };
-    if (!allowed || !allowed.ok) {
-      const status = allowed && allowed.error === 'rtc/game-not-found' ? 404 : 403;
-      return json({ ok: false, error: (allowed && allowed.error) || 'rtc-live/not-authorized' }, status);
+  _lobbyInviteContext(body) {
+    const payload = body && typeof body === 'object' ? body : {};
+    const requested = Array.isArray(payload.uids) ? payload.uids : [payload.uid, payload.opponentUid, payload.toUid];
+    const uids = Array.from(new Set(requested.map((value) => String(value || '').trim()).filter(Boolean))).slice(0, 6);
+    const players = {};
+    const rooms = {};
+    for (const uid of uids) {
+      const stored = getAt(this.root || {}, 'players/' + cleanPath(uid));
+      if (stored && typeof stored === 'object') {
+        const live = this._appSocketCount(uid) > 0;
+        players[uid] = Object.assign({}, stored, {
+          live,
+          online: live || stored.online !== false,
+        });
+        const roomId = cleanPath(stored.roomId || stored.gameId || '');
+        if (roomId && !Object.prototype.hasOwnProperty.call(rooms, roomId)) {
+          rooms[roomId] = getAt(this.root || {}, 'roomList/' + roomId) || null;
+        }
+      } else {
+        players[uid] = null;
+      }
     }
-
-    return this._openOfficialValueSocket({
-      request,
-      official: 'game-rtc-live',
-      socketId: 'game-rtc-live:' + gameId,
-      uid,
-      gameId,
-      role: 'player',
-      path: rtcPath,
-    });
+    const inviteOwnerUid = String(payload.inviteOwnerUid || payload.recipientUid || '').trim();
+    const inviteKey = cleanPath(payload.inviteKey || '');
+    const invite = inviteOwnerUid && inviteKey
+      ? (getAt(this.root || {}, 'invites/' + cleanPath(inviteOwnerUid) + '/' + inviteKey) || null)
+      : null;
+    if (invite && invite.fromUid && !Object.prototype.hasOwnProperty.call(players, String(invite.fromUid))) {
+      const senderUid = String(invite.fromUid);
+      const stored = getAt(this.root || {}, 'players/' + cleanPath(senderUid));
+      const live = this._appSocketCount(senderUid) > 0;
+      players[senderUid] = stored && typeof stored === 'object'
+        ? Object.assign({}, stored, { live, online: live || stored.online !== false })
+        : null;
+      const roomId = cleanPath(stored && (stored.roomId || stored.gameId) || '');
+      if (roomId && !Object.prototype.hasOwnProperty.call(rooms, roomId)) rooms[roomId] = getAt(this.root || {}, 'roomList/' + roomId) || null;
+    }
+    return json({ ok: true, players, rooms, invite, generatedAt: now() });
   }
 
-  _openOfficialValueSocket(options) {
-    const opts = options && typeof options === 'object' ? options : {};
-    const request = opts.request;
-    const path = cleanPath(opts.path || '');
-    if (!request || request.headers.get('upgrade') !== 'websocket') return bad('expected-websocket', 426);
-    if (!path) return bad('live/missing-path', 400, 'live/missing-path');
-    const pair = new WebSocketPair();
-    const client = pair[0], server = pair[1];
-    this.ctx.acceptWebSocket(server);
-    const sess = {
-      official: String(opts.official || 'official-live'),
-      uid: String(opts.uid || ''),
-      gameId: cleanPath(opts.gameId || ''),
-      role: String(opts.role || 'participant'),
-      authExpiresAt: Math.max(0, Number(request.headers.get('x-dhm-auth-expires') || 0) || 0),
-      subs: [{ id: String(opts.socketId || opts.official || 'official-live'), path, event: 'value', official: true }],
-    };
-    try { server.serializeAttachment(sess); } catch (_) {}
-    this.sessions.set(server, sess);
-    try {
-      server.send(JSON.stringify({
-        type: 'value',
-        id: sess.subs[0].id,
-        path,
-        value: getAt(this.root || {}, path) || null,
-        version: this.versions[path] || this.versions[''] || 0,
-        official: true,
-      }));
-    } catch (_) {}
-    return new Response(null, { status: 101, webSocket: client });
+  async _claimMatchParticipants(body) {
+    const gameId = cleanPath(body && body.gameId || '');
+    const uids = Array.from(new Set((Array.isArray(body && body.uids) ? body.uids : [])
+      .map((uid) => cleanPath(uid || '')).filter(Boolean))).slice(0, 2);
+    if (!gameId || uids.length !== 2) return json({ ok: false, error: 'invite/claim-missing-context' }, 400);
+    const at = now();
+    const ttlMs = Math.max(30 * 1000, Math.min(5 * 60 * 1000, Number(body && body.ttlMs || 0) || 2 * 60 * 1000));
+    const claims = this.root && this.root.matchClaims && typeof this.root.matchClaims === 'object' ? this.root.matchClaims : {};
+    for (const uid of uids) {
+      const currentClaim = claims[uid] && typeof claims[uid] === 'object' ? claims[uid] : null;
+      if (currentClaim && Number(currentClaim.expiresAt || 0) > at && cleanPath(currentClaim.gameId || '') !== gameId) {
+        return json({ ok: false, error: 'invite/player-claim-conflict', uid, gameId: cleanPath(currentClaim.gameId || '') }, 409);
+      }
+      const player = getAt(this.root || {}, 'players/' + uid);
+      const roomId = cleanPath(player && (player.roomId || player.gameId) || '');
+      const busy = !!(roomId && (String(player && player.status || '') === 'inPvP' || String(player && player.role || '') === 'player'));
+      if (busy && roomId !== gameId) return json({ ok: false, error: 'invite/player-already-in-match', uid, roomId }, 409);
+    }
+    const changed = [];
+    for (const uid of uids) {
+      const path = 'matchClaims/' + uid;
+      this.root = setAt(this.root || {}, path, { uid, gameId, participantUids: uids, claimedAt: at, expiresAt: at + ttlMs });
+      changed.push(path);
+    }
+    bumpVersions(this.versions, changed);
+    await this._save(ttlMs);
+    return json({ ok: true, committed: true, gameId, uids, expiresAt: at + ttlMs });
+  }
+
+  async _releaseMatchClaim(body) {
+    const gameId = cleanPath(body && body.gameId || '');
+    const requested = Array.isArray(body && body.uids) ? body.uids : [];
+    const uids = Array.from(new Set(requested.map((uid) => cleanPath(uid || '')).filter(Boolean))).slice(0, 2);
+    if (!gameId || !uids.length) return json({ ok: false, error: 'invite/release-claim-missing-context' }, 400);
+    const changed = [];
+    for (const uid of uids) {
+      const path = 'matchClaims/' + uid;
+      const current = getAt(this.root || {}, path);
+      if (current && cleanPath(current.gameId || '') === gameId) {
+        this.root = setAt(this.root || {}, path, null);
+        changed.push(path);
+      }
+    }
+    if (changed.length) {
+      bumpVersions(this.versions, changed);
+      await this._save();
+    }
+    return json({ ok: true, committed: changed.length > 0, gameId, released: changed.length });
   }
 
   async _createLobbyGame(body) {
@@ -788,6 +1374,13 @@ export class RealtimeObject {
     const path = 'games/' + gameId;
     const current = getAt(this.root || {}, path);
     if (!current || typeof current !== 'object') return json({ ok: false, error: 'game/not-found' }, 404);
+    if (String(current.status || '') === 'active') {
+      const blackUid = String(current.players && current.players.black && current.players.black.uid || '').trim();
+      if (blackUid === uid) {
+        const roomListEntry = typeof LobbyCore.createRoomListEntry === 'function' ? LobbyCore.createRoomListEntry(current) : null;
+        return json({ ok: true, committed: false, idempotent: true, gameId, game: current, roomListEntry });
+      }
+    }
     const result = LobbyCore.activatePendingGame(current, {
       uid,
       nick: body && (body.nick || body.nickname),
@@ -882,141 +1475,6 @@ export class RealtimeObject {
   }
 
 
-  async _commitGamePulse(body) {
-    const limited = this._limitGameAction(body, 'pulse', 30, 60 * 1000);
-    if (limited) return limited;
-    const rawPayload = body && typeof body === 'object' ? body : {};
-    const payload = PresenceCore && typeof PresenceCore.normalizeAppPulsePayload === 'function'
-      ? PresenceCore.normalizeAppPulsePayload(rawPayload)
-      : rawPayload;
-    const gameId = cleanPath(payload && gameIdOrRoom(payload));
-    const uid = String((payload && payload.uid) || '').trim();
-    if (!gameId || !uid) return json({ ok: false, error: 'pulse/missing-game-context' }, 400);
-
-    const gamePath = 'games/' + gameId;
-    const spectatorsPath = 'spectators/' + gameId;
-    const currentGame = getAt(this.root || {}, gamePath);
-    if (!currentGame || typeof currentGame !== 'object') return json({ ok: false, error: 'game/not-found' }, 404);
-
-    const side = this._gamePlayerSide(currentGame, uid);
-    const currentSpectators = getAt(this.root || {}, spectatorsPath) || {};
-    const isSpectator = !!(currentSpectators && typeof currentSpectators === 'object' && currentSpectators[uid]);
-    if (!side && !isSpectator) return json({ ok: false, error: 'game/not-a-participant', game: currentGame }, 403);
-
-    const beforeRoot = clone(this.root || {});
-    const changed = [];
-    let game = clone(currentGame || {});
-    const at = now();
-    let spectatorResult = null;
-    let rtcParticipantRefreshed = false;
-
-    if (side) {
-      const presence = game.presence && typeof game.presence === 'object' ? clone(game.presence) : {};
-      const previous = presence[uid] && typeof presence[uid] === 'object' ? presence[uid] : {};
-      const next = {
-        uid,
-        nickname: String((payload && payload.nickname) || previous.nickname || '').slice(0, 80),
-        side,
-        joinedAt: Number(previous.joinedAt || at) || at,
-        updatedAt: at,
-      };
-      const shouldWrite = !PresenceCore || typeof PresenceCore.shouldWritePresence !== 'function'
-        ? true
-        : PresenceCore.shouldWritePresence({
-          previous,
-          next,
-          lastWriteAt: Number(previous.updatedAt || previous.joinedAt || 0) || 0,
-          minIntervalMs: PresenceCore.POLICY.gamePresenceRefreshMs,
-          now: at,
-          force: !!(payload && payload.force),
-        });
-      if (shouldWrite) {
-        presence[uid] = next;
-        game.presence = presence;
-        game.lastPresencePulseAt = at;
-        this.root = setAt(this.root || {}, gamePath, game);
-        changed.push(gamePath);
-      }
-
-      if (payload && payload.rtcParticipantActive === true) {
-        const participantPath = 'rtc/' + gameId + '/participants/' + uid;
-        const participant = getAt(this.root || {}, participantPath);
-        if (participant && typeof participant === 'object' && String(participant.role || 'player') === 'player') {
-          this.root = setAt(this.root || {}, participantPath, Object.assign({}, participant, { lastSeen: at }));
-          rtcParticipantRefreshed = true;
-        }
-      }
-    } else if (isSpectator && SpectatorCore && typeof SpectatorCore.applySpectatorAction === 'function') {
-      spectatorResult = SpectatorCore.applySpectatorAction(currentGame, currentSpectators, {
-        kind: 'refresh',
-        gameId,
-        uid,
-        nickname: payload && payload.nickname,
-        joinedAt: payload && payload.joinedAt,
-      }, { now: at });
-      if (spectatorResult && spectatorResult.ok) {
-        const patch = spectatorResult.gamePatch || {};
-        game.spectatorCount = patch.spectatorCount;
-        game.spectatorCountUpdatedAt = patch.spectatorCountUpdatedAt;
-        this.root = setAt(this.root || {}, spectatorsPath, spectatorResult.spectators || {});
-        this.root = setAt(this.root || {}, gamePath, game);
-        changed.push(spectatorsPath, gamePath);
-      }
-    }
-
-    let opponent = null;
-    if (side) {
-      const players = game.players || {};
-      const opp = side === -1 ? players.black : players.white;
-      const oppUid = opp && opp.uid ? String(opp.uid) : '';
-      const pres = oppUid && game.presence && game.presence[oppUid] ? game.presence[oppUid] : null;
-      const lastSeenAt = Number(pres && (pres.updatedAt || pres.joinedAt)) || 0;
-      const ttl = Number(PresenceCore && PresenceCore.POLICY && PresenceCore.POLICY.gamePresenceTtlMs) || 45000;
-      const absenceMs = Number(PresenceCore && PresenceCore.POLICY && PresenceCore.POLICY.opponentAbsenceMs) || 120000;
-      const online = !!(lastSeenAt && at - lastSeenAt <= ttl);
-      const absenceDetectedAt = online ? null : (lastSeenAt ? lastSeenAt + ttl : at);
-      opponent = {
-        uid: oppUid || null,
-        side: side === -1 ? 'black' : 'white',
-        online,
-        lastSeenAt: lastSeenAt || null,
-        absenceDetectedAt,
-        canClaimAbsence: !!(absenceDetectedAt && at - absenceDetectedAt >= absenceMs),
-      };
-    }
-
-    if (changed.length || rtcParticipantRefreshed) {
-      if (changed.length) bumpVersions(this.versions, changed);
-      await this._save();
-      if (changed.length) await this._broadcast(changed, beforeRoot);
-    }
-
-    let lifecycle = { ran: false, reason: 'skipped' };
-    try { lifecycle = await this._runGameLifecycleCleanup(gameId, { force: !!(payload && payload.forceCleanup) }); } catch (_) { lifecycle = { ran: false, reason: 'failed' }; }
-
-    const action = String((payload && payload.action) || (rawPayload && (rawPayload.reason || rawPayload.action || rawPayload.kind)) || '').toLowerCase();
-    const includeGameSnapshot = !!(rawPayload && rawPayload.includeGameSnapshot === true) || /^(enter-game|game-enter|game-resume|resume-game)$/.test(action);
-
-    return json({
-      ok: true,
-      committed: changed.length > 0 || rtcParticipantRefreshed || !!(lifecycle && lifecycle.committed),
-      rtcParticipantRefreshed,
-      uid,
-      viewerUid: uid,
-      gameId,
-      side: side || null,
-      spectator: isSpectator,
-      spectatorCount: Number(game.spectatorCount || 0) || 0,
-      opponent,
-      lifecycle,
-      game: includeGameSnapshot ? game : null,
-      moveIndex: Number(game.moveIndex || 0) || 0,
-      ply: Number(game.ply || 0) || 0,
-    });
-  }
-
-
-
 
   async _runGameLifecycleCleanup(gameId, options = {}) {
     const gid = cleanPath(gameId);
@@ -1077,7 +1535,16 @@ export class RealtimeObject {
     const signalsPath = rtcPath + '/signals';
     const rtcMetaSignalsPath = rtcPath + '/meta/signals';
     const participants = getAt(this.root || {}, participantsPath) || {};
-    const participantPrune = LifecycleCore.pruneStaleMap(participants, LifecycleCore.POLICY.rtcParticipantTtlMs, at);
+    const expirableParticipants = {};
+    for (const [participantUid, participant] of Object.entries(participants)) {
+      if (!this._hasVoiceActiveSocket(gid, participantUid)) expirableParticipants[participantUid] = participant;
+    }
+    const participantPrune = LifecycleCore.pruneStaleMap(expirableParticipants, LifecycleCore.POLICY.rtcParticipantTtlMs, at);
+    const retainedParticipants = {};
+    for (const [participantUid, participant] of Object.entries(participants)) {
+      if (this._hasVoiceActiveSocket(gid, participantUid)) retainedParticipants[participantUid] = participant;
+    }
+    participantPrune.next = Object.assign({}, participantPrune.next || {}, retainedParticipants);
     const removedParticipants = new Set(participantPrune.removedKeys || []);
     if (participantPrune.removedCount) {
       this.root = setAt(this.root || {}, participantsPath, participantPrune.next || {});
@@ -1575,7 +2042,7 @@ export class RealtimeObject {
       viewerUid: uid,
       gameId,
       game: responseGame,
-      version: this.versions[path] || this.versions[''] || 0,
+      version: this._versionForPath(path),
       moveIndex: serverMoveIndex,
       ply: Number(responseGame.ply || 0) || 0,
       side: side || null,
@@ -1591,6 +2058,8 @@ export class RealtimeObject {
     const gid = cleanPath(gameId);
     const changed = [path];
     const terminal = !!(game && String(game.status || '') === 'ended');
+    const leaseDue = !!(!terminal && game && String(game.status || '') === 'active' && now() - (Number(game.roomLeaseRenewedAt || game.acceptedAt || game.createdAt || 0) || 0) >= ROOM_LEASE_RENEW_MS);
+    if (leaseDue) game.roomLeaseRenewedAt = now();
     this.root = setAt(this.root || {}, path, game);
     if (terminal && gid) {
       for (const transientPath of [
@@ -1613,6 +2082,7 @@ export class RealtimeObject {
       authorizeAgainstRoot: beforeRoot,
       closeRevokedAfter: true,
     } : null);
+    if (leaseDue) await this._renewGlobalRoomLease(gid, game, true).catch(() => null);
     return { terminal, changed: uniqueChanged };
   }
 
@@ -1910,6 +2380,103 @@ export class RealtimeObject {
     return this.env.REALTIME.get(this.env.REALTIME.idFromName('global'));
   }
 
+  async _setRoomLiveState(body) {
+    const gameId = cleanPath(body && body.gameId || '');
+    const path = gameId ? 'roomList/' + gameId : '';
+    const current = path ? getAt(this.root || {}, path) : null;
+    if (!gameId || !current || typeof current !== 'object' || String(current.status || '') !== 'active') {
+      return json({ ok: true, committed: false, reason: 'room-not-active' });
+    }
+    const at = now();
+    const count = Math.max(0, Number(body && body.livePlayerCount || 0) || 0);
+    const listed = body && body.listed != null ? !!body.listed : count > 0;
+    const next = Object.assign({}, current, {
+      livePlayerCount: count,
+      listed,
+      roomLiveUpdatedAt: at,
+      roomLiveReason: String(body && body.reason || (listed ? 'player-connected' : 'players-disconnected')).slice(0, 80),
+    });
+    if (listed) {
+      next.lastLiveAt = at;
+      next.relistedAt = at;
+      delete next.unlistedAt;
+      delete next.awaitingPlayersUntil;
+      next.leaseRenewedAt = at;
+      next.leaseUntil = Math.max(Number(next.leaseUntil || 0) || 0, at + ROOM_LEASE_TTL_MS);
+      next.cleanupAt = next.leaseUntil;
+    } else {
+      next.unlistedAt = at;
+    }
+    if (sameValue(current, next)) return json({ ok: true, committed: false, reason: 'unchanged', listed, livePlayerCount: count });
+    const beforeRoot = this._snapshotForPaths([path]);
+    this.root = setAt(this.root || {}, path, next);
+    bumpVersions(this.versions, [path]);
+    await this._save(listed ? ROOM_LEASE_RENEW_MS : APP_DISCONNECT_GRACE_MS);
+    await this._broadcast([path], beforeRoot);
+    return json({ ok: true, committed: true, gameId, listed, livePlayerCount: count });
+  }
+
+  async _publishRoomLiveState(gameId, listed, reason) {
+    const gid = cleanPath(gameId || '');
+    if (!gid) return { ok: false, error: 'room-live/missing-game-id' };
+    const livePlayerCount = this._officialGamePlayerSocketCount(gid);
+    const response = await this._globalStatsStub().fetch('https://realtime.internal/api/lobby/room-live-state', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-internal-secret': this.env.INTERNAL_API_SECRET || '' },
+      body: JSON.stringify({ gameId: gid, listed: listed == null ? livePlayerCount > 0 : !!listed, livePlayerCount, reason: reason || '' }),
+    });
+    const payload = await response.json().catch(() => ({ ok: false, error: 'room-live/invalid-response' }));
+    return Object.assign({ ok: response.ok }, payload || {});
+  }
+
+  async _renewRoomLeaseRecord(body) {
+    const gameId = cleanPath(body && body.gameId || '');
+    const entry = body && body.roomListEntry && typeof body.roomListEntry === 'object' ? body.roomListEntry : null;
+    if (!gameId || !entry || String(entry.status || '') !== 'active') return json({ ok: false, error: 'room-lease/missing-context' }, 400);
+    const path = 'roomList/' + gameId;
+    const current = getAt(this.root || {}, path);
+    if (!current || typeof current !== 'object' || String(current.status || '') !== 'active') return json({ ok: true, committed: false, reason: 'room-not-active' });
+    const at = now();
+    const leaseUntil = Number(current.leaseUntil || current.cleanupAt || 0) || 0;
+    if (leaseUntil - at > ROOM_LEASE_RENEW_MS) return json({ ok: true, committed: false, reason: 'lease-current', leaseUntil });
+    const next = Object.assign({}, current, entry, {
+      status: 'active',
+      leaseRenewedAt: at,
+      leaseUntil: at + ROOM_LEASE_TTL_MS,
+      cleanupAt: at + ROOM_LEASE_TTL_MS,
+      stale: false,
+      listed: true,
+      livePlayerCount: Math.max(1, Number(current.livePlayerCount || entry.livePlayerCount || 0) || 0),
+      lastLiveAt: at,
+    });
+    delete next.awaitingPlayersUntil;
+    delete next.unlistedAt;
+    if (sameValue(current, next)) return json({ ok: true, committed: false, reason: 'unchanged', leaseUntil: next.leaseUntil });
+    const beforeRoot = this._snapshotForPaths([path]);
+    this.root = setAt(this.root || {}, path, next);
+    bumpVersions(this.versions, [path]);
+    await this._save(ROOM_LEASE_RENEW_MS);
+    await this._broadcast([path], beforeRoot);
+    return json({ ok: true, committed: true, gameId, leaseUntil: next.leaseUntil });
+  }
+
+  async _renewGlobalRoomLease(gameId, game, force = false) {
+    const gid = cleanPath(gameId || '');
+    if (!gid || !game || String(game.status || '') !== 'active') return { ok: true, committed: false, skipped: true };
+    const at = now();
+    const last = Number(game.roomLeaseRenewedAt || game.acceptedAt || game.createdAt || 0) || 0;
+    if (!force && last && at - last < ROOM_LEASE_RENEW_MS) return { ok: true, committed: false, skipped: true, nextDueAt: last + ROOM_LEASE_RENEW_MS };
+    const entry = LobbyCore && typeof LobbyCore.createRoomListEntry === 'function' ? LobbyCore.createRoomListEntry(game) : null;
+    if (!entry) return { ok: false, committed: false, error: 'room-lease/build-failed' };
+    const response = await this._globalStatsStub().fetch('https://realtime.internal/api/lobby/renew-room-lease', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-internal-secret': this.env.INTERNAL_API_SECRET || '' },
+      body: JSON.stringify({ gameId: gid, roomListEntry: entry }),
+    });
+    const payload = await response.json().catch(() => ({ ok: false, error: 'room-lease/invalid-response' }));
+    return Object.assign({ ok: response.ok }, payload || {});
+  }
+
   async _cleanupGlobalGameReferencesRecord(body) {
     const gid = cleanPath(body && body.gameId || '');
     const uids = Array.from(new Set((Array.isArray(body && body.uids) ? body.uids : [])
@@ -1917,7 +2484,8 @@ export class RealtimeObject {
       .filter(Boolean)))
       .slice(0, 2);
     if (!gid) return json({ ok: false, error: 'lifecycle/missing-game-id' }, 400);
-    const beforeRoot = clone(this.root || {});
+    const candidatePaths = ['roomList/' + gid].concat(uids.flatMap((uid) => ['matchClaims/' + uid, 'players/' + uid]));
+    const beforeRoot = this._snapshotForPaths(candidatePaths);
     const changed = [];
     if (getAt(this.root || {}, 'roomList/' + gid) != null) {
       this.root = setAt(this.root || {}, 'roomList/' + gid, null);
@@ -1925,6 +2493,12 @@ export class RealtimeObject {
     }
     const at = now();
     for (const uid of uids) {
+      const claimPath = 'matchClaims/' + uid;
+      const claim = getAt(this.root || {}, claimPath);
+      if (claim && cleanPath(claim.gameId || '') === gid) {
+        this.root = setAt(this.root || {}, claimPath, null);
+        changed.push(claimPath);
+      }
       const path = 'players/' + uid;
       const current = getAt(this.root || {}, path);
       if (cleanPath(current && current.roomId || '') !== gid) continue;
@@ -2306,7 +2880,28 @@ export class RealtimeObject {
     this._maintenanceScheduled = false;
     this._inAlarm = true;
     const at = now();
+    for (const [ws, sess] of Array.from(this.sessions.entries())) {
+      const expired = this._isSocketExpired(sess, at);
+      const stale = !expired && this._isSocketHeartbeatStale(ws, sess, at);
+      if (!expired && !stale) continue;
+      try { ws.close(expired ? 4001 : 4000, expired ? 'session-expired' : 'heartbeat-stale'); } catch (_) {}
+      this.sessions.delete(ws);
+      if (String(sess && sess.official || '') === 'app-live') {
+        if (!this._appSocketCount(sess.uid)) await this._markAppPresenceDisconnected(sess.uid, ws).catch(() => null);
+      } else if (String(sess && sess.official || '') === 'game-live' && cleanPath(sess && sess.gameId || '')) {
+        if (String(sess.role || '') === 'spectator') {
+          await this._updateSpectatorSocketPresence(sess.gameId, sess.uid, false, ws).catch(() => false);
+        } else {
+          await this._updateGameSocketPresence(sess.gameId, sess.uid, false, ws).catch(() => false);
+          const remaining = this._officialGamePlayerSocketCount(sess.gameId);
+          const hidden = await this._publishRoomLiveState(sess.gameId, remaining > 0, remaining > 0 ? 'player-session-expired' : 'last-player-session-expired').catch(() => null);
+          if (!hidden || hidden.ok === false) await this._replaceMaintenanceSchedule(ROOM_LIVE_RETRY_MS);
+        }
+      }
+    }
+    const beforeRoot = clone(this.root || {});
     let changed = false;
+    const maintenanceChangedPaths = new Set();
     let shouldReschedule = true;
     try {
       if (this.root && this.root.kind === 'rate-limit') {
@@ -2339,6 +2934,17 @@ export class RealtimeObject {
             ? this._isAbandonedActiveGame(gameId, game, at)
             : at >= deadline;
           if (!expired) {
+            if (status === 'active' && this._hasOfficialPlayerSocket(gameId, game)) {
+              const lastLease = Number(game.roomLeaseRenewedAt || game.acceptedAt || game.createdAt || 0) || 0;
+              if (!lastLease || at - lastLease >= ROOM_LEASE_RENEW_MS) {
+                const leaseResult = await this._renewGlobalRoomLease(gameId, game, true).catch(() => null);
+                if (leaseResult && leaseResult.ok !== false) {
+                  game.roomLeaseRenewedAt = at;
+                  games[gameId] = game;
+                  changed = true;
+                }
+              }
+            }
             const turnRate = this.root && this.root.rtc && this.root.rtc[gameId] && this.root.rtc[gameId].turnRate;
             if (turnRate && typeof turnRate === 'object') {
               for (const uid of Object.keys(turnRate)) {
@@ -2375,6 +2981,74 @@ export class RealtimeObject {
           }
         }
       } else {
+        const players = this.root && this.root.players && typeof this.root.players === 'object' ? this.root.players : {};
+        for (const uid of Object.keys(players)) {
+          const row = players[uid];
+          if (!row || typeof row !== 'object') continue;
+          if (this._appSocketCount(uid) > 0) continue;
+          const last = Number(row.updatedAt || row.connectedAt || row.joinedAt || 0) || 0;
+          if (!last || at - last >= APP_DISCONNECT_GRACE_MS) {
+            delete players[uid];
+            maintenanceChangedPaths.add('players/' + uid);
+            changed = true;
+          }
+        }
+        const invites = this.root && this.root.invites && typeof this.root.invites === 'object' ? this.root.invites : {};
+        for (const recipientUid of Object.keys(invites)) {
+          const bucket = invites[recipientUid] && typeof invites[recipientUid] === 'object' ? invites[recipientUid] : {};
+          for (const key of Object.keys(bucket)) {
+            const row = bucket[key];
+            const expiresAt = Number(row && row.expiresAt || 0) || 0;
+            if (expiresAt && expiresAt <= at) {
+              delete bucket[key];
+              maintenanceChangedPaths.add('invites/' + recipientUid + '/' + key);
+              changed = true;
+            }
+          }
+          if (!Object.keys(bucket).length) delete invites[recipientUid];
+        }
+        const inviteResults = this.root && this.root.inviteResults && typeof this.root.inviteResults === 'object' ? this.root.inviteResults : {};
+        for (const senderUid of Object.keys(inviteResults)) {
+          const bucket = inviteResults[senderUid] && typeof inviteResults[senderUid] === 'object' ? inviteResults[senderUid] : {};
+          for (const gameId of Object.keys(bucket)) {
+            const row = bucket[gameId];
+            const purgeAt = Number(row && (row.purgeAt || row.expiresAt) || 0) || 0;
+            if (purgeAt && purgeAt <= at) {
+              delete bucket[gameId];
+              maintenanceChangedPaths.add('inviteResults/' + senderUid + '/' + gameId);
+              changed = true;
+            }
+          }
+          if (!Object.keys(bucket).length) delete inviteResults[senderUid];
+        }
+        const matchClaims = this.root && this.root.matchClaims && typeof this.root.matchClaims === 'object' ? this.root.matchClaims : {};
+        for (const uid of Object.keys(matchClaims)) {
+          if (Number(matchClaims[uid] && matchClaims[uid].expiresAt || 0) > 0 && Number(matchClaims[uid].expiresAt) <= at) {
+            delete matchClaims[uid];
+            maintenanceChangedPaths.add('matchClaims/' + uid);
+            changed = true;
+          }
+        }
+        const roomList = this.root && this.root.roomList && typeof this.root.roomList === 'object' ? this.root.roomList : {};
+        for (const gameId of Object.keys(roomList)) {
+          const room = roomList[gameId];
+          const awaitingPlayersUntil = Number(room && room.awaitingPlayersUntil || 0) || 0;
+          if (room && room.listed !== false && Number(room.livePlayerCount || 0) <= 0 && awaitingPlayersUntil && awaitingPlayersUntil <= at) {
+            room.listed = false;
+            room.unlistedAt = at;
+            room.roomLiveUpdatedAt = at;
+            room.roomLiveReason = 'players-never-connected';
+            delete room.awaitingPlayersUntil;
+            maintenanceChangedPaths.add('roomList/' + gameId);
+            changed = true;
+          }
+          const leaseUntil = Number(room && (room.leaseUntil || room.cleanupAt) || 0) || 0;
+          if (leaseUntil && leaseUntil <= at) {
+            delete roomList[gameId];
+            maintenanceChangedPaths.add('roomList/' + gameId);
+            changed = true;
+          }
+        }
         const profiles = this.root && this.root.profiles && typeof this.root.profiles === 'object' ? this.root.profiles : {};
         for (const uid of Object.keys(profiles)) {
           const profile = profiles[uid];
@@ -2385,6 +3059,7 @@ export class RealtimeObject {
             for (const id of Object.keys(markers)) {
               if (Number(markers[id] && markers[id].purgeAt || 0) > 0 && Number(markers[id].purgeAt) <= at) {
                 delete markers[id];
+                maintenanceChangedPaths.add('profiles/' + uid);
                 changed = true;
               }
             }
@@ -2398,8 +3073,10 @@ export class RealtimeObject {
         return;
       }
       if (changed) {
-        bumpVersions(this.versions, ['']);
-        await this.ctx.storage.put({ root: this.root || {}, versions: this.versions || { '': at }, pendingOfficialStats: this.pendingOfficialStats || {} });
+        const changedPaths = maintenanceChangedPaths.size ? Array.from(maintenanceChangedPaths) : [''];
+        bumpVersions(this.versions, changedPaths);
+        await this._save();
+        await this._broadcast(changedPaths, beforeRoot);
       }
     } catch (err) {
       console.error(JSON.stringify({ level: 'error', area: 'durable-maintenance', event: 'alarm-failed', message: String(err && err.message || err) }));
@@ -2411,9 +3088,17 @@ export class RealtimeObject {
 
   async webSocketMessage(ws, message) {
     await this._load();
+    const rawMessage = String(message || '');
+    if (rawMessage === 'dhm-ping-v1') {
+      try { ws.send('dhm-pong-v1'); } catch (_) {}
+      return;
+    }
     let data = null;
-    try { data = JSON.parse(String(message || '{}')); } catch (_) { return; }
+    try { data = JSON.parse(rawMessage || '{}'); } catch (_) { return; }
     const sess = this.sessions.get(ws) || { subs: [] };
+    sess.lastMessageAt = now();
+    this.sessions.set(ws, sess);
+    try { ws.serializeAttachment(sess); } catch (_) {}
     if (this._isSocketExpired(sess)) {
       this._closeSocket(ws, 4001, 'session-expired');
       return;
@@ -2422,7 +3107,50 @@ export class RealtimeObject {
       this._closeSocket(ws, 4003, 'authorization-revoked');
       return;
     }
+    if (sess && sess.official === 'app-live') {
+      if (data.type === 'presence') {
+        await this._setAppPresence(sess.uid, data.presence || data.value || {}, { force: !!data.force });
+        return;
+      }
+      if (data.type === 'lobby-mode') {
+        sess.includeLobby = data.includeLobby != null ? !!data.includeLobby : !!data.enabled;
+        sess.subs = this._appLiveSubscriptions(sess.uid, sess.includeLobby);
+        this.sessions.set(ws, sess);
+        try { ws.serializeAttachment(sess); } catch (_) {}
+        this._sendAppSnapshot(ws, sess);
+        return;
+      }
+      if (data.type === 'snapshot') {
+        this._sendAppSnapshot(ws, sess);
+        return;
+      }
+      if (data.type === 'ack-invite-result') {
+        const gameId = cleanPath(data.gameId || '');
+        const path = gameId ? 'inviteResults/' + cleanPath(sess.uid) + '/' + gameId : '';
+        if (path && getAt(this.root || {}, path) != null) {
+          const beforeRoot = clone(this.root || {});
+          this.root = setAt(this.root || {}, path, null);
+          bumpVersions(this.versions, [path]);
+          await this._save();
+          await this._broadcast([path], beforeRoot);
+        }
+        return;
+      }
+      if (data.type === 'ping') {
+        try { ws.send(JSON.stringify({ type: 'pong', ts: now(), official: true, scope: sess.official })); } catch (_) {}
+      }
+      return;
+    }
     if (sess && sess.official) {
+      if (sess.official === 'game-live' && data.type === 'voice-state') {
+        const active = data.active === true;
+        if (sess.voiceActive !== active) {
+          sess.voiceActive = active;
+          this.sessions.set(ws, sess);
+          try { ws.serializeAttachment(sess); } catch (_) {}
+        }
+        return;
+      }
       if (data.type === 'ping') {
         try { ws.send(JSON.stringify({ type: 'pong', ts: now(), official: true, scope: sess.official })); } catch (_) {}
       }
@@ -2438,12 +3166,12 @@ export class RealtimeObject {
         if (sub.event === 'child_added') {
           const cur = childMap(getAt(this.root, sub.path));
           for (const key of Object.keys(cur)) {
-            ws.send(JSON.stringify({ type: 'child', event: 'child_added', id: sub.id, path: childPath(sub.path, key), key, value: cur[key], version: this.versions[childPath(sub.path, key)] || this.versions[sub.path] || this.versions[''] || 0 }));
+            ws.send(JSON.stringify({ type: 'child', event: 'child_added', id: sub.id, path: childPath(sub.path, key), key, value: cur[key], version: this._versionForPath(childPath(sub.path, key)) }));
           }
         } else if (sub.event === 'child_changed' || sub.event === 'child_removed') {
           // Changed/removed live streams do not emit existing children at attach time.
         } else {
-          ws.send(JSON.stringify({ type: 'value', id: sub.id, path: sub.path, value: getAt(this.root, sub.path), version: this.versions[sub.path] || this.versions[''] || 0 }));
+          ws.send(JSON.stringify({ type: 'value', id: sub.id, path: sub.path, value: getAt(this.root, sub.path), version: this._versionForPath(sub.path) }));
         }
       } catch (_) {}
       return;
@@ -2464,6 +3192,7 @@ export class RealtimeObject {
       ? opts.authorizeAgainstRoot
       : (this.root || {});
     const revokeAfter = [];
+    const payloadCache = new Map();
     for (const [ws, sess] of sessions) {
       if (this._isSocketExpired(sess)) {
         this._closeSocket(ws, 4001, 'session-expired');
@@ -2477,11 +3206,14 @@ export class RealtimeObject {
       for (const sub of subs) {
         if (!changedPaths.some((p) => isAffected(sub.path, p))) continue;
         try {
-          if (sub.event === 'child_added' || sub.event === 'child_changed' || sub.event === 'child_removed') {
-            this._sendChildDiff(ws, sub, before);
-          } else {
-            ws.send(JSON.stringify({ type: 'value', id: sub.id, path: sub.path, value: getAt(this.root, sub.path), version: this.versions[sub.path] || this.versions[''] || 0 }));
+          const childEvent = sub.event === 'child_added' || sub.event === 'child_changed' || sub.event === 'child_removed';
+          const cacheKey = (childEvent ? 'child' : 'value') + '|' + String(sub.id || '') + '|' + String(sub.path || '') + '|' + String(sub.event || '');
+          let payloads = payloadCache.get(cacheKey);
+          if (payloads === undefined) {
+            payloads = childEvent ? this._childDiffPayloads(sub, before) : this._valueUpdatePayloads(sub, before);
+            payloadCache.set(cacheKey, payloads);
           }
+          for (const payload of payloads) ws.send(payload);
         } catch (err) {
           console.error(JSON.stringify({ level: 'warn', area: 'websocket', event: 'broadcast-send-failed', uid: String(sess && sess.uid || ''), gameId: String(sess && sess.gameId || ''), message: String(err && err.message || err) }));
           this._closeSocket(ws, 1011, 'send-failed');
@@ -2493,38 +3225,87 @@ export class RealtimeObject {
     for (const [ws] of revokeAfter) this._closeSocket(ws, 4003, 'authorization-revoked');
   }
 
-  _sendChildDiff(ws, sub, beforeRoot) {
+  _valueUpdatePayloads(sub, beforeRoot) {
+    const previous = getAt(beforeRoot || {}, sub.path);
+    const current = getAt(this.root || {}, sub.path);
+    const version = this._versionForPath(sub.path);
+    const multiplexed = String(sub.id || '').startsWith('game-live:') ||
+      String(sub.id || '').startsWith('game-channel-chat:') ||
+      String(sub.id || '').startsWith('game-channel-rtc:');
+    if (!multiplexed || !previous || !current || typeof previous !== 'object' || typeof current !== 'object' || Array.isArray(previous) || Array.isArray(current)) {
+      return [JSON.stringify({ type: 'value', id: sub.id, path: sub.path, value: current, version })];
+    }
+    const changed = {};
+    const removed = [];
+    for (const key of Object.keys(current)) {
+      if (!Object.prototype.hasOwnProperty.call(previous, key) || !sameValue(previous[key], current[key])) changed[key] = current[key];
+    }
+    for (const key of Object.keys(previous)) {
+      if (!Object.prototype.hasOwnProperty.call(current, key)) removed.push(key);
+    }
+    if (!Object.keys(changed).length && !removed.length) return [];
+    return [JSON.stringify({ type: 'patch', id: sub.id, path: sub.path, changed, removed, version })];
+  }
+
+  _childDiffPayloads(sub, beforeRoot) {
     const prev = childMap(getAt(beforeRoot || {}, sub.path));
     const cur = childMap(getAt(this.root || {}, sub.path));
     const prevKeys = Object.keys(prev);
     const curKeys = Object.keys(cur);
+    const payloads = [];
     if (sub.event === 'child_added') {
       for (const key of curKeys) {
         if (!Object.prototype.hasOwnProperty.call(prev, key)) {
-          ws.send(JSON.stringify({ type: 'child', event: 'child_added', id: sub.id, path: childPath(sub.path, key), key, value: cur[key], version: this.versions[childPath(sub.path, key)] || this.versions[sub.path] || this.versions[''] || 0 }));
+          payloads.push(JSON.stringify({ type: 'child', event: 'child_added', id: sub.id, path: childPath(sub.path, key), key, value: cur[key], version: this._versionForPath(childPath(sub.path, key)) }));
         }
       }
     } else if (sub.event === 'child_changed') {
       for (const key of curKeys) {
         if (Object.prototype.hasOwnProperty.call(prev, key) && !sameValue(prev[key], cur[key])) {
-          ws.send(JSON.stringify({ type: 'child', event: 'child_changed', id: sub.id, path: childPath(sub.path, key), key, value: cur[key], version: this.versions[childPath(sub.path, key)] || this.versions[sub.path] || this.versions[''] || 0 }));
+          payloads.push(JSON.stringify({ type: 'child', event: 'child_changed', id: sub.id, path: childPath(sub.path, key), key, value: cur[key], version: this._versionForPath(childPath(sub.path, key)) }));
         }
       }
     } else if (sub.event === 'child_removed') {
       for (const key of prevKeys) {
         if (!Object.prototype.hasOwnProperty.call(cur, key)) {
-          ws.send(JSON.stringify({ type: 'child', event: 'child_removed', id: sub.id, path: childPath(sub.path, key), key, value: prev[key], version: this.versions[sub.path] || this.versions[''] || 0 }));
+          payloads.push(JSON.stringify({ type: 'child', event: 'child_removed', id: sub.id, path: childPath(sub.path, key), key, value: prev[key], version: this._versionForPath(sub.path) }));
         }
       }
     }
+    return payloads;
+  }
+
+  _sendValueUpdate(ws, sub, beforeRoot) {
+    for (const payload of this._valueUpdatePayloads(sub, beforeRoot)) ws.send(payload);
+  }
+
+  _sendChildDiff(ws, sub, beforeRoot) {
+    for (const payload of this._childDiffPayloads(sub, beforeRoot)) ws.send(payload);
   }
 
   async _handleSocketGone(ws) {
     const sess = this.sessions.get(ws) || null;
     this.sessions.delete(ws);
-    if (!sess || String(sess.official || '') !== 'game-live' || !cleanPath(sess.gameId || '')) return;
+    if (!sess) return;
     await this._load();
-    await this._scheduleMaintenance(this._nextMaintenanceDelay());
+    if (String(sess.official || '') === 'app-live') {
+      if (!this._appSocketCount(sess.uid)) {
+        await this._markAppPresenceDisconnected(sess.uid, ws).catch(() => null);
+        await this._scheduleMaintenance(APP_DISCONNECT_GRACE_MS);
+      }
+      return;
+    }
+    if (String(sess.official || '') === 'game-live' && cleanPath(sess.gameId || '')) {
+      if (String(sess.role || '') === 'spectator') {
+        await this._updateSpectatorSocketPresence(sess.gameId, sess.uid, false, ws).catch(() => false);
+      } else {
+        await this._updateGameSocketPresence(sess.gameId, sess.uid, false, ws).catch(() => false);
+        const remaining = this._officialGamePlayerSocketCount(sess.gameId);
+        const hidden = await this._publishRoomLiveState(sess.gameId, remaining > 0, remaining > 0 ? 'player-disconnected' : 'last-player-disconnected').catch(() => null);
+        if (!hidden || hidden.ok === false) await this._replaceMaintenanceSchedule(ROOM_LIVE_RETRY_MS);
+      }
+      await this._scheduleMaintenance(ROOM_LEASE_RENEW_MS);
+    }
   }
 
   async webSocketClose(ws) { await this._handleSocketGone(ws); }

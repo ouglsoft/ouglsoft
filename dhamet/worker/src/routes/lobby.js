@@ -4,24 +4,6 @@ import '../../shared/dhamet-state.js';
 import '../../shared/dhamet-presence.js';
 import '../../shared/dhamet-lobby.js';
 
-function selectDueCleanupTask(metaValue, startedAtValue, intervalsValue) {
-  const meta = metaValue && typeof metaValue === 'object' ? metaValue : {};
-  const startedAt = Number(startedAtValue || 0) || Date.now();
-  const intervals = intervalsValue && typeof intervalsValue === 'object' ? intervalsValue : {};
-  const tasks = [
-    { name: 'presence', key: 'lastPresenceCleanupAt', every: Number(intervals.presence || 0) || 40 * 1000 },
-    { name: 'invites', key: 'lastInviteCleanupAt', every: Number(intervals.invites || 0) || 40 * 1000 },
-    { name: 'rooms', key: 'lastRoomCleanupAt', every: Number(intervals.rooms || 0) || 60 * 1000 },
-  ];
-  const lastTask = String(meta.lastTask || '').trim();
-  const lastIndex = tasks.findIndex((task) => task.name === lastTask);
-  const ordered = tasks.slice(lastIndex + 1).concat(tasks.slice(0, lastIndex + 1));
-  return ordered.find((task) => {
-    const last = Number(meta[task.key] || 0) || 0;
-    return !last || startedAt - last >= task.every;
-  }) || null;
-}
-
 /*
  * Lobby/invite API routes for Cloudflare Worker.
  *
@@ -105,7 +87,7 @@ export function createLobbyRouteHandlers(deps) {
 
   function normalizePulseScope(value, normalized) {
     const raw = cleanString(value || (normalized && (normalized.scope || normalized.pulseScope)), 40).toLowerCase().replace(/[\s_]+/g, '-');
-    if (raw === 'presence-only' || raw === 'lobby-sync' || raw === 'game-presence') return raw;
+    if (raw === 'presence-only' || raw === 'lobby-sync' || raw === 'game-presence' || raw === 'notifications-only') return raw;
     const page = cleanString(normalized && normalized.page, 60).toLowerCase();
     const status = cleanString(normalized && normalized.status, 40);
     const role = cleanString(normalized && normalized.role, 40);
@@ -132,6 +114,9 @@ export function createLobbyRouteHandlers(deps) {
       return hidden
         ? (Number(PresencePolicy.appPulseBackgroundMs || 0) || 120 * 1000)
         : (Number(PresencePolicy.lobbyPulseActiveMs || PresencePolicy.lobbyHeartbeatMs || 0) || 30 * 1000);
+    }
+    if (scope === 'notifications-only') {
+      return Number(PresencePolicy.appInviteFallbackMs || 0) || 25 * 1000;
     }
     if (scope === 'presence-only') {
       return hidden
@@ -211,7 +196,10 @@ export function createLobbyRouteHandlers(deps) {
     const roomId = cleanPath(p.roomId);
     if (!roomId) return { busy: false, presence: p, reason: 'missing-room-id' };
 
-    const room = await readRealtimeValue(env, 'global', 'roomList/' + roomId).catch(() => null);
+    const roomProvided = options && Object.prototype.hasOwnProperty.call(options, 'roomListEntry');
+    const room = roomProvided
+      ? options.roomListEntry
+      : await readRealtimeValue(env, 'global', 'roomList/' + roomId).catch(() => null);
     const roomLooksActive = activeRoomForPlayer(room, id, roomId);
     if (roomLooksActive && !(options && options.verifyGameRecord)) {
       return { busy: true, presence: p, roomId, roomListEntry: room, source: 'room-list' };
@@ -236,7 +224,9 @@ export function createLobbyRouteHandlers(deps) {
   }
 
   function playerFresh(player) {
-    const ts = Number(player && player.updatedAt) || 0;
+    if (!player || typeof player !== 'object' || player.online === false) return false;
+    if (player.live === true) return true;
+    const ts = Number(player.updatedAt || player.connectedAt || player.joinedAt) || 0;
     return !!(ts && now() - ts <= PRESENCE_LIST_TTL_MS);
   }
 
@@ -304,14 +294,20 @@ export function createLobbyRouteHandlers(deps) {
     const visibility = normalizeVisibility(body && body.visibility);
     const nick = identity.nickname;
 
-    const [selfPresence, opponentPresence] = await Promise.all([
-      readRealtimeValue(env, 'global', 'players/' + uid),
-      readRealtimeValue(env, 'global', 'players/' + opponentUid),
-    ]);
+    const contextResult = await internalJson(env, 'global', '/api/lobby/invite-context', { uids: [uid, opponentUid] });
+    if (!contextResult.res.ok || !contextResult.data || contextResult.data.ok !== true) throw realtimeUnavailable('invite-context', contextResult.res, contextResult.data);
+    const contextPlayers = contextResult.data.players || {};
+    const contextRooms = contextResult.data.rooms || {};
+    const selfPresence = contextPlayers[uid] || null;
+    const opponentPresence = contextPlayers[opponentUid] || null;
+    const roomForPresence = (presence) => {
+      const roomId = cleanPath(presence && (presence.roomId || presence.gameId) || '');
+      return roomId && Object.prototype.hasOwnProperty.call(contextRooms, roomId) ? contextRooms[roomId] : null;
+    };
 
     const [selfBusy, opponentBusy] = await Promise.all([
-      resolvePlayerBusy(env, uid, selfPresence, { verifyGameRecord: true }),
-      resolvePlayerBusy(env, opponentUid, opponentPresence, { verifyGameRecord: true }),
+      resolvePlayerBusy(env, uid, selfPresence, { verifyGameRecord: true, roomListEntry: roomForPresence(selfPresence) }),
+      resolvePlayerBusy(env, opponentUid, opponentPresence, { verifyGameRecord: true, roomListEntry: roomForPresence(opponentPresence) }),
     ]);
     if (selfBusy.busy) return bad('player-already-in-match', 409, 'invite/sender-busy');
     if (!opponentPresence || !playerFresh(opponentPresence)) return bad('opponent-not-available', 409, 'invite/opponent-offline');
@@ -352,10 +348,23 @@ export function createLobbyRouteHandlers(deps) {
     };
     const inviteKey = cleanString(invite.inviteKey || inviteKeyFor(uid, gameId), 240);
 
+    const inviteResult = {
+      gameId,
+      inviteKey,
+      toUid: opponentUid,
+      status: 'pending',
+      createdAt,
+      updatedAt: createdAt,
+      expiresAt: Number(invite.expiresAt || createdAt + INVITE_TTL_MS),
+      purgeAt: Number(invite.expiresAt || createdAt + INVITE_TTL_MS) + 10 * 60 * 1000,
+    };
     const inviteWrite = await writeRealtime(env, 'global', {
-      op: 'set',
-      path: 'invites/' + opponentUid + '/' + inviteKey,
-      value: { ...invite, inviteKey },
+      op: 'update',
+      path: '',
+      updates: {
+        ['invites/' + opponentUid + '/' + inviteKey]: { ...invite, inviteKey },
+        ['inviteResults/' + uid + '/' + gameId]: inviteResult,
+      },
     });
     if (!inviteWrite.res.ok || !inviteWrite.data || inviteWrite.data.ok === false) {
       await internalJson(env, gameScope, '/api/lobby/reject-game', { gameId, uid, reason: 'invite-write-failed', nick });
@@ -374,7 +383,13 @@ export function createLobbyRouteHandlers(deps) {
     if (!uid || !gameId || !inviteKey) return bad('missing-invite-context', 400, 'invite/missing-context');
 
     const invitePath = 'invites/' + uid + '/' + inviteKey;
-    const invite = await readRealtimeValue(env, 'global', invitePath);
+    const contextResult = await internalJson(env, 'global', '/api/lobby/invite-context', {
+      uids: [uid],
+      inviteOwnerUid: uid,
+      inviteKey,
+    });
+    if (!contextResult.res.ok || !contextResult.data || contextResult.data.ok !== true) throw realtimeUnavailable('invite-context', contextResult.res, contextResult.data);
+    const invite = contextResult.data.invite || null;
     if (!invite || cleanString(invite.gameId, 160) !== gameId || cleanString(invite.toUid, 160) !== uid) {
       return bad('invite-not-found', 404, 'invite/not-found');
     }
@@ -386,14 +401,25 @@ export function createLobbyRouteHandlers(deps) {
     }
 
     const senderUidForPresence = cleanString(invite.fromUid || fromUid, 160);
-    const [selfPresence, senderPresence] = await Promise.all([
-      readRealtimeValue(env, 'global', 'players/' + uid),
-      senderUidForPresence ? readRealtimeValue(env, 'global', 'players/' + senderUidForPresence) : Promise.resolve(null),
-    ]);
-    const selfBusy = await resolvePlayerBusy(env, uid, selfPresence, { verifyGameRecord: true });
+    const contextPlayers = contextResult.data.players || {};
+    const contextRooms = contextResult.data.rooms || {};
+    const selfPresence = contextPlayers[uid] || null;
+    const senderPresence = senderUidForPresence ? (contextPlayers[senderUidForPresence] || null) : null;
+    const selfRoomId = cleanPath(selfPresence && (selfPresence.roomId || selfPresence.gameId) || '');
+    const selfBusy = await resolvePlayerBusy(env, uid, selfPresence, {
+      verifyGameRecord: true,
+      roomListEntry: selfRoomId && Object.prototype.hasOwnProperty.call(contextRooms, selfRoomId) ? contextRooms[selfRoomId] : null,
+    });
     if (selfBusy.busy && cleanString(selfPresence && selfPresence.roomId, 160) !== gameId) return bad('player-already-in-match', 409, 'invite/recipient-busy');
     const selfRegistered = inferRegisteredFromPresence(uid, selfPresence, !!(session && session.user && session.user.kind === 'registered'));
     const senderRegistered = inferRegisteredFromPresence(senderUidForPresence, senderPresence, undefined);
+
+    const participantUids = Array.from(new Set([uid, senderUidForPresence].filter(Boolean)));
+    if (participantUids.length !== 2) return bad('missing-invite-participants', 409, 'invite/missing-participants');
+    const claim = await internalJson(env, 'global', '/api/lobby/claim-match', { gameId, uids: participantUids });
+    if (!claim.res.ok || !claim.data || claim.data.ok === false) {
+      return json(claim.data || { ok: false, error: 'invite/claim-failed' }, claim.res.status || 409);
+    }
 
     const gameScope = 'game:' + gameId;
     const accepted = await internalJson(env, gameScope, '/api/lobby/accept-game', {
@@ -403,14 +429,32 @@ export function createLobbyRouteHandlers(deps) {
       inviteKey,
     });
     if (!accepted.res.ok || !accepted.data || accepted.data.ok === false) {
+      await internalJson(env, 'global', '/api/lobby/release-match-claim', { gameId, uids: participantUids }).catch(() => null);
       return json(accepted.data || { ok: false, error: 'invite/accept-failed' }, accepted.res.status || 500);
     }
 
+    const at = now();
     const updates = { [invitePath]: null };
-    if (accepted.data.roomListEntry) updates['roomList/' + gameId] = accepted.data.roomListEntry;
+    for (const participantUid of participantUids) updates['matchClaims/' + participantUid] = null;
+    if (accepted.data.roomListEntry) updates['roomList/' + gameId] = Object.assign({}, accepted.data.roomListEntry, {
+      listed: true,
+      livePlayerCount: 0,
+      awaitingPlayersUntil: at + (Number(PresencePolicy.roomAwaitingPlayersMs || 0) || 90 * 1000),
+      leaseRenewedAt: at,
+      leaseUntil: at + 12 * 60 * 1000,
+      cleanupAt: at + 12 * 60 * 1000,
+    });
+    if (senderUidForPresence) updates['inviteResults/' + senderUidForPresence + '/' + gameId] = {
+      gameId,
+      inviteKey,
+      toUid: uid,
+      status: 'active',
+      acceptedAt: at,
+      updatedAt: at,
+      purgeAt: at + 10 * 60 * 1000,
+    };
     const acceptedGame = accepted.data.game || null;
     const players = acceptedGame && acceptedGame.players && typeof acceptedGame.players === 'object' ? acceptedGame.players : {};
-    const at = now();
     const addAcceptedPresence = (sideName, sideValue, fallbackUid, fallbackNick, registered, previousPresence) => {
       const player = players && players[sideName] && typeof players[sideName] === 'object' ? players[sideName] : {};
       const id = cleanString(player.uid || fallbackUid || '', 160);
@@ -434,7 +478,27 @@ export function createLobbyRouteHandlers(deps) {
     };
     addAcceptedPresence('white', -1, senderUidForPresence, cleanDisplay(invite.fromNick || invite.fromNickname || '', 80), senderRegistered, senderPresence);
     addAcceptedPresence('black', 1, uid, identity.nickname, selfRegistered, selfPresence);
-    await writeRealtime(env, 'global', { op: 'update', path: '', updates, value: updates });
+    let globalCommit = null;
+    let globalCommitError = null;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        globalCommit = await writeRealtime(env, 'global', { op: 'update', path: '', updates, value: updates });
+        globalCommitError = null;
+        break;
+      } catch (error) {
+        globalCommitError = error;
+      }
+    }
+    if (!globalCommit) {
+      return json({
+        ok: false,
+        error: 'invite/global-commit-failed',
+        upstreamError: cleanString(globalCommitError && globalCommitError.message || '', 200),
+        gameId,
+        gameAccepted: true,
+        retryable: true,
+      }, 503);
+    }
 
     return json({ ok: true, committed: true, gameId, game: acceptedGame, roomListEntry: accepted.data.roomListEntry || null });
   }
@@ -448,7 +512,13 @@ export function createLobbyRouteHandlers(deps) {
     if (!uid || !gameId || !inviteKey) return bad('missing-invite-context', 400, 'invite/missing-context');
 
     const invitePath = 'invites/' + uid + '/' + inviteKey;
-    const invite = await readRealtimeValue(env, 'global', invitePath);
+    const contextResult = await internalJson(env, 'global', '/api/lobby/invite-context', {
+      uids: [uid],
+      inviteOwnerUid: uid,
+      inviteKey,
+    });
+    if (!contextResult.res.ok || !contextResult.data || contextResult.data.ok !== true) throw realtimeUnavailable('invite-context', contextResult.res, contextResult.data);
+    const invite = contextResult.data.invite || null;
     const gameScope = 'game:' + gameId;
     if (invite && cleanString(invite.toUid, 160) === uid) {
       await internalJson(env, gameScope, '/api/lobby/reject-game', {
@@ -458,7 +528,19 @@ export function createLobbyRouteHandlers(deps) {
         reason: cleanString((body && body.reason) || 'rejected', 80),
       });
     }
-    await writeRealtime(env, 'global', { op: 'remove', path: invitePath });
+    const senderUid = cleanString((invite && invite.fromUid) || fromUid, 160);
+    const at = now();
+    const updates = { [invitePath]: null };
+    if (senderUid) updates['inviteResults/' + senderUid + '/' + gameId] = {
+      gameId,
+      inviteKey,
+      toUid: uid,
+      status: 'rejected',
+      rejectedAt: at,
+      updatedAt: at,
+      purgeAt: at + 10 * 60 * 1000,
+    };
+    await writeRealtime(env, 'global', { op: 'update', path: '', updates });
     return json({ ok: true, committed: true, gameId, inviteKey });
   }
 
@@ -534,238 +616,12 @@ export function createLobbyRouteHandlers(deps) {
   }
 
 
-  async function maybeTouchRoomList(env, gameId, gamePulseData) {
-    const gid = cleanPath(gameId);
-    if (!gid) return false;
-    try {
-      const room = await readRealtimeValue(env, 'global', 'roomList/' + gid);
-      if (!room || typeof room !== 'object') return false;
-      const due = !PresenceCore || typeof PresenceCore.shouldTouchRoomActivity !== 'function'
-        ? true
-        : PresenceCore.shouldTouchRoomActivity(room, now());
-      if (!due) return false;
-      const patch = PresenceCore && typeof PresenceCore.roomActivityPatch === 'function'
-        ? PresenceCore.roomActivityPatch(now())
-        : { updatedAt: now(), cleanupAt: now() + 8 * 60 * 1000 };
-      if (gamePulseData && gamePulseData.spectatorCount != null) {
-        patch.spectatorCount = Number(gamePulseData.spectatorCount || 0) || 0;
-        patch.spectatorCountUpdatedAt = now();
-      }
-      await writeRealtime(env, 'global', { op: 'update', path: 'roomList/' + gid, value: patch });
-      return true;
-    } catch (_) {
-      return false;
-    }
-  }
-
-  function flattenInviteEntries(invites) {
-    const out = [];
-    const root = invites && typeof invites === 'object' ? invites : {};
-    for (const toUid of Object.keys(root).sort()) {
-      const bucket = root[toUid] && typeof root[toUid] === 'object' ? root[toUid] : {};
-      for (const inviteKey of Object.keys(bucket).sort()) {
-        const key = cleanString(toUid, 160) + '/' + cleanString(inviteKey, 240);
-        if (!key || key === '/') continue;
-        out.push({ key, toUid, inviteKey, invite: bucket[inviteKey] });
-      }
-    }
-    return out;
-  }
-
-  function selectCleanupKeys(keys, cursor, limit) {
-    if (PresenceCore && typeof PresenceCore.selectCleanupBatch === 'function') {
-      return PresenceCore.selectCleanupBatch(keys, cursor, limit);
-    }
-    const all = Array.from(new Set((Array.isArray(keys) ? keys : []).filter(Boolean))).sort();
-    const max = Math.max(0, Number(limit || 0) || 20);
-    return { keys: all.slice(0, max), nextCursor: all[Math.min(max, all.length) - 1] || '', total: all.length, wrapped: false };
-  }
-
-  async function cleanupExpiredInvite(env, item) {
-    const toUid = cleanString(item && item.toUid, 160);
-    const inviteKey = cleanString(item && item.inviteKey, 240);
-    const invite = item && item.invite && typeof item.invite === 'object' ? item.invite : {};
-    if (!toUid || !inviteKey) return false;
-    const gameId = cleanPath(invite.gameId);
-    try {
-      if (gameId) {
-        await internalJson(env, 'game:' + gameId, '/api/lobby/reject-game', {
-          gameId,
-          uid: cleanString(invite.toUid || toUid, 160),
-          reason: 'invite-expired',
-        });
-      }
-    } catch (_) {}
-    await writeRealtime(env, 'global', { op: 'remove', path: 'invites/' + toUid + '/' + inviteKey });
-    return true;
-  }
-
-  async function cleanupRoomListEntry(env, gameId, room) {
-    const gid = cleanPath(gameId);
-    if (!gid) return { removed: false, reason: 'missing-game-id' };
-    const cls = PresenceCore && typeof PresenceCore.classifyRoomListEntry === 'function'
-      ? PresenceCore.classifyRoomListEntry(room, now())
-      : { action: 'keep', reason: 'no-classifier' };
-    if (cls.action === 'keep') return { removed: false, reason: cls.reason };
-    if (cls.action === 'mark-stale') {
-      try {
-        await writeRealtime(env, 'global', { op: 'update', path: 'roomList/' + gid, value: { stale: true, staleAt: now(), staleReason: cls.reason } });
-        return { removed: false, marked: true, reason: cls.reason };
-      } catch (_) { return { removed: false, reason: 'mark-failed' }; }
-    }
-    if (cls.action === 'inspect-active-room') {
-      try {
-        const g = await readRealtimeValue(env, 'game:' + gid, 'games/' + gid);
-        if (g && g.status === 'active') {
-          const presence = g.presence && typeof g.presence === 'object' ? g.presence : {};
-          const players = g.players || {};
-          const w = players.white && players.white.uid ? String(players.white.uid) : '';
-          const b = players.black && players.black.uid ? String(players.black.uid) : '';
-          const ttl = Number(PresencePolicy.roomListActiveHideMs || 0) || 8 * 60 * 1000;
-          const freshW = w && presence[w] && gamePresenceFresh(presence[w]);
-          const freshB = b && presence[b] && gamePresenceFresh(presence[b]);
-          if (freshW || freshB) {
-            await writeRealtime(env, 'global', { op: 'update', path: 'roomList/' + gid, value: { updatedAt: now(), cleanupAt: now() + ttl, stale: false } });
-            return { removed: false, refreshed: true, reason: 'active-player-present' };
-          }
-        }
-      } catch (_) {}
-      // Do not delete or end the official GameRecord here; only hide the stale
-      // operational lobby entry. Official absence ending remains /api/game/end.
-      await writeRealtime(env, 'global', { op: 'remove', path: 'roomList/' + gid });
-      return { removed: true, reason: cls.reason };
-    }
-    if (cls.action === 'remove-room-list') {
-      await writeRealtime(env, 'global', { op: 'remove', path: 'roomList/' + gid });
-      return { removed: true, reason: cls.reason };
-    }
-    return { removed: false, reason: cls.reason || 'unknown-action' };
-  }
-
-  async function cleanupPresenceBatch(env, meta, startedAt) {
-    const players = await readRealtimeValue(env, 'global', 'players') || {};
-    const hardTtl = Number(PresencePolicy.appPresenceHardDeleteMs || 0) || 3 * 60 * 1000;
-    const batchSize = Number(PresencePolicy.presenceCleanupBatchSize || PresencePolicy.cleanupBatchSize || 0) || 20;
-    let presenceCleanupCursor = cleanString(meta && meta.presenceCleanupCursor, 260);
-    const ids = Object.keys(players || {}).sort();
-    const selected = selectCleanupKeys(ids, presenceCleanupCursor, batchSize);
-    presenceCleanupCursor = selected.nextCursor || presenceCleanupCursor || '';
-    let inspectedPresence = 0;
-    let removedPresence = 0;
-    for (const uid of selected.keys || []) {
-      inspectedPresence++;
-      try {
-        const p = players && players[uid];
-        const ts = Number(p && (p.updatedAt || p.joinedAt || 0)) || 0;
-        if (!ts || startedAt - ts >= hardTtl) {
-          await writeRealtime(env, 'global', { op: 'remove', path: 'players/' + cleanPath(uid) });
-          removedPresence++;
-        } else if (playerBusy(p)) {
-          await resolvePlayerBusy(env, uid, p, { clean: true });
-        }
-      } catch (_) {}
-    }
-    return { task: 'presence', inspectedPresence, removedPresence, presenceCleanupCursor };
-  }
-
-  async function cleanupInviteBatch(env, meta, startedAt) {
-    const batchSize = Number(PresencePolicy.inviteCleanupBatchSize || 0) || Math.max(1, Math.floor((Number(PresencePolicy.cleanupBatchSize || 0) || 20) / 2));
-    let cleanedInvites = 0;
-    let inspectedInvites = 0;
-    let inviteCleanupCursor = cleanString(meta && meta.inviteCleanupCursor, 260);
-    const invites = await readRealtimeValue(env, 'global', 'invites') || {};
-    const entries = flattenInviteEntries(invites);
-    const byKey = Object.create(null);
-    for (const entry of entries) byKey[entry.key] = entry;
-    const selected = selectCleanupKeys(entries.map((x) => x.key), inviteCleanupCursor, batchSize);
-    inviteCleanupCursor = selected.nextCursor || inviteCleanupCursor || '';
-    for (const key of selected.keys || []) {
-      const item = byKey[key];
-      if (!item) continue;
-      inspectedInvites++;
-      try {
-        const cls = PresenceCore && typeof PresenceCore.classifyInvite === 'function'
-          ? PresenceCore.classifyInvite(item.invite, startedAt)
-          : { action: 'keep' };
-        if ((cls.action === 'expire' || cls.action === 'remove') && await cleanupExpiredInvite(env, item)) cleanedInvites++;
-      } catch (_) {}
-    }
-    return { task: 'invites', inspectedInvites, cleanedInvites, inviteCleanupCursor };
-  }
-
-  async function cleanupRoomBatch(env, meta) {
-    const batchSize = Number(PresencePolicy.roomCleanupBatchSize || PresencePolicy.cleanupBatchSize || 0) || 10;
-    let cleanedRooms = 0;
-    let inspectedRooms = 0;
-    let roomCleanupCursor = cleanString(meta && meta.roomCleanupCursor, 260);
-    const roomList = await readRealtimeValue(env, 'global', 'roomList') || {};
-    const ids = Object.keys(roomList).sort();
-    const selected = selectCleanupKeys(ids, roomCleanupCursor, batchSize);
-    roomCleanupCursor = selected.nextCursor || roomCleanupCursor || '';
-    for (const gid of selected.keys || []) {
-      inspectedRooms++;
-      try {
-        const r = await cleanupRoomListEntry(env, gid, roomList[gid]);
-        if (r && r.removed) cleanedRooms++;
-      } catch (_) {}
-    }
-    return { task: 'rooms', inspectedRooms, cleanedRooms, roomCleanupCursor };
-  }
-
-  async function runOpportunisticCleanup(env) {
-    const metaPath = 'ops/cleanup/unifiedPulse';
-    const meta = await readRealtimeValue(env, 'global', metaPath) || {};
-    const startedAt = now();
-    const presenceEvery = Number(PresencePolicy.presenceCleanupIntervalMs || 0) || 40 * 1000;
-    const inviteEvery = Number(PresencePolicy.inviteCleanupIntervalMs || PresencePolicy.cleanupMinIntervalMs || 0) || 40 * 1000;
-    const roomEvery = Number(PresencePolicy.roomCleanupIntervalMs || 0) || 60 * 1000;
-    const selectedTask = selectDueCleanupTask(meta, startedAt, {
-      presence: presenceEvery,
-      invites: inviteEvery,
-      rooms: roomEvery,
-    });
-
-    let taskResult = null;
-    let taskKey = '';
-    try {
-      if (selectedTask) {
-        if (selectedTask.name === 'presence') taskResult = await cleanupPresenceBatch(env, meta, startedAt);
-        else if (selectedTask.name === 'invites') taskResult = await cleanupInviteBatch(env, meta, startedAt);
-        else if (selectedTask.name === 'rooms') taskResult = await cleanupRoomBatch(env, meta);
-        taskKey = selectedTask.key;
-      }
-    } catch (_) {
-      return { ran: false, reason: 'failed' };
-    }
-
-    if (!taskResult) return { ran: false, reason: 'not-due' };
-
-    const nextMeta = Object.assign({}, meta, {
-      lastCleanupAt: now(),
-      lastTask: taskResult.task,
-    });
-    nextMeta[taskKey] = now();
-    if (taskResult.presenceCleanupCursor != null) nextMeta.presenceCleanupCursor = taskResult.presenceCleanupCursor;
-    if (taskResult.inviteCleanupCursor != null) nextMeta.inviteCleanupCursor = taskResult.inviteCleanupCursor;
-    if (taskResult.roomCleanupCursor != null) nextMeta.roomCleanupCursor = taskResult.roomCleanupCursor;
-    if (taskResult.inspectedPresence != null) nextMeta.inspectedPresence = taskResult.inspectedPresence;
-    if (taskResult.removedPresence != null) nextMeta.removedPresence = taskResult.removedPresence;
-    if (taskResult.inspectedInvites != null) nextMeta.inspectedInvites = taskResult.inspectedInvites;
-    if (taskResult.cleanedInvites != null) nextMeta.cleanedInvites = taskResult.cleanedInvites;
-    if (taskResult.inspectedRooms != null) nextMeta.inspectedRooms = taskResult.inspectedRooms;
-    if (taskResult.cleanedRooms != null) nextMeta.cleanedRooms = taskResult.cleanedRooms;
-
-    await writeRealtime(env, 'global', { op: 'set', path: metaPath, value: nextMeta });
-    return Object.assign({ ran: true }, taskResult);
-  }
-
-
 
   function mapActivePlayerRooms(roomList) {
     const out = Object.create(null);
     const all = roomList && typeof roomList === 'object' ? roomList : {};
     for (const [gid, room] of Object.entries(all)) {
-      if (!room || typeof room !== 'object' || cleanString(room.status, 40) !== 'active') continue;
+      if (!room || typeof room !== 'object' || cleanString(room.status, 40) !== 'active' || room.listed === false) continue;
       const p = gamePlayerUids(room);
       if (p.white) out[p.white] = cleanPath(gid);
       if (p.black) out[p.black] = cleanPath(gid);
@@ -779,7 +635,7 @@ export function createLobbyRouteHandlers(deps) {
     const activeMap = activePlayerRooms && typeof activePlayerRooms === 'object' ? activePlayerRooms : {};
     const at = now();
     for (const [uid, p] of Object.entries(all)) {
-      if (!p || typeof p !== 'object') continue;
+      if (!p || typeof p !== 'object' || p.online === false) continue;
       const ts = Number(p.updatedAt || p.joinedAt || 0) || 0;
       if (!ts || at - ts > PRESENCE_LIST_TTL_MS) continue;
       let next = p;
@@ -806,7 +662,11 @@ export function createLobbyRouteHandlers(deps) {
     const all = roomList && typeof roomList === 'object' ? roomList : {};
     const max = Math.max(1, Math.min(100, Number(limit || 50) || 50));
     const entries = Object.entries(all)
-      .filter(([, room]) => room && typeof room === 'object' && String(room.status || '') === 'active')
+      .filter(([, room]) => room && typeof room === 'object' && String(room.status || '') === 'active' && room.listed !== false)
+      .filter(([, room]) => {
+        const awaitingUntil = Number(room.awaitingPlayersUntil || 0) || 0;
+        return !(Number(room.livePlayerCount || 0) <= 0 && awaitingUntil && awaitingUntil <= now());
+      })
       .filter(([, room]) => !(PresenceCore && typeof PresenceCore.classifyRoomListEntry === 'function' && PresenceCore.classifyRoomListEntry(room, now()).action === 'remove-room-list'))
       .sort((a, b) => (Number((b[1] && (b[1].updatedAt || b[1].acceptedAt || b[1].createdAt)) || 0) || 0) - (Number((a[1] && (a[1].updatedAt || a[1].acceptedAt || a[1].createdAt)) || 0) || 0))
       .slice(0, max);
@@ -919,6 +779,22 @@ export function createLobbyRouteHandlers(deps) {
       : Object.assign({}, body || {}, { uid });
     const at = now();
     const scope = normalizePulseScope(body && (body.scope || body.pulseScope), normalized);
+    if (scope === 'notifications-only') {
+      stage = 'notifications-only';
+      const notifications = normalized.includeNotifications === false
+        ? null
+        : await buildPulseNotifications(env, uid, { outgoingGameIds: normalized.outgoingGameIds || [] });
+      return json({
+        ok: true,
+        committed: false,
+        wrotePresence: false,
+        uid,
+        scope,
+        notifications,
+        lobbyView: null,
+        nextPulseMs: nextPulseMsForScope(scope, normalized),
+      });
+    }
     const rawGameId = cleanPath(normalized.gameId || normalized.roomId || '');
     const gameId = scope === 'presence-only' ? '' : rawGameId;
     let presenceStatus = cleanString(normalized.status || 'available', 40);
@@ -957,7 +833,6 @@ export function createLobbyRouteHandlers(deps) {
             nickname: presence.nickname,
           });
           spectatorLeave = committed.data || null;
-          if (committed.res.ok && spectatorLeave && spectatorLeave.ok !== false) await maybeTouchRoomList(env, gameId, spectatorLeave);
         } catch (_) {
           spectatorLeave = { ok: false, error: 'pulse/spectator-leave-failed' };
         }
@@ -1037,27 +912,7 @@ export function createLobbyRouteHandlers(deps) {
       wrotePresence = true;
     }
 
-    let gamePulse = null;
-    if (scope === 'game-presence' && gameId && (normalized.includeGamePulse !== false) && (presence.role === 'player' || presence.role === 'spectator' || presence.status === 'inPvP' || presence.status === 'spectating')) {
-      try {
-        const committed = await internalJson(env, 'game:' + gameId, '/api/lobby/pulse-game', Object.assign({}, normalized, { uid, gameId, nickname: presence.nickname }));
-        gamePulse = committed.data || null;
-        if (committed.res.ok && gamePulse && gamePulse.ok !== false) await maybeTouchRoomList(env, gameId, gamePulse);
-      } catch (_) {
-        gamePulse = { ok: false, error: 'pulse/game-failed' };
-      }
-    }
-
-    let cleanup = { ran: false, reason: scope === 'lobby-sync' ? 'not-due' : 'scope-skipped' };
-    if (scope === 'lobby-sync' && normalized.includeCleanup !== false) {
-      const cleanupWork = runOpportunisticCleanup(env).catch(() => ({ ran: false, reason: 'failed' }));
-      if (ctx && typeof ctx.waitUntil === 'function') {
-        ctx.waitUntil(cleanupWork);
-        cleanup = { ran: false, scheduled: true, reason: 'background' };
-      } else {
-        cleanup = await cleanupWork;
-      }
-    }
+    const cleanup = { ran: false, scheduled: true, reason: 'durable-alarm-owned' };
 
     let lobbyView = null;
     if (scope === 'lobby-sync' && normalized.includeLobbyView !== false) {
@@ -1099,16 +954,16 @@ export function createLobbyRouteHandlers(deps) {
 
     return json({
       ok: true,
-      committed: wrotePresence || !!(gamePulse && gamePulse.committed),
+      committed: wrotePresence,
       wrotePresence,
       uid,
       scope,
       presence: wrotePresence ? presence : (previous || presence),
       gameId: gameId || null,
-      game: gamePulse && gamePulse.game ? gamePulse.game : null,
-      opponent: gamePulse && gamePulse.opponent ? gamePulse.opponent : null,
+      game: null,
+      opponent: null,
       reconciliation: presenceReconcile,
-      spectatorCount: gamePulse && gamePulse.spectatorCount != null ? gamePulse.spectatorCount : null,
+      spectatorCount: null,
       cleanup,
       notifications,
       lobbyView,
@@ -1121,6 +976,19 @@ export function createLobbyRouteHandlers(deps) {
   }
 
 
+
+  async function live(request, env) {
+    const session = await requireSession(env, request);
+    if (request.headers.get('upgrade') !== 'websocket') return bad('expected-websocket', 426, 'app-live/expected-websocket');
+    const source = new URL(request.url);
+    const target = new URL('https://realtime.internal/api/lobby/live');
+    for (const [key, value] of source.searchParams.entries()) target.searchParams.set(key, value);
+    const headers = new Headers(request.headers);
+    headers.set('x-internal-secret', env.INTERNAL_API_SECRET || '');
+    headers.set('x-dhm-uid', String(session && session.user && session.user.id || ''));
+    headers.set('x-dhm-auth-expires', String(Math.max(0, Number(session && session.user && session.user.expires_at || 0) * 1000)));
+    return getRealtimeStub(env, 'global').fetch(new Request(target.toString(), { method: 'GET', headers }));
+  }
 
   async function view(request, env) {
     const session = await requireSession(env, request);
@@ -1140,5 +1008,5 @@ export function createLobbyRouteHandlers(deps) {
     return createInvite(request, env, session, body || {});
   }
 
-  return Object.freeze({ invite, spectator, pulse, view });
+  return Object.freeze({ invite, spectator, pulse, view, live });
 }

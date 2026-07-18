@@ -286,32 +286,35 @@ async function createGuestIdentity(env, request, input = {}) {
 async function removePresenceForUid(env, uid) {
   uid = cleanPath(uid || '');
   if (!uid) return { ok: true, skipped: true };
-  let previous = null;
-  let roomList = {};
   try {
-    [previous, roomList] = await Promise.all([
-      readRealtimeValue(env, 'global', 'players/' + uid).catch(() => null),
-      readRealtimeValue(env, 'global', 'roomList').catch(() => ({})),
-    ]);
-  } catch (_) {}
-  try {
-    const r = await writeRealtime(env, 'global', { op: 'remove', path: 'players/' + uid });
-    const gameIds = new Set();
-    const roomId = cleanPath(previous && (previous.roomId || previous.gameId) || '');
-    if (roomId) gameIds.add(roomId);
-    for (const [gameId, entry] of Object.entries(roomList && typeof roomList === 'object' ? roomList : {})) {
-      const players = entry && entry.players && typeof entry.players === 'object' ? entry.players : {};
-      const whiteUid = String(players.white && players.white.uid || '');
-      const blackUid = String(players.black && players.black.uid || '');
-      if (whiteUid === uid || blackUid === uid) gameIds.add(cleanPath(gameId));
+    const response = await getRealtimeStub(env, 'global').fetch('https://realtime.internal/api/lifecycle/remove-app-presence', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-internal-secret': env.INTERNAL_API_SECRET || '',
+      },
+      body: JSON.stringify({ uid }),
+    });
+    const data = await response.json().catch(() => ({ ok: false, error: 'presence-cleanup-invalid-response' }));
+    if (!response.ok || !data || data.ok === false) {
+      return { ok: false, error: String(data && data.error || 'presence-cleanup-failed') };
     }
+    const gameIds = Array.from(new Set((Array.isArray(data.roomIds) ? data.roomIds : []).map(cleanPath).filter(Boolean)));
     const socketRevocations = [];
     for (const gameId of gameIds) socketRevocations.push({ gameId, ...(await revokeGameSockets(env, uid, gameId)) });
-    return { ok: !!(r && r.res && r.res.ok), data: r && r.data ? r.data : null, previous, roomIds: Array.from(gameIds), socketRevocations };
+    return {
+      ok: true,
+      removed: !!data.removed,
+      previous: data.previous || null,
+      roomIds: gameIds,
+      appSocketsClosed: Number(data.closedSockets || 0) || 0,
+      socketRevocations,
+    };
   } catch (e) {
-    return { ok: false, error: e && e.message ? String(e.message) : 'presence-cleanup-failed', previous };
+    return { ok: false, error: e && e.message ? String(e.message) : 'presence-cleanup-failed' };
   }
 }
+
 
 
 async function cleanupGuestSessionBeforeAuthChange(env, request) {
@@ -319,10 +322,10 @@ async function cleanupGuestSessionBeforeAuthChange(env, request) {
   const user = s && s.user ? s.user : null;
   if (!user || user.kind !== 'guest' || !user.id) return { ok: true, skipped: true };
   const uid = String(user.id);
-  const presence = await removePresenceForUid(env, uid);
   try {
     await requireDb(env).prepare('DELETE FROM sessions WHERE user_id = ?1').bind(uid).run();
   } catch (_) {}
+  const presence = await removePresenceForUid(env, uid);
   return { ok: presence.ok !== false, uid, presence };
 }
 
@@ -385,13 +388,13 @@ async function authLogout(request, env) {
   const body = await requestBody(request);
   const s = await currentSession(env, request).catch(() => null);
   const uid = cleanPath(s && s.user && s.user.id);
-  let presenceCleanup = { ok: true, skipped: true };
-  if (uid) presenceCleanup = await removePresenceForUid(env, uid);
   const token = parseCookies(request)[SESSION_COOKIE];
   if (token) {
     const tokenHash = await sha256Hex(token);
     await requireDb(env).prepare('DELETE FROM sessions WHERE token_hash = ?1').bind(tokenHash).run().catch(() => null);
   }
+  let presenceCleanup = { ok: true, skipped: true };
+  if (uid) presenceCleanup = await removePresenceForUid(env, uid);
   const guest = await createGuestIdentity(env, request, body && body.guest ? body.guest : {});
   return json({
     ok: true,
@@ -791,7 +794,7 @@ async function cleanupDeletedUserRealtime(env, uid, deletedAt) {
   return { ok: failed.length === 0, uid, removed, gameCleanups, failed };
 }
 
-const gameRoutes = createGameRouteHandlers({ requireSession, requestBody, cleanPath, getRealtimeStub, json, bad, writeRealtime, readRealtimeValue });
+const gameRoutes = createGameRouteHandlers({ requireSession, requestBody, cleanPath, getRealtimeStub, json, bad });
 const lobbyRoutes = createLobbyRouteHandlers({ requireSession, requestBody, cleanPath, getRealtimeStub, json, bad, randomToken, now });
 
 async function gameMoveEndpoint(request, env, ctx) {
@@ -827,16 +830,13 @@ async function gameLiveEndpoint(request, env) {
   return gameRoutes.live(request, env);
 }
 
-async function gameChatLiveEndpoint(request, env) {
-  return gameRoutes.chatLive(request, env);
-}
-
-async function gameRtcLiveEndpoint(request, env) {
-  return gameRoutes.rtcLive(request, env);
-}
 
 async function lobbyInviteEndpoint(request, env) {
   return lobbyRoutes.invite(request, env);
+}
+
+async function lobbyLiveEndpoint(request, env) {
+  return lobbyRoutes.live(request, env);
 }
 
 async function lobbySpectatorEndpoint(request, env) {
@@ -1168,8 +1168,7 @@ export default {
       if (url.pathname === '/api/game/chat' && request.method === 'POST') return gameChatEndpoint(request, env);
       if (url.pathname === '/api/game/rtc' && request.method === 'POST') return gameRtcEndpoint(request, env);
       if (url.pathname === '/api/game/live') return gameLiveEndpoint(request, env);
-      if (url.pathname === '/api/game/chat-live') return gameChatLiveEndpoint(request, env);
-      if (url.pathname === '/api/game/rtc-live') return gameRtcLiveEndpoint(request, env);
+      if (url.pathname === '/api/lobby/live') return lobbyLiveEndpoint(request, env);
       if (url.pathname === '/api/lobby/invite' && request.method === 'POST') return lobbyInviteEndpoint(request, env);
       if (url.pathname === '/api/lobby/spectator' && request.method === 'POST') return lobbySpectatorEndpoint(request, env);
       if (url.pathname === '/api/lobby/pulse' && request.method === 'POST') return lobbyPulseEndpoint(request, env, ctx);

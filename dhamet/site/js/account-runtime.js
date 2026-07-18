@@ -38,6 +38,8 @@
   }
   var PVC_PENDING_PREFIX = 'zamat.pvc.pendingResults.';
   var pvcFlushRunning = false;
+  var pvcRetryTimer = 0;
+  var pvcRetryAttempt = 0;
 
   function currentUid() {
     try {
@@ -86,6 +88,22 @@
     var status = Number(error && error.status || 0) || 0;
     return !status || status === 429 || status >= 500;
   }
+  function pvcRetryDelay(error) {
+    var serverDelay = Number(error && error.data && error.data.retryAfterMs || 0) || 0;
+    if (serverDelay > 0) return Math.max(1000, Math.min(30 * 60 * 1000, serverDelay));
+    var step = Math.min(5, Math.max(0, pvcRetryAttempt));
+    return Math.min(5 * 60 * 1000, 15000 * Math.pow(2, step));
+  }
+  function schedulePendingPvcFlush(delayMs) {
+    var ownerUid = currentUid();
+    if (!ownerUid || !readPendingPvcResults(ownerUid).length) return false;
+    if (pvcRetryTimer) clearTimeout(pvcRetryTimer);
+    pvcRetryTimer = setTimeout(function () {
+      pvcRetryTimer = 0;
+      flushPendingPvcResults();
+    }, Math.max(500, Number(delayMs || 0) || 0));
+    return true;
+  }
   function sendPvcResult(input) {
     var ownerUid = currentUid();
     var payload = Object.assign({}, input && typeof input === 'object' ? input : {}, { ownerUid: ownerUid });
@@ -96,19 +114,34 @@
     var ownerUid = currentUid();
     if (!ownerUid) return Promise.resolve(false);
     var rows = readPendingPvcResults(ownerUid);
-    if (!rows.length) return Promise.resolve(false);
+    if (!rows.length) {
+      pvcRetryAttempt = 0;
+      if (pvcRetryTimer) { clearTimeout(pvcRetryTimer); pvcRetryTimer = 0; }
+      return Promise.resolve(false);
+    }
     pvcFlushRunning = true;
+    var retryError = null;
     return rows.reduce(function (chain, payload) {
       return chain.then(function () {
-        if (String(payload.ownerUid || '') !== ownerUid) return;
+        if (retryError || String(payload.ownerUid || '') !== ownerUid) return;
         return sendPvcResult(payload).then(function () {
           removePendingPvcResult(ownerUid, payload.roundId || payload.pvcRoundId);
         }).catch(function (error) {
           if (error && error.status === 409) removePendingPvcResult(ownerUid, payload.roundId || payload.pvcRoundId);
-          else if (retryablePvcError(error)) throw error;
+          else if (retryablePvcError(error)) retryError = error;
+          else removePendingPvcResult(ownerUid, payload.roundId || payload.pvcRoundId);
         });
       });
-    }, Promise.resolve()).then(function () { return true; }).catch(function () { return false; }).finally(function () { pvcFlushRunning = false; });
+    }, Promise.resolve()).then(function () {
+      if (retryError) {
+        pvcRetryAttempt += 1;
+        schedulePendingPvcFlush(pvcRetryDelay(retryError));
+        return false;
+      }
+      pvcRetryAttempt = 0;
+      if (readPendingPvcResults(ownerUid).length) schedulePendingPvcFlush(1000);
+      return true;
+    }).finally(function () { pvcFlushRunning = false; });
   }
   function submitPvcResult(input) {
     var ownerUid = currentUid();
@@ -119,12 +152,22 @@
     }).catch(function (error) {
       if (!retryablePvcError(error)) throw error;
       if (!queuePendingPvcResult(payload)) throw new Error('pvc/pending-result-not-saved');
+      pvcRetryAttempt = 0;
+      schedulePendingPvcFlush(pvcRetryDelay(error));
       return { ok: true, counted: false, pending: true, reason: 'pending_retry' };
     });
   }
   try {
     setTimeout(flushPendingPvcResults, 1200);
-    window.addEventListener('online', flushPendingPvcResults);
+    window.addEventListener('online', function () { pvcRetryAttempt = 0; flushPendingPvcResults(); });
+    document.addEventListener('visibilitychange', function () {
+      if (!document.hidden) flushPendingPvcResults();
+    });
+    if (window.CloudflareAuth && typeof window.CloudflareAuth.onAuthStateChanged === 'function') {
+      window.CloudflareAuth.onAuthStateChanged(function (user) {
+        if (user && user.uid) flushPendingPvcResults();
+      });
+    }
   } catch (_) {}
   window.DhametAccount = Object.freeze({
     version: 'cloudflare-account-v1',

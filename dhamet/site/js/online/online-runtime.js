@@ -713,23 +713,15 @@
         },
 
     _writeFullGamePresence: function (ctx, force) {
-          // Game presence is included in the unified app pulse. The
-          // browser must not write games/<id>/presence/<uid> directly.
+          // The app channel owns global presence and game-live owns match
+          // presence. This method only publishes a material state transition.
           try {
-            const payload = this._buildGamePresencePayload();
-            const core = typeof window !== "undefined" ? window.DhametPresence : null;
-            const shouldWrite = !core || typeof core.shouldWritePresence !== "function" || core.shouldWritePresence({
-              previous: this._lastGamePresencePayload || null,
-              next: payload,
-              force: !!force,
-              minIntervalMs: GAME_PRESENCE_HEARTBEAT_MS,
-              lastWriteAt: this._lastGamePresenceWriteAt || 0,
-              now: nowTs(),
-            });
-            if (shouldWrite) {
-              this._rememberPresenceWrite && this._rememberPresenceWrite("game", payload);
-              this._runUnifiedAppPulse && this._runUnifiedAppPulse(!!force, ctx || "game-presence");
+            this._rememberPresenceWrite && this._rememberPresenceWrite("game", this._buildGamePresencePayload());
+            if (window.DhametAppLive && typeof window.DhametAppLive.refreshPresence === "function") {
+              window.DhametAppLive.refreshPresence(!!force);
+              return true;
             }
+            this._runUnifiedAppPulse && this._runUnifiedAppPulse(!!force, ctx || "game-presence-fallback");
             return true;
           } catch (e) {
             return false;
@@ -737,10 +729,9 @@
         },
 
     _startGamePresenceHeartbeat: function () {
-          // Game presence is included in the single unified app
-          // pulse. No separate game heartbeat is started.
-          try { return this._ensureUnifiedAppPulse && this._ensureUnifiedAppPulse("game-presence", true); } catch (e) {}
-          return false;
+          // The authenticated game-live socket is the heartbeat. No HTTP timer.
+          this._gamePresenceHeartbeatTimer = null;
+          return true;
         },
 
     _stopGamePresenceHeartbeat: function () {
@@ -748,10 +739,11 @@
         },
 
     _startOpponentAbsenceWatcher: function () {
-          // Opponent absence is evaluated inside the unified app pulse and
-          // rechecked locally from the latest game snapshot. No separate polling.
-          try { return this._ensureUnifiedAppPulse && this._ensureUnifiedAppPulse("absence", false); } catch (e) {}
-          return false;
+          // Presence transitions arrive in official game snapshots from the
+          // game-live socket. No independent polling request is required.
+          this._oppAbsenceWatchTimer = null;
+          try { this._checkOpponentAbsence(); } catch (e) {}
+          return true;
         },
 
     _stopOpponentAbsenceWatcher: function () {
@@ -777,8 +769,12 @@
             const now = nowTs();
             const oppUid = g ? this._getOpponentInfoFromData(g).uid : null;
             const pres = oppUid && g && g.presence ? g.presence[oppUid] : null;
-            const lastSeen = Number((pres && (pres.updatedAt || pres.joinedAt)) || 0) || 0;
-            const oppOnline = !!(pres && isPresenceFresh(lastSeen, GAME_PRESENCE_ONLINE_TTL_MS));
+            const lastSeen = Number((pres && (pres.updatedAt || pres.connectedAt || pres.joinedAt)) || 0) || 0;
+            const disconnectedAt = Number(pres && pres.disconnectedAt || 0) || 0;
+            const hasSocketState = !!(pres && Object.prototype.hasOwnProperty.call(pres, "online"));
+            const oppOnline = hasSocketState
+              ? pres.online === true && !disconnectedAt
+              : !!(pres && isPresenceFresh(lastSeen, GAME_PRESENCE_ONLINE_TTL_MS));
     
             const previousOnline = this._oppOnline;
             this._oppOnline = oppOnline;
@@ -795,9 +791,9 @@
             }
     
             if (!this._oppOfflineSince) {
-              this._oppOfflineSince = lastSeen
+              this._oppOfflineSince = disconnectedAt || (lastSeen
                 ? Math.min(now, lastSeen + GAME_PRESENCE_ONLINE_TTL_MS)
-                : now;
+                : now);
             }
     
             try {
@@ -1452,7 +1448,7 @@
 
     _buildOnlineActionState: function (online) {
           const on = online !== false;
-          const uiBlocked = !!(document.documentElement && document.documentElement.classList.contains("ui-hold"));
+          const uiBlocked = !!this._gameLiveRecoveryActive || !!(document.documentElement && document.documentElement.classList.contains("ui-hold"));
           let canUndo = false;
           if (on && !this.isSpectator && !uiBlocked && !this._inPostMatch) {
             try {
@@ -1891,6 +1887,7 @@
         },
 
     _teardownOnlineSubscriptions: function () {
+          try { this._stopGameLiveRecovery && this._stopGameLiveRecovery("teardown"); } catch (e) {}
           try { if (this._reconnectSyncRetryTimer) clearTimeout(this._reconnectSyncRetryTimer); } catch (e) {}
           this._reconnectSyncRetryTimer = null;
           try { this._teardownRoomComms(); } catch (e) {}
@@ -1943,11 +1940,115 @@
         },
 
 
+    _gameLiveActionsBlocked: function () {
+          return !!(this.isActive && this._gameLiveRecoveryActive);
+        },
+
+    _notifyGameLiveRecovery: function () {
+          try {
+            const at = nowTs();
+            if (this._gameLiveRecoveryNoticeAt && at - this._gameLiveRecoveryNoticeAt < 10000) return false;
+            this._gameLiveRecoveryNoticeAt = at;
+            showOnlineNotice(window.I18N.translateArgs("status.reconnecting") || window.I18N.translateArgs("status.onlineInitFail"), { allowSpectator: true });
+            return true;
+          } catch (e) { return false; }
+        },
+
+    _scheduleGameLiveRecoverySync: function (delayMs) {
+          try {
+            if (!this._gameLiveRecoveryActive || !this.isActive || !this.gameId) return false;
+            if (this._gameLiveRecoveryTimer) clearTimeout(this._gameLiveRecoveryTimer);
+            const expectedGameId = String(this._gameLiveRecoveryGameId || this.gameId || "");
+            const delay = Math.max(250, Number(delayMs || 0) || 2000);
+            this._gameLiveRecoveryTimer = setTimeout(() => {
+              this._gameLiveRecoveryTimer = null;
+              if (!this._gameLiveRecoveryActive || !this.isActive || String(this.gameId || "") !== expectedGameId) return;
+              if (typeof navigator !== "undefined" && navigator.onLine === false) {
+                this._scheduleGameLiveRecoverySync(10000);
+                return;
+              }
+              const attempt = Math.max(0, Number(this._gameLiveRecoveryAttempt || 0) || 0);
+              this._gameLiveRecoveryAttempt = attempt + 1;
+              Promise.resolve(this.syncNow({
+                reason: "game-live-recovery-" + (attempt + 1),
+                discardCaptureDraft: true,
+                repairPresence: false,
+                notifyFailure: false,
+              })).then((applied) => {
+                if (!this._gameLiveRecoveryActive || String(this.gameId || "") !== expectedGameId) return;
+                if (applied && this._gameLiveSocketOpen) {
+                  this._finishGameLiveRecovery("socket-and-sync-restored");
+                  return;
+                }
+                const delays = [5000, 10000, 15000];
+                this._scheduleGameLiveRecoverySync(delays[Math.min(attempt, delays.length - 1)]);
+              }).catch(() => {
+                if (this._gameLiveRecoveryActive) this._scheduleGameLiveRecoverySync(15000);
+              });
+            }, delay);
+            return true;
+          } catch (e) { return false; }
+        },
+
+    _startGameLiveRecovery: function (reason) {
+          try {
+            if (!this.isActive || !this.gameId) return false;
+            const gid = String(this.gameId || "");
+            if (this._gameLiveRecoveryGameId && String(this._gameLiveRecoveryGameId) !== gid) this._stopGameLiveRecovery("game-changed");
+            this._gameLiveRecoveryActive = true;
+            this._gameLiveRecoveryGameId = gid;
+            this._gameLiveSocketOpen = false;
+            this._gameLiveRecoveryAttempt = 0;
+            this._noteReconnectLoss && this._noteReconnectLoss(reason || "game-live");
+            this._notifyGameLiveRecovery();
+            try { this._applyUiHold(true); } catch (e) {}
+            try { this.refreshPvpControls && this.refreshPvpControls(); } catch (e) {}
+            this._scheduleGameLiveRecoverySync(2000);
+            return true;
+          } catch (e) { return false; }
+        },
+
+    _handleGameLiveOpenRecovery: function (reason) {
+          try {
+            this._gameLiveSocketOpen = true;
+            if (!this._gameLiveRecoveryActive) return false;
+            this._scheduleGameLiveRecoverySync(250);
+            return true;
+          } catch (e) { return false; }
+        },
+
+    _finishGameLiveRecovery: function () {
+          try {
+            if (this._gameLiveRecoveryTimer) clearTimeout(this._gameLiveRecoveryTimer);
+          } catch (e) {}
+          this._gameLiveRecoveryTimer = null;
+          this._gameLiveRecoveryActive = false;
+          this._gameLiveRecoveryAttempt = 0;
+          this._gameLiveRecoveryGameId = null;
+          this._gameDisconnectedAt = null;
+          try { this._applyUiHold(false); } catch (e) {}
+          try { this.refreshPvpControls && this.refreshPvpControls(); } catch (e) {}
+          return true;
+        },
+
+    _stopGameLiveRecovery: function () {
+          try { if (this._gameLiveRecoveryTimer) clearTimeout(this._gameLiveRecoveryTimer); } catch (e) {}
+          this._gameLiveRecoveryTimer = null;
+          this._gameLiveRecoveryActive = false;
+          this._gameLiveRecoveryAttempt = 0;
+          this._gameLiveRecoveryGameId = null;
+          this._gameLiveSocketOpen = false;
+          try { this._applyUiHold(false); } catch (e) {}
+          try { this.refreshPvpControls && this.refreshPvpControls(); } catch (e) {}
+          return true;
+        },
+
     _unbindGameLiveSubscription: function () {
           try {
             if (this._gameLiveSub && typeof this._gameLiveSub.close === "function") this._gameLiveSub.close();
           } catch (e) {}
           this._gameLiveSub = null;
+          this._gameLiveSocketOpen = false;
         },
 
     _handleTerminalGameLiveClose: function (event, liveContext) {
@@ -1955,6 +2056,7 @@
             if (!this._isAsyncContextCurrent(liveContext, { ignorePostMatch: true })) return false;
             if (this._postMatchShown || this._localEndedOnline) return true;
             const code = Number(event && event.code || 0) || 0;
+            this._stopGameLiveRecovery("terminal-close");
             if (code === 4001) {
               try { showOnlineNotice(window.I18N.translateArgs("status.onlineInitFail"), { allowSpectator: true }); } catch (e) {}
               try { this.exitToLobby && this.exitToLobby(); } catch (e) {}
@@ -1986,7 +2088,9 @@
                 version: envelope && envelope.version,
                 rejectDuplicate: true,
               });
-              if (!applied && this._lastOfficialIngestFailureReason === "apply-failed") {
+              if (applied && this._gameLiveRecoveryActive && this._gameLiveSocketOpen) {
+                this._finishGameLiveRecovery("live-state-restored");
+              } else if (!applied && this._lastOfficialIngestFailureReason === "apply-failed") {
                 this._requestOfficialSync({
                   reason: "live-state-apply-failed",
                   notifyFailure: false,
@@ -1996,21 +2100,52 @@
               try { Logger.warn("official_live_apply_failed", { gameId: gid, err: String(e && (e.message || e)) }); } catch (_) {}
             }
           };
+          const onLiveChat = (value) => {
+            if (!this._isAsyncContextCurrent(liveContext, { ignorePostMatch: true })) return;
+            this._pendingChatLiveSnapshot = value;
+            try {
+              if (this._chat && typeof this._chat._applySnapshot === "function") this._chat._applySnapshot(value);
+            } catch (e) {}
+          };
+          const onLiveRtc = (value) => {
+            if (!this._isAsyncContextCurrent(liveContext, { ignorePostMatch: true })) return;
+            this._lastRtcLiveSnapshot = value;
+            try {
+              if (this._voice && this._voice.enabled && typeof this._voiceApplyRtcSnapshot === "function") this._voiceApplyRtcSnapshot(value);
+              else if (typeof this._voiceMaybeAutoListenFromSnapshot === "function") this._voiceMaybeAutoListenFromSnapshot(value);
+            } catch (e) {}
+          };
           try {
             if (!window.DhametGameRoomClient || typeof window.DhametGameRoomClient.subscribeGameLive !== "function") throw new Error("live-client-missing");
             this._gameLiveSub = window.DhametGameRoomClient.subscribeGameLive({
               gameId: gid,
               onData: onLiveGame,
+              onChatData: onLiveChat,
+              onRtcData: onLiveRtc,
+              onOpen: () => {
+                try {
+                  if (!this._isAsyncContextCurrent(liveContext, { ignorePostMatch: true })) return;
+                  this._handleGameLiveOpenRecovery && this._handleGameLiveOpenRecovery("game-live-open");
+                } catch (e) {}
+              },
               onClose: (event, meta) => {
                 try {
                   if (!this._isAsyncContextCurrent(liveContext, { ignorePostMatch: true })) return;
-                  this._noteReconnectLoss && this._noteReconnectLoss("game-live");
                   if (meta && meta.terminal) this._handleTerminalGameLiveClose(event, liveContext);
+                  else this._startGameLiveRecovery && this._startGameLiveRecovery("game-live");
                 } catch (e) {}
               },
               onReconnect: () => {
                 try {
-                  if (this._isAsyncContextCurrent(liveContext, { ignorePostMatch: true })) this._forceResync && this._forceResync("live-reconnected");
+                  if (!this._isAsyncContextCurrent(liveContext, { ignorePostMatch: true })) return;
+                  this._handleGameLiveOpenRecovery && this._handleGameLiveOpenRecovery("live-reconnected");
+                  if (this._voice && this._voice.enabled) {
+                    this._voiceParticipantsReady = false;
+                    this._setVoiceSocketState(true);
+                    this._voiceCommitParticipant({ reason: "reconnect" }).catch((error) => {
+                      try { Logger.warn("voice_participant_reconnect_failed", { gameId: gid, err: String(error && (error.message || error)) }); } catch (_) {}
+                    });
+                  }
                 } catch (e) {}
               },
               onError: (event) => {
@@ -2024,7 +2159,7 @@
             return true;
           } catch (e) {
             Logger.warn("game_live_subscribe_failed", { gameId: gid, err: String(e && (e.message || e)) });
-            try { this._forceResync && this._forceResync("live-subscribe-failed"); } catch (_) {}
+            try { this._startGameLiveRecovery && this._startGameLiveRecovery("live-subscribe-failed"); } catch (_) {}
             return false;
           }
         },
@@ -2487,7 +2622,7 @@
     _setupGamePresence: function () {
           if (!this.isActive || !this.gameRef) return;
           if (!this._gamePresenceJoinedAt) this._gamePresenceJoinedAt = nowTs();
-          try { this._runUnifiedAppPulse && this._runUnifiedAppPulse(true); } catch (e) {}
+          try { this._writeFullGamePresence("game-enter", true); } catch (e) {}
           try { this._startGamePresenceHeartbeat(); } catch (e) {}
         },
 
@@ -2739,7 +2874,7 @@
             };
     
             try {
-              if ((!this._chatLiveSub || this._chatLiveGameId !== this.gameId) && typeof this._initRoomComms === "function") {
+              if ((!this._chat || typeof this._chat._applySnapshot !== "function") && typeof this._initRoomComms === "function") {
                 await this._initRoomComms();
               }
             } catch (e) {}
@@ -2931,7 +3066,7 @@
                 this._chat.lastSendAt = now;
                 input.value = "";
     
-                if ((!this._chatLiveSub || this._chatLiveGameId !== this.gameId) && typeof this._initRoomComms === "function") {
+                if ((!this._chat || typeof this._chat._applySnapshot !== "function") && typeof this._initRoomComms === "function") {
                   try { await this._initRoomComms(); } catch (e) {}
                 }
 
@@ -3125,21 +3260,9 @@
             this._chat._applySnapshot = applyChatSnapshot;
 
             try {
-              if (!this._chatLiveSub || this._chatLiveGameId !== this.gameId) {
-                try { if (this._chatLiveSub && this._chatLiveSub.close) this._chatLiveSub.close(); } catch (e) {}
-                this._chatLiveSub = null;
-                this._chatLiveGameId = this.gameId;
-                if (!window.DhametGameRoomClient || typeof window.DhametGameRoomClient.subscribeChatLive !== "function") {
-                  throw new Error("chat_live_transport_unavailable");
-                }
-                this._chatLiveSub = window.DhametGameRoomClient.subscribeChatLive({
-                  gameId: this.gameId,
-                  onData: applyChatSnapshot,
-                  onError: () => {},
-                  onClose: () => {},
-                });
-              }
+              if (this._pendingChatLiveSnapshot) applyChatSnapshot(this._pendingChatLiveSnapshot);
             } catch (e) {}
+
 
             if (typeof RTCPeerConnection !== "undefined") {
               try {
@@ -3155,8 +3278,8 @@
                 };
                 // Voice chat is opt-in. Do not join RTC or ask for microphone at
                 // match start; the first microphone click starts the session.
-                // Keep only a passive RTC watch so this player can auto-listen if
-                // the opponent starts talking first.
+                // Watch multiplexed RTC updates on game-live so this player can
+                // auto-listen if the opponent starts talking first.
                 if (!this.isSpectator && typeof this._voiceWatchRemoteStart === "function") this._voiceWatchRemoteStart();
               } catch (e) {}
             }
@@ -3166,11 +3289,7 @@
         },
 
     _teardownRoomComms: function () {
-          try {
-            if (this._chatLiveSub && this._chatLiveSub.close) this._chatLiveSub.close();
-          } catch (e) {}
-          this._chatLiveSub = null;
-          this._chatLiveGameId = null;
+          this._pendingChatLiveSnapshot = null;
           this._chatMsgHandler = null;
           this._chatRef = null;
           this._chatMessagesRef = null;
@@ -3180,9 +3299,8 @@
           this._chatReadsHandler = null;
 
           try { this._voiceLeave(); } catch (e) {}
-          try { if (this._voicePassiveSub && this._voicePassiveSub.close) this._voicePassiveSub.close(); } catch (e) {}
-          this._voicePassiveSub = null;
-          this._voicePassiveGameId = null;
+          this._voiceRemoteStartWatchEnabled = false;
+          this._lastRtcLiveSnapshot = null;
 
           try {
             const btn = document.getElementById("btnChat");
@@ -3324,6 +3442,16 @@
           }
         },
 
+    _setVoiceSocketState: function (active) {
+          try {
+            const sub = this._gameLiveSub;
+            if (!sub || typeof sub.send !== "function") return false;
+            return sub.send({ type: "voice-state", active: active === true });
+          } catch (e) {
+            return false;
+          }
+        },
+
     _voiceSyncOpponentAvailability: function (oppUid, online, previousOnline) {
           try {
             const uid = String(oppUid || "");
@@ -3344,39 +3472,33 @@
     _voiceWatchRemoteStart: function () {
           try {
             if (!this.isActive || !this.gameId || this.isSpectator) return false;
-            if (!window.DhametGameRoomClient || typeof window.DhametGameRoomClient.subscribeRtcLive !== "function") return false;
-            if (this._voice && this._voice.enabled) return true;
-            if (this._voicePassiveSub && this._voicePassiveGameId === this.gameId) return true;
-            try { if (this._voicePassiveSub && this._voicePassiveSub.close) this._voicePassiveSub.close(); } catch (e) {}
-            this._voicePassiveSub = null;
-            this._voicePassiveGameId = this.gameId;
-            const maybeAutoListen = (value) => {
-              try {
-                if (!this.isActive || !this.gameId || this.isSpectator) return;
-                if (this._voice && this._voice.enabled) return;
-                const root = value && typeof value === "object" ? value : {};
-                const participants = root.participants && typeof root.participants === "object" ? root.participants : {};
-                const hasRemotePlayer = Object.keys(participants).some((uid) => {
-                  try {
-                    const rec = participants[uid];
-                    return String(uid) !== String(this.myUid || "") && rec && String(rec.role || "player") === "player";
-                  } catch (e) { return false; }
-                });
-                if (!hasRemotePlayer) return;
-                this._voiceJoin({ noMicPrompt: true, allowSpectatorMic: false, passiveListen: true }).catch(() => {});
-              } catch (e) {}
-            };
-            this._voicePassiveSub = window.DhametGameRoomClient.subscribeRtcLive({
-              gameId: this.gameId,
-              onData: maybeAutoListen,
-              onError: () => {},
-              onClose: () => {},
-            });
+            this._voiceRemoteStartWatchEnabled = true;
+            if (this._lastRtcLiveSnapshot) this._voiceMaybeAutoListenFromSnapshot(this._lastRtcLiveSnapshot);
             return true;
           } catch (e) {
             return false;
           }
         },
+
+    _voiceMaybeAutoListenFromSnapshot: function (value) {
+          try {
+            if (!this.isActive || !this.gameId || this.isSpectator) return false;
+            if (this._voice && this._voice.enabled) return true;
+            if (this._voiceRemoteStartWatchEnabled === false) return false;
+            const root = value && typeof value === "object" ? value : {};
+            const participants = root.participants && typeof root.participants === "object" ? root.participants : {};
+            const hasRemotePlayer = Object.keys(participants).some((uid) => {
+              const rec = participants[uid];
+              return String(uid) !== String(this.myUid || "") && rec && String(rec.role || "player") === "player";
+            });
+            if (!hasRemotePlayer) return false;
+            this._voiceJoin({ noMicPrompt: true, allowSpectatorMic: false, passiveListen: true }).catch(() => {});
+            return true;
+          } catch (e) {
+            return false;
+          }
+        },
+
 
     _voiceJoin: async function (opts) {
           opts = opts || {};
@@ -3400,9 +3522,7 @@
             this._voice.micMuted = !!opts.desiredMicMuted;
           }
           if (this._voice.enabled) return true;
-          try { if (this._voicePassiveSub && this._voicePassiveSub.close) this._voicePassiveSub.close(); } catch (e) {}
-          this._voicePassiveSub = null;
-          this._voicePassiveGameId = null;
+          this._voiceRemoteStartWatchEnabled = false;
     
           let authReady = false;
           try {
@@ -3593,43 +3713,12 @@
           this._voiceApplyRtcSnapshot = queueRtcSnapshot;
 
           try {
-            if (!this._rtcLiveSub || this._rtcLiveGameId !== this.gameId) {
-              try { if (this._rtcLiveSub && this._rtcLiveSub.close) this._rtcLiveSub.close(); } catch (e) {}
-              this._rtcLiveSub = null;
-              this._rtcLiveGameId = this.gameId;
-              if (!window.DhametGameRoomClient || typeof window.DhametGameRoomClient.subscribeRtcLive !== "function") {
-                throw new Error("rtc_live_transport_unavailable");
-              }
-              this._rtcLiveSub = window.DhametGameRoomClient.subscribeRtcLive({
-                gameId: this.gameId,
-                onData: (value) => { queueRtcSnapshot(value); },
-                onError: () => {},
-                onClose: () => {},
-                onReconnect: () => {
-                  try {
-                    this._voiceParticipantsReady = false;
-                    this._voiceCommitParticipant({ reason: "reconnect" }).then(() => {
-                      try {
-                        if (!this._voiceKnownParticipants || !this._voiceKnownParticipants.forEach) return;
-                        this._voiceKnownParticipants.forEach((uid) => {
-                          if (String(uid) !== String(this.myUid || "")) this._voiceConnectTo(String(uid));
-                        });
-                      } catch (_) {}
-                    }).catch((error) => {
-                      try { Logger.warn("voice_participant_reconnect_failed", { code: String(error && (error.code || error.message) || "") }); } catch (_) {}
-                    });
-                  } catch (_) {}
-                },
-              });
-            }
-          } catch (e) {
-            this._voiceHandleWriteFailure(e, "rtc-live-subscribe");
-            if (acquiredLocalStream) this._voiceReleaseLocalStream();
-            this._voiceShowFailureNotice("service", e);
-            return false;
-          }
+            if (this._lastRtcLiveSnapshot) queueRtcSnapshot(this._lastRtcLiveSnapshot);
+          } catch (e) {}
+
 
           this._voice.enabled = true;
+          this._setVoiceSocketState(true);
           try {
             this.refreshPvpControls();
           } catch (e) {}
@@ -3639,13 +3728,11 @@
     _voiceLeave: function () {
           try {
             if (!this._voice) return;
+            this._setVoiceSocketState(false);
             this._voice.enabled = false;
             this._voiceParticipantsReady = false;
             this._voiceLastParticipantMicMuted = null;
     
-            try { if (this._rtcLiveSub && this._rtcLiveSub.close) this._rtcLiveSub.close(); } catch (e) {}
-            this._rtcLiveSub = null;
-            this._rtcLiveGameId = null;
             this._voiceApplyRtcSnapshot = null;
             this._voiceParticipantsHandler = null;
             this._voiceParticipantsRemovedHandler = null;
@@ -4550,6 +4637,10 @@
 
     recordLocalStep: function (fromIdx, toIdx, isCapture, jumpedIdx) {
           if (!this.isActive || this._isApplyingRemote) return;
+          if (this._gameLiveActionsBlocked && this._gameLiveActionsBlocked()) {
+            this._notifyGameLiveRecovery && this._notifyGameLiveRecovery();
+            return false;
+          }
           if (!this._pendingSteps) this._pendingSteps = [];
           this._pendingSteps.push({
             from: fromIdx,
@@ -4830,6 +4921,10 @@
         },
 
     sendMoveToCloudflare: function (_from, _to, nextTurn, _attempt) {
+          if (this._gameLiveActionsBlocked && this._gameLiveActionsBlocked()) {
+            this._notifyGameLiveRecovery && this._notifyGameLiveRecovery();
+            return Promise.resolve(false);
+          }
           if (!allowOnlineWrite()) return;
           if (!this.isActive || !this.gameRef || !this.gameId) return;
           if (!requireAuthUid(this.myUid)) {
@@ -5097,6 +5192,10 @@
         },
 
     sendSouflaDecisionToCloudflare: function (decision, pending, nextTurn) {
+          if (this._gameLiveActionsBlocked && this._gameLiveActionsBlocked()) {
+            this._notifyGameLiveRecovery && this._notifyGameLiveRecovery();
+            return Promise.resolve(false);
+          }
           if (!allowOnlineWrite()) return;
           if (!this.isActive || !this.gameId || !decision || !pending || this.isSpectator) return;
           const expectedGameId = String(this.gameId || "");
@@ -5252,6 +5351,10 @@
         },
 
     requestUndo: function () {
+          if (this._gameLiveActionsBlocked && this._gameLiveActionsBlocked()) {
+            this._notifyGameLiveRecovery && this._notifyGameLiveRecovery();
+            return;
+          }
           if (!this.isActive || !this.gameId) return;
           if (this.isSpectator) return;
 
@@ -5366,6 +5469,10 @@
         },
 
     _respondUndo: function (accept) {
+          if (this._gameLiveActionsBlocked && this._gameLiveActionsBlocked()) {
+            this._notifyGameLiveRecovery && this._notifyGameLiveRecovery();
+            return;
+          }
           if (!allowOnlineWrite()) return;
           if (!this.isActive || !this.gameId) return;
           if (this.isSpectator) return;

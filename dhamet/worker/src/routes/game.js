@@ -1,7 +1,6 @@
 import '../../shared/dhamet-utils.js';
 import '../../shared/dhamet-stats.js';
 import '../../shared/dhamet-live.js';
-import '../../shared/dhamet-presence.js';
 
 /*
  * Game API routes for Cloudflare Worker.
@@ -19,8 +18,6 @@ export function createGameRouteHandlers(deps) {
   const getRealtimeStub = deps && deps.getRealtimeStub;
   const json = deps && deps.json;
   const bad = deps && deps.bad;
-  const writeRealtime = deps && deps.writeRealtime;
-  const readRealtimeValue = deps && deps.readRealtimeValue;
 
   if (typeof requireSession !== 'function') throw new Error('game routes require requireSession');
   if (typeof requestBody !== 'function') throw new Error('game routes require requestBody');
@@ -28,13 +25,8 @@ export function createGameRouteHandlers(deps) {
   if (typeof getRealtimeStub !== 'function') throw new Error('game routes require getRealtimeStub');
   if (typeof json !== 'function') throw new Error('game routes require json');
   if (typeof bad !== 'function') throw new Error('game routes require bad');
-  if (typeof writeRealtime !== 'function') throw new Error('game routes require writeRealtime');
-  if (typeof readRealtimeValue !== 'function') throw new Error('game routes require readRealtimeValue');
 
   const StatsCore = globalThis.DhametStats;
-  const PresenceCore = globalThis.DhametPresence || null;
-  const PresencePolicy = PresenceCore && PresenceCore.POLICY ? PresenceCore.POLICY : {};
-  const lightweightActivityTouchCache = new Map();
   if (!StatsCore) throw new Error('game routes require shared DhametStats');
 
   async function forwardGameData(request, env, internalPath, body) {
@@ -54,106 +46,25 @@ export function createGameRouteHandlers(deps) {
     return { res, data, status: res.status || 200, gameId };
   }
 
-  function playerRecordFromGame(game, uid) {
-    try {
-      const players = game && game.players && typeof game.players === 'object' ? game.players : {};
-      for (const side of ['white', 'black']) {
-        const p = players[side] && typeof players[side] === 'object' ? players[side] : null;
-        if (p && String(p.uid || '') === String(uid || '')) return { side, player: p };
-      }
-    } catch (_) {}
-    return { side: '', player: null };
-  }
-
   async function cleanupGlobalEndedMatch(env, gameId, game) {
     const gid = cleanPath(gameId);
     if (!gid) return false;
     try {
-      const ended = game && typeof game === 'object' ? game : {};
-      const players = ended.players && typeof ended.players === 'object' ? ended.players : {};
-      const updates = { ['roomList/' + gid]: null };
-      const at = Date.now();
-      const participantUids = ['white', 'black']
+      const players = game && game.players && typeof game.players === 'object' ? game.players : {};
+      const uids = ['white', 'black']
         .map((slot) => cleanPath(players[slot] && players[slot].uid))
         .filter(Boolean);
-      const currentRecords = await Promise.all(participantUids.map(async (uid) => {
-        try {
-          return { uid, value: await readRealtimeValue(env, 'global', 'players/' + uid) };
-        } catch (_) {
-          return { uid, value: null };
-        }
-      }));
-      for (const record of currentRecords) {
-        const uid = record.uid;
-        const currentRoomId = cleanPath(record.value && record.value.roomId);
-        // Never clear a newer match. Presence is released only while the
-        // player still belongs to the game that has just ended.
-        if (currentRoomId !== gid) continue;
-        updates['players/' + uid + '/status'] = 'available';
-        updates['players/' + uid + '/role'] = 'lobby';
-        updates['players/' + uid + '/roomId'] = null;
-        updates['players/' + uid + '/side'] = null;
-        updates['players/' + uid + '/mode'] = 'available';
-        updates['players/' + uid + '/page'] = 'loby';
-        updates['players/' + uid + '/updatedAt'] = at;
-      }
-      await writeRealtime(env, 'global', { op: 'update', path: '', updates, value: updates });
-      return true;
-    } catch (_) {
-      return false;
-    }
-  }
-
-  async function touchLightweightGameActivity(env, body, data, triggerKind) {
-    try {
-      if (data && data.__lightweightActivityTouched) return false;
-      if (data) data.__lightweightActivityTouched = true;
-      const uid = cleanPath(body && body.uid);
-      const gameId = cleanPath((body && body.gameId) || (data && data.gameId));
-      const game = data && data.game && typeof data.game === 'object' ? data.game : null;
-      if (!uid || !gameId || !game || String(game.status || '') !== 'active') return false;
-      const info = playerRecordFromGame(game, uid);
-      if (!info.side) return false;
-      const at = Date.now();
-      const kind = String(triggerKind || 'game-activity').slice(0, 40);
-      const minIntervalMs = Number(PresencePolicy.roomActivityTouchMs || PresencePolicy.gamePresenceRefreshMs || 0) || 20 * 1000;
-      const cacheKey = uid + '|' + gameId;
-      const cached = lightweightActivityTouchCache.get(cacheKey) || null;
-      const statusChanged = !cached || cached.gameId !== gameId || cached.side !== info.side;
-      if (!statusChanged && cached && at - (Number(cached.at || 0) || 0) < minIntervalMs) return false;
-      lightweightActivityTouchCache.set(cacheKey, { at, gameId, side: info.side, kind });
-      if (lightweightActivityTouchCache.size > 5000) {
-        let removed = 0;
-        for (const key of lightweightActivityTouchCache.keys()) {
-          lightweightActivityTouchCache.delete(key);
-          removed += 1;
-          if (removed >= 500) break;
-        }
-      }
-      const roomPatch = PresenceCore && typeof PresenceCore.roomActivityPatch === 'function'
-        ? PresenceCore.roomActivityPatch(at)
-        : { updatedAt: at, cleanupAt: at + 4 * 60 * 1000 };
-      const player = info.player || {};
-      const updates = {
-        ['players/' + uid + '/uid']: uid,
-        ['players/' + uid + '/status']: 'inPvP',
-        ['players/' + uid + '/role']: 'player',
-        ['players/' + uid + '/roomId']: gameId,
-        ['players/' + uid + '/side']: info.side === 'white' ? -1 : 1,
-        ['players/' + uid + '/mode']: 'inPvP',
-        ['players/' + uid + '/page']: 'game',
-        ['players/' + uid + '/updatedAt']: at,
-        ['players/' + uid + '/lastGameActivityAt']: at,
-        ['players/' + uid + '/lastGameActivityKind']: kind,
-        ['roomList/' + gameId + '/updatedAt']: roomPatch.updatedAt || at,
-        ['roomList/' + gameId + '/cleanupAt']: roomPatch.cleanupAt || (at + 4 * 60 * 1000),
-        ['roomList/' + gameId + '/stale']: false,
-        ['roomList/' + gameId + '/lastActivityKind']: kind,
-      };
-      const nick = String(player.nickname || player.nick || '').slice(0, 80);
-      if (nick) updates['players/' + uid + '/nickname'] = nick;
-      await writeRealtime(env, 'global', { op: 'update', path: '', updates, value: updates });
-      return true;
+      const stub = getRealtimeStub(env, 'global');
+      const response = await stub.fetch('https://realtime.internal/api/lifecycle/cleanup-global-game-references', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-internal-secret': env.INTERNAL_API_SECRET || '',
+        },
+        body: JSON.stringify({ gameId: gid, uids }),
+      });
+      const payload = await response.json().catch(() => ({ ok: false }));
+      return !!(response.ok && payload && payload.ok !== false);
     } catch (_) {
       return false;
     }
@@ -163,9 +74,6 @@ export function createGameRouteHandlers(deps) {
     const forwarded = await forwardGameData(request, env, internalPath, body);
     if (forwarded.response) return forwarded.response;
     const data = forwarded.data || {};
-    if (options && options.touchActivity && forwarded.res && forwarded.res.ok && data && data.ok !== false) {
-      data.activityTouched = await touchLightweightGameActivity(env, body, data, options.touchKind || 'game-activity');
-    }
     return json(data, forwarded.status || 200);
   }
 
@@ -185,9 +93,6 @@ export function createGameRouteHandlers(deps) {
     if (forwarded.res && forwarded.res.ok && data && data.ok !== false && data.committed !== false && terminal) {
       const officialStats = await ensureOfficialPvpResult(env, forwarded.gameId, triggerKind);
       if (officialStats) data.officialStats = officialStats;
-    }
-    if (options && options.touchActivity && forwarded.res && forwarded.res.ok && data && data.ok !== false) {
-      data.activityTouched = await touchLightweightGameActivity(env, body, data, options.touchKind || triggerKind || 'game-activity');
     }
     return json(data, forwarded.status || 200);
   }
@@ -254,7 +159,7 @@ export function createGameRouteHandlers(deps) {
     const body = await requestBody(request);
     const blocked = rejectClientTruth(body);
     if (blocked) return blocked;
-    return forwardGameRequestAndRecordResult(request, env, '/api/game/move', { ...body, uid: session.user.id }, 'move', { touchActivity: true, touchKind: 'move', removeRoomOnEnd: true });
+    return forwardGameRequestAndRecordResult(request, env, '/api/game/move', { ...body, uid: session.user.id }, 'move', { removeRoomOnEnd: true });
   }
 
   async function resync(request, env, ctx) {
@@ -262,7 +167,7 @@ export function createGameRouteHandlers(deps) {
     const body = await requestBody(request);
     const blocked = rejectClientTruth(body);
     if (blocked) return blocked;
-    return forwardGameRequestAndRecordResult(request, env, '/api/game/resync', { ...body, uid: session.user.id }, 'resync', { touchActivity: true, touchKind: 'resync', removeRoomOnEnd: true });
+    return forwardGameRequestAndRecordResult(request, env, '/api/game/resync', { ...body, uid: session.user.id }, 'resync', { removeRoomOnEnd: true });
   }
 
   async function soufla(request, env, ctx) {
@@ -270,7 +175,7 @@ export function createGameRouteHandlers(deps) {
     const body = await requestBody(request);
     const blocked = rejectClientTruth(body);
     if (blocked) return blocked;
-    return forwardGameRequestAndRecordResult(request, env, '/api/game/soufla', { ...body, uid: session.user.id }, 'soufla', { touchActivity: true, touchKind: 'soufla', removeRoomOnEnd: true });
+    return forwardGameRequestAndRecordResult(request, env, '/api/game/soufla', { ...body, uid: session.user.id }, 'soufla', { removeRoomOnEnd: true });
   }
 
   async function control(request, env, ctx) {
@@ -278,7 +183,7 @@ export function createGameRouteHandlers(deps) {
     const body = await requestBody(request);
     const blocked = rejectClientTruth(body);
     if (blocked) return blocked;
-    return forwardGameRequestAndRecordResult(request, env, '/api/game/control', { ...body, uid: session.user.id }, 'control', { touchActivity: true, touchKind: 'control', removeRoomOnEnd: true });
+    return forwardGameRequestAndRecordResult(request, env, '/api/game/control', { ...body, uid: session.user.id }, 'control', { removeRoomOnEnd: true });
   }
 
   async function end(request, env, ctx) {
@@ -294,9 +199,7 @@ export function createGameRouteHandlers(deps) {
     const body = await requestBody(request);
     const blocked = rejectClientTruth(body);
     if (blocked) return blocked;
-    const action = String((body && (body.kind || body.type || body.action)) || 'send').toLowerCase();
-    const isReadOnly = action === 'read' || action === 'list' || action === 'poll' || action === 'fetch';
-    return forwardGameRequest(request, env, '/api/game/chat', { ...body, uid: session.user.id }, { touchActivity: !isReadOnly, touchKind: 'chat' });
+    return forwardGameRequest(request, env, '/api/game/chat', { ...body, uid: session.user.id });
   }
 
   async function rtc(request, env) {
@@ -327,13 +230,6 @@ export function createGameRouteHandlers(deps) {
     return openOfficialGameSocket(request, env, '/api/game/live', 'live');
   }
 
-  async function chatLive(request, env) {
-    return openOfficialGameSocket(request, env, '/api/game/chat-live', 'chat-live');
-  }
-
-  async function rtcLive(request, env) {
-    return openOfficialGameSocket(request, env, '/api/game/rtc-live', 'rtc-live');
-  }
 
   return Object.freeze({
     move,
@@ -344,7 +240,5 @@ export function createGameRouteHandlers(deps) {
     chat,
     rtc,
     live,
-    chatLive,
-    rtcLive,
   });
 }

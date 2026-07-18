@@ -851,17 +851,15 @@
   const GAME_PULSE_IDLE_AFTER_MS = Number(PresenceBudget.gamePulseIdleAfterMs || 0) || 2 * 60 * 1000;
   const GAME_PULSE_LONG_IDLE_AFTER_MS = Number(PresenceBudget.gamePulseLongIdleAfterMs || 0) || 6 * 60 * 1000;
   const APP_PULSE_BACKGROUND_MS = Number(PresenceBudget.appPulseBackgroundMs || 0) || 120 * 1000;
-  const APP_PULSE_SLOW_INITIAL_MS = Number(PresenceBudget.appPulseSlowInitialMs || 0) || 2 * 60 * 1000;
-  const APP_PULSE_SLOW_LATER_MS = Number(PresenceBudget.appPulseSlowLaterMs || 0) || 3 * 60 * 1000;
-  const APP_PULSE_SLOW_IDLE_MS = Number(PresenceBudget.appPulseSlowIdleMs || 0) || 5 * 60 * 1000;
-  const APP_PULSE_SLOW_BACKGROUND_MS = Number(PresenceBudget.appPulseSlowBackgroundMs || 0) || 10 * 60 * 1000;
+  const APP_PULSE_SLOW_INITIAL_MS = Number(PresenceBudget.appPulseSlowInitialMs || 0) || 30 * 1000;
+  const APP_PULSE_SLOW_LATER_MS = Number(PresenceBudget.appPulseSlowLaterMs || 0) || 60 * 1000;
+  const APP_PULSE_SLOW_IDLE_MS = Number(PresenceBudget.appPulseSlowIdleMs || 0) || 120 * 1000;
+  const APP_PULSE_SLOW_BACKGROUND_MS = Number(PresenceBudget.appPulseSlowBackgroundMs || 0) || 120 * 1000;
+  const APP_INVITE_FALLBACK_MS = Number(PresenceBudget.appInviteFallbackMs || 0) || 25 * 1000;
   const GAME_PRESENCE_ONLINE_TTL_MS = Number(PresenceBudget.gameTtlMs || PresenceBudget.gamePresenceTtlMs || 0) || 45 * 1000;
   const SPECTATOR_COUNT_STALE_MS = Number(PresenceBudget.spectatorTtlMs || 0) || 3 * 60 * 1000;
-  const ROOM_ACTIVITY_TOUCH_MS = Number(PresenceBudget.roomActivityTouchMs || 0) || 20 * 1000;
   const INVITE_PREF_CACHE_KEY = "zamat.acceptsInvites.v1";
   const SESSION_APP_ENTRY_PULSE_KEY = "zamat.appEntryPulseSent.v2";
-  const LOCAL_UNIFIED_PULSE_STAMP_KEY = "zamat.unifiedPulseStamp.v1";
-  const SESSION_UNIFIED_PULSE_TAB_KEY = "zamat.unifiedPulseTabId.v1";
   const ROOM_VISIBILITY_PUBLIC = "public";
   const ROOM_VISIBILITY_PRIVATE = "private";
 
@@ -1632,6 +1630,18 @@
 
     _autoReconnectActionAt: 0,
 
+    _gameLiveRecoveryActive: false,
+
+    _gameLiveRecoveryTimer: null,
+
+    _gameLiveRecoveryAttempt: 0,
+
+    _gameLiveRecoveryGameId: null,
+
+    _gameLiveSocketOpen: false,
+
+    _gameLiveRecoveryNoticeAt: 0,
+
     _applySessionState: function (input) {
           const next = input && typeof input === "object" ? input : {};
           const has = (key) => Object.prototype.hasOwnProperty.call(next, key);
@@ -1944,84 +1954,6 @@
           }
         },
 
-    _getUnifiedPulseTabId: function () {
-          try {
-            let id = sessionStorage.getItem(SESSION_UNIFIED_PULSE_TAB_KEY);
-            if (!id) {
-              id = [Date.now(), Math.random().toString(36).slice(2, 10)].join(":");
-              sessionStorage.setItem(SESSION_UNIFIED_PULSE_TAB_KEY, id);
-            }
-            return id;
-          } catch (e) {
-            return "tab:" + Math.random().toString(36).slice(2, 10);
-          }
-        },
-
-    _readUnifiedPulseStamp: function () {
-          try {
-            const raw = localStorage.getItem(LOCAL_UNIFIED_PULSE_STAMP_KEY);
-            if (!raw) return null;
-            const obj = JSON.parse(raw);
-            return obj && typeof obj === "object" ? obj : null;
-          } catch (e) {
-            return null;
-          }
-        },
-
-    _writeUnifiedPulseStamp: function (payload) {
-          try {
-            if (!payload || !this.myUid) return false;
-            const stamp = {
-              uid: String(this.myUid || ""),
-              scope: String(payload.scope || ""),
-              gameId: String(payload.gameId || payload.roomId || ""),
-              at: nowTs(),
-              tabId: this._getUnifiedPulseTabId ? this._getUnifiedPulseTabId() : "",
-            };
-            localStorage.setItem(LOCAL_UNIFIED_PULSE_STAMP_KEY, JSON.stringify(stamp));
-            return true;
-          } catch (e) {
-            return false;
-          }
-        },
-
-    _isCriticalUnifiedPulse: function (reason, payload, force) {
-          try {
-            if (force || (payload && payload.leave)) return true;
-            const r = String(reason || "").toLowerCase();
-            return /^(manual-lobby-refresh|refresh-lobby|lobby-enter|lobby-open|return-lobby|enter-game|game-enter|game-resume|accept-invite|invite-accept|reject-invite|invite-reject|invite-toggle|logout|leave|pagehide|auth-change)$/.test(r);
-          } catch (e) {
-            return !!force;
-          }
-        },
-
-    _shouldSkipUnifiedPulseForRecentTab: function (payload, reason, force) {
-          try {
-            if (!payload || !this.myUid) return false;
-            if (this._isCriticalUnifiedPulse && this._isCriticalUnifiedPulse(reason, payload, !!force)) return false;
-            const stamp = this._readUnifiedPulseStamp ? this._readUnifiedPulseStamp() : null;
-            if (!stamp) return false;
-            const ownTab = this._getUnifiedPulseTabId ? this._getUnifiedPulseTabId() : "";
-            if (stamp.tabId && ownTab && String(stamp.tabId) === String(ownTab)) return false;
-            if (String(stamp.uid || "") !== String(this.myUid || "")) return false;
-            if (String(stamp.scope || "") !== String(payload.scope || "")) return false;
-            const payloadGameId = String(payload.gameId || payload.roomId || "");
-            const stampGameId = String(stamp.gameId || "");
-            if (payloadGameId !== stampGameId) return false;
-            const age = nowTs() - (Number(stamp.at || 0) || 0);
-            const interval = this._getUnifiedAppPulseInterval ? Number(this._getUnifiedAppPulseInterval() || 0) : 0;
-            const fastInviteDelay = this._getPendingOutgoingInvitePulseDelay ? Number(this._getPendingOutgoingInvitePulseDelay() || 0) : 0;
-            const threshold = fastInviteDelay > 0
-              ? Math.max(1000, Math.min(4000, Math.floor(interval * 0.8)))
-              : interval > 8000
-                ? Math.max(5000, Math.min(interval - 1000, Math.floor(interval * 0.85)))
-                : 0;
-            return threshold > 0 && age >= 0 && age < threshold;
-          } catch (e) {
-            return false;
-          }
-        },
-
     _activityAdaptiveDelay: function (elapsedMs, activeMs, idleMs, longIdleMs, idleAfterMs, longIdleAfterMs) {
           try {
             const elapsed = Math.max(0, Number(elapsedMs || 0) || 0);
@@ -2170,39 +2102,54 @@
     _shouldScheduleNextUnifiedPulse: function (payload, result) {
           try {
             const scope = String((payload && payload.scope) || (result && result.scope) || "");
-            return scope === "lobby-sync" || scope === "game-presence" || scope === "presence-only";
+            return scope === "lobby-sync" || scope === "game-presence" || scope === "presence-only" || scope === "notifications-only";
           } catch (e) { return true; }
         },
 
 
-    _getUnifiedAppPulseInterval: function () {
+    _getUnifiedAppStatePulseInterval: function () {
           try {
             if (!this._isUnifiedPeriodicPulsePage || !this._isUnifiedPeriodicPulsePage()) return 0;
             const page = this._currentPageKey ? this._currentPageKey() : "app";
             const hidden = !!(typeof document !== "undefined" && document.hidden);
             const now = nowTs();
             if (this._isUnifiedLobbyPage && this._isUnifiedLobbyPage(page)) {
-              const outgoingDelay = this._getPendingOutgoingInvitePulseDelay ? this._getPendingOutgoingInvitePulseDelay() : 0;
-              if (outgoingDelay > 0) return hidden ? Math.max(outgoingDelay, APP_PULSE_BACKGROUND_MS) : outgoingDelay;
               if (!this._lastLobbyUserActivityAt) this._lastLobbyUserActivityAt = this._lobbyOpenedAt || now;
               const base = Math.max(Number(this._lastLobbyUserActivityAt || 0) || 0, Number(this._lastManualLobbyRefreshAt || 0) || 0, Number(this._lobbyOpenedAt || 0) || 0) || now;
               const delay = this._activityAdaptiveDelay(now - base, LOBBY_PULSE_ACTIVE_MS, LOBBY_PULSE_IDLE_MS, LOBBY_PULSE_LONG_IDLE_MS, LOBBY_PULSE_IDLE_AFTER_MS, LOBBY_PULSE_LONG_IDLE_AFTER_MS);
-              return hidden ? Math.max(delay, APP_PULSE_BACKGROUND_MS) : delay;
+              return hidden ? Math.max(delay, APP_PULSE_BACKGROUND_MS) : Math.max(delay, APP_PULSE_SLOW_LATER_MS);
             }
+            // game-live owns player/spectator liveness. The HTTP recovery path
+            // refreshes persisted app state only occasionally while app-live is unavailable.
             if (this._isUnifiedOnlineGamePage && this._isUnifiedOnlineGamePage()) {
-              if (!this.isSpectator) {
-                return GAME_PRESENCE_HEARTBEAT_MS;
-              }
-              if (!this._lastGameUserActivityAt) this._lastGameUserActivityAt = this._lastOnlineGameTransportActivityAt || this._gamePresenceJoinedAt || now;
-              const base = Math.max(Number(this._lastGameUserActivityAt || 0) || 0, Number(this._lastOnlineGameTransportActivityAt || 0) || 0, Number(this._gamePresenceJoinedAt || 0) || 0) || now;
-              const delay = this._activityAdaptiveDelay(now - base, GAME_PULSE_ACTIVE_MS, GAME_PULSE_IDLE_MS, GAME_PULSE_LONG_IDLE_MS, GAME_PULSE_IDLE_AFTER_MS, GAME_PULSE_LONG_IDLE_AFTER_MS);
-              return hidden ? Math.max(delay, APP_PULSE_BACKGROUND_MS) : delay;
+              return hidden ? APP_PULSE_SLOW_BACKGROUND_MS : APP_PULSE_SLOW_IDLE_MS;
             }
             if (hidden) return APP_PULSE_SLOW_BACKGROUND_MS;
             const count = Number(this._slowPresencePulseCount || 0) || 0;
             if (count >= 6) return APP_PULSE_SLOW_IDLE_MS;
             if (count >= 2) return APP_PULSE_SLOW_LATER_MS;
             return APP_PULSE_SLOW_INITIAL_MS;
+          } catch (e) {}
+          return APP_PULSE_SLOW_LATER_MS;
+        },
+
+    _needsInviteFallbackPolling: function () {
+          try {
+            if (this._lastAcceptsInvites !== false && localAcceptsInvitesPreference()) return true;
+            const outgoing = this._loadOutgoingInvites ? this._loadOutgoingInvites() : [];
+            return Array.isArray(outgoing) && outgoing.some((item) => item && item.gameId);
+          } catch (e) { return true; }
+        },
+
+    _getUnifiedAppPulseInterval: function () {
+          try {
+            if (window.DhametAppLive && window.DhametAppLive.isConnected && window.DhametAppLive.isConnected()) return 0;
+            const stateDelay = Number(this._getUnifiedAppStatePulseInterval ? this._getUnifiedAppStatePulseInterval() : 0) || 0;
+            if (!stateDelay) return 0;
+            const outgoingDelay = Number(this._getPendingOutgoingInvitePulseDelay ? this._getPendingOutgoingInvitePulseDelay() : 0) || 0;
+            if (outgoingDelay > 0) return outgoingDelay;
+            if (this._needsInviteFallbackPolling && this._needsInviteFallbackPolling()) return Math.min(stateDelay, APP_INVITE_FALLBACK_MS);
+            return stateDelay;
           } catch (e) {}
           return APP_PULSE_SLOW_LATER_MS;
         },
@@ -2220,7 +2167,7 @@
           const gid = pvcPage ? "" : rawGid;
           let status = this._presenceStatus || (gid ? (this.isSpectator ? "available" : "inPvP") : (pvcPage ? "vsComputer" : "available"));
           let role = this._presenceRole || (this.isSpectator ? "spectator" : (gid && status === "inPvP" ? "player" : null));
-          const scope = this._resolveUnifiedPulseScope ? this._resolveUnifiedPulseScope(page, status, role, gid) : (lobbyPage ? "lobby-sync" : (gid ? "game-presence" : "presence-only"));
+          let scope = this._resolveUnifiedPulseScope ? this._resolveUnifiedPulseScope(page, status, role, gid) : (lobbyPage ? "lobby-sync" : (gid ? "game-presence" : "presence-only"));
           if (scope === "lobby-sync" && lobbyPage && !gid && (status === "inPvP" || role === "player" || role === "spectator")) {
             status = "available";
             role = "lobby";
@@ -2232,9 +2179,15 @@
               .filter(Boolean)
               .slice(-12);
           } catch (e) { outgoingGameIds = []; }
-          const includeLobbyView = scope === "lobby-sync";
-          const includeGamePulse = scope === "game-presence" && !!gid;
           const reasonText = String(this._lastUnifiedPulseReason || (Array.isArray(this._lastUnifiedPulseReasons) ? this._lastUnifiedPulseReasons.join(" ") : "") || (Array.isArray(this._pendingUnifiedPulseReasons) ? this._pendingUnifiedPulseReasons.join(" ") : "") || "").toLowerCase();
+          const appLiveConnected = !!(window.DhametAppLive && window.DhametAppLive.isConnected && window.DhametAppLive.isConnected());
+          const stateDelay = Number(this._getUnifiedAppStatePulseInterval ? this._getUnifiedAppStatePulseInterval() : 0) || APP_PULSE_SLOW_LATER_MS;
+          const lastStatePulseAt = Number(this._lastFallbackStatePulseAt || 0) || 0;
+          const periodicFallback = !force && /^(tick|visibility-hidden|visibility-return|ensure|app-live-fallback)/.test(reasonText || "tick");
+          if (!appLiveConnected && periodicFallback && lastStatePulseAt > 0 && ts - lastStatePulseAt < stateDelay) {
+            scope = "notifications-only";
+          }
+          const includeLobbyView = scope === "lobby-sync";
           const needFullPlayers = !!(
             includeLobbyView && (
               force ||
@@ -2246,8 +2199,8 @@
           const payload = {
             status,
             role,
-            roomId: gid || null,
-            gameId: gid || null,
+            roomId: scope === "notifications-only" ? null : (gid || null),
+            gameId: scope === "notifications-only" ? null : (gid || null),
             nickname: this.myNick || (this.myUid ? getSavedNickOrDefault(this.myUid) : ""),
             icon: this.myIcon || getSavedIconOrDefault(),
             registered: this._presenceRegistered !== false,
@@ -2258,24 +2211,14 @@
             scope,
             pulseScope: scope,
             isSpectator: !!this.isSpectator || role === "spectator" || status === "spectating",
-            joinedAt: includeGamePulse ? (this._gamePresenceJoinedAt || this._spectatorJoinedAt || 0) : 0,
             hidden: !!(typeof document !== "undefined" && document.hidden),
             foreground: !(typeof document !== "undefined" && document.hidden),
-            rtcParticipantActive: !!(
-              includeGamePulse &&
-              !this.isSpectator &&
-              this._voice &&
-              this._voice.enabled === true &&
-              this._voiceParticipantsReady === true &&
-              this._voice.writeDenied !== true
-            ),
             includeLobbyView,
             includePlayers: needFullPlayers,
             includeRooms: includeLobbyView,
-            includeInvites: includeLobbyView,
+            includeInvites: includeLobbyView || scope === "notifications-only",
             includeNotifications: true,
             includeCleanup: includeLobbyView,
-            includeGamePulse,
             force: !!force,
             clientPulseId: [this.myUid || "anon", ts, Math.random().toString(36).slice(2, 8)].join(":"),
           };
@@ -2431,6 +2374,125 @@
           }
         },
 
+    _appLiveLobbyMode: function () {
+          try {
+            const page = this._currentPageKey ? this._currentPageKey() : "app";
+            return !!(this._isUnifiedLobbyPage && this._isUnifiedLobbyPage(page));
+          } catch (e) {
+            return false;
+          }
+        },
+
+    _appLivePresencePayload: function () {
+          try {
+            const pulse = this._buildUnifiedAppPulsePayload ? this._buildUnifiedAppPulsePayload(false) : {};
+            return {
+              status: pulse.status || "available",
+              role: pulse.role || null,
+              roomId: pulse.roomId || pulse.gameId || null,
+              nickname: pulse.nickname || this.myNick || "",
+              icon: pulse.icon || this.myIcon || "",
+              registered: pulse.registered !== false,
+              acceptsInvites: pulse.acceptsInvites !== false,
+              page: pulse.page || "app",
+              mode: pulse.mode || pulse.status || "available",
+              isSpectator: !!pulse.isSpectator,
+              hidden: !!(typeof document !== "undefined" && document.hidden),
+              foreground: !(typeof document !== "undefined" && document.hidden),
+            };
+          } catch (e) {
+            return { status: "available", role: "lobby", page: "app", foreground: true };
+          }
+        },
+
+    _activePlayerRoomsFromRoomList: function (roomList) {
+          const mapped = {};
+          try {
+            for (const [gameId, room] of Object.entries(roomList && typeof roomList === "object" ? roomList : {})) {
+              if (!room || String(room.status || "") !== "active") continue;
+              const players = room.players && typeof room.players === "object" ? room.players : {};
+              for (const side of ["white", "black"]) {
+                const uid = String(players[side] && players[side].uid || "").trim();
+                if (uid) mapped[uid] = String(gameId || "");
+              }
+            }
+          } catch (e) {}
+          return mapped;
+        },
+
+    _handleAppLiveSnapshot: async function (snapshot) {
+          try {
+            const src = snapshot && typeof snapshot === "object" ? snapshot : {};
+            const roomList = src.roomList && typeof src.roomList === "object" ? src.roomList : {};
+            const view = {
+              uid: src.uid || this.myUid || null,
+              viewerUid: src.viewerUid || src.uid || this.myUid || null,
+              players: src.players && typeof src.players === "object" ? src.players : {},
+              roomList,
+              activePlayerRooms: this._activePlayerRoomsFromRoomList(roomList),
+              invites: src.invites && typeof src.invites === "object" ? src.invites : {},
+              generatedAt: Number(src.generatedAt || nowTs()) || nowTs(),
+              source: src.source || "app-live-v1",
+            };
+            this._applyOfficialLobbyView(view);
+            const results = src.inviteResults && typeof src.inviteResults === "object" ? src.inviteResults : {};
+            await this._applyOfficialOutgoingInviteUpdates(results);
+            for (const [gameId, result] of Object.entries(results)) {
+              const status = String(result && result.status || "");
+              if (status !== "active" && status !== "rejected" && status !== "ended" && status !== "expired") continue;
+              try {
+                if (window.DhametAppLive && typeof window.DhametAppLive.ackInviteResult === "function") {
+                  window.DhametAppLive.ackInviteResult(gameId);
+                }
+              } catch (e) {}
+            }
+            return true;
+          } catch (e) {
+            try { Logger.warn("app_live_snapshot_failed", { err: String(e && (e.message || e)) }); } catch (_) {}
+            return false;
+          }
+        },
+
+    _startAppLive: function () {
+          try {
+            if (!this.myUid || !window.DhametAppLive || typeof window.DhametAppLive.start !== "function") return false;
+            if (this._appLiveStarted) {
+              window.DhametAppLive.refreshPresence(false);
+              return true;
+            }
+            this._appLiveStarted = true;
+            window.DhametAppLive.start({
+              getPresence: () => this._appLivePresencePayload(),
+              includeLobby: () => this._appLiveLobbyMode(),
+              onSnapshot: (snapshot) => { this._handleAppLiveSnapshot(snapshot); },
+              onState: (transport) => {
+                try {
+                  this._appLiveConnected = !!(transport && transport.connected);
+                  if (this._appLiveConnected) {
+                    if (this._unifiedAppPulseTimer) clearTimeout(this._unifiedAppPulseTimer);
+                    this._unifiedAppPulseTimer = null;
+                    this._unifiedAppPulseDueAt = 0;
+                  } else if (this.myUid && this._scheduleUnifiedAppPulseAfter) {
+                    this._scheduleUnifiedAppPulseAfter(10000);
+                  }
+                } catch (e) {}
+              },
+            });
+            return true;
+          } catch (e) {
+            this._appLiveStarted = false;
+            return false;
+          }
+        },
+
+    _stopAppLive: function () {
+          try {
+            if (window.DhametAppLive && typeof window.DhametAppLive.stop === "function") window.DhametAppLive.stop();
+          } catch (e) {}
+          this._appLiveStarted = false;
+          this._appLiveConnected = false;
+        },
+
     _dispatchUnifiedAppPulseNow: async function (force, reason) {
           try {
             if (!this.myUid) return false;
@@ -2447,10 +2509,6 @@
             payload.reasons = reasonInfo.reasons;
             payload.kind = payload.kind || "app-pulse";
             payload.action = reasonInfo.reason;
-            if (this._shouldSkipUnifiedPulseForRecentTab && this._shouldSkipUnifiedPulseForRecentTab(payload, reasonInfo.reason, !!force)) {
-              this._lastUnifiedPulseAt = nowTs();
-              return { ok: true, committed: false, skipped: true, reason: "recent-tab-pulse", scope: payload.scope, nextPulseMs: this._getUnifiedAppPulseInterval ? this._getUnifiedAppPulseInterval() : 0 };
-            }
             let result = null;
             if (window.DhametGameRoomClient && typeof window.DhametGameRoomClient.commitAppPulse === "function") {
               result = await window.DhametGameRoomClient.commitAppPulse(payload);
@@ -2473,6 +2531,7 @@
             }
             try { this._syncMyUidFromOfficialResult && this._syncMyUidFromOfficialResult(result); } catch (e) {}
             this._lastUnifiedPulseAt = nowTs();
+            if (result && payload.scope !== "notifications-only") this._lastFallbackStatePulseAt = this._lastUnifiedPulseAt;
             try {
               const scopeForCount = String(payload && payload.scope || "");
               if (scopeForCount === "presence-only") this._slowPresencePulseCount = (Number(this._slowPresencePulseCount || 0) || 0) + 1;
@@ -2483,7 +2542,6 @@
                 this._refreshOutgoingInviteWatches();
               }
             } catch (e) {}
-            try { this._writeUnifiedPulseStamp && this._writeUnifiedPulseStamp(payload); } catch (e) {}
             if (result && result.presence) {
               try { this._rememberPresenceWrite("lobby", result.presence); } catch (e) {}
               try {
@@ -2544,6 +2602,22 @@
               try { this._stopUnifiedAppPulse(); } catch (e) {}
               return false;
             }
+            try {
+              this._startAppLive && this._startAppLive();
+              if (window.DhametAppLive && typeof window.DhametAppLive.refreshPresence === "function") {
+                window.DhametAppLive.refreshPresence(!!force);
+                if (/manual-lobby-refresh|refresh-lobby|lobby-enter|lobby-open|return-lobby/.test(String(r || "")) && typeof window.DhametAppLive.requestSnapshot === "function") {
+                  window.DhametAppLive.requestSnapshot();
+                }
+                if (window.DhametAppLive.isConnected && window.DhametAppLive.isConnected()) {
+                  this._lastUnifiedPulseAt = nowTs();
+                  return { ok: true, committed: false, live: true, reason: r };
+                }
+                if (window.DhametAppLive.isLeader && !window.DhametAppLive.isLeader()) {
+                  return { ok: true, committed: false, delegated: true, reason: "app-live-leader-fallback" };
+                }
+              }
+            } catch (e) {}
             if (this._unifiedAppPulseInFlight) {
               this._scheduleUnifiedAppPulseAfter && this._scheduleUnifiedAppPulseAfter(this._getUnifiedAppPulseMinGap ? this._getUnifiedAppPulseMinGap() : PRESENCE_HEARTBEAT_MS);
               return { ok: true, deferred: true, reason: "in-flight" };
@@ -2629,6 +2703,16 @@
     _sendUnifiedAppLeaveBeacon: function (reason) {
           try {
             if (!this.myUid) return false;
+            const liveReason = String(reason || "pagehide");
+            if (this._appLiveStarted && window.DhametAppLive) {
+              if (/^pvc-exit$/i.test(liveReason)) {
+                this._applySessionState({ presenceStatus: "available", presenceRole: "app", presenceRoomId: null });
+                try { window.DhametAppLive.refreshPresence(true); } catch (e) {}
+              }
+              // Socket closure and the server-side disconnect grace replace
+              // unload writes. Another tab can retain the shared connection.
+              return true;
+            }
             const payload = typeof this._buildUnifiedAppPulsePayload === "function"
               ? this._buildUnifiedAppPulsePayload(true)
               : {};
@@ -2646,7 +2730,6 @@
               payload.roomId = null;
               payload.gameId = null;
               payload.scope = "presence-only";
-              payload.includeGamePulse = false;
             // Refreshing the page, switching tabs, or closing one window must not
             // mean that a player resigned/left the active match. Keep the active
             // game identity alive and let normal absence TTL handle real disconnects.
@@ -2658,12 +2741,10 @@
               payload.roomId = gid;
               payload.gameId = gid;
               payload.scope = "game-presence";
-              payload.includeGamePulse = true;
             } else {
               payload.kind = "leave";
               payload.leave = true;
               payload.scope = payload.gameId || payload.roomId ? "game-presence" : "presence-only";
-              payload.includeGamePulse = false;
             }
             payload.includeLobbyView = false;
             payload.includePlayers = false;
@@ -2876,26 +2957,22 @@
         },
 
     _startPresenceHeartbeat: function () {
-          // Presence is carried by one unified pulse. Lobby and online games keep
-          // the normal interval; other authenticated pages keep a slow notification
-          // pulse so invites can arrive without a separate endpoint or fast polling.
+          // The app-wide WebSocket carries presence and invite events on every
+          // authenticated page. HTTP pulse remains only as a failure fallback.
           try {
-            const page = this._currentPageKey ? this._currentPageKey() : "app";
-            if (this._isUnifiedLobbyPage && this._isUnifiedLobbyPage(page)) return this._ensureUnifiedAppPulse("lobby-enter", true);
-            if (isPvCGamePage()) return this._ensureUnifiedAppPulse("enter-pvc", true);
-            if (this._isUnifiedOnlineGamePage && this._isUnifiedOnlineGamePage()) return this._ensureUnifiedAppPulse("game-enter", true);
-            if (!this._siteEntryPulseAlreadySent || !this._siteEntryPulseAlreadySent()) {
-              this._markSiteEntryPulseSent && this._markSiteEntryPulseSent();
-              return this._ensureUnifiedAppPulse("site-entry", true);
+            if (this._startAppLive && this._startAppLive()) {
+              try { window.DhametAppLive.refreshPresence(true); } catch (e) {}
+              if (!window.DhametAppLive.isConnected || !window.DhametAppLive.isConnected()) {
+                this._scheduleUnifiedAppPulseAfter && this._scheduleUnifiedAppPulseAfter(10000);
+              }
+              return true;
             }
-            return this._ensureUnifiedAppPulse("site-slow", false);
-          } catch (e) {
-            return this._ensureUnifiedAppPulse("site-entry", true);
-          }
+          } catch (e) {}
+          return this._ensureUnifiedAppPulse("app-live-fallback", true);
         },
 
     _stopPresenceHeartbeat: function () {
-          // Stop the single unified pulse.
+          try { this._stopAppLive && this._stopAppLive(); } catch (e) {}
           return this._stopUnifiedAppPulse();
         },
 
@@ -2923,7 +3000,7 @@
                 else if (!internalNav) this._sendUnifiedAppLeaveBeacon("pagehide");
               } catch (e) {}
               try {
-                this._stopUnifiedAppPulse();
+                this._stopPresenceHeartbeat();
               } catch (e) {}
             };
     
@@ -3207,7 +3284,12 @@
                       : null,
               presenceRoomId: null,
             });
-            if (!cfg.deferPulse) await this._runUnifiedAppPulse(true, "lobby-status");
+            if (!cfg.deferPulse) {
+              try {
+                if (this._startAppLive && this._startAppLive() && window.DhametAppLive) window.DhametAppLive.refreshPresence(true);
+                else await this._runUnifiedAppPulse(true, "lobby-status");
+              } catch (e) {}
+            }
           } catch (e) {}
         },
 
@@ -3436,9 +3518,8 @@
             this._outInviteWatchStarted = true;
             if (!this._outInviteWatchMap) this._outInviteWatchMap = {};
             try { this._refreshOutgoingInviteWatches(); } catch (e) {}
-            // No independent timer: outgoing invite watch refresh is folded into
-            // the single unified app pulse.
-            try { this._ensureUnifiedAppPulse("outgoing-invites", false); } catch (e) {}
+            // Invite results arrive through the app-wide live channel. The local
+            // list is retained only for reload recovery and UI correlation.
           } catch (e) {}
         },
 
@@ -3474,9 +3555,8 @@
               kept.push(it);
             }
             try { this._saveOutgoingInvites(kept); } catch (e) {}
-            // Outgoing invite status is returned by official lobby view
-            // inside the unified app pulse. Do not open per-game realtime listeners.
-            try { this._ensureUnifiedAppPulse("outgoing-invite-view", false); } catch (e) {}
+            // No cloud polling here. The app-wide live channel delivers the
+            // accepted/rejected result and the server retains it until ACK.
           } catch (e) {}
         },
 
@@ -3756,7 +3836,6 @@
     APP_PULSE_SLOW_IDLE_MS: APP_PULSE_SLOW_IDLE_MS,
     APP_PULSE_SLOW_BACKGROUND_MS: APP_PULSE_SLOW_BACKGROUND_MS,
     SPECTATOR_COUNT_STALE_MS: SPECTATOR_COUNT_STALE_MS,
-    ROOM_ACTIVITY_TOUCH_MS: ROOM_ACTIVITY_TOUCH_MS,
     INVITE_PREF_CACHE_KEY: INVITE_PREF_CACHE_KEY,
     ROOM_VISIBILITY_PUBLIC: ROOM_VISIBILITY_PUBLIC,
     ROOM_VISIBILITY_PRIVATE: ROOM_VISIBILITY_PRIVATE,

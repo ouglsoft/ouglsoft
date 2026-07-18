@@ -4,11 +4,11 @@
   const Utils = global.DhametUtils;
   if (!Utils) throw new Error('DhametPresence requires DhametUtils');
 
-  const VERSION = 'shared-presence-adaptive-pulse-v9';
+  const VERSION = 'shared-presence-live-channel-v12';
 
-  // Cloudflare Free conscious policy: one browser pulse should carry app
-  // presence, optional game/spectator refresh, and small opportunistic cleanup.
-  // These values are policy, not Dhamet rules.
+  // Cloudflare Free conscious policy. App-live and game-live sockets are the
+  // normal presence channels; the remaining pulse values define the bounded
+  // HTTP recovery path used only while a live channel is unavailable.
   const POLICY = Object.freeze({
     inviteTtlMs: 60 * 1000,
     unifiedAppPulseMs: 30 * 1000,
@@ -16,11 +16,11 @@
     appPulseBackgroundMs: 120 * 1000,
     appPresenceRefreshMs: 30 * 1000,
     appPresenceTtlMs: 180 * 1000,
-    appPresenceHardDeleteMs: 6 * 60 * 1000,
-    appPulseSlowInitialMs: 2 * 60 * 1000,
-    appPulseSlowLaterMs: 3 * 60 * 1000,
-    appPulseSlowIdleMs: 5 * 60 * 1000,
-    appPulseSlowBackgroundMs: 10 * 60 * 1000,
+    appPulseSlowInitialMs: 30 * 1000,
+    appPulseSlowLaterMs: 60 * 1000,
+    appPulseSlowIdleMs: 120 * 1000,
+    appPulseSlowBackgroundMs: 120 * 1000,
+    appInviteFallbackMs: 25 * 1000,
 
     lobbyPulseActiveMs: 30 * 1000,
     lobbyPulseIdleMs: 60 * 1000,
@@ -38,21 +38,13 @@
     busyReconcileIntervalMs: 60 * 1000,
 
     spectatorTtlMs: 3 * 60 * 1000,
-    roomActivityTouchMs: 20 * 1000,
     roomListActiveStaleMs: 2 * 60 * 1000,
     roomListActiveHideMs: 2 * 60 * 1000,
     roomListPendingTtlMs: 90 * 1000,
+    roomAwaitingPlayersMs: 90 * 1000,
     roomListOrphanTtlMs: 5 * 60 * 1000,
     opponentAbsenceMs: 2 * 60 * 1000,
 
-    presenceCleanupIntervalMs: 40 * 1000,
-    inviteCleanupIntervalMs: 40 * 1000,
-    roomCleanupIntervalMs: 60 * 1000,
-    cleanupMinIntervalMs: 40 * 1000,
-    cleanupBatchSize: 20,
-    inviteCleanupBatchSize: 10,
-    roomCleanupBatchSize: 10,
-    presenceCleanupBatchSize: 20,
 
     lobbyHeartbeatMs: 30 * 1000,
     lobbyTtlMs: 180 * 1000,
@@ -118,18 +110,16 @@
     const isLobbyPage = page === 'loby' || page === 'lobby';
     const isPvp = out.status === 'inPvP' || out.role === 'player' || !!gameId;
     let scope = rawScope;
-    if (scope !== 'presence-only' && scope !== 'lobby-sync' && scope !== 'game-presence') {
+    if (scope !== 'presence-only' && scope !== 'lobby-sync' && scope !== 'game-presence' && scope !== 'notifications-only') {
       scope = isPvp ? 'game-presence' : (isLobbyPage || src.includeLobbyView ? 'lobby-sync' : 'presence-only');
     }
     out.scope = scope;
     out.includeLobbyView = src.includeLobbyView != null ? !!src.includeLobbyView : scope === 'lobby-sync';
-    out.includeInvites = src.includeInvites != null ? !!src.includeInvites : scope === 'lobby-sync';
+    out.includeInvites = src.includeInvites != null ? !!src.includeInvites : (scope === 'lobby-sync' || scope === 'notifications-only');
     out.includeNotifications = src.includeNotifications != null ? !!src.includeNotifications : true;
     out.includeRooms = src.includeRooms != null ? !!src.includeRooms : scope === 'lobby-sync';
     out.includePlayers = src.includePlayers != null ? !!src.includePlayers : scope === 'lobby-sync';
     out.includeCleanup = src.includeCleanup != null ? !!src.includeCleanup : scope === 'lobby-sync';
-    out.includeGamePulse = src.includeGamePulse != null ? !!src.includeGamePulse : scope === 'game-presence';
-    out.rtcParticipantActive = !!src.rtcParticipantActive;
     out.leave = !!src.leave || rawKind === 'leave' || rawKind === 'app-leave' || rawKind === 'presence-leave' || rawKind === 'logout' || rawKind === 'offline';
     out.clientPulseId = cleanString(src.clientPulseId || src.clientActionId, 160);
     return out;
@@ -198,67 +188,6 @@
     };
   }
 
-  function roomActivityPatch(ts) {
-    const at = nowMs(ts);
-    return {
-      updatedAt: at,
-      cleanupAt: at + POLICY.roomListActiveHideMs,
-    };
-  }
-
-  function shouldTouchRoomActivity(room, nowValue) {
-    const at = nowMs(nowValue);
-    const last = Number(room && (room.updatedAt || room.acceptedAt || room.createdAt)) || 0;
-    return !last || at - last >= POLICY.roomActivityTouchMs;
-  }
-
-
-  function cleanupKey(value) {
-    return cleanString(value, 260);
-  }
-
-  function selectCleanupBatch(keys, cursor, limit) {
-    const max = Math.max(0, Number(limit || 0) || POLICY.cleanupBatchSize);
-    const all = Array.from(new Set((Array.isArray(keys) ? keys : [])
-      .map(cleanupKey)
-      .filter(Boolean)))
-      .sort();
-    if (!all.length || !max) return { keys: [], nextCursor: '', total: all.length, wrapped: false };
-    const cur = cleanupKey(cursor || '');
-    let start = 0;
-    if (cur) {
-      const exact = all.indexOf(cur);
-      if (exact >= 0) {
-        start = (exact + 1) % all.length;
-      } else {
-        const after = all.findIndex((k) => k > cur);
-        start = after >= 0 ? after : 0;
-      }
-    }
-    const count = Math.min(max, all.length);
-    const selected = [];
-    let wrapped = false;
-    for (let i = 0; i < count; i++) {
-      const idx = (start + i) % all.length;
-      if (start + i >= all.length) wrapped = true;
-      selected.push(all[idx]);
-    }
-    const nextCursor = selected.length ? selected[selected.length - 1] : cur;
-    return { keys: selected, nextCursor, total: all.length, wrapped };
-  }
-
-  function classifyInvite(invite, nowValue) {
-    const at = nowMs(nowValue);
-    if (!invite || typeof invite !== 'object') return { action: 'ignore', reason: 'invalid' };
-    const status = cleanString(invite.status || 'pending', 40);
-    const expiresAt = Number(invite.expiresAt || 0) || 0;
-    const createdAt = Number(invite.createdAt || 0) || 0;
-    if (status !== 'pending') return { action: 'remove', reason: 'not-pending' };
-    const deadline = expiresAt || (createdAt ? createdAt + POLICY.inviteTtlMs : 0);
-    if (deadline && at >= deadline) return { action: 'expire', reason: 'expired', deadline };
-    return { action: 'keep', reason: 'fresh', deadline };
-  }
-
   function _roomTime(room) {
     return Number((room && (room.updatedAt || room.acceptedAt || room.createdAt || room.endedAt)) || 0) || 0;
   }
@@ -300,10 +229,6 @@
     hasMaterialPresenceChange,
     shouldWritePresence,
     rememberPresenceWrite,
-    roomActivityPatch,
-    shouldTouchRoomActivity,
-    selectCleanupBatch,
-    classifyInvite,
     classifyRoomListEntry,
   });
 
