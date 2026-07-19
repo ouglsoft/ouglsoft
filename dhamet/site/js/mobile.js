@@ -1403,6 +1403,7 @@ function refreshMobileText() {
     document.body.classList.toggle('z-mobile-landscape', mobile && orientation === 'landscape');
     document.body.setAttribute('data-mobile-page', pageType());
     document.body.setAttribute('data-mobile-orientation', orientation);
+    document.body.classList.add('z-mobile-layout-ready');
 
     if (!mobile) {
       restoreModeHead();

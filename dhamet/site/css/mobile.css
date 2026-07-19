@@ -3637,3 +3637,15 @@ body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="game"] .
 body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="game"] .z-mobile-game-controls-grid #btnEndKill {
   min-height: 50px;
 }
+
+/* 2.13.3 prevent the desktop statistics/sidebar from flashing before mobile layout mounts */
+@media (max-width: 767px) {
+  body.z-game-page:not(.z-mobile-layout-ready) .side,
+  body.z-game-page:not(.z-mobile-layout-ready) .stats,
+  body.z-game-page:not(.z-mobile-layout-ready) .stats-mobile,
+  body.z-game-page:not(.z-mobile-layout-ready) .controls-wrap,
+  body.z-game-page:not(.z-mobile-layout-ready) .log {
+    visibility: hidden !important;
+    opacity: 0 !important;
+  }
+}

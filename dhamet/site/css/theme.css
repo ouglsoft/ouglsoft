@@ -1367,3 +1367,540 @@ html.dark .z-mode-card,
 html.dark .z-mode-card h2,
 html.dark .z-mode-card p { color: rgb(var(--rgb-white)) !important; }
 html.dark .z-mode-card p { color: rgb(var(--rgb-white) / .86) !important; }
+
+/* ========================================================================== 
+   2.13.3 REBALANCE — DEEP OCEAN PALETTE, CONTROLS, MODALS, MOBILE
+   ========================================================================== */
+:root {
+  --rgb-sand-50: 248 250 250;
+  --rgb-sand-100: 238 244 244;
+  --rgb-sand-200: 221 232 232;
+  --rgb-sand-300: 198 215 214;
+
+  --rgb-light-primary-200: 205 224 233;
+  --rgb-light-primary-300: 155 193 208;
+  --rgb-light-primary-400: 63 133 157;
+  --rgb-light-primary-500: 23 89 118;
+  --rgb-light-primary-600: 18 71 96;
+  --rgb-light-primary-700: 13 54 76;
+  --rgb-light-primary-800: 9 41 60;
+
+  --rgb-primary-100: 235 245 249;
+  --rgb-primary-200: 211 230 238;
+  --rgb-primary-300: 159 200 216;
+  --rgb-primary-400: 79 151 178;
+  --rgb-primary-500: 32 104 134;
+  --rgb-primary-600: 22 80 106;
+  --rgb-primary-700: 15 59 82;
+  --rgb-primary-800: 11 43 62;
+  --rgb-primary-900: 7 27 40;
+
+  --rgb-secondary-100: 222 245 241;
+  --rgb-secondary-200: 181 226 219;
+  --rgb-secondary-300: 100 199 187;
+  --rgb-secondary-400: 40 174 161;
+  --rgb-secondary-500: 15 139 130;
+  --rgb-secondary-600: 10 111 105;
+  --rgb-secondary-700: 7 83 80;
+
+  --rgb-ink: 19 38 55;
+  --rgb-muted-ink: 75 91 104;
+  --rgb-dark-surface: 11 34 49;
+  --rgb-dark-surface-alt: 8 27 40;
+  --rgb-dark-border: 38 83 99;
+  --rgb-dark-muted: 178 205 213;
+
+  --color-bg: rgb(var(--rgb-sand-50));
+  --color-bg-alt: rgb(var(--rgb-sand-100));
+  --color-surface: rgb(var(--rgb-white) / .94);
+  --color-surface-solid: rgb(var(--rgb-white) / .99);
+  --color-surface-raised: rgb(var(--rgb-white));
+  --color-surface-muted: rgb(var(--rgb-sand-100) / .92);
+  --color-text: rgb(var(--rgb-ink));
+  --color-text-strong: rgb(var(--rgb-ink));
+  --color-text-muted: rgb(var(--rgb-muted-ink));
+  --color-primary: rgb(var(--rgb-light-primary-500));
+  --color-primary-hover: rgb(var(--rgb-light-primary-600));
+  --color-primary-soft: rgb(var(--rgb-light-primary-500) / .12);
+  --color-secondary: rgb(var(--rgb-secondary-600));
+  --color-secondary-hover: rgb(var(--rgb-secondary-700));
+  --color-secondary-soft: rgb(var(--rgb-secondary-500) / .13);
+  --color-border: rgb(var(--rgb-light-primary-300) / .46);
+  --color-border-strong: rgb(var(--rgb-light-primary-500) / .42);
+
+  --gradient-primary: linear-gradient(135deg, rgb(var(--rgb-light-primary-700)) 0%, rgb(var(--rgb-light-primary-500)) 55%, rgb(var(--rgb-secondary-500)) 100%);
+  --gradient-secondary: linear-gradient(135deg, rgb(var(--rgb-secondary-700)) 0%, rgb(var(--rgb-secondary-500)) 58%, rgb(var(--rgb-light-primary-400)) 100%);
+  --gradient-surface: linear-gradient(150deg, rgb(var(--rgb-white) / .99) 0%, rgb(var(--rgb-sand-100) / .97) 58%, rgb(var(--rgb-light-primary-200) / .82) 100%);
+  --gradient-game-panel: linear-gradient(150deg, rgb(var(--rgb-white) / .99) 0%, rgb(var(--rgb-sand-100) / .96) 56%, rgb(var(--rgb-secondary-100) / .84) 100%);
+  --gradient-mode-pvc: linear-gradient(145deg, rgb(var(--rgb-white)) 0%, rgb(var(--rgb-light-primary-200) / .94) 64%, rgb(var(--rgb-secondary-100) / .86) 100%);
+  --gradient-mode-pvp: linear-gradient(145deg, rgb(var(--rgb-white)) 0%, rgb(var(--rgb-secondary-100) / .96) 62%, rgb(var(--rgb-light-primary-200) / .84) 100%);
+  --gradient-lobby-rooms: linear-gradient(150deg, rgb(var(--rgb-white)) 0%, rgb(var(--rgb-light-primary-200) / .88) 100%);
+  --gradient-lobby-players: linear-gradient(150deg, rgb(var(--rgb-white)) 0%, rgb(var(--rgb-secondary-100) / .95) 100%);
+  --gradient-row-room: linear-gradient(140deg, rgb(var(--rgb-white)) 0%, rgb(var(--rgb-light-primary-200) / .78) 100%);
+  --gradient-row-player: linear-gradient(140deg, rgb(var(--rgb-white)) 0%, rgb(var(--rgb-secondary-100) / .88) 100%);
+  --gradient-game-control: linear-gradient(145deg, rgb(var(--rgb-light-primary-700)) 0%, rgb(var(--rgb-light-primary-500)) 58%, rgb(var(--rgb-secondary-600)) 100%);
+  --gradient-game-control-danger: linear-gradient(145deg, rgb(var(--rgb-danger-700)) 0%, rgb(var(--rgb-danger-500)) 100%);
+  --gradient-modal-header: linear-gradient(135deg, rgb(var(--rgb-light-primary-700)) 0%, rgb(var(--rgb-light-primary-500)) 58%, rgb(var(--rgb-secondary-600)) 100%);
+
+  --rgb-board-light: 202 218 222;
+  --rgb-board-light-alt: 109 146 166;
+  --rgb-board-dark: 17 36 50;
+  --rgb-board-dark-alt: 45 80 96;
+  --rgb-board-grid-light: 25 57 76;
+  --rgb-board-diag-light: 176 105 45;
+  --rgb-board-grid-dark: 218 236 239;
+  --rgb-board-diag-dark: 255 202 114;
+  --game-board-grid: rgb(var(--rgb-board-grid-light));
+  --game-board-diag: rgb(var(--rgb-board-diag-light));
+  --game-board-start: rgb(var(--rgb-board-light));
+  --game-board-end: rgb(var(--rgb-board-light-alt));
+
+  --piece-white-light: rgb(var(--rgb-white));
+  --piece-white-mid: rgb(240 247 248);
+  --piece-white-dark: rgb(199 220 226);
+  --piece-white-edge: rgb(var(--rgb-light-primary-800));
+  --piece-white-edge-soft: rgb(var(--rgb-light-primary-500));
+  --piece-white-dot: rgb(var(--rgb-light-primary-700));
+  --piece-black-light: rgb(43 76 92);
+  --piece-black-mid: rgb(22 49 65);
+  --piece-black-dark: rgb(8 27 39);
+  --piece-black-edge: rgb(var(--rgb-secondary-300));
+  --piece-black-edge-soft: rgb(var(--rgb-secondary-400));
+  --piece-black-dot: rgb(var(--rgb-secondary-200));
+}
+
+:root.dark {
+  --color-bg: rgb(var(--rgb-primary-900));
+  --color-bg-alt: rgb(var(--rgb-dark-surface-alt));
+  --color-surface: rgb(var(--rgb-dark-surface) / .95);
+  --color-surface-solid: rgb(var(--rgb-dark-surface));
+  --color-surface-raised: rgb(var(--rgb-primary-800));
+  --color-surface-muted: rgb(var(--rgb-primary-800) / .88);
+  --color-text: rgb(var(--rgb-primary-100));
+  --color-text-strong: rgb(var(--rgb-white));
+  --color-text-muted: rgb(var(--rgb-dark-muted));
+  --color-primary: rgb(var(--rgb-primary-300));
+  --color-primary-hover: rgb(var(--rgb-primary-200));
+  --color-primary-soft: rgb(var(--rgb-primary-300) / .16);
+  --color-secondary: rgb(var(--rgb-secondary-300));
+  --color-secondary-hover: rgb(var(--rgb-secondary-200));
+  --color-secondary-soft: rgb(var(--rgb-secondary-300) / .16);
+  --color-border: rgb(var(--rgb-dark-border) / .92);
+  --color-border-strong: rgb(var(--rgb-primary-300) / .48);
+  --gradient-primary: linear-gradient(135deg, rgb(var(--rgb-primary-700)) 0%, rgb(var(--rgb-primary-500)) 58%, rgb(var(--rgb-secondary-500)) 100%);
+  --gradient-secondary: linear-gradient(135deg, rgb(var(--rgb-secondary-700)) 0%, rgb(var(--rgb-secondary-500)) 58%, rgb(var(--rgb-primary-400)) 100%);
+  --gradient-surface: linear-gradient(150deg, rgb(var(--rgb-dark-surface) / .99) 0%, rgb(var(--rgb-primary-800) / .96) 58%, rgb(var(--rgb-secondary-700) / .28) 100%);
+  --gradient-game-panel: linear-gradient(150deg, rgb(var(--rgb-dark-surface) / .99) 0%, rgb(var(--rgb-primary-800) / .96) 58%, rgb(var(--rgb-secondary-700) / .32) 100%);
+  --gradient-mode-pvc: linear-gradient(145deg, rgb(var(--rgb-primary-800)) 0%, rgb(var(--rgb-primary-600)) 64%, rgb(var(--rgb-secondary-700)) 100%);
+  --gradient-mode-pvp: linear-gradient(145deg, rgb(var(--rgb-secondary-700)) 0%, rgb(var(--rgb-secondary-600)) 62%, rgb(var(--rgb-primary-700)) 100%);
+  --gradient-lobby-rooms: linear-gradient(150deg, rgb(var(--rgb-primary-800)) 0%, rgb(var(--rgb-primary-700)) 100%);
+  --gradient-lobby-players: linear-gradient(150deg, rgb(var(--rgb-dark-surface)) 0%, rgb(var(--rgb-secondary-700) / .52) 100%);
+  --gradient-row-room: linear-gradient(140deg, rgb(var(--rgb-primary-800)) 0%, rgb(var(--rgb-primary-700)) 100%);
+  --gradient-row-player: linear-gradient(140deg, rgb(var(--rgb-dark-surface)) 0%, rgb(var(--rgb-secondary-700) / .48) 100%);
+  --gradient-game-control: linear-gradient(145deg, rgb(var(--rgb-primary-700)) 0%, rgb(var(--rgb-primary-500)) 58%, rgb(var(--rgb-secondary-600)) 100%);
+  --gradient-modal-header: linear-gradient(135deg, rgb(var(--rgb-primary-700)) 0%, rgb(var(--rgb-primary-500)) 58%, rgb(var(--rgb-secondary-600)) 100%);
+  --game-board-grid: rgb(var(--rgb-board-grid-dark));
+  --game-board-diag: rgb(var(--rgb-board-diag-dark));
+  --game-board-start: rgb(var(--rgb-board-dark));
+  --game-board-end: rgb(var(--rgb-board-dark-alt));
+}
+
+/* Login and lobby actions use one strong, harmonious family instead of pale tints. */
+.z-auth-page #btnLogin,
+.z-auth-page #btnRegister,
+.z-auth-page #btnRecover,
+.z-auth-page #btnLoginGoogle,
+.z-lobby-panel .btn.primary,
+.z-lobby-panel .btn.secondary,
+.z-lobby-panel .btn.ok,
+.z-lobby-panel button.primary,
+.z-lobby-panel button.secondary,
+.z-lobby-panel button.ok,
+.z-lobby-refresh-btn,
+.z-invite-receive-toggle {
+  color: rgb(var(--rgb-white)) !important;
+  background: var(--gradient-primary) !important;
+  border-color: rgb(var(--rgb-white) / .22) !important;
+  box-shadow: 0 12px 28px rgb(var(--rgb-light-primary-700) / .24) !important;
+}
+.z-auth-page #btnGuest {
+  color: rgb(var(--rgb-white)) !important;
+  background: linear-gradient(145deg, rgb(var(--rgb-primary-800)), rgb(var(--rgb-primary-600))) !important;
+}
+.z-lobby-panel .btn:disabled,
+.z-lobby-panel button:disabled {
+  opacity: .48 !important;
+  filter: saturate(.55) !important;
+}
+.z-lobby-list.players .z-row::before,
+.player-item::before {
+  content: none !important;
+  display: none !important;
+}
+.z-row-status-dot.is-available,
+.z-player-row.is-available .z-row-status-dot {
+  background: rgb(var(--rgb-success-600)) !important;
+  box-shadow: 0 0 0 4px rgb(var(--rgb-success-500) / .16) !important;
+}
+.z-row-status-dot.is-busy,
+.z-player-row.is-busy .z-row-status-dot {
+  background: rgb(var(--rgb-danger-500)) !important;
+  box-shadow: 0 0 0 4px rgb(var(--rgb-danger-500) / .15) !important;
+}
+
+/* Modal family: clearly new surface, header, close control and footer hierarchy. */
+.modal-backdrop,
+.z-modal-backdrop {
+  background: rgb(var(--rgb-primary-900) / .72) !important;
+  backdrop-filter: blur(12px) saturate(1.08) !important;
+}
+.modal,
+.modal-content,
+.dialog {
+  border: 1px solid var(--color-border-strong) !important;
+  border-radius: 24px !important;
+  background: var(--gradient-surface) !important;
+  box-shadow: 0 32px 90px rgb(var(--rgb-primary-900) / .42), inset 0 1px 0 rgb(var(--rgb-white) / .24) !important;
+  overflow: hidden !important;
+}
+.modal::before {
+  content: "";
+  position: absolute;
+  inset-inline-end: -52px;
+  inset-block-start: -52px;
+  width: 170px;
+  height: 170px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgb(var(--rgb-secondary-300) / .18), transparent 70%);
+  pointer-events: none;
+}
+.modal-header {
+  min-height: 54px;
+  padding: 13px 18px !important;
+  color: rgb(var(--rgb-white)) !important;
+  background: var(--gradient-modal-header) !important;
+  border-bottom: 1px solid rgb(var(--rgb-white) / .18) !important;
+}
+.modal-title {
+  color: rgb(var(--rgb-white)) !important;
+  font-weight: 900 !important;
+  letter-spacing: -.02em;
+}
+.modal-close {
+  width: 34px !important;
+  height: 34px !important;
+  color: rgb(var(--rgb-white)) !important;
+  background: rgb(var(--rgb-white) / .14) !important;
+  border: 1px solid rgb(var(--rgb-white) / .22) !important;
+  box-shadow: inset 0 1px 0 rgb(var(--rgb-white) / .16);
+}
+.modal-body {
+  color: var(--color-text) !important;
+  background: linear-gradient(180deg, rgb(var(--rgb-white) / .22), transparent) !important;
+}
+.modal-footer {
+  border-top: 1px solid var(--color-border) !important;
+  background: rgb(var(--rgb-white) / .52) !important;
+}
+html.dark .modal-footer {
+  background: rgb(var(--rgb-primary-900) / .38) !important;
+}
+.modal-footer .btn,
+.modal-footer button {
+  min-width: 112px;
+  font-weight: 800;
+}
+.modal-body th {
+  color: var(--color-primary) !important;
+  border-color: var(--color-border) !important;
+}
+.modal-body td {
+  border-color: var(--color-border) !important;
+}
+.option-item,
+.modal-body input,
+.modal-body select,
+.modal-body textarea {
+  border-color: var(--color-border) !important;
+  background: var(--color-surface-solid) !important;
+}
+
+/* Mobile shell icons stay crisp in dark mode. */
+html.dark body.z-mobile-on .z-mobile-shell-btn,
+html.dark body.z-mobile-on .z-mobile-orient {
+  color: rgb(var(--rgb-white)) !important;
+  background: linear-gradient(145deg, rgb(var(--rgb-primary-800)), rgb(var(--rgb-primary-600))) !important;
+  border-color: rgb(var(--rgb-primary-300) / .40) !important;
+  box-shadow: 0 10px 26px rgb(var(--rgb-black) / .38) !important;
+}
+html.dark body.z-mobile-on .z-mobile-shell-btn img {
+  filter: brightness(0) invert(1) drop-shadow(0 1px 1px rgb(var(--rgb-black) / .32)) !important;
+  opacity: 1 !important;
+}
+
+/* Game controls: one coherent color family, with destructive actions only in red. */
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid .btn,
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnEndKill,
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid .soufla-row .btn,
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnSync,
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnRefreshLocal,
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnSoufla,
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnUndo,
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnSettings,
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnSave,
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnResume,
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnNew,
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnChat,
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnSpk,
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnMic {
+  color: rgb(var(--rgb-white)) !important;
+  background: var(--gradient-game-control) !important;
+  border: 1px solid rgb(var(--rgb-white) / .18) !important;
+  box-shadow: 0 9px 20px rgb(var(--rgb-primary-900) / .24), inset 0 1px 0 rgb(var(--rgb-white) / .20) !important;
+}
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnSync.z-sync-issue,
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnEndKill,
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnEndLocalMatch,
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnEndOnline,
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnLeaveRoom {
+  background: var(--gradient-game-control-danger) !important;
+}
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid .btn .btn-ico,
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnEndKill .btn-ico {
+  display: block !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  object-fit: contain;
+  transform-origin: center;
+  filter: brightness(0) invert(1) drop-shadow(0 1px 1px rgb(var(--rgb-black) / .30)) !important;
+  opacity: 1 !important;
+}
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid .btn .btn-text,
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnEndKill .btn-text {
+  display: none !important;
+}
+
+/* Portrait buttons are reduced by about 40%; icons consume essentially the full tile. */
+body.z-mobile-on[data-mobile-orientation="portrait"][data-mobile-page="game"] .z-mobile-game-controls-grid .btn,
+body.z-mobile-on[data-mobile-orientation="portrait"][data-mobile-page="game"] .z-mobile-game-controls-grid .timer-row,
+body.z-mobile-on[data-mobile-orientation="portrait"][data-mobile-page="game"] .z-mobile-game-controls-grid .soufla-row,
+body.z-mobile-on[data-mobile-orientation="portrait"][data-mobile-page="game"] .z-mobile-game-controls-grid #btnEndKill {
+  min-height: 32px !important;
+  height: 32px !important;
+  padding: 0 !important;
+  border-radius: 11px !important;
+}
+body.z-mobile-on[data-mobile-orientation="portrait"][data-mobile-page="game"] .z-mobile-game-controls-grid .btn .btn-ico,
+body.z-mobile-on[data-mobile-orientation="portrait"][data-mobile-page="game"] .z-mobile-game-controls-grid #btnEndKill .btn-ico {
+  width: 30px !important;
+  height: 30px !important;
+  transform: scale(1.22);
+}
+body.z-mobile-on[data-mobile-orientation="portrait"][data-mobile-page="game"] .z-mobile-game-controls-grid {
+  gap: 4px !important;
+}
+
+/* Landscape retains button height; the icon fills the available vertical area. */
+body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="game"] .z-mobile-game-controls-grid .btn,
+body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="game"] .z-mobile-game-controls-grid .timer-row,
+body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="game"] .z-mobile-game-controls-grid .soufla-row,
+body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="game"] .z-mobile-game-controls-grid #btnEndKill {
+  min-height: 50px !important;
+  height: 50px !important;
+  padding: 0 !important;
+}
+body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="game"] .z-mobile-game-controls-grid .btn .btn-ico,
+body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="game"] .z-mobile-game-controls-grid #btnEndKill .btn-ico {
+  width: 46px !important;
+  height: 46px !important;
+  transform: scale(1.16);
+}
+
+/* Capture timer is always above the end-capture button while the chain is active. */
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid .timer-row {
+  position: relative !important;
+  overflow: hidden !important;
+}
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid .timer-row #btnEndKill {
+  position: relative !important;
+  z-index: 1 !important;
+}
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid .timer-row.is-live .clock {
+  display: flex !important;
+  z-index: 5 !important;
+  inset: 0 !important;
+  color: rgb(var(--rgb-white)) !important;
+  background: linear-gradient(145deg, rgb(var(--rgb-primary-900) / .92), rgb(var(--rgb-danger-700) / .90)) !important;
+  border: 0 !important;
+  border-radius: inherit !important;
+  text-shadow: 0 1px 2px rgb(var(--rgb-black) / .45) !important;
+}
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid .timer-row.is-live .clock::before {
+  content: none !important;
+}
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid .timer-row.is-live #btnEndKill .btn-ico,
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid .timer-row.is-live #btnEndKill .btn-text {
+  opacity: 0 !important;
+}
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid .timer-row.is-live #killClock {
+  color: rgb(var(--rgb-white)) !important;
+  font-size: clamp(13px, 3.6vw, 19px) !important;
+  font-weight: 950 !important;
+}
+
+/* Desktop game controls use the same restrained ocean family as mobile. */
+body.z-game-page:not(.z-mobile-on) .side .btn,
+body.z-game-page:not(.z-mobile-on) .controls-box .btn,
+body.z-game-page:not(.z-mobile-on) #btnSoufla,
+body.z-game-page:not(.z-mobile-on) #btnUndo,
+body.z-game-page:not(.z-mobile-on) #btnSettings,
+body.z-game-page:not(.z-mobile-on) #btnSave,
+body.z-game-page:not(.z-mobile-on) #btnResume,
+body.z-game-page:not(.z-mobile-on) #btnNew,
+body.z-game-page:not(.z-mobile-on) #btnRefreshLocal,
+body.z-game-page:not(.z-mobile-on) #btnSync,
+body.z-game-page:not(.z-mobile-on) #btnChat,
+body.z-game-page:not(.z-mobile-on) #btnSpk,
+body.z-game-page:not(.z-mobile-on) #btnMic {
+  color: rgb(var(--rgb-white)) !important;
+  background: var(--gradient-game-control) !important;
+  border-color: rgb(var(--rgb-white) / .18) !important;
+  box-shadow: 0 10px 24px rgb(var(--rgb-primary-900) / .22), inset 0 1px 0 rgb(var(--rgb-white) / .20) !important;
+}
+body.z-game-page:not(.z-mobile-on) #btnEndKill,
+body.z-game-page:not(.z-mobile-on) #btnEndLocalMatch,
+body.z-game-page:not(.z-mobile-on) #btnEndOnline,
+body.z-game-page:not(.z-mobile-on) #btnLeaveRoom,
+body.z-game-page:not(.z-mobile-on) #btnSync.z-sync-issue {
+  color: rgb(var(--rgb-white)) !important;
+  background: var(--gradient-game-control-danger) !important;
+}
+body.z-game-page:not(.z-mobile-on) .side .btn .btn-ico,
+body.z-game-page:not(.z-mobile-on) .controls-box .btn .btn-ico {
+  filter: brightness(0) invert(1) drop-shadow(0 1px 1px rgb(var(--rgb-black) / .26)) !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+/* ========================================================================== 
+   2.13.3 FINAL OVERRIDES — BALANCED COLOR, ICON SCALE, TIMER, MODALS
+   ========================================================================== */
+:root {
+  --gradient-primary: linear-gradient(135deg, rgb(21 86 114) 0%, rgb(24 125 132) 58%, rgb(53 160 145) 100%);
+  --gradient-secondary: linear-gradient(135deg, rgb(25 75 96) 0%, rgb(28 112 119) 58%, rgb(64 151 140) 100%);
+  --gradient-game-control: linear-gradient(145deg, rgb(19 69 94) 0%, rgb(25 108 119) 58%, rgb(49 143 132) 100%);
+  --gradient-game-control-danger: linear-gradient(145deg, rgb(128 40 48) 0%, rgb(177 61 70) 100%);
+  --gradient-modal-header: linear-gradient(135deg, rgb(18 66 90) 0%, rgb(24 105 116) 58%, rgb(48 143 132) 100%);
+}
+.z-auth-page #btnLogin,
+.z-auth-page #btnRegister,
+.z-auth-page #btnRecover,
+.z-auth-page #btnLoginGoogle,
+.z-lobby-panel .btn:not(.danger):not(.end),
+.z-lobby-panel button:not(.danger):not(.end) {
+  background: var(--gradient-primary) !important;
+  color: rgb(var(--rgb-white)) !important;
+  border-color: rgb(var(--rgb-white) / .22) !important;
+  box-shadow: 0 10px 24px rgb(10 48 66 / .22), inset 0 1px 0 rgb(var(--rgb-white) / .22) !important;
+}
+.z-auth-page #btnGuest {
+  background: linear-gradient(145deg, rgb(33 52 67), rgb(41 79 91)) !important;
+}
+.z-lobby-list.players .z-row::before,
+.player-item::before { content: none !important; display: none !important; }
+.z-row-status-dot.is-available,
+.z-player-row.is-available .z-row-status-dot { background: rgb(28 159 92) !important; box-shadow: 0 0 0 4px rgb(28 159 92 / .15) !important; }
+.z-row-status-dot.is-busy,
+.z-player-row.is-busy .z-row-status-dot { background: rgb(204 67 74) !important; box-shadow: 0 0 0 4px rgb(204 67 74 / .14) !important; }
+
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid .btn,
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnEndKill,
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid .soufla-row .btn,
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnSync,
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnRefreshLocal,
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnSoufla,
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnUndo,
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnSettings,
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnSave,
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnResume,
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnNew,
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnChat,
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnSpk,
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnMic {
+  background: var(--gradient-game-control) !important;
+  color: rgb(var(--rgb-white)) !important;
+}
+body.z-mobile-on[data-mobile-orientation="portrait"][data-mobile-page="game"] .z-mobile-game-controls-grid .btn,
+body.z-mobile-on[data-mobile-orientation="portrait"][data-mobile-page="game"] .z-mobile-game-controls-grid .timer-row,
+body.z-mobile-on[data-mobile-orientation="portrait"][data-mobile-page="game"] .z-mobile-game-controls-grid .soufla-row,
+body.z-mobile-on[data-mobile-orientation="portrait"][data-mobile-page="game"] .z-mobile-game-controls-grid #btnEndKill {
+  min-height: 31px !important;
+  height: 31px !important;
+  padding: 0 !important;
+  border-radius: 10px !important;
+}
+body.z-mobile-on[data-mobile-orientation="portrait"][data-mobile-page="game"] .z-mobile-game-controls-grid .btn .btn-ico,
+body.z-mobile-on[data-mobile-orientation="portrait"][data-mobile-page="game"] .z-mobile-game-controls-grid #btnEndKill .btn-ico {
+  width: 30px !important;
+  height: 30px !important;
+  max-width: 94% !important;
+  max-height: 94% !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  transform: none !important;
+}
+body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="game"] .z-mobile-game-controls-grid .btn .btn-ico,
+body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="game"] .z-mobile-game-controls-grid #btnEndKill .btn-ico {
+  width: 48px !important;
+  height: 48px !important;
+  max-width: 94% !important;
+  max-height: 94% !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  transform: none !important;
+}
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid .timer-row.is-live .clock {
+  display: flex !important;
+  position: absolute !important;
+  inset: 0 !important;
+  z-index: 20 !important;
+  align-items: center !important;
+  justify-content: center !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+  background: linear-gradient(145deg, rgb(15 39 55 / .96), rgb(133 45 53 / .94)) !important;
+  color: rgb(var(--rgb-white)) !important;
+  pointer-events: none !important;
+}
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid .timer-row.is-live #btnEndKill { z-index: 1 !important; }
+
+html.dark body.z-mobile-on .z-mobile-shell-btn img,
+html.dark body.z-mobile-on .z-mobile-orient img,
+html.dark body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid .btn .btn-ico,
+html.dark body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnEndKill .btn-ico {
+  filter: brightness(0) invert(1) drop-shadow(0 1px 2px rgb(var(--rgb-black) / .48)) !important;
+  opacity: 1 !important;
+}
+
+.modal-backdrop,
+.z-modal-backdrop { background: rgb(5 24 34 / .78) !important; backdrop-filter: blur(14px) saturate(1.1) !important; }
+.modal,
+.modal-content,
+.dialog {
+  background: linear-gradient(155deg, rgb(var(--rgb-white) / .99), rgb(229 240 240 / .98), rgb(213 231 233 / .96)) !important;
+  border: 1px solid rgb(42 118 125 / .36) !important;
+  border-radius: 24px !important;
+  box-shadow: 0 34px 92px rgb(7 40 55 / .38), inset 0 1px 0 rgb(var(--rgb-white) / .34) !important;
+}
+html.dark .modal,
+html.dark .modal-content,
+html.dark .dialog {
+  background: linear-gradient(155deg, rgb(12 38 52 / .99), rgb(13 50 61 / .98), rgb(18 65 69 / .96)) !important;
+  border-color: rgb(88 181 173 / .34) !important;
+}
+.modal-header { background: var(--gradient-modal-header) !important; }
+.modal-body { color: var(--color-text) !important; }

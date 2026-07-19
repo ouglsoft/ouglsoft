@@ -2204,14 +2204,31 @@
       } catch (_) {}
     }
 
+    function boundedLocalState() {
+      const state = serializeState();
+      const fallbackAdvanced = Config.createDefaultAdvancedSettings('beginner');
+      return Object.assign({}, state, {
+        settings: Object.assign({}, state.settings || {}, { advanced: fallbackAdvanced }),
+      });
+    }
+
     async function requestAnalysis() {
-      return DhametAIRuntime.callWorkerWithRetry(
-        bridge,
-        'analyzeTurn',
-        [],
-        async function () { throw new Error('computer/worker-unavailable'); },
-        { accept: (value) => !!(value && value.move && Array.isArray(value.move.path)) },
-      );
+      try {
+        return await DhametAIRuntime.callWorkerWithRetry(
+          bridge,
+          'analyzeTurn',
+          [],
+          async function () { return analyzePosition(boundedLocalState()); },
+          { accept: (value) => !!(value && value.move && Array.isArray(value.move.path)) },
+        );
+      } catch (error) {
+        const state = boundedLocalState();
+        const pos = normalizePosition(state);
+        const forced = forcedOpeningMove(pos);
+        const move = forced || R.compact.firstStrictMove(pos.board, pos.side);
+        if (move) return { move, score: 0, depth: 0, nodes: 0, timeMs: 0, engine: ENGINE_VERSION, emergencyFallback: true };
+        throw error;
+      }
     }
 
     function finishCaptureTurn() {
@@ -2354,7 +2371,7 @@
         bridge,
         'pickSouflaDecision',
         [pending],
-        async function () { throw new Error('computer/worker-unavailable'); },
+        async function () { return analyzePenalty(boundedLocalState(), pending); },
         { accept: (value) => !!value },
       );
     }

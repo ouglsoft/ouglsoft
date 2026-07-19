@@ -5557,11 +5557,14 @@
     
               playersEl.innerHTML = rows
                 .map((r) => {
+                  const playerStateClass = (r.st === "available" || r.st === "vsComputer")
+                    ? "is-available"
+                    : "is-busy";
                   if (r.isSelf) {
                     return `
-                      <div class="z-row z-player-row is-self" data-uid="${r.uid}">
+                      <div class="z-row z-player-row ${playerStateClass} is-self" data-uid="${r.uid}">
                         <div class="z-row-main">
-                          <div class="z-row-title"><span class="z-row-status-dot is-self" aria-hidden="true"></span><img class="z-avatar" src="${r.icon}" alt="" /><span class="z-player-name">${escapeHtml(r.nick)}</span></div>
+                          <div class="z-row-title"><span class="z-row-status-dot ${playerStateClass}" aria-hidden="true"></span><img class="z-avatar" src="${r.icon}" alt="" /><span class="z-player-name">${escapeHtml(r.nick)}</span></div>
                         </div>
                         <div class="z-row-actions">
                           <span class="z-self">${window.I18N.translateArgs("players.you")}</span>
@@ -5573,7 +5576,6 @@
                   const dis = r.canInvite ? "" : 'disabled aria-disabled="true"';
                   const title = r.canInvite ? "" : `title="${window.I18N.translateArgs(r.st === "inPvP" ? "lobby.inviteDisabled" : "lobby.invitesDisabled")}"`;
                   const inviteLabel = window.I18N.translateArgs("actions.invite");
-                  const playerStateClass = r.canInvite ? "is-available" : "is-busy";
                   return `
                     <div class="z-row z-player-row ${playerStateClass}" data-uid="${r.uid}">
                       <div class="z-row-main">
