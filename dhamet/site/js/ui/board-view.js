@@ -29,69 +29,106 @@
     return { getPropertyValue: function () { return ""; } };
   }
 
-  var PIECE_COLORS = Object.freeze({
-    whiteLight: "#fafafa",
-    whiteMid: "#ededed",
-    whiteDark: "#d4d4d4",
-    whiteEdge: "#526bfc",
-    whiteDot: "#3b82f6",
-    blackLight: "#1f2937",
-    blackMid: "#17202d",
-    blackDark: "#0b1220",
-    blackEdge: "#fc780c",
-    blackDot: "#f77e0e",
-    king: "#f5c542",
-  });
+  function themeColor(name) {
+    if (global.DhametTheme && typeof global.DhametTheme.get === "function") {
+      return global.DhametTheme.get(name);
+    }
+    var root = getComputedRoot({});
+    return root && root.getPropertyValue ? (root.getPropertyValue(name) || "").trim() : "";
+  }
+
+  function themeChannels(name, alpha) {
+    if (global.DhametTheme && typeof global.DhametTheme.channels === "function") {
+      return global.DhametTheme.channels(name, alpha);
+    }
+    var channels = themeColor(name);
+    if (!channels) return "";
+    return alpha == null ? "rgb(" + channels + ")" : "rgb(" + channels + " / " + alpha + ")";
+  }
+
+  function piecePalette() {
+    return {
+      whiteLight: themeColor("--piece-white-light"),
+      whiteMid: themeColor("--piece-white-mid"),
+      whiteDark: themeColor("--piece-white-dark"),
+      whiteEdge: themeColor("--piece-white-edge"),
+      whiteEdgeSoft: themeColor("--piece-white-edge-soft"),
+      whiteDot: themeColor("--piece-white-dot"),
+      blackLight: themeColor("--piece-black-light"),
+      blackMid: themeColor("--piece-black-mid"),
+      blackDark: themeColor("--piece-black-dark"),
+      blackEdge: themeColor("--piece-black-edge"),
+      blackEdgeSoft: themeColor("--piece-black-edge-soft"),
+      blackDot: themeColor("--piece-black-dot"),
+      shadow: themeColor("--piece-shadow"),
+      highlight: themeColor("--piece-highlight"),
+      crownLight: themeColor("--piece-crown-light"),
+      crownMid: themeColor("--piece-crown-mid"),
+      crownDark: themeColor("--piece-crown-dark"),
+      crownEdge: themeColor("--piece-crown-edge"),
+      danger: themeColor("--mark-danger"),
+      primary: themeColor("--color-primary"),
+      success: themeColor("--color-success"),
+    };
+  }
+
+  var PIECE_COLORS = Object.freeze(piecePalette()); // Compatibility alias; live rendering still reads current theme tokens.
+  var PIECE_SPRITE_SVG = "";
 
   var PIECE_SPRITE_TILE = 256;
-  var PIECE_SPRITE_SVG = [
-    '<svg xmlns="http://www.w3.org/2000/svg" width="768" height="256" viewBox="0 0 768 256">',
-    '<defs>',
-    '<filter id="ps" x="-34%" y="-34%" width="170%" height="190%"><feDropShadow dx="0" dy="11" stdDeviation="9" flood-color="#020617" flood-opacity=".46"/></filter>',
-    '<linearGradient id="wb" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="' + PIECE_COLORS.whiteLight + '"/><stop offset=".58" stop-color="' + PIECE_COLORS.whiteMid + '"/><stop offset="1" stop-color="' + PIECE_COLORS.whiteDark + '"/></linearGradient>',
-    '<linearGradient id="wr" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#93c5fd"/><stop offset="1" stop-color="' + PIECE_COLORS.whiteEdge + '"/></linearGradient>',
-    '<radialGradient id="wh" cx="35%" cy="25%" r="78%"><stop offset="0" stop-color="#ffffff"/><stop offset=".50" stop-color="#f5f5f5"/><stop offset="1" stop-color="#cbd5e1"/></radialGradient>',
-    '<linearGradient id="bb" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="' + PIECE_COLORS.blackLight + '"/><stop offset=".54" stop-color="' + PIECE_COLORS.blackMid + '"/><stop offset="1" stop-color="' + PIECE_COLORS.blackDark + '"/></linearGradient>',
-    '<linearGradient id="br" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fdba74"/><stop offset="1" stop-color="' + PIECE_COLORS.blackEdge + '"/></linearGradient>',
-    '<radialGradient id="bh" cx="35%" cy="25%" r="78%"><stop offset="0" stop-color="#334155"/><stop offset=".48" stop-color="#1f2937"/><stop offset="1" stop-color="#0b1220"/></radialGradient>',
-    '<linearGradient id="gold" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff4a8"/><stop offset=".32" stop-color="#facc15"/><stop offset=".72" stop-color="#d99000"/><stop offset="1" stop-color="#8f5200"/></linearGradient>',
-    '<linearGradient id="goldEdge" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff8c7"/><stop offset="1" stop-color="#a85f00"/></linearGradient>',
-    '</defs>',
-    '<g filter="url(#ps)">',
-    '<g transform="translate(0 0)">',
-    '<ellipse cx="128" cy="211" rx="73" ry="17" fill="#07152d" opacity=".28"/>',
-    '<ellipse cx="128" cy="190" rx="74" ry="25" fill="url(#wb)" stroke="' + PIECE_COLORS.whiteEdge + '" stroke-width="5"/>',
-    '<ellipse cx="128" cy="181" rx="66" ry="18" fill="#ffffff" opacity=".34"/>',
-    '<path d="M78 179 C83 151 101 138 104 114 C106 100 98 93 92 87 C103 83 113 80 128 80 C143 80 153 83 164 87 C158 93 150 100 152 114 C155 138 173 151 178 179 Z" fill="url(#wb)" stroke="#94a3b8" stroke-width="3"/>',
-    '<ellipse cx="128" cy="118" rx="28" ry="12" fill="url(#wr)" opacity=".92"/>',
-    '<circle cx="128" cy="69" r="34" fill="url(#wh)" stroke="#94a3b8" stroke-width="3"/>',
-    '<ellipse cx="117" cy="57" rx="13" ry="8" fill="#ffffff" opacity=".75"/>',
-    '<ellipse cx="128" cy="91" rx="29" ry="9" fill="#94a3b8" opacity=".36"/>',
-    '</g>',
-    '<g transform="translate(256 0)">',
-    '<ellipse cx="128" cy="211" rx="73" ry="17" fill="#000000" opacity=".5"/>',
-    '<ellipse cx="128" cy="190" rx="74" ry="25" fill="url(#bb)" stroke="' + PIECE_COLORS.blackEdge + '" stroke-width="5"/>',
-    '<ellipse cx="128" cy="181" rx="66" ry="18" fill="#94a3b8" opacity=".12"/>',
-    '<path d="M78 179 C83 151 101 138 104 114 C106 100 98 93 92 87 C103 83 113 80 128 80 C143 80 153 83 164 87 C158 93 150 100 152 114 C155 138 173 151 178 179 Z" fill="url(#bb)" stroke="#374151" stroke-width="3"/>',
-    '<ellipse cx="128" cy="118" rx="28" ry="12" fill="url(#br)" opacity=".94"/>',
-    '<circle cx="128" cy="69" r="34" fill="url(#bh)" stroke="#374151" stroke-width="3"/>',
-    '<ellipse cx="117" cy="57" rx="13" ry="8" fill="#cbd5e1" opacity=".20"/>',
-    '<ellipse cx="128" cy="91" rx="29" ry="9" fill="#000000" opacity=".40"/>',
-    '</g>',
-    '<g transform="translate(512 0)">',
-    '<ellipse cx="128" cy="205" rx="79" ry="15" fill="#020617" opacity=".32"/>',
-    '<path d="M48 157 L65 72 L108 116 L128 43 L148 116 L191 72 L208 157 Z" fill="url(#gold)" stroke="#8f5200" stroke-width="5" stroke-linejoin="round"/>',
-    '<path d="M52 157 H204 L196 198 Q194 211 181 211 H75 Q62 211 60 198 Z" fill="url(#goldEdge)" stroke="#8f5200" stroke-width="5"/>',
-    '<path d="M67 167 H189" stroke="#fff3a4" stroke-width="8" stroke-linecap="round" opacity=".72"/>',
-    '<circle cx="77" cy="139" r="9" fill="#ef4444" stroke="#fff3a4" stroke-width="3"/>',
-    '<circle cx="128" cy="139" r="10" fill="#2563eb" stroke="#fff3a4" stroke-width="3"/>',
-    '<circle cx="179" cy="139" r="9" fill="#16a34a" stroke="#fff3a4" stroke-width="3"/>',
-    '<circle cx="128" cy="47" r="8" fill="#fff8c7"/>',
-    '</g>',
-    '</g>',
-    '</svg>'
-  ].join("");
-  var PIECE_SPRITE_DATA_URI = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(PIECE_SPRITE_SVG);
+
+  function buildPieceSpriteSvg() {
+    var c = piecePalette();
+    return [
+      '<svg xmlns="http://www.w3.org/2000/svg" width="768" height="256" viewBox="0 0 768 256">',
+      '<defs>',
+      '<filter id="ps" x="-34%" y="-34%" width="170%" height="190%"><feDropShadow dx="0" dy="11" stdDeviation="9" flood-color="' + c.shadow + '" flood-opacity=".46"/></filter>',
+      '<linearGradient id="wb" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="' + c.whiteLight + '"/><stop offset=".58" stop-color="' + c.whiteMid + '"/><stop offset="1" stop-color="' + c.whiteDark + '"/></linearGradient>',
+      '<linearGradient id="wr" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="' + c.whiteEdgeSoft + '"/><stop offset="1" stop-color="' + c.whiteEdge + '"/></linearGradient>',
+      '<radialGradient id="wh" cx="35%" cy="25%" r="78%"><stop offset="0" stop-color="' + c.whiteLight + '"/><stop offset=".50" stop-color="' + c.whiteMid + '"/><stop offset="1" stop-color="' + c.whiteDark + '"/></radialGradient>',
+      '<linearGradient id="bb" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="' + c.blackLight + '"/><stop offset=".54" stop-color="' + c.blackMid + '"/><stop offset="1" stop-color="' + c.blackDark + '"/></linearGradient>',
+      '<linearGradient id="br" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="' + c.blackEdgeSoft + '"/><stop offset="1" stop-color="' + c.blackEdge + '"/></linearGradient>',
+      '<radialGradient id="bh" cx="35%" cy="25%" r="78%"><stop offset="0" stop-color="' + c.blackLight + '"/><stop offset=".48" stop-color="' + c.blackMid + '"/><stop offset="1" stop-color="' + c.blackDark + '"/></radialGradient>',
+      '<linearGradient id="gold" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="' + c.crownLight + '"/><stop offset=".32" stop-color="' + c.crownMid + '"/><stop offset=".72" stop-color="' + c.crownDark + '"/><stop offset="1" stop-color="' + c.crownEdge + '"/></linearGradient>',
+      '<linearGradient id="goldEdge" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="' + c.crownLight + '"/><stop offset="1" stop-color="' + c.crownEdge + '"/></linearGradient>',
+      '</defs>',
+      '<g filter="url(#ps)">',
+      '<g transform="translate(0 0)">',
+      '<ellipse cx="128" cy="211" rx="73" ry="17" fill="' + c.shadow + '" opacity=".28"/>',
+      '<ellipse cx="128" cy="190" rx="74" ry="25" fill="url(#wb)" stroke="' + c.whiteEdge + '" stroke-width="5"/>',
+      '<ellipse cx="128" cy="181" rx="66" ry="18" fill="' + c.highlight + '" opacity=".34"/>',
+      '<path d="M78 179 C83 151 101 138 104 114 C106 100 98 93 92 87 C103 83 113 80 128 80 C143 80 153 83 164 87 C158 93 150 100 152 114 C155 138 173 151 178 179 Z" fill="url(#wb)" stroke="' + c.whiteEdgeSoft + '" stroke-width="3"/>',
+      '<ellipse cx="128" cy="118" rx="28" ry="12" fill="url(#wr)" opacity=".92"/>',
+      '<circle cx="128" cy="69" r="34" fill="url(#wh)" stroke="' + c.whiteEdgeSoft + '" stroke-width="3"/>',
+      '<ellipse cx="117" cy="57" rx="13" ry="8" fill="' + c.highlight + '" opacity=".75"/>',
+      '<ellipse cx="128" cy="91" rx="29" ry="9" fill="' + c.whiteEdgeSoft + '" opacity=".36"/>',
+      '</g>',
+      '<g transform="translate(256 0)">',
+      '<ellipse cx="128" cy="211" rx="73" ry="17" fill="' + c.shadow + '" opacity=".50"/>',
+      '<ellipse cx="128" cy="190" rx="74" ry="25" fill="url(#bb)" stroke="' + c.blackEdge + '" stroke-width="5"/>',
+      '<ellipse cx="128" cy="181" rx="66" ry="18" fill="' + c.whiteEdgeSoft + '" opacity=".12"/>',
+      '<path d="M78 179 C83 151 101 138 104 114 C106 100 98 93 92 87 C103 83 113 80 128 80 C143 80 153 83 164 87 C158 93 150 100 152 114 C155 138 173 151 178 179 Z" fill="url(#bb)" stroke="' + c.blackLight + '" stroke-width="3"/>',
+      '<ellipse cx="128" cy="118" rx="28" ry="12" fill="url(#br)" opacity=".94"/>',
+      '<circle cx="128" cy="69" r="34" fill="url(#bh)" stroke="' + c.blackLight + '" stroke-width="3"/>',
+      '<ellipse cx="117" cy="57" rx="13" ry="8" fill="' + c.whiteDark + '" opacity=".20"/>',
+      '<ellipse cx="128" cy="91" rx="29" ry="9" fill="' + c.shadow + '" opacity=".40"/>',
+      '</g>',
+      '<g transform="translate(512 0)">',
+      '<ellipse cx="128" cy="205" rx="79" ry="15" fill="' + c.shadow + '" opacity=".32"/>',
+      '<path d="M48 157 L65 72 L108 116 L128 43 L148 116 L191 72 L208 157 Z" fill="url(#gold)" stroke="' + c.crownEdge + '" stroke-width="5" stroke-linejoin="round"/>',
+      '<path d="M52 157 H204 L196 198 Q194 211 181 211 H75 Q62 211 60 198 Z" fill="url(#goldEdge)" stroke="' + c.crownEdge + '" stroke-width="5"/>',
+      '<path d="M67 167 H189" stroke="' + c.crownLight + '" stroke-width="8" stroke-linecap="round" opacity=".72"/>',
+      '<circle cx="77" cy="139" r="9" fill="' + c.danger + '" stroke="' + c.crownLight + '" stroke-width="3"/>',
+      '<circle cx="128" cy="139" r="10" fill="' + c.primary + '" stroke="' + c.crownLight + '" stroke-width="3"/>',
+      '<circle cx="179" cy="139" r="9" fill="' + c.success + '" stroke="' + c.crownLight + '" stroke-width="3"/>',
+      '<circle cx="128" cy="47" r="8" fill="' + c.crownLight + '"/>',
+      '</g>',
+      '</g>',
+      '</svg>'
+    ].join("");
+  }
+
+  var PIECE_SPRITE_DATA_URI = "";
   var PIECE_SPRITE_BASE_ANCHOR_Y = 0.845;
   var PIECE_SPRITE_HEIGHT_RATIO = 0.75;
   var pieceSpriteImage = null;
@@ -117,6 +154,8 @@
       return null;
     }
     pieceSpriteState = "loading";
+    PIECE_SPRITE_SVG = buildPieceSpriteSvg();
+    PIECE_SPRITE_DATA_URI = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(PIECE_SPRITE_SVG);
     pieceSpriteImage = new ImageCtor();
     try { pieceSpriteImage.decoding = "async"; } catch (_) {}
     pieceSpriteImage.onload = function () {
@@ -138,16 +177,15 @@
   }
 
   function dimensionalPalette(opts) {
-    var dark = isDark(opts);
     var root = getComputedRoot(opts);
     return {
-      base: cssValue(root, "--board-bg-end", dark ? "#111c33" : "#eef5ff"),
-      surface: cssValue(root, "--board-bg-start", dark ? "#081121" : "#fbfdff"),
-      diag: cssValue(root, "--board-diag", dark ? "#f8fbff" : "#010b18"),
-      grid: cssValue(root, "--board-grid", dark ? "#bfd0e8" : "#01060e"),
-      point: cssValue(root, "--board-grid", dark ? "#bfd0e8" : "#01060e"),
-      highlight: dark ? "rgba(255,255,255,.06)" : "rgba(255,255,255,.34)",
-      shadow: dark ? "rgba(0,0,0,.28)" : "rgba(15,23,42,.12)",
+      base: cssValue(root, "--board-bg-end", ""),
+      surface: cssValue(root, "--board-bg-start", ""),
+      diag: cssValue(root, "--board-diag", ""),
+      grid: cssValue(root, "--board-grid", ""),
+      point: cssValue(root, "--board-point", cssValue(root, "--board-grid", "")),
+      highlight: cssValue(root, "--board-highlight", ""),
+      shadow: cssValue(root, "--board-shadow", ""),
     };
   }
 
@@ -164,22 +202,22 @@
     ctx.fillRect(0, 0, W, H);
 
     var softShadow = ctx.createRadialGradient(W * 0.5, H * 0.58, minSide * 0.05, W * 0.5, H * 0.58, Math.max(W, H) * 0.82);
-    softShadow.addColorStop(0, dark ? "rgba(0,0,0,.06)" : "rgba(15,23,42,.045)");
-    softShadow.addColorStop(1, "rgba(0,0,0,0)");
+    softShadow.addColorStop(0, dark ? themeChannels("--rgb-black", ".08") : themeChannels("--rgb-neutral-900", ".05"));
+    softShadow.addColorStop(1, "transparent");
     ctx.fillStyle = softShadow;
     ctx.fillRect(0, 0, W, H);
 
     var sheen = ctx.createLinearGradient(0, 0, W, 0);
-    sheen.addColorStop(0, "rgba(255,255,255,0)");
+    sheen.addColorStop(0, "transparent");
     sheen.addColorStop(0.42, pal.highlight);
-    sheen.addColorStop(0.60, "rgba(255,255,255,0)");
+    sheen.addColorStop(0.60, "transparent");
     ctx.globalAlpha = dark ? 0.18 : 0.26;
     ctx.fillStyle = sheen;
     ctx.fillRect(0, 0, W, H);
     ctx.globalAlpha = 1;
 
     ctx.lineWidth = Math.max(0.55, minSide * 0.0008);
-    ctx.strokeStyle = dark ? "rgba(255,255,255,.028)" : "rgba(2,6,23,.026)";
+    ctx.strokeStyle = dark ? themeChannels("--rgb-white", ".03") : themeChannels("--rgb-neutral-950", ".03");
     var grainGap = Math.max(24, minSide * 0.045);
     for (var gy = grainGap; gy < H; gy += grainGap) {
       ctx.beginPath();
@@ -190,7 +228,7 @@
 
     var frameWidth = Math.max(3, minSide * 0.006);
     ctx.lineWidth = frameWidth;
-    ctx.strokeStyle = dark ? "rgba(248,251,255,.70)" : "rgba(1,11,24,.30)";
+    ctx.strokeStyle = dark ? themeChannels("--rgb-neutral-50", ".70") : themeChannels("--rgb-neutral-950", ".30");
     ctx.shadowColor = pal.shadow;
     ctx.shadowBlur = Math.max(5, minSide * 0.009);
     ctx.shadowOffsetY = Math.max(2, minSide * 0.003);
@@ -198,9 +236,9 @@
 
     ctx.shadowColor = "transparent";
     ctx.lineWidth = Math.max(1, minSide * 0.0014);
-    ctx.strokeStyle = dark ? "rgba(255,255,255,.08)" : "rgba(255,255,255,.55)";
+    ctx.strokeStyle = dark ? themeChannels("--rgb-white", ".08") : themeChannels("--rgb-white", ".55");
     ctx.strokeRect(frameWidth + 1, frameWidth + 1, W - (frameWidth + 1) * 2, H - (frameWidth + 1) * 2);
-    ctx.strokeStyle = dark ? "rgba(2,6,23,.42)" : "rgba(71,85,105,.14)";
+    ctx.strokeStyle = dark ? themeChannels("--rgb-neutral-950", ".42") : themeChannels("--rgb-neutral-600", ".14");
     ctx.strokeRect(frameWidth + 3, frameWidth + 3, W - (frameWidth + 3) * 2, H - (frameWidth + 3) * 2);
     ctx.restore();
   }
@@ -289,7 +327,7 @@
     var pal = dimensional ? dimensionalPalette(opts) : null;
 
     if (dimensional) {
-      ctx.shadowColor = dark ? "rgba(0,0,0,.18)" : "rgba(15,23,42,.12)";
+      ctx.shadowColor = dark ? themeChannels("--rgb-black", ".18") : themeChannels("--rgb-neutral-900", ".12");
       ctx.shadowBlur = Math.max(1.6, minSide * 0.0036);
       ctx.shadowOffsetY = Math.max(0.7, minSide * 0.0012);
       ctx.strokeStyle = pal.diag;
@@ -297,7 +335,7 @@
       ctx.strokeStyle =
         (cssRoot.getPropertyValue("--board-diag") || "").trim() ||
         (cssRoot.getPropertyValue("--diag") || "").trim() ||
-        "#b8c7f0";
+        themeColor("--board-diag");
     }
     ctx.lineWidth = Math.max(2.2, minSide * 0.0032);
     var lines = allDiagLines(opts);
@@ -308,7 +346,7 @@
       ? pal.grid
       : (cssRoot.getPropertyValue("--board-grid") || "").trim() ||
         (cssRoot.getPropertyValue("--grid") || "").trim() ||
-        "#cbd5e1";
+        themeColor("--board-grid");
     ctx.lineWidth = Math.max(1.8, minSide * 0.0025);
     for (var r = 0; r < n; r++) {
       var y = r * stepY + stepY / 2;
@@ -326,7 +364,7 @@
     }
 
     ctx.shadowBlur = dimensional ? Math.max(1, minSide * 0.0025) : 0;
-    ctx.fillStyle = dimensional ? pal.point : opts.pointFill || "#667085";
+    ctx.fillStyle = dimensional ? pal.point : opts.pointFill || themeColor("--board-point");
     for (var rr = 0; rr < n; rr++) {
       for (var cc = 0; cc < n; cc++) {
         var px = cc * stepX + stepX / 2;
@@ -348,7 +386,7 @@
     var dark = isDark(opts);
     ctx.save();
     if (!style) {
-      ctx.fillStyle = dark ? "#ffffff" : "#020617";
+      ctx.fillStyle = dark ? themeColor("--color-on-dark") : themeColor("--color-text-strong");
       ctx.font = "900 16px Calibri, Carlito, Segoe UI, sans-serif";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
@@ -369,9 +407,9 @@
     ctx.textBaseline = "middle";
     var minSide = Math.min(stepX, stepY);
     var radius = Math.max(10, minSide * (style.radiusMul || 0.22));
-    var bg = dark ? style.bgDark || "rgba(0,0,0,0.68)" : style.bgLight || "rgba(255,255,255,0.86)";
-    var fill = dark ? style.fillDark || "#ffffff" : style.fillLight || "#020617";
-    var stroke = dark ? style.strokeDark || "rgba(0,0,0,0.95)" : style.strokeLight || "rgba(255,255,255,1)";
+    var bg = dark ? style.bgDark || themeColor("--mark-overlay-dark") : style.bgLight || themeColor("--mark-overlay-light");
+    var fill = dark ? style.fillDark || themeColor("--color-on-dark") : style.fillLight || themeColor("--color-text-strong");
+    var stroke = dark ? style.strokeDark || themeChannels("--rgb-black", ".95") : style.strokeLight || themeChannels("--rgb-white", "1");
 
     for (var rr = 0; rr < n; rr++) {
       for (var cc = 0; cc < n; cc++) {
@@ -407,45 +445,48 @@
     ctx.save();
     ctx.translate(cx, cy);
     ctx.rotate(Math.PI / 4);
-    ctx.fillStyle = opts.fill || "#ef4444";
+    ctx.fillStyle = opts.fill || themeColor("--mark-danger");
     ctx.globalAlpha = 0.18;
     ctx.fillRect(-radius, -radius, 2 * radius, 2 * radius);
     ctx.globalAlpha = 1;
     ctx.lineWidth = Math.max(3.5, minSide * 0.05);
-    ctx.strokeStyle = opts.stroke || "#b91c1c";
+    ctx.strokeStyle = opts.stroke || themeColor("--mark-danger-strong");
     ctx.strokeRect(-radius, -radius, 2 * radius, 2 * radius);
     ctx.restore();
   }
 
+  /* pieceFill uses the same themed spectrum: PIECE_COLORS.whiteLight through PIECE_COLORS.blackDark. */
   function pieceFill(value, opts) {
     opts = opts || {};
+    var colors = piecePalette();
     var owner = typeof opts.pieceOwner === "function" ? opts.pieceOwner(value) : global.pieceOwner ? global.pieceOwner(value) : value > 0 ? 1 : -1;
     var bot = opts.BOT != null ? opts.BOT : global.BOT;
     return owner === bot
-      ? [PIECE_COLORS.whiteLight, PIECE_COLORS.whiteDark]
-      : [PIECE_COLORS.blackDark, PIECE_COLORS.blackLight];
+      ? [colors.whiteLight, colors.whiteDark]
+      : [colors.blackDark, colors.blackLight];
   }
 
   function drawDimensionalFallbackPiece(ctx, x, anchorY, width, height, isWhite) {
+    var colors = piecePalette();
     var top = anchorY - height * PIECE_SPRITE_BASE_ANCHOR_Y;
     var centerY = top + height * 0.48;
     var baseY = anchorY - height * 0.08;
     var main = ctx.createLinearGradient(x - width / 2, top, x + width / 2, anchorY);
     if (isWhite) {
-      main.addColorStop(0, PIECE_COLORS.whiteLight);
-      main.addColorStop(0.5, PIECE_COLORS.whiteMid);
-      main.addColorStop(1, PIECE_COLORS.whiteDark);
+      main.addColorStop(0, colors.whiteLight);
+      main.addColorStop(0.5, colors.whiteMid);
+      main.addColorStop(1, colors.whiteDark);
     } else {
-      main.addColorStop(0, PIECE_COLORS.blackLight);
-      main.addColorStop(0.46, PIECE_COLORS.blackMid);
-      main.addColorStop(1, PIECE_COLORS.blackDark);
+      main.addColorStop(0, colors.blackLight);
+      main.addColorStop(0.46, colors.blackMid);
+      main.addColorStop(1, colors.blackDark);
     }
     ctx.save();
-    ctx.shadowColor = "rgba(2,6,23,.42)";
+    ctx.shadowColor = themeChannels("--rgb-neutral-950", ".42");
     ctx.shadowBlur = Math.max(4, width * 0.1);
     ctx.shadowOffsetY = Math.max(2, height * 0.06);
     ctx.fillStyle = main;
-    ctx.strokeStyle = isWhite ? PIECE_COLORS.whiteEdge : PIECE_COLORS.blackEdge;
+    ctx.strokeStyle = isWhite ? colors.whiteEdge : colors.blackEdge;
     ctx.lineWidth = Math.max(2, width * 0.045);
     ctx.beginPath();
     ctx.ellipse(x, baseY, width * 0.40, height * 0.10, 0, 0, Math.PI * 2);
@@ -520,8 +561,8 @@
           } else {
             ctx.save();
             var crownY = y - pieceHeight * 0.56;
-            ctx.fillStyle = "#facc15";
-            ctx.strokeStyle = "#8f5200";
+            ctx.fillStyle = themeColor("--piece-crown-mid");
+            ctx.strokeStyle = themeColor("--piece-crown-edge");
             ctx.lineWidth = Math.max(1.5, pieceWidth * 0.025);
             ctx.beginPath();
             ctx.moveTo(x - pieceWidth * 0.22, crownY + pieceHeight * 0.11);
@@ -554,6 +595,7 @@
     var ownerFn = opts.pieceOwner || global.pieceOwner;
     var kindFn = opts.pieceKind || global.pieceKind;
     var bot = opts.BOT != null ? opts.BOT : global.BOT;
+    var colors = piecePalette();
     for (var r = 0; r < n; r++) {
       for (var c = 0; c < n; c++) {
         var v = board[r] && board[r][c];
@@ -572,20 +614,20 @@
         ctx.fillStyle = grad;
         ctx.fill();
         ctx.lineWidth = 3;
-        ctx.strokeStyle = ownerFn && ownerFn(v) === bot ? PIECE_COLORS.whiteEdge : PIECE_COLORS.blackEdge;
+        ctx.strokeStyle = ownerFn && ownerFn(v) === bot ? colors.whiteEdge : colors.blackEdge;
         ctx.stroke();
         var kind = kindFn ? kindFn(v) : Math.abs(Number(v));
         if (kind === 2 || Math.abs(Number(v)) === 2) {
           ctx.beginPath();
           ctx.arc(x, y, rad * 0.8, 0, Math.PI * 2);
           ctx.lineWidth = 4;
-          ctx.strokeStyle = PIECE_COLORS.king;
+          ctx.strokeStyle = colors.crownMid;
           ctx.stroke();
         }
         var dotR = rad * 0.3;
         ctx.beginPath();
         ctx.arc(x, y, dotR, 0, Math.PI * 2);
-        ctx.fillStyle = ownerFn && ownerFn(v) === bot ? PIECE_COLORS.whiteDot : PIECE_COLORS.blackDot;
+        ctx.fillStyle = ownerFn && ownerFn(v) === bot ? colors.whiteDot : colors.blackDot;
         ctx.fill();
         ctx.restore();
       }
@@ -622,9 +664,9 @@
       var x = view[1] * stepX + stepX / 2 + pat[0] * offs;
       var y = view[0] * stepY + stepY / 2 + pat[1] * offs;
       ctx.lineWidth = Math.max(3, minSide * 0.06);
-      ctx.strokeStyle = lab && lab.stroke ? String(lab.stroke) : "rgba(0,0,0,0.78)";
+      ctx.strokeStyle = lab && lab.stroke ? String(lab.stroke) : themeChannels("--rgb-black", ".78");
       ctx.strokeText(txt, x, y);
-      ctx.fillStyle = lab && lab.fill ? String(lab.fill) : "#fef08a";
+      ctx.fillStyle = lab && lab.fill ? String(lab.fill) : themeColor("--mark-label-bg");
       ctx.fillText(txt, x, y);
     }
     ctx.restore();
@@ -642,12 +684,15 @@
     var head = st.head != null ? st.head : Math.max(16, lw * 3);
 
     ctx.save();
-    ctx.strokeStyle = color || "#166534";
+    ctx.strokeStyle = color || themeColor("--mark-move");
     ctx.lineWidth = lw;
     ctx.lineCap = "round";
     var c0 = String(ctx.strokeStyle || "").toLowerCase().trim();
-    var isYellow = c0.indexOf("facc15") >= 0 || c0.indexOf("fcd34d") >= 0;
-    var isRed = c0.indexOf("ef4444") >= 0 || c0.indexOf("dc2626") >= 0 || c0.indexOf("b91c1c") >= 0;
+    var undoColor = String(themeColor("--mark-undo") || "").toLowerCase().trim();
+    var dangerColor = String(themeColor("--mark-danger") || "").toLowerCase().trim();
+    var dangerStrong = String(themeColor("--mark-danger-strong") || "").toLowerCase().trim();
+    var isYellow = c0 === undoColor;
+    var isRed = c0 === dangerColor || c0 === dangerStrong;
     var layer = isYellow ? 2 : isRed ? 0 : 1;
     var offStep = Math.max(1.6, lw * 0.55);
     var off = layer === 2 ? offStep : layer === 0 ? -offStep : 0;
@@ -709,7 +754,7 @@
     var rad = Math.max(1, Math.min(stepX, stepY) / 2 - 25);
     var s = Math.max(6, rad * 0.9);
     ctx.save();
-    ctx.strokeStyle = color || "#ef4444";
+    ctx.strokeStyle = color || themeColor("--mark-danger");
     ctx.lineWidth = 6;
     ctx.beginPath();
     ctx.moveTo(x - s, y - s);
@@ -725,7 +770,7 @@
     var x = center[0], y = center[1], stepX = center[2], stepY = center[3];
     var r = (Math.min(stepX, stepY) / 2) * 0.9;
     ctx.save();
-    ctx.strokeStyle = "#fcd34d";
+    ctx.strokeStyle = themeColor("--mark-undo");
     ctx.lineWidth = 4;
     ctx.globalAlpha = 0.8;
     ctx.beginPath();

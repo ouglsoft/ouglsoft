@@ -1211,7 +1211,7 @@
       bodyStyle: { display: "grid", gap: "10px" },
       inputStyle: {
         padding: "10px",
-        border: "1px solid #666",
+        border: "1px solid var(--color-border-strong)",
         borderRadius: "10px",
       },
       afterInput: (body) => {

@@ -310,8 +310,7 @@
               try {
                 ctx.save();
                 ctx.fillStyle =
-                  getComputedStyle(document.documentElement).getPropertyValue("--muted").trim() ||
-                  "#475569";
+                  getComputedStyle(document.documentElement).getPropertyValue("--muted").trim();
                 ctx.font = "12px Calibri, Carlito, Segoe UI, sans-serif";
                 ctx.textAlign = "center";
                 ctx.textBaseline = "middle";

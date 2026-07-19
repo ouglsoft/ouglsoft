@@ -1,0 +1,379 @@
+/* ========================================================================== 
+   DHAMET UNIFIED THEME — ELECTRIC DESERT
+   Single source of truth for application colors, gradients and elevation.
+   Desktop, portrait-mobile, landscape-mobile and Canvas rendering inherit it.
+   ========================================================================== */
+:root {
+  /* Raw palette. Color literals belong in this file only. */
+  --rgb-white: 255 255 255;
+  --rgb-black: 0 0 0;
+
+  --rgb-primary-100: 247 245 255;
+  --rgb-primary-200: 238 233 255;
+  --rgb-primary-300: 216 209 232;
+  --rgb-primary-400: 154 123 255;
+  --rgb-primary-500: 91 43 224;
+  --rgb-primary-600: 75 32 194;
+  --rgb-primary-700: 55 28 132;
+  --rgb-primary-800: 33 25 54;
+  --rgb-primary-900: 13 9 24;
+
+  --rgb-secondary-100: 227 252 249;
+  --rgb-secondary-200: 174 241 233;
+  --rgb-secondary-300: 102 224 211;
+  --rgb-secondary-400: 54 214 197;
+  --rgb-secondary-500: 0 169 154;
+  --rgb-secondary-600: 0 124 116;
+  --rgb-secondary-700: 0 91 86;
+
+  --rgb-success-100: 220 252 231;
+  --rgb-success-500: 71 215 155;
+  --rgb-success-600: 22 132 91;
+  --rgb-success-700: 14 101 68;
+  --rgb-success-800: 10 72 49;
+
+  --rgb-gold-400: 255 216 117;
+  --rgb-gold-500: 255 200 87;
+  --rgb-gold-600: 255 176 32;
+  --rgb-gold-700: 185 113 0;
+  --rgb-gold-800: 133 77 14;
+
+  --rgb-danger-300: 252 165 165;
+  --rgb-danger-400: 255 107 120;
+  --rgb-danger-500: 201 56 66;
+  --rgb-danger-600: 164 39 50;
+  --rgb-danger-700: 124 27 38;
+  --rgb-danger-800: 96 20 31;
+
+  --rgb-neutral-50: 248 250 252;
+  --rgb-neutral-600: 71 85 105;
+  --rgb-neutral-800: 30 41 59;
+  --rgb-neutral-900: 15 23 42;
+  --rgb-neutral-950: 2 6 23;
+
+  /* Raw-channel aliases required by embedded Canvas/dialog styles. */
+  --rgb-border: 216 209 232;
+  --rgb-panel: 255 255 255;
+  --rgb-danger: var(--rgb-danger-500);
+
+  /* Semantic surfaces and content. */
+  --color-bg: rgb(var(--rgb-primary-100));
+  --color-bg-alt: rgb(var(--rgb-primary-200));
+  --color-surface: rgb(var(--rgb-white) / .90);
+  --color-surface-solid: rgb(var(--rgb-white));
+  --color-surface-raised: rgb(241 237 255 / .94);
+  --color-surface-muted: rgb(var(--rgb-primary-200) / .72);
+  --color-text: rgb(23 19 42);
+  --color-text-strong: var(--color-text);
+  --color-text-muted: rgb(108 100 123);
+  --color-border: rgb(var(--rgb-border) / .82);
+  --color-border-strong: rgb(var(--rgb-primary-400) / .48);
+  --color-primary: rgb(var(--rgb-primary-500));
+  --color-primary-hover: rgb(var(--rgb-primary-600));
+  --color-primary-soft: rgb(var(--rgb-primary-500) / .12);
+  --color-secondary: rgb(var(--rgb-secondary-600));
+  --color-secondary-soft: rgb(var(--rgb-secondary-500) / .13);
+  --color-success: rgb(var(--rgb-success-600));
+  --color-warning: rgb(var(--rgb-gold-600));
+  --color-danger: rgb(var(--rgb-danger-500));
+  --color-on-primary: rgb(var(--rgb-white));
+  --color-on-accent: var(--color-on-primary);
+  --color-on-warning: rgb(50 31 0);
+  --color-on-dark: rgb(var(--rgb-white));
+  --color-panel-inverse: var(--color-text);
+
+  /* Game and Canvas colors. */
+  --game-move-top: rgb(var(--rgb-secondary-600));
+  --game-move-bottom: rgb(var(--rgb-primary-600));
+  --game-capture: rgb(var(--rgb-gold-600));
+  --game-danger: rgb(var(--rgb-danger-500));
+  --game-soufla-green: rgb(var(--rgb-success-600));
+  --game-soufla-red: rgb(var(--rgb-danger-500));
+  --game-board-grid: rgb(37 29 58);
+  --game-board-diag: rgb(73 55 105);
+  --game-board-start: rgb(255 252 242);
+  --game-board-end: rgb(236 228 255);
+  --game-piece-light-edge: rgb(var(--rgb-primary-500));
+  --game-piece-dark-edge: rgb(var(--rgb-gold-600));
+  --game-piece-king: rgb(var(--rgb-gold-500));
+
+  --board-point: rgb(var(--rgb-primary-500));
+  --board-highlight: rgb(var(--rgb-white) / .34);
+  --board-shadow: rgb(var(--rgb-neutral-900) / .12);
+  --mark-danger: rgb(var(--rgb-danger-500));
+  --mark-danger-strong: rgb(var(--rgb-danger-600));
+  --mark-move: rgb(var(--rgb-secondary-600));
+  --mark-move-strong: rgb(var(--rgb-secondary-700));
+  --mark-undo: rgb(var(--rgb-gold-500));
+  --mark-label-bg: rgb(var(--rgb-white) / .84);
+  --mark-overlay-light: rgb(var(--rgb-white) / .72);
+  --mark-overlay-dark: rgb(var(--rgb-black) / .58);
+
+  --piece-white-light: rgb(var(--rgb-white));
+  --piece-white-mid: rgb(243 240 255);
+  --piece-white-dark: rgb(var(--rgb-primary-300));
+  --piece-white-edge: rgb(var(--rgb-primary-500));
+  --piece-white-edge-soft: rgb(var(--rgb-primary-400));
+  --piece-white-dot: rgb(var(--rgb-primary-400));
+  --piece-black-light: rgb(42 32 62);
+  --piece-black-mid: rgb(23 17 38);
+  --piece-black-dark: rgb(var(--rgb-primary-900));
+  --piece-black-edge: rgb(var(--rgb-gold-600));
+  --piece-black-edge-soft: rgb(var(--rgb-gold-500));
+  --piece-black-dot: rgb(var(--rgb-gold-500));
+  --piece-shadow: rgb(var(--rgb-primary-900));
+  --piece-highlight: rgb(var(--rgb-white));
+  --piece-crown-light: rgb(255 240 184);
+  --piece-crown-mid: rgb(var(--rgb-gold-500));
+  --piece-crown-dark: rgb(var(--rgb-gold-600));
+  --piece-crown-edge: rgb(143 87 0);
+
+  /* Gradients, elevation and shape. */
+  --gradient-primary: linear-gradient(135deg, rgb(var(--rgb-primary-500)) 0%, rgb(139 92 246) 55%, rgb(180 92 255) 100%);
+  --gradient-secondary: linear-gradient(135deg, rgb(var(--rgb-secondary-700)) 0%, rgb(var(--rgb-secondary-500)) 55%, rgb(var(--rgb-secondary-400)) 100%);
+  --gradient-warning: linear-gradient(135deg, rgb(var(--rgb-gold-700)) 0%, rgb(var(--rgb-gold-600)) 56%, rgb(var(--rgb-gold-400)) 100%);
+  --gradient-danger: linear-gradient(135deg, rgb(var(--rgb-danger-600)), rgb(var(--rgb-danger-400)));
+  --gradient-surface: linear-gradient(145deg, rgb(var(--rgb-white) / .98), rgb(var(--rgb-primary-100) / .90));
+  --shadow-xs: 0 4px 12px rgb(37 18 74 / .06);
+  --shadow-sm-unified: 0 10px 26px rgb(37 18 74 / .09);
+  --shadow-md-unified: 0 18px 42px rgb(37 18 74 / .13), 0 3px 10px rgb(37 18 74 / .06);
+  --shadow-lg-unified: 0 28px 68px rgb(37 18 74 / .18);
+  --radius-card: 22px;
+  --radius-control: 14px;
+
+  /* Compatibility aliases used by the existing UI. */
+  --bg: var(--color-bg);
+  --bg-soft: var(--color-bg-alt);
+  --panel: var(--color-surface);
+  --panel-weak: var(--color-surface-muted);
+  --panel-strong: var(--color-surface-solid);
+  --text: var(--color-text);
+  --text-strong: var(--color-text-strong);
+  --muted: var(--color-text-muted);
+  --accent: var(--color-primary);
+  --accent-2: var(--color-secondary);
+  --accent-soft: var(--color-primary-soft);
+  --danger: var(--color-danger);
+  --warn: var(--color-warning);
+  --ok: var(--color-success);
+  --grid: var(--game-board-grid);
+  --diag: var(--game-board-diag);
+  --border: var(--color-border);
+  --border-strong: var(--color-border-strong);
+  --arrow-green: var(--game-move-top);
+  --arrow-yellow: var(--game-capture);
+  --arrow-red: var(--game-danger);
+  --shadow-sm: var(--shadow-sm-unified);
+  --shadow: var(--shadow-md-unified);
+  --shadow-lg: var(--shadow-lg-unified);
+  --radius: var(--radius-card);
+  --radius-sm: var(--radius-control);
+  --btn-start: rgb(var(--rgb-primary-500));
+  --btn-end: rgb(139 92 246);
+  --btn-text: var(--color-on-primary);
+  --btn-border: rgb(var(--rgb-white) / .24);
+  --btn-shadow: 0 14px 30px rgb(var(--rgb-primary-500) / .28);
+  --board-grid: var(--game-board-grid);
+  --board-diag: var(--game-board-diag);
+  --board-bg-start: var(--game-board-start);
+  --board-bg-end: var(--game-board-end);
+  --board-depth-shadow: rgb(37 18 74 / .24);
+  --surface-elev-1: var(--color-surface);
+  --surface-elev-2: var(--color-surface-solid);
+  --surface-stroke: var(--color-border);
+  --surface-stroke-strong: var(--color-border-strong);
+  --primary-green: var(--color-success);
+  --primary-gold: var(--color-warning);
+  --primary-red: var(--color-danger);
+  --sand-beige: var(--color-bg-alt);
+  --desert-orange: var(--color-primary);
+  --desert-brown: var(--color-primary);
+  --sky-blue: var(--color-secondary);
+  --dark-blue: rgb(var(--rgb-primary-900));
+  --light-sand: var(--color-bg-alt);
+  --icon-dark-bg: rgb(var(--rgb-white));
+  --fs-title: 30px;
+}
+
+:root.dark {
+  --rgb-border: 53 42 74;
+  --rgb-panel: 23 17 38;
+  --color-bg: rgb(var(--rgb-primary-900));
+  --color-bg-alt: rgb(19 14 33);
+  --color-surface: rgb(23 17 38 / .92);
+  --color-surface-solid: rgb(23 17 38);
+  --color-surface-raised: rgb(var(--rgb-primary-800));
+  --color-surface-muted: rgb(29 22 47 / .84);
+  --color-text: rgb(247 243 255);
+  --color-text-muted: rgb(173 164 190);
+  --color-border: rgb(var(--rgb-border) / .92);
+  --color-border-strong: rgb(var(--rgb-primary-400) / .46);
+  --color-primary: rgb(var(--rgb-primary-400));
+  --color-primary-hover: rgb(177 151 255);
+  --color-primary-soft: rgb(var(--rgb-primary-400) / .18);
+  --color-secondary: rgb(var(--rgb-secondary-400));
+  --color-secondary-soft: rgb(var(--rgb-secondary-400) / .16);
+  --color-success: rgb(var(--rgb-success-500));
+  --color-warning: rgb(var(--rgb-gold-500));
+  --color-danger: rgb(var(--rgb-danger-400));
+  --game-move-top: rgb(var(--rgb-secondary-400));
+  --game-move-bottom: rgb(var(--rgb-primary-400));
+  --game-capture: rgb(var(--rgb-gold-500));
+  --game-danger: rgb(var(--rgb-danger-400));
+  --game-soufla-green: rgb(var(--rgb-success-500));
+  --game-soufla-red: rgb(var(--rgb-danger-400));
+  --game-board-grid: rgb(205 190 234);
+  --game-board-diag: rgb(var(--rgb-primary-400));
+  --game-board-start: rgb(20 14 34);
+  --game-board-end: rgb(10 7 19);
+  --board-highlight: rgb(var(--rgb-white) / .06);
+  --board-shadow: rgb(var(--rgb-black) / .28);
+  --gradient-surface: linear-gradient(145deg, rgb(31 23 51 / .98), rgb(19 14 33 / .96));
+  --shadow-xs: 0 4px 14px rgb(var(--rgb-black) / .22);
+  --shadow-sm-unified: 0 12px 30px rgb(var(--rgb-black) / .32);
+  --shadow-md-unified: 0 20px 48px rgb(var(--rgb-black) / .44), inset 0 1px 0 rgb(var(--rgb-white) / .04);
+  --shadow-lg-unified: 0 30px 76px rgb(var(--rgb-black) / .55);
+  --btn-start: rgb(var(--rgb-primary-400));
+  --btn-end: rgb(180 92 255);
+  --board-depth-shadow: rgb(var(--rgb-black) / .54);
+}
+
+/* Unified background without the legacy repeated logo watermark. */
+body::before {
+  background-image:
+    linear-gradient(135deg, transparent 0 46%, rgb(var(--rgb-primary-500) / .035) 46% 47%, transparent 47% 100%),
+    linear-gradient(45deg, transparent 0 48%, rgb(var(--rgb-secondary-500) / .03) 48% 49%, transparent 49% 100%),
+    radial-gradient(circle at 12% 10%, rgb(var(--rgb-primary-400) / .18), transparent 30%),
+    radial-gradient(circle at 88% 14%, rgb(var(--rgb-secondary-400) / .15), transparent 28%),
+    radial-gradient(circle at 50% 105%, rgb(var(--rgb-gold-500) / .11), transparent 32%);
+  background-size: 64px 64px, 64px 64px, cover, cover, cover;
+  opacity: 1;
+}
+
+/* Shared elevated surfaces. Keep gameplay-specific surfaces in their own CSS. */
+.z-card,
+.z-mode-card,
+.z-lobby-panel,
+.z-auth-card,
+.z-dashboard-card,
+.modal-content {
+  border-color: var(--color-border) !important;
+  background: var(--gradient-surface) !important;
+  box-shadow: var(--shadow-md-unified) !important;
+  border-radius: var(--radius-card) !important;
+}
+
+.z-mode-card,
+.z-card,
+.z-lobby-card,
+.player-item,
+.room-item {
+  transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
+}
+
+@media (hover: hover) {
+  .z-mode-card:hover,
+  .z-card:hover,
+  .z-lobby-card:hover,
+  .player-item:hover,
+  .room-item:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-lg-unified) !important;
+    border-color: var(--color-border-strong) !important;
+  }
+}
+
+.btn,
+button,
+input,
+select,
+textarea {
+  border-radius: var(--radius-control);
+}
+
+.btn:not(.ghost):not(.danger):not(.warning):not(.success),
+.btn.primary,
+button.primary {
+  background: var(--gradient-primary);
+  color: var(--color-on-primary);
+  border-color: rgb(var(--rgb-white) / .22);
+  box-shadow: var(--btn-shadow);
+}
+
+.btn.danger,
+button.danger { background: var(--gradient-danger); color: var(--color-on-primary); }
+.btn.warning,
+button.warning { background: var(--gradient-warning); color: var(--color-on-warning); }
+.btn.success,
+button.success { background: var(--gradient-secondary); color: var(--color-on-primary); }
+
+h1,
+.z-page-title,
+.z-dash-title {
+  letter-spacing: -.025em;
+  text-wrap: balance;
+}
+
+h2,
+h3,
+.z-card h2,
+.z-card h3,
+.z-mode-text h2,
+.z-lobby-h2 {
+  letter-spacing: -.012em;
+}
+
+/* Stable selectors for the two game modes. */
+.z-mode-card.pvc {
+  background: var(--gradient-primary) !important;
+  color: var(--color-on-primary) !important;
+  border-color: rgb(var(--rgb-white) / .22) !important;
+}
+.z-mode-card.pvp {
+  background: var(--gradient-secondary) !important;
+  color: var(--color-on-primary) !important;
+  border-color: rgb(var(--rgb-white) / .20) !important;
+}
+.z-mode-card.pvc *,
+.z-mode-card.pvp * { color: inherit; }
+
+/* Board frame and status emphasis. */
+.board-wrap,
+.board-container,
+#boardWrap {
+  border-color: var(--color-border-strong) !important;
+  box-shadow: var(--shadow-lg-unified) !important;
+}
+.status,
+.turn-card,
+.z-game-status {
+  border-color: var(--color-border-strong) !important;
+  background: linear-gradient(135deg, var(--color-primary-soft), var(--color-secondary-soft)) !important;
+}
+
+/* Portrait and landscape mobile preserve geometry while inheriting the theme. */
+body.z-mobile-on {
+  --fs-title: 22px;
+  --m-card-radius: 20px;
+  background: var(--color-bg);
+}
+body.z-mobile-on .z-card,
+body.z-mobile-on .z-mode-card,
+body.z-mobile-on .z-lobby-panel,
+body.z-mobile-on .z-auth-card {
+  border-radius: var(--m-card-radius) !important;
+  border-color: var(--color-border) !important;
+  box-shadow: var(--shadow-sm-unified) !important;
+}
+body.z-mobile-on[data-mobile-orientation="landscape"] {
+  --fs-title: 20px;
+  --m-card-radius: 18px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .z-mode-card,
+  .z-card,
+  .z-lobby-card,
+  .player-item,
+  .room-item { transition: none; }
+}

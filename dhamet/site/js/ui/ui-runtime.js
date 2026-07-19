@@ -11,6 +11,17 @@ const GameLogModule = globalThis.DhametGameLogView;
 const ActionStateModule = globalThis.DhametActionStateView;
 const MatchModeModule = globalThis.DhametMatchMode;
 const MatchCoordinatorModule = globalThis.DhametMatchCoordinator;
+const ThemeModule = globalThis.DhametTheme;
+
+function themeColor(name) {
+  return ThemeModule && typeof ThemeModule.get === "function" ? ThemeModule.get(name) : "";
+}
+
+function themeChannels(name, alpha) {
+  return ThemeModule && typeof ThemeModule.channels === "function"
+    ? ThemeModule.channels(name, alpha)
+    : "";
+}
 for (const [name, value] of Object.entries({
   BoardGeometryModule,
   BoardViewModule,
@@ -204,23 +215,23 @@ const Visual = (() => {
         arrowStrong: { lineWidth: 9.2, head: 28 },
         forceAllAlpha: 0.55,
         colors: {
-          souflaRed: "#dc2626",
-          souflaRedText: "#7f1d1d",
+          souflaRed: themeColor("--mark-danger"),
+          souflaRedText: themeColor("--mark-danger-strong"),
 
-          souflaGreen: "#166534",
-          souflaGreenStrong: "#14532d",
-          removeRing: "rgba(220, 38, 38, 0.95)",
+          souflaGreen: themeColor("--mark-move"),
+          souflaGreenStrong: themeColor("--mark-move-strong"),
+          removeRing: themeChannels("--rgb-danger", ".95"),
         },
         coords: {
           font: "bold 18px Calibri, Carlito, Segoe UI, sans-serif",
           lineWidth: 4,
           radiusMul: 0.28,
-          bgLight: "rgba(255,255,255,0.72)",
-          bgDark: "rgba(0,0,0,0.55)",
-          fillLight: "#111827",
-          fillDark: "#f8fafc",
-          strokeLight: "rgba(255,255,255,1)",
-          strokeDark: "rgba(0,0,0,0.95)",
+          bgLight: themeChannels("--rgb-white", ".72"),
+          bgDark: themeChannels("--rgb-black", ".55"),
+          fillLight: themeColor("--color-text-strong"),
+          fillDark: themeColor("--color-on-dark"),
+          strokeLight: themeChannels("--rgb-white", "1"),
+          strokeDark: themeChannels("--rgb-black", ".95"),
         },
       };
       S.showCoords = !!(Game && Game.settings && Game.settings.showCoords);
@@ -253,8 +264,8 @@ const Visual = (() => {
           ctx.lineWidth = Math.max(6, rad * 0.18);
           ctx.strokeStyle =
             (S._activeStyle && S._activeStyle.colors && S._activeStyle.colors.removeRing) ||
-            "rgba(220, 38, 38, 0.95)";
-          ctx.shadowColor = "rgba(0,0,0,0.35)";
+            themeChannels("--rgb-danger", ".95");
+          ctx.shadowColor = themeChannels("--rgb-black", ".35");
           ctx.shadowBlur = 10;
           ctx.stroke();
           ctx.restore();
@@ -334,9 +345,9 @@ const Visual = (() => {
 
   function moveColorForSide(side) {
     const s = side != null ? side : Game.lastMoveSide != null ? Game.lastMoveSide : Game.player;
-    if (s === TOP) return "#166534";
-    if (s === BOT) return "#1e3a8a";
-    return "#166534";
+    if (s === TOP) return themeColor("--mark-move");
+    if (s === BOT) return themeColor("--color-primary");
+    return themeColor("--mark-move");
   }
 
   function _setLastMoveInternal(fr, path, side) {
@@ -448,22 +459,22 @@ const Visual = (() => {
       try { S._arrowStacks = new Map(); } catch (_) { S._arrowStacks = null; }
 
       if (S.forcedOpeningArrow)
-        drawArrow(ctx, S.forcedOpeningArrow.from, S.forcedOpeningArrow.to, "#ef4444");
+        drawArrow(ctx, S.forcedOpeningArrow.from, S.forcedOpeningArrow.to, themeColor("--mark-danger"));
 
       if (S.souflaRemove != null) {
-        drawX(ctx, S.souflaRemove, "#ef4444");
+        drawX(ctx, S.souflaRemove, themeColor("--mark-danger"));
       }
 
       if (S.souflaMarks && S.souflaMarks.length) {
-        for (const mi of S.souflaMarks) drawX(ctx, mi, "#ef4444");
+        for (const mi of S.souflaMarks) drawX(ctx, mi, themeColor("--mark-danger"));
       }
 
       if (SouflaFX.active) {
         const colR =
-          (S._activeStyle && S._activeStyle.colors && S._activeStyle.colors.souflaRed) || "#ef4444";
+          (S._activeStyle && S._activeStyle.colors && S._activeStyle.colors.souflaRed) || themeColor("--mark-danger");
         const colJump =
           (S._activeStyle && S._activeStyle.colors && S._activeStyle.colors.souflaRedText) ||
-          "#7f1d1d";
+          themeColor("--mark-danger-strong");
         for (const seg of SouflaFX.redPaths) {
           let cur = seg.from;
           for (let i = 0; i < seg.path.length; i++) {
@@ -483,17 +494,17 @@ const Visual = (() => {
       if (S.prevMove) {
         ctx.save();
         ctx.globalAlpha = 0.75;
-        drawPath(ctx, S.prevMove.from, S.prevMove.path, S.prevMove.color || "#166534");
+        drawPath(ctx, S.prevMove.from, S.prevMove.path, S.prevMove.color || themeColor("--mark-move"));
         ctx.restore();
       }
 
       if (S.lastMove)
-        drawPath(ctx, S.lastMove.from, S.lastMove.path, S.lastMove.color || "#166534");
+        drawPath(ctx, S.lastMove.from, S.lastMove.path, S.lastMove.color || themeColor("--mark-move"));
 
       if (S.souflaForcePathsAll && S.souflaForcePathsAll.length) {
         const colG =
           (S._activeStyle && S._activeStyle.colors && S._activeStyle.colors.souflaGreen) ||
-          "#16a34a";
+          themeColor("--mark-move");
         ctx.save();
         ctx.globalAlpha =
           S._activeStyle && typeof S._activeStyle.forceAllAlpha === "number"
@@ -512,7 +523,7 @@ const Visual = (() => {
         const p = S.souflaForcePath;
         const colGS =
           (S._activeStyle && S._activeStyle.colors && S._activeStyle.colors.souflaGreenStrong) ||
-          "#16a34a";
+          themeColor("--mark-move");
         const strong =
           S._activeStyle && S._activeStyle.arrowStrong ? S._activeStyle.arrowStrong : null;
         for (let i = 0; i < p.length - 1; i++) {
@@ -526,7 +537,7 @@ const Visual = (() => {
           : [];
         if (path.length < 2) return;
         for (let i = path.length - 1; i >= 1; i--) {
-          drawArrow(ctx, path[i], path[i - 1], "#facc15");
+          drawArrow(ctx, path[i], path[i - 1], themeColor("--mark-undo"));
         }
       };
 
@@ -552,7 +563,7 @@ const Visual = (() => {
         const order = S.capturedOrder;
         if (order && order.length) {
           const isDark = document.documentElement.classList.contains("dark");
-          const fill = isDark ? "#166534" : "#14532d";
+          const fill = isDark ? themeColor("--mark-move") : themeColor("--mark-move-strong");
           for (let i = 0; i < order.length; i++) {
             __numLabels.push({ idx: order[i], text: String(i + 1), fill: fill });
           }

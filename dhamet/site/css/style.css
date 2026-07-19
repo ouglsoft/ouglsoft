@@ -1,107 +1,17 @@
 /* ========================================================================== STYLE.CSS ========================================================================== */
 /* ========================================================================== THEME TOKENS & GLOBAL FOUNDATIONS ========================================================================== */
+
 :root {
-  --primary-green: #0f9f6e;
-  --primary-gold: #ca8a04;
-  --primary-red: #dc2626;
-  --sand-beige: #f8fbff;
-  --desert-orange: #2563eb;
-  --desert-brown: #1d4ed8;
-  --sky-blue: #38bdf8;
-  --dark-blue: #0f172a;
-  --light-sand: #eef4ff;
-  --bg: #f3f7fd;
-  --bg-soft: #ebf1fa;
-  --panel: rgba(255, 255, 255, 0.92);
-  --panel-weak: #f7faff;
-  --panel-strong: #ffffff;
-  --text: #0f172a;
-  --text-strong: #020617;
-  --muted: #64748b;
-  --accent: #2563eb;
-  --accent-2: #0ea5e9;
-  --accent-soft: rgba(37, 99, 235, 0.12);
-  --danger: #dc2626;
-  --warn: #d97706;
-  --ok: #0f9f6e;
-  --grid: #d7e0ee;
-  --diag: #334155;
-  --border: #d7e0ee;
-  --border-strong: #c5d1e2;
-  --arrow-green: #10b981;
-  --arrow-yellow: #f59e0b;
-  --arrow-red: #ef4444;
-  --shadow-sm: 0 10px 24px rgba(15, 23, 42, 0.06);
-  --shadow: 0 18px 44px rgba(15, 23, 42, 0.08);
-  --shadow-lg: 0 24px 60px rgba(15, 23, 42, 0.12);
-  --radius: 18px;
-  --radius-sm: 14px;
   --gap: 12px;
   --font: "Calibri", "Carlito", "Segoe UI", Tahoma, Arial, sans-serif;
   --font-arabic: "Calibri", "Carlito", "Segoe UI", Tahoma, Arial, sans-serif;
-  --btn-start: #2563eb;
-  --btn-end: #0ea5e9;
-  --btn-text: #f8fbff;
-  --btn-border: rgba(255, 255, 255, 0.18);
-  --btn-shadow: 0 14px 28px rgba(37, 99, 235, 0.22);
   --fs-title: 22px;
   --fs-body: 16px;
   --fs-footer: 12px;
-  --board-grid: #01060e;
-  --board-diag: #010b18;
-  --board-bg-start: #fbfdff;
-  --board-bg-end: #eef5ff;
-  --board-depth-shadow: rgba(15, 23, 42, 0.18);
-  --surface-elev-1: rgba(255, 255, 255, 0.78);
-  --surface-elev-2: rgba(255, 255, 255, 0.92);
-  --surface-stroke: rgba(148, 163, 184, 0.24);
-  --surface-stroke-strong: rgba(100, 116, 139, 0.34);
   --z-modal-backdrop: 2147483646;
   --z-modal: 2147483647;
   --z-game-drawer-backdrop: 2147483644;
   --z-game-drawer: 2147483645;
-  --icon-dark-bg: #ffffff;
-}
-
-:root.dark {
-  --bg: #020817;
-  --bg-soft: #0b1220;
-  --panel: rgba(15, 23, 42, 0.92);
-  --panel-weak: #131d32;
-  --panel-strong: #111827;
-  --text: #e5eefc;
-  --text-strong: #f8fbff;
-  --muted: #91a4c2;
-  --accent: #60a5fa;
-  --accent-2: #38bdf8;
-  --accent-soft: rgba(96, 165, 250, 0.18);
-  --danger: #f87171;
-  --warn: #fbbf24;
-  --ok: #34d399;
-  --grid: #243247;
-  --diag: #e2e8f0;
-  --border: #243247;
-  --border-strong: #314156;
-  --arrow-green: #34d399;
-  --arrow-yellow: #fbbf24;
-  --arrow-red: #f87171;
-  --shadow-sm: 0 14px 28px rgba(0, 0, 0, 0.28);
-  --shadow: 0 24px 58px rgba(0, 0, 0, 0.42);
-  --shadow-lg: 0 32px 72px rgba(0, 0, 0, 0.52);
-  --btn-start: #3b82f6;
-  --btn-end: #06b6d4;
-  --btn-text: #eff6ff;
-  --btn-border: rgba(148, 163, 184, 0.14);
-  --btn-shadow: 0 16px 34px rgba(2, 6, 23, 0.48);
-  --board-grid: #bfd0e8;
-  --board-diag: #f8fbff;
-  --board-bg-start: #081121;
-  --board-bg-end: #111c33;
-  --board-depth-shadow: rgba(0, 0, 0, 0.42);
-  --surface-elev-1: rgba(15, 23, 42, 0.82);
-  --surface-elev-2: rgba(15, 23, 42, 0.94);
-  --surface-stroke: rgba(148, 163, 184, 0.18);
-  --surface-stroke-strong: rgba(148, 163, 184, 0.28);
 }
 
 html {
@@ -138,8 +48,6 @@ body::before {
   background-repeat: no-repeat;
   pointer-events: none;
   z-index: -1;
-  background-image: radial-gradient(circle at 18% 12%, rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0) 26%), radial-gradient(circle at 84% 16%, rgba(56, 189, 248, 0.12), rgba(56, 189, 248, 0) 24%), radial-gradient(circle at 50% 100%, rgba(37, 99, 235, 0.08), rgba(37, 99, 235, 0) 34%), url("../assets/icons/icon.webp");
-  opacity: 0.28;
 }
 
 * {
@@ -153,7 +61,7 @@ body::before {
 
 ::-webkit-scrollbar-track {
   border-radius: 4px;
-  background: rgba(148, 163, 184, 0.10);
+  background: rgb(var(--rgb-primary-400) / .1);
 }
 
 ::-webkit-scrollbar-thumb {
@@ -163,7 +71,7 @@ body::before {
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: linear-gradient(180deg, #1d4ed8, #0284c7);
+  background: linear-gradient(180deg, rgb(var(--rgb-primary-500)), rgb(var(--rgb-secondary-600)));
 }
 
 html.dark {
@@ -171,7 +79,7 @@ html.dark {
 }
 
 ::selection {
-  background: rgba(37, 99, 235, 0.18);
+  background: rgb(var(--rgb-primary-500) / .18);
   color: var(--text-strong);
 }
 
@@ -262,7 +170,7 @@ footer,
 .z-auth-card,
 .z-auth-seo-card,
 .z-acc-menu {
-  background: rgba(255, 255, 255, .92);
+  background: rgb(var(--rgb-white) / .92);
   box-shadow: var(--shadow);
   backdrop-filter: blur(18px);
 }
@@ -272,13 +180,13 @@ footer,
 .z-nav-toggle {
   border: 1px solid var(--border);
   border-color: var(--border);
-  background: rgba(255, 255, 255, 0.66);
+  background: rgb(var(--rgb-white) / .66);
   box-shadow: var(--shadow-sm);
 }
 
 html.dark .z-lang-select,
 html.dark .z-nav-toggle {
-  background: rgba(19, 29, 50, 0.88);
+  background: rgb(var(--rgb-primary-900) / .88);
 }
 
 /* ========================================================================== GAME SHELL LAYOUT ========================================================================== */
@@ -351,7 +259,7 @@ body.board-depth canvas#board {
 body.board-depth .board-wrap {
   box-shadow:
     0 16px 38px var(--board-depth-shadow),
-    0 4px 12px rgba(15, 23, 42, 0.10);
+    0 4px 12px rgb(var(--rgb-primary-900) / .1);
 }
 
 
@@ -380,7 +288,7 @@ body.board-depth .board-wrap {
 
 /* ========================================================================== GAME HEADER & STATUS ========================================================================== */
 :root.dark .status-row {
-  background: linear-gradient(180deg, rgba(19, 29, 50, 0.94), rgba(17, 24, 39, 0.88));
+  background: linear-gradient(180deg, rgb(var(--rgb-primary-900) / .94), rgb(var(--rgb-primary-900) / .88));
 }
 
 .status-row {
@@ -391,7 +299,7 @@ body.board-depth .board-wrap {
   gap: 6px;
   min-height: 48px;
   padding: 7px 12px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(255, 255, 255, 0.42));
+  background: linear-gradient(180deg, rgb(var(--rgb-white) / .72), rgb(var(--rgb-white) / .42));
   border: 1px solid var(--border);
   border-radius: var(--radius);
 }
@@ -476,12 +384,12 @@ body.board-depth .board-wrap {
 :root.dark .stats-mobile-table th,
 :root.dark .stats tbody td,
 :root.dark .ai-level-prefix {
-  color: #fff;
+  color: rgb(var(--rgb-white));
 }
 
 :root.dark .stats th {
-  background: linear-gradient(135deg, #3b82f6, #06b6d4);
-  color: #eff6ff;
+  background: linear-gradient(135deg, rgb(var(--rgb-primary-400)), rgb(var(--rgb-secondary-600)));
+  color: rgb(var(--rgb-primary-200));
 }
 
 body[dir="rtl"] .stats-mobile-table,
@@ -490,31 +398,31 @@ body[dir="rtl"] .stats-mobile-table,
 }
 
 :root:not(.dark) .z-presence-online {
-  color: #0b6d0b !important;
+  color: rgb(var(--rgb-success-800)) !important;
   font-weight: 700;
 }
 
 :root:not(.dark) .z-presence-offline {
-  color: #b10000 !important;
+  color: rgb(var(--rgb-danger-700)) !important;
   font-weight: 700;
 }
 
 :root.dark .z-presence-online {
-  color: #4ade80 !important;
+  color: rgb(var(--rgb-success-500)) !important;
   font-weight: 700;
 }
 
 :root.dark .z-presence-offline {
-  color: #f87171 !important;
+  color: rgb(var(--rgb-danger-400)) !important;
   font-weight: 700;
 }
 
 :root.dark .stats tr:nth-child(even) td {
-  background: rgba(148, 163, 184, 0.06);
+  background: rgb(var(--rgb-primary-400) / .06);
 }
 
 :root.dark .presence-chip {
-  background: rgba(19, 29, 50, 0.92);
+  background: rgb(var(--rgb-primary-900) / .92);
 }
 
 .stats {
@@ -551,7 +459,7 @@ body.z-game-page:not(.z-mobile-on) .side .stats {
 .stats th {
   text-align: center;
   background: linear-gradient(135deg, var(--btn-start), var(--btn-end));
-  color: #f8fbff;
+  color: rgb(var(--rgb-primary-200));
   padding: 11px 8px;
   font-weight: 700;
   font-size: var(--fs-body);
@@ -575,23 +483,23 @@ body.z-game-page:not(.z-mobile-on) .side .stats {
   padding: 3px;
   border: 3px solid transparent;
   border-radius: 999px;
-  background: #ffffff;
+  background: rgb(var(--rgb-white));
   box-shadow: var(--shadow-sm);
 }
 
 .player-avatar-frame.is-black-piece {
-  border-color: #111827;
-  background: #ffffff;
+  border-color: rgb(var(--rgb-primary-900));
+  background: rgb(var(--rgb-white));
 }
 
 .player-avatar-frame.is-white-piece {
-  border-color: #ffffff;
-  background: #ffffff;
-  box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.16), var(--shadow-sm);
+  border-color: rgb(var(--rgb-white));
+  background: rgb(var(--rgb-white));
+  box-shadow: 0 0 0 1px rgb(var(--rgb-primary-900) / .16), var(--shadow-sm);
 }
 
 .player-avatar-frame.is-active-turn {
-  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.92), var(--shadow-sm);
+  box-shadow: 0 0 0 3px rgb(var(--rgb-danger-500) / .92), var(--shadow-sm);
 }
 
 .player-avatar {
@@ -641,7 +549,7 @@ body.z-game-page:not(.z-mobile-on) .side .stats {
 }
 
 .stats-mobile-table th {
-  color: #000;
+  color: rgb(var(--rgb-black));
 }
 
 .stats td {
@@ -653,7 +561,7 @@ body.z-game-page:not(.z-mobile-on) .side .stats {
 }
 
 .stats tr:nth-child(even) td {
-  background: rgba(148, 163, 184, 0.08);
+  background: rgb(var(--rgb-primary-400) / .08);
 }
 
 .stats tr:last-child td,
@@ -753,7 +661,7 @@ body[dir="rtl"] .ai-level-value {
   text-overflow: ellipsis;
   font-weight: 600;
   flex: 1 1 0;
-  background: rgba(255, 255, 255, 0.72);
+  background: rgb(var(--rgb-white) / .72);
   border: 1px solid var(--border);
   padding: 6px 10px;
   border-radius: var(--radius);
@@ -797,23 +705,23 @@ html[dir="ltr"] .presence-chip { direction: ltr; }
 
 .badge.ok {
   color: var(--ok);
-  border: 1px solid rgba(42, 140, 95, 0.4);
-  background: rgba(15, 159, 110, 0.12);
-  border-color: rgba(15, 159, 110, 0.28);
+  border: 1px solid rgb(var(--rgb-success-600) / .4);
+  background: rgb(var(--rgb-success-600) / .12);
+  border-color: rgb(var(--rgb-success-600) / .28);
 }
 
 .badge.warn {
   color: var(--warn);
-  border: 1px solid rgba(217, 124, 0, 0.4);
-  background: rgba(217, 119, 6, 0.12);
-  border-color: rgba(217, 119, 6, 0.28);
+  border: 1px solid rgb(var(--rgb-gold-600) / .4);
+  background: rgb(var(--rgb-gold-600) / .12);
+  border-color: rgb(var(--rgb-gold-600) / .28);
 }
 
 .badge.err {
   color: var(--danger);
-  border: 1px solid rgba(158, 0, 0, 0.4);
-  background: rgba(220, 38, 38, 0.12);
-  border-color: rgba(220, 38, 38, 0.28);
+  border: 1px solid rgb(var(--rgb-danger-700) / .4);
+  background: rgb(var(--rgb-danger-500) / .12);
+  border-color: rgb(var(--rgb-danger-500) / .28);
 }
 
 .lang-ar .stats th {
@@ -908,39 +816,39 @@ body.z-game-page:not(.mode-pvp):not(.z-mobile-on) #btnNew {
 }
 
 :root.dark .btn.primary {
-  background: linear-gradient(135deg, var(--primary-green), #007a40);
-  color: #eff6ff !important;
+  background: linear-gradient(135deg, var(--primary-green), rgb(var(--rgb-success-800)));
+  color: rgb(var(--rgb-primary-200)) !important;
 }
 
 :root.dark .clock {
-  background: rgba(15, 23, 42, 0.82);
-  color: #fecaca;
+  background: rgb(var(--rgb-primary-900) / .82);
+  color: rgb(var(--rgb-danger-300));
   border-bottom: 0;
 }
 
 :root.dark #btnEndKill {
-  background: linear-gradient(135deg, #5a0000, #464c00) !important;
+  background: linear-gradient(135deg, rgb(var(--rgb-danger-800)), rgb(var(--rgb-gold-800))) !important;
 }
 
 :root.dark .btn.secondary {
   color: var(--text) !important;
-  background: linear-gradient(180deg, rgba(30, 41, 59, 0.96), rgba(17, 24, 39, 0.96)) !important;
+  background: linear-gradient(180deg, rgb(var(--rgb-primary-800) / .96), rgb(var(--rgb-primary-900) / .96)) !important;
   border-color: var(--border) !important;
 }
 
 :root.dark .btn.ghost {
   color: var(--text) !important;
-  border-color: rgba(255, 255, 255, 0.16) !important;
+  border-color: rgb(var(--rgb-white) / .16) !important;
 }
 
 :root.dark .btn.ghost:hover {
-  background: rgba(255, 255, 255, 0.08);
+  background: rgb(var(--rgb-white) / .08);
 }
 
 :root.dark .btn,
 :root.dark #btnSync,
 :root.dark #btnEndOnline {
-  color: #eff6ff !important;
+  color: rgb(var(--rgb-primary-200)) !important;
 }
 
 .btn-grid {
@@ -978,15 +886,15 @@ body.z-game-page:not(.mode-pvp):not(.z-mobile-on) #btnNew {
 }
 
 .btn:hover {
-  background: linear-gradient(135deg, #c86b00, #7a4a2a);
+  background: linear-gradient(135deg, rgb(var(--rgb-gold-600)), rgb(var(--rgb-gold-700)));
   transform: translateY(-2px);
-  box-shadow: 0 4px 8px rgba(217, 124, 0, 0.3);
+  box-shadow: 0 4px 8px rgb(var(--rgb-gold-600) / .3);
 }
 
 .btn:hover:not(:disabled) {
   transform: translateY(-1px);
   filter: brightness(1.03);
-  box-shadow: 0 16px 30px rgba(37, 99, 235, 0.24);
+  box-shadow: 0 16px 30px rgb(var(--rgb-primary-500) / .24);
 }
 
 .btn:active {
@@ -1005,13 +913,13 @@ body.z-game-page:not(.mode-pvp):not(.z-mobile-on) #btnNew {
 }
 
 .btn.guest {
-  color: white !important;
-  border: 2px solid rgba(214, 40, 40, 0.7) !important;
+  color: var(--color-on-accent) !important;
+  border: 2px solid rgb(var(--rgb-danger-500) / .7) !important;
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  background: linear-gradient(135deg, #0f172a, #334155) !important;
-  border-color: rgba(51, 65, 85, 0.34) !important;
+  background: linear-gradient(135deg, rgb(var(--rgb-primary-900)), rgb(var(--rgb-primary-700))) !important;
+  border-color: rgb(var(--rgb-primary-700) / .34) !important;
 }
 
 .btn.guest:hover {
@@ -1019,10 +927,10 @@ body.z-game-page:not(.mode-pvp):not(.z-mobile-on) #btnNew {
 }
 
 .btn.adv-help {
-  color: #fff !important;
-  border: 2px solid rgba(155, 17, 30, 0.85) !important;
-  background: linear-gradient(135deg, #7c3aed, #a855f7) !important;
-  border-color: rgba(124, 58, 237, 0.24) !important;
+  color: rgb(var(--rgb-white)) !important;
+  border: 2px solid rgb(var(--rgb-danger-700) / .85) !important;
+  background: linear-gradient(135deg, rgb(var(--rgb-primary-500)), rgb(var(--rgb-primary-400))) !important;
+  border-color: rgb(var(--rgb-primary-500) / .24) !important;
 }
 
 .btn.adv-help:hover:not(:disabled) {
@@ -1063,9 +971,9 @@ body.z-game-page:not(.mode-pvp):not(.z-mobile-on) #btnNew {
   margin: 0;
   padding: 6px 8px;
   border-radius: 10px;
-  border: 1px solid rgba(220, 38, 38, 0.22);
-  background: rgba(220, 38, 38, 0.08);
-  color: #b91c1c;
+  border: 1px solid rgb(var(--rgb-danger-500) / .22);
+  background: rgb(var(--rgb-danger-500) / .08);
+  color: rgb(var(--rgb-danger-600));
   font-size: 12px;
   font-weight: 800;
   line-height: 1.35;
@@ -1077,7 +985,7 @@ body.z-game-page:not(.mode-pvp):not(.z-mobile-on) #btnNew {
 }
 
 #btnSync {
-  color: white;
+  color: var(--color-on-accent);
   margin-top: 4px;
   border: 2px solid var(--btn-border) !important;
   border-radius: 10px;
@@ -1085,14 +993,14 @@ body.z-game-page:not(.mode-pvp):not(.z-mobile-on) #btnNew {
 }
 
 #btnSync.z-sync-issue {
-  border-color: rgba(127, 29, 29, 0.55) !important;
-  background: linear-gradient(135deg, #dc2626, #ef4444) !important;
+  border-color: rgb(var(--rgb-danger-700) / .55) !important;
+  background: linear-gradient(135deg, rgb(var(--rgb-danger-500)), rgb(var(--rgb-danger-400))) !important;
 }
 
 #btnEndOnline {
-  color: white;
+  color: var(--color-on-accent);
   margin-top: 4px;
-  background: linear-gradient(135deg, #dc2626, #ef4444) !important;
+  background: linear-gradient(135deg, rgb(var(--rgb-danger-500)), rgb(var(--rgb-danger-400))) !important;
 }
 
 .timer-row {
@@ -1103,8 +1011,8 @@ body.z-game-page:not(.mode-pvp):not(.z-mobile-on) #btnNew {
   border-radius: var(--radius);
   margin-top: 0;
   padding: 6px 10px;
-  background: rgba(220, 38, 38, 0.08);
-  border: 1px solid rgba(220, 38, 38, 0.18);
+  background: rgb(var(--rgb-danger-500) / .08);
+  border: 1px solid rgb(var(--rgb-danger-500) / .18);
 }
 
 .clock {
@@ -1118,7 +1026,7 @@ body.z-game-page:not(.mode-pvp):not(.z-mobile-on) #btnNew {
   text-align: center;
   margin-left: 0px;
   font-size: var(--fs-body);
-  background: rgba(255, 255, 255, 0.56);
+  background: rgb(var(--rgb-white) / .56);
   color: var(--danger);
   border-radius: 10px;
   text-shadow: none;
@@ -1129,12 +1037,12 @@ body.z-game-page:not(.mode-pvp):not(.z-mobile-on) #btnNew {
   font-weight: 700;
   cursor: pointer;
   transition: all 0.2s ease;
-  color: #ffffff !important;
-  border-color: rgba(255, 255, 255, 0.18) !important;
-  background: linear-gradient(135deg, #dc2626, #f97316) !important;
-  border: 1px solid rgba(248, 113, 113, 0.22) !important;
+  color: rgb(var(--rgb-white)) !important;
+  border-color: rgb(var(--rgb-white) / .18) !important;
+  background: linear-gradient(135deg, rgb(var(--rgb-danger-500)), rgb(var(--rgb-gold-500))) !important;
+  border: 1px solid rgb(var(--rgb-danger-400) / .22) !important;
   border-radius: var(--radius-sm);
-  box-shadow: 0 12px 24px rgba(220, 38, 38, 0.22);
+  box-shadow: 0 12px 24px rgb(var(--rgb-danger-500) / .22);
   font-size: var(--fs-body);
 }
 
@@ -1146,9 +1054,9 @@ body.z-game-page:not(.mode-pvp):not(.z-mobile-on) #btnNew {
 }
 
 #btnEndKill:hover {
-  background: linear-gradient(135deg, rgb(93, 8, 2), rgb(102, 120, 2));
+  background: linear-gradient(135deg, rgb(var(--rgb-danger-800)), rgb(var(--rgb-gold-800)));
   transform: translateY(-2px);
-  box-shadow: 0 4px 8px rgba(158, 0, 0, 0.4);
+  box-shadow: 0 4px 8px rgb(var(--rgb-danger-700) / .4);
 }
 
 #btnEndKill[aria-disabled="true"],
@@ -1160,19 +1068,19 @@ body.z-game-page:not(.mode-pvp):not(.z-mobile-on) #btnNew {
 }
 
 .btn.ok {
-  background: linear-gradient(135deg, #059669, #10b981) !important;
+  background: linear-gradient(135deg, rgb(var(--rgb-success-700)), rgb(var(--rgb-success-600))) !important;
 }
 
 .btn.warn {
-  background: linear-gradient(135deg, #d97706, #f59e0b) !important;
+  background: linear-gradient(135deg, rgb(var(--rgb-gold-600)), rgb(var(--rgb-gold-500))) !important;
 }
 
 .btn.danger {
-  background: linear-gradient(135deg, #dc2626, #ef4444) !important;
+  background: linear-gradient(135deg, rgb(var(--rgb-danger-500)), rgb(var(--rgb-danger-400))) !important;
 }
 
 .btn.secondary {
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.88), rgba(241, 245, 249, 0.96)) !important;
+  background: linear-gradient(180deg, rgb(var(--rgb-white) / .88), rgb(var(--rgb-secondary-100) / .96)) !important;
   color: var(--text) !important;
   border-color: var(--border-strong) !important;
   box-shadow: var(--shadow-sm) !important;
@@ -1194,7 +1102,7 @@ body.z-game-page:not(.mode-pvp):not(.z-mobile-on) #btnNew {
 
 .btn.ghost:hover {
   transform: translateY(-1px);
-  background: rgba(140, 92, 58, 0.08);
+  background: rgb(var(--rgb-gold-600) / .08);
   box-shadow: none;
 }
 
@@ -1212,12 +1120,12 @@ body.z-game-page:not(.mode-pvp):not(.z-mobile-on) #btnNew {
 }
 
 .btn.ghost:hover:not(:disabled) {
-  background: rgba(37, 99, 235, 0.06) !important;
+  background: rgb(var(--rgb-primary-500) / .06) !important;
 }
 
 /* ========================================================================== ACTIVITY LOG ========================================================================== */
 :root.dark .log .time {
-  color: #7dd3fc;
+  color: rgb(var(--rgb-secondary-300));
 }
 
 :root.dark .log .msg .color-word {
@@ -1225,7 +1133,7 @@ body.z-game-page:not(.mode-pvp):not(.z-mobile-on) #btnNew {
 }
 
 :root.dark .log {
-  background: linear-gradient(180deg, rgba(15, 23, 42, 0.96), rgba(17, 24, 39, 0.94));
+  background: linear-gradient(180deg, rgb(var(--rgb-primary-900) / .96), rgb(var(--rgb-primary-900) / .94));
 }
 
 .log {
@@ -1283,7 +1191,7 @@ body.z-game-page:not(.mode-pvp):not(.z-mobile-on) #btnNew {
 }
 
 :root.dark .log .msg .actor-word {
-  color: #f8fbff;
+  color: rgb(var(--rgb-primary-200));
 }
 
 .lang-ar .log-item,
@@ -1308,11 +1216,11 @@ body.z-game-page:not(.mode-pvp):not(.z-mobile-on) #btnNew {
 
 :root.dark .apply-settings-note,
 :root.dark .apply-settings-table-wrap {
-  border: 1px solid rgba(255, 255, 255, 0.14);
+  border: 1px solid rgb(var(--rgb-white) / .14);
 }
 
 :root.dark .apply-settings-table td {
-  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  border-top: 1px solid rgb(var(--rgb-white) / .12);
 }
 
 :root.dark .modal-body th {
@@ -1320,12 +1228,12 @@ body.z-game-page:not(.mode-pvp):not(.z-mobile-on) #btnNew {
 }
 
 :root.dark .settings-feedback {
-  border-color: rgba(255, 255, 255, 0.15);
-  background: rgba(255, 255, 255, 0.06);
+  border-color: rgb(var(--rgb-white) / .15);
+  background: rgb(var(--rgb-white) / .06);
 }
 
 :root.dark .z-apply-settings .modal-body {
-  background: linear-gradient(180deg, rgba(59, 130, 246, 0.08), rgba(6, 182, 212, 0.04));
+  background: linear-gradient(180deg, rgb(var(--rgb-primary-400) / .08), rgb(var(--rgb-secondary-600) / .04));
 }
 
 .apply-settings-wrap {
@@ -1348,7 +1256,7 @@ body.z-game-page:not(.mode-pvp):not(.z-mobile-on) #btnNew {
 .apply-settings-note {
   width: 100%;
   padding: 10px 12px;
-  border: 1px solid rgba(0, 0, 0, 0.12);
+  border: 1px solid rgb(var(--rgb-black) / .12);
   background: transparent;
   font-weight: 800;
   line-height: 1.5;
@@ -1360,7 +1268,7 @@ body.z-game-page:not(.mode-pvp):not(.z-mobile-on) #btnNew {
 .apply-settings-table-wrap {
   width: 100%;
   max-width: 640px;
-  border: 1px solid rgba(0, 0, 0, 0.12);
+  border: 1px solid rgb(var(--rgb-black) / .12);
   background: transparent;
   overflow: hidden;
   border-radius: var(--radius);
@@ -1380,7 +1288,7 @@ body.z-game-page:not(.mode-pvp):not(.z-mobile-on) #btnNew {
 
 .apply-settings-table td {
   padding: 9px 12px;
-  border-top: 1px solid rgba(0, 0, 0, 0.10);
+  border-top: 1px solid rgb(var(--rgb-black) / .1);
   vertical-align: top;
   font-weight: 800;
 }
@@ -1408,7 +1316,7 @@ body.z-game-page:not(.mode-pvp):not(.z-mobile-on) #btnNew {
   justify-content: center;
   padding: 16px;
   z-index: var(--z-modal-backdrop);
-  background: rgba(2, 6, 23, 0.56);
+  background: rgb(var(--rgb-primary-900) / .56);
   backdrop-filter: blur(10px);
 }
 
@@ -1437,7 +1345,7 @@ body.z-game-page:not(.mode-pvp):not(.z-mobile-on) #btnNew {
   align-items: center;
   position: relative;
   background: linear-gradient(135deg, var(--btn-start), var(--btn-end));
-  color: #f8fbff;
+  color: rgb(var(--rgb-primary-200));
 }
 
 .modal-title {
@@ -1454,7 +1362,7 @@ body.z-game-page:not(.mode-pvp):not(.z-mobile-on) #btnNew {
 
 .modal-close {
   border: none;
-  color: white;
+  color: var(--color-on-accent);
   font-size: var(--fs-body);
   cursor: pointer;
   padding: 0;
@@ -1468,12 +1376,12 @@ body.z-game-page:not(.mode-pvp):not(.z-mobile-on) #btnNew {
   position: absolute;
   right: 12px;
   top: 12px;
-  background: rgba(255, 255, 255, 0.16);
+  background: rgb(var(--rgb-white) / .16);
 }
 
 .modal-close:hover {
   transform: rotate(90deg);
-  background: rgba(255, 255, 255, 0.26);
+  background: rgb(var(--rgb-white) / .26);
 }
 
 #modalBackdrop[dir="rtl"] .modal-close {
@@ -1499,7 +1407,7 @@ body.z-game-page:not(.mode-pvp):not(.z-mobile-on) #btnNew {
 .z-apply-settings .modal-body {
   text-align: center;
   direction: inherit;
-  background: linear-gradient(180deg, rgba(37, 99, 235, 0.05), rgba(14, 165, 233, 0.02));
+  background: linear-gradient(180deg, rgb(var(--rgb-primary-500) / .05), rgb(var(--rgb-secondary-500) / .02));
 }
 
 .modal-footer {
@@ -1564,21 +1472,21 @@ body.z-game-page:not(.mode-pvp):not(.z-mobile-on) #btnNew {
   margin: 8px 0 10px;
   padding: 10px 12px;
   line-height: 1.35;
-  border: 1px solid rgba(0, 0, 0, 0.15);
-  background: rgba(0, 0, 0, 0.04);
-  border-color: rgba(148, 163, 184, 0.24);
+  border: 1px solid rgb(var(--rgb-black) / .15);
+  background: rgb(var(--rgb-black) / .04);
+  border-color: rgb(var(--rgb-primary-400) / .24);
   border-radius: var(--radius);
   font-size: var(--fs-body);
 }
 
 .settings-feedback.ok {
-  border-color: rgba(15, 159, 110, 0.32);
-  background: rgba(15, 159, 110, 0.08);
+  border-color: rgb(var(--rgb-success-600) / .32);
+  background: rgb(var(--rgb-success-600) / .08);
 }
 
 .settings-feedback.warn {
-  border-color: rgba(217, 119, 6, 0.32);
-  background: rgba(217, 119, 6, 0.08);
+  border-color: rgb(var(--rgb-gold-600) / .32);
+  background: rgb(var(--rgb-gold-600) / .08);
 }
 
 .modal.z-chat-modal {
@@ -1633,26 +1541,26 @@ body[dir="rtl"] #aiLevelValue {
 
 /* ========================================================================== PVP CONTROLS & CHAT ========================================================================== */
 :root.dark .pvp-chat-list {
-  background: rgba(255, 255, 255, .05);
+  background: rgb(var(--rgb-white) / .05);
 }
 
 :root.dark .pvp-bubble {
-  background: rgba(255, 255, 255, .94);
-  border-color: rgba(255, 255, 255, .18);
-  box-shadow: 0 2px 12px rgba(0, 0, 0, .35);
+  background: rgb(var(--rgb-white) / .94);
+  border-color: rgb(var(--rgb-white) / .18);
+  box-shadow: 0 2px 12px rgb(var(--rgb-black) / .35);
 }
 
 :root.dark .pvp-msg.me .pvp-bubble {
-  background: rgba(220, 252, 231, .94);
-  border-color: rgba(42, 170, 119, .30);
+  background: rgb(var(--rgb-success-100) / .94);
+  border-color: rgb(var(--rgb-success-600) / .3);
 }
 
 :root.dark .pvp-chat-form {
-  border-top-color: rgba(255, 255, 255, .12);
+  border-top-color: rgb(var(--rgb-white) / .12);
 }
 
 :root.dark .pvp-chat-input {
-  border-color: rgba(255, 255, 255, .18);
+  border-color: rgb(var(--rgb-white) / .18);
 }
 
 .soufla-row .btn,
@@ -1744,14 +1652,14 @@ body[dir="rtl"] #aiLevelValue {
 
 #btnSoufla {
   width: 100%;
-  background: #b10000 !important;
-  border-color: rgba(0, 0, 0, 0.35) !important;
-  color: #fff !important;
+  background: rgb(var(--rgb-danger-700)) !important;
+  border-color: rgb(var(--rgb-black) / .35) !important;
+  color: rgb(var(--rgb-white)) !important;
   font-weight: 900;
 }
 
 #btnSoufla:hover:not(:disabled) {
-  background: #d10000 !important;
+  background: rgb(var(--rgb-danger-600)) !important;
 }
 
 #btnChat[data-badge] {
@@ -1767,14 +1675,14 @@ body[dir="rtl"] #aiLevelValue {
   height: 26px;
   padding: 0 6px;
   border-radius: 999px;
-  background: #ef4444;
-  color: #fff;
+  background: rgb(var(--rgb-danger-400));
+  color: rgb(var(--rgb-white));
   font-weight: 900;
   line-height: 1;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.25);
+  box-shadow: 0 6px 16px rgb(var(--rgb-black) / .25);
   font-size: var(--fs-body);
 }
 
@@ -1811,12 +1719,12 @@ body[dir="rtl"] #aiLevelValue {
 }
 
 .pvp-bubble {
-  border: 1px solid rgba(0, 0, 0, .12);
+  border: 1px solid rgb(var(--rgb-black) / .12);
   border-radius: 14px;
   display: block;
   padding: 1px 10px;
-  background: rgba(255, 255, 255, .92);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, .06);
+  background: rgb(var(--rgb-white) / .92);
+  box-shadow: 0 2px 8px rgb(var(--rgb-black) / .06);
   word-break: break-word;
   direction: inherit;
   text-align: start;
@@ -1836,7 +1744,7 @@ body[dir="rtl"] #aiLevelValue {
   padding: 0;
   line-height: 1.5;
   font-size: calc(var(--fs-body) * 0.95);
-  color: #7f1d1d;
+  color: rgb(var(--rgb-danger-700));
   white-space: normal;
   overflow: visible;
   text-overflow: clip;
@@ -1856,7 +1764,7 @@ body[dir="rtl"] #aiLevelValue {
   line-height: 1.5;
   white-space: pre-wrap;
   text-align: start;
-  color: #111827;
+  color: rgb(var(--rgb-primary-900));
   font-weight: 500;
   unicode-bidi: plaintext;
 }
@@ -1866,8 +1774,8 @@ body[dir="rtl"] #aiLevelValue {
 }
 
 .pvp-msg.me .pvp-bubble {
-  background: rgba(220, 252, 231, .92);
-  border-color: rgba(42, 170, 119, .22);
+  background: rgb(var(--rgb-success-100) / .92);
+  border-color: rgb(var(--rgb-success-600) / .22);
 }
 
 .pvp-chat-form {
@@ -1875,7 +1783,7 @@ body[dir="rtl"] #aiLevelValue {
   display: flex;
   gap: 10px;
   padding: 10px;
-  border-top: 1px solid rgba(0, 0, 0, .10);
+  border-top: 1px solid rgb(var(--rgb-black) / .1);
   background: var(--panel);
 }
 
@@ -1884,7 +1792,7 @@ body[dir="rtl"] #aiLevelValue {
   width: 100%;
   padding: 12px 12px;
   border-radius: 16px;
-  border: 1px solid rgba(0, 0, 0, .18);
+  border: 1px solid rgb(var(--rgb-black) / .18);
   background: var(--bg);
   color: var(--text);
 }
@@ -1929,24 +1837,24 @@ body[dir="rtl"] #aiLevelValue {
 :root.dark select:focus,
 :root.dark button:focus,
 :root.dark input:focus {
-  box-shadow: 0 0 0 3px rgba(195, 144, 0, 0.3);
+  box-shadow: 0 0 0 3px rgb(var(--rgb-gold-600) / .3);
 }
 
 :root.dark ::-webkit-scrollbar-track {
-  background: rgba(36, 50, 71, 0.82);
+  background: rgb(var(--rgb-primary-800) / .82);
 }
 
 :root.dark ::-webkit-scrollbar-thumb {
-  background: linear-gradient(180deg, #3b82f6, #06b6d4);
+  background: linear-gradient(180deg, rgb(var(--rgb-primary-400)), rgb(var(--rgb-secondary-600)));
 }
 
 :root.dark ::-webkit-scrollbar-thumb:hover {
-  background: linear-gradient(135deg, #007a40, var(--primary-gold));
+  background: linear-gradient(135deg, rgb(var(--rgb-success-800)), var(--primary-gold));
 }
 
 :root.dark body {
 
-  background: radial-gradient(circle at top right, rgba(56, 189, 248, 0.14), transparent 32%), radial-gradient(circle at top left, rgba(96, 165, 250, 0.14), transparent 28%), linear-gradient(180deg, rgba(10, 15, 30, 0.82), rgba(2, 8, 23, 0.96)), var(--bg);
+  background: radial-gradient(circle at top right, rgb(var(--rgb-secondary-400) / .14), transparent 32%), radial-gradient(circle at top left, rgb(var(--rgb-primary-400) / .14), transparent 28%), linear-gradient(180deg, rgb(var(--rgb-primary-900) / .82), rgb(var(--rgb-primary-900) / .96)), var(--bg);
 }
 
 :root.dark body::before {
@@ -1956,14 +1864,14 @@ body[dir="rtl"] #aiLevelValue {
 :root.dark select,
 :root.dark button,
 :root.dark input {
-  background: rgba(17, 24, 39, 0.96);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  background: rgb(var(--rgb-primary-900) / .96);
+  box-shadow: inset 0 1px 0 rgb(var(--rgb-white) / .04);
 }
 
 html.dark img[src*="assets/icons/"]:not([src*="assets/icons/users/"]) {
   background: var(--icon-dark-bg);
   border-radius: 10px;
-  box-shadow: 0 6px 16px rgba(2, 6, 23, 0.26);
+  box-shadow: 0 6px 16px rgb(var(--rgb-primary-900) / .26);
 }
 
 select,
@@ -1977,7 +1885,7 @@ input {
   border-radius: var(--radius-sm);
   padding: 10px 12px;
   transition: border-color .18s ease, background-color .18s ease, box-shadow .18s ease, transform .18s ease;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  box-shadow: inset 0 1px 0 rgb(var(--rgb-white) / .6);
 }
 
 select:focus,
@@ -2158,11 +2066,11 @@ body[dir="rtl"] .settings-control {
   padding: 10px 12px;
   border: 1px solid var(--border);
   border-radius: 14px;
-  background: rgba(15, 23, 42, 0.035);
+  background: rgb(var(--rgb-primary-900) / .035);
 }
 
 :root.dark .ai-level-help-item {
-  background: rgba(255, 255, 255, 0.04);
+  background: rgb(var(--rgb-white) / .04);
 }
 
 .ai-level-help-item h3 {
@@ -2214,17 +2122,17 @@ body[dir="rtl"] .settings-control {
 }
 
 .modal.z-invite-modal #modalFooterButtons .z-invite-accept {
-  background: linear-gradient(180deg, #22c55e, #16a34a) !important;
-  color: #fff !important;
-  border-color: #15803d !important;
-  box-shadow: 0 8px 18px rgba(21, 128, 61, 0.28) !important;
+  background: linear-gradient(180deg, rgb(var(--rgb-success-600)), rgb(var(--rgb-success-600))) !important;
+  color: rgb(var(--rgb-white)) !important;
+  border-color: rgb(var(--rgb-success-700)) !important;
+  box-shadow: 0 8px 18px rgb(var(--rgb-success-700) / .28) !important;
 }
 
 .modal.z-invite-modal #modalFooterButtons .z-invite-reject {
-  background: linear-gradient(180deg, #ef4444, #dc2626) !important;
-  color: #fff !important;
-  border-color: #b91c1c !important;
-  box-shadow: 0 8px 18px rgba(185, 28, 28, 0.28) !important;
+  background: linear-gradient(180deg, rgb(var(--rgb-danger-400)), rgb(var(--rgb-danger-500))) !important;
+  color: rgb(var(--rgb-white)) !important;
+  border-color: rgb(var(--rgb-danger-600)) !important;
+  box-shadow: 0 8px 18px rgb(var(--rgb-danger-600) / .28) !important;
 }
 
 
