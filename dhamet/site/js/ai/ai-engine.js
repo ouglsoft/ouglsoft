@@ -28,11 +28,14 @@
   const INF = 1000000000;
   const MATE_WINDOW = 100000;
   const ENGINE_VERSION = 'dhamet-__DHAMET_BUILD__';
-  // Root-only tie preference for a remembered, uniquely forced soufla plan.
-  // One man is worth 100 evaluation points. The bonus is deliberately small:
-  // it preserves a previously proven plan when results are close, but cannot
-  // override a clearly stronger removal decision.
-  const SOUFLA_PLAN_ROOT_BONUS = 12;
+  // Root-only preference for a remembered, uniquely forced soufla plan.
+  // One man is worth 100 evaluation points. Sixteen points keep a verified plan
+  // relevant in close branches without allowing memory to override a materially
+  // stronger current result.
+  const SOUFLA_PLAN_ROOT_BONUS = 16;
+  // Waiving Soufla is exceptional: it is searched only when the current board
+  // already leads the best ordinary penalty by a clear, sub-material margin.
+  const SOUFLA_WAIVER_MARGIN = 45;
   const TIMEOUT = Object.freeze({ searchTimeout: true });
   const MASK64 = (1n << 64n) - 1n;
 
@@ -828,7 +831,7 @@
     const bestTopRace = bestTop ? bestTop.race : 0;
     const bestBotRace = bestBot ? bestBot.race : 0;
     const trapRaceFactor = 0.55 + facts.strategicPhase * 0.45;
-    score += roundSymmetric((bestTopRace - bestBotRace) * 0.55);
+    score += roundSymmetric((bestTopRace - bestBotRace) * 0.70);
 
     // The back trap is a one-use emergency resource. It affects the race only
     // when the immediate promotion destinations actually enter its structural
@@ -1106,11 +1109,11 @@
       if (side === TOP && toCol <= 2) {
         const gain = Math.max(0, toRow - fromRow);
         const lane = 3 - toCol;
-        absoluteTopDelta += gain * lane * (support > 0 ? 5 : -3);
+        absoluteTopDelta += gain * lane * (support > 0 ? 6 : -3);
       } else if (side === BOT && toCol >= 6) {
         const gain = Math.max(0, fromRow - toRow);
         const lane = toCol - 5;
-        absoluteTopDelta -= gain * lane * (support > 0 ? 5 : -3);
+        absoluteTopDelta -= gain * lane * (support > 0 ? 6 : -3);
       }
     }
 
@@ -1489,6 +1492,7 @@
     return Object.freeze({
       score: ttLoadScore(entry.score, 0),
       depth: Math.max(0, entry.depth | 0),
+      move: entry.move ? clonePlanMove(entry.move) : null,
     });
   }
 
@@ -1871,6 +1875,18 @@
     const penalizer = Number(pending && pending.penalizer);
     if (penalizer !== TOP && penalizer !== BOT) return null;
     const source = normalizePosition({ ...(input || {}), player: penalizer });
+
+    // Waiver is not a third penalty. It models the penalizer beginning the new
+    // turn without claiming either legal remedy, so the post-violation board is
+    // preserved and the completed offending turn is counted once.
+    if (option && option.kind === 'waive') {
+      return attachHashes({
+        ...source,
+        side: penalizer,
+        moveCount: Math.max(0, Number(source.moveCount || 0) | 0) + 1,
+      });
+    }
+
     const resolved = TurnResolution.resolveSouflaPenalty({
       currentBoard: R.compact.toBoard(source.board),
       currentDeferredPromotions: source.deferredPromotions,
@@ -1896,18 +1912,18 @@
 
   function analyzePenalty(input, pending, rememberedPlan) {
     const analysisStarted = nowMs();
-    const options = pending && Array.isArray(pending.options) ? pending.options : [];
-    if (!options.length) return null;
+    const penaltyOptions = pending && Array.isArray(pending.options) ? pending.options : [];
+    if (!penaltyOptions.length) return null;
     const settings = Config.normalizeAdvancedSettings((input && input.settings && input.settings.advanced) || input.settings || {});
     const matchedPlan = matchSouflaPlan(input, pending, rememberedPlan);
     const isPlannedOption = (option) => !!(matchedPlan && option && option.kind === 'force' &&
       Number(option.offenderIdx) === Number(matchedPlan.option.offenderIdx) &&
       R.samePath(option.path || [], matchedPlan.option.path || []));
 
-    // Every option is built from its own legal origin. Only options producing
-    // the exact same complete next-turn state are merged.
+    // Every legal penalty is built from its own authoritative origin. Only
+    // outcomes with the same complete next-turn identity are merged.
     const candidateByIdentity = new Map();
-    for (const option of options) {
+    for (const option of penaltyOptions) {
       try {
         const pos = penaltyPosition(input, pending, option);
         if (!pos) continue;
@@ -1918,11 +1934,23 @@
         }
       } catch (_) {}
     }
-    const candidates = Array.from(candidateByIdentity.values());
-    if (!candidates.length) return null;
+    const ordinaryCandidates = Array.from(candidateByIdentity.values());
+    if (!ordinaryCandidates.length) return null;
+
+    // The waiver is built separately and never deepened by default. It must
+    // first clear a substantial baseline margin over the best removal/force.
+    let waiverCandidate = null;
+    try {
+      const option = Object.freeze({ kind: 'waive', offenderIdx: -1, path: [], jumps: [], captures: 0 });
+      const pos = penaltyPosition(input, pending, option);
+      if (pos) {
+        const identity = positionIdentity(pos);
+        if (!candidateByIdentity.has(identity)) waiverCandidate = { option, pos, identity };
+      }
+    } catch (_) {}
 
     const plannedCandidate = matchedPlan
-      ? candidates.find((candidate) =>
+      ? ordinaryCandidates.find((candidate) =>
           candidate.option.kind === 'force' &&
           Number(candidate.option.offenderIdx) === Number(matchedPlan.option.offenderIdx) &&
           R.samePath(candidate.option.path || [], matchedPlan.option.path || []) &&
@@ -1935,8 +1963,8 @@
     const rememberedDepth = rememberedScore == null ? 0 : Math.max(0, Number(matchedPlan.plan.previousDepth || 0) | 0);
     const selectionScore = (candidate, rawScore) => souflaPenaltySelectionScore(rawScore, candidate === plannedCandidate);
 
-    // Use the ordinary soufla budget. The plan changes ordering and reuses a
-    // completed score; it never adds a second evaluator, extra depth, or time.
+    // Use the ordinary Soufla budget. Remembered plans alter ordering and may
+    // reuse completed work; waiver eligibility does not add a second search.
     const totalSoft = Math.max(settings.thinkTimeMs, Math.min(settings.hardTimeMs, settings.thinkTimeMs + settings.timeBoostCriticalMs));
     const penaltySettings = {
       ...settings,
@@ -1954,7 +1982,7 @@
     function cheapOrder(candidate) {
       if (candidate === plannedCandidate) return 100000000 + (rememberedScore == null ? 0 : rememberedScore);
       const option = candidate.option || {};
-      let score = option.kind === 'force' ? 20000 : 10000;
+      let score = option.kind === 'force' ? 20000 : option.kind === 'remove' ? 10000 : 0;
       score += Math.max(0, Number(option.captures || (option.jumps && option.jumps.length) || 0)) * 3000;
       if (option.kind === 'remove') {
         const current = R.compact.fromBoard(input && input.board);
@@ -1965,32 +1993,51 @@
       return score;
     }
 
-    // Depth zero covers every distinct legal outcome before any option is
-    // deepened. If time expires later, the decision falls back to this common
-    // full-board baseline instead of comparing a searched prefix only.
+    function baselineEntry(candidate) {
+      const terminal = terminalScore(candidate.pos, 0, null);
+      const score = terminal == null ? evaluate(candidate.pos, ctx) : terminal;
+      return {
+        candidate,
+        score,
+        selectionScore: selectionScore(candidate, score),
+        reusedPlanScore: false,
+      };
+    }
+
+    function sortPenaltyEntries(entries) {
+      entries.sort((a, b) =>
+        b.selectionScore - a.selectionScore ||
+        (a.candidate === plannedCandidate ? -1 : b.candidate === plannedCandidate ? 1 : 0) ||
+        cheapOrder(b.candidate) - cheapOrder(a.candidate) ||
+        JSON.stringify(a.candidate.option).localeCompare(JSON.stringify(b.candidate.option))
+      );
+      return entries;
+    }
+
+    // Cover every ordinary outcome before deepening. The waiver receives the
+    // same cheap full-board evaluation, but is admitted to the search only if
+    // it is already clearly superior at this common baseline.
     const savedHardDeadline = ctx.hardDeadline;
     ctx.hardDeadline = Infinity;
-    let baselineScored;
+    let ordinaryBaseline;
+    let waiverBaseline = null;
     try {
-      baselineScored = candidates.map((candidate) => {
-        const terminal = terminalScore(candidate.pos, 0, null);
-        const score = terminal == null ? evaluate(candidate.pos, ctx) : terminal;
-        return {
-          candidate,
-          score,
-          selectionScore: selectionScore(candidate, score),
-          reusedPlanScore: false,
-        };
-      });
+      ordinaryBaseline = sortPenaltyEntries(ordinaryCandidates.map(baselineEntry));
+      if (waiverCandidate) waiverBaseline = baselineEntry(waiverCandidate);
     } finally {
       ctx.hardDeadline = savedHardDeadline;
     }
-    baselineScored.sort((a, b) =>
-      b.selectionScore - a.selectionScore ||
-      (a.candidate === plannedCandidate ? -1 : b.candidate === plannedCandidate ? 1 : 0) ||
-      cheapOrder(b.candidate) - cheapOrder(a.candidate) ||
-      JSON.stringify(a.candidate.option).localeCompare(JSON.stringify(b.candidate.option))
-    );
+
+    const bestOrdinaryBaseline = ordinaryBaseline[0];
+    const waiverBaselineMargin = waiverBaseline
+      ? waiverBaseline.selectionScore - bestOrdinaryBaseline.selectionScore
+      : -INF;
+    const waiverBaselineForcedWin = !!(waiverBaseline && waiverBaseline.score >= WIN - MATE_WINDOW && bestOrdinaryBaseline.score < WIN - MATE_WINDOW);
+    const waiverEligible = !!(waiverBaseline && (waiverBaselineForcedWin || waiverBaselineMargin >= SOUFLA_WAIVER_MARGIN));
+    const candidates = waiverEligible
+      ? ordinaryCandidates.concat([waiverCandidate])
+      : ordinaryCandidates.slice();
+    const baselineScored = sortPenaltyEntries(ordinaryBaseline.concat(waiverEligible ? [waiverBaseline] : []));
     let ordered = baselineScored.map((entry) => entry.candidate);
 
     if (candidates.length === 1) {
@@ -2015,12 +2062,19 @@
           souflaPlanPreviousScore: plannedCandidate && rememberedScore != null ? Math.trunc(rememberedScore) : null,
           souflaPlanPreviousDepth: plannedCandidate ? rememberedDepth : 0,
           souflaPlanScoreReused: !!(plannedCandidate && rememberedScore != null),
+          souflaWaiverConsidered: !!waiverBaseline,
+          souflaWaiverEligible: false,
+          souflaWaiverBaselineMargin: waiverBaseline ? Math.trunc(waiverBaselineMargin) : null,
+          souflaWaiverMarginRequired: SOUFLA_WAIVER_MARGIN,
+          souflaWaived: false,
         },
       };
     }
 
     const maxDepth = Math.max(1, penaltySettings.minimaxDepth | 0);
-    let completed = { depth: 0, scored: baselineScored, baselineOnly: true };
+    // A timeout before one complete shared depth must fall back to an ordinary
+    // legal penalty; a waiver is never selected from evaluation alone.
+    let completed = { depth: 0, scored: ordinaryBaseline, baselineOnly: true };
     let partialOptionsSearched = 0;
     let stableKey = '';
     let stableCount = 0;
@@ -2049,11 +2103,7 @@
       }
 
       if (scored.length) {
-        scored.sort((a, b) =>
-          b.selectionScore - a.selectionScore ||
-          (a.candidate === plannedCandidate ? -1 : b.candidate === plannedCandidate ? 1 : 0) ||
-          JSON.stringify(a.candidate.option).localeCompare(JSON.stringify(b.candidate.option))
-        );
+        sortPenaltyEntries(scored);
         partialOptionsSearched = Math.max(partialOptionsSearched, scored.length);
       }
       if (timedOut || scored.length !== candidates.length) break;
@@ -2074,11 +2124,35 @@
     }
 
     const result = completed;
+    let bestEntry = result.scored[0];
+    let best = bestEntry.candidate;
+    let waiverFollowUpMove = null;
+    let waiverFinalMargin = null;
+    let waiverAccepted = false;
 
-    const bestEntry = result.scored[0];
-    const best = bestEntry.candidate;
+    if (result.depth > 0) {
+      const waiverEntry = result.scored.find((entry) => entry.candidate.option.kind === 'waive') || null;
+      const ordinaryEntry = result.scored.find((entry) => entry.candidate.option.kind !== 'waive') || null;
+      if (waiverEntry && ordinaryEntry) {
+        waiverFinalMargin = waiverEntry.selectionScore - ordinaryEntry.selectionScore;
+        const waiverForcedWin = waiverEntry.score >= WIN - MATE_WINDOW && ordinaryEntry.score < WIN - MATE_WINDOW;
+        const record = exactTTRecord(waiverEntry.candidate.pos, result.depth);
+        waiverFollowUpMove = record && record.move ? record.move : null;
+        waiverAccepted = !!(waiverFollowUpMove && (waiverForcedWin || waiverFinalMargin >= SOUFLA_WAIVER_MARGIN));
+        if (best.option.kind === 'waive' && !waiverAccepted) {
+          bestEntry = ordinaryEntry;
+          best = ordinaryEntry.candidate;
+        }
+      }
+    }
+
+    const choseWaiver = best.option.kind === 'waive' && waiverAccepted;
     return {
       ...best.option,
+      ...(choseWaiver ? {
+        followUpMove: waiverFollowUpMove,
+        followUpPositionIdentity: best.identity,
+      } : {}),
       computerAnalysis: {
         engine: ENGINE_VERSION,
         score: Math.trunc(bestEntry.score),
@@ -2097,6 +2171,13 @@
         souflaPlanPreviousScore: plannedCandidate && rememberedScore != null ? Math.trunc(rememberedScore) : null,
         souflaPlanPreviousDepth: plannedCandidate ? rememberedDepth : 0,
         souflaPlanScoreReused: !!(plannedCandidate && reusedPlanScore),
+        souflaWaiverConsidered: !!waiverBaseline,
+        souflaWaiverEligible: waiverEligible,
+        souflaWaiverBaselineMargin: waiverBaseline ? Math.trunc(waiverBaselineMargin) : null,
+        souflaWaiverFinalMargin: waiverFinalMargin == null ? null : Math.trunc(waiverFinalMargin),
+        souflaWaiverMarginRequired: SOUFLA_WAIVER_MARGIN,
+        souflaWaived: choseWaiver,
+        souflaWaiverFollowUpPrepared: !!(choseWaiver && waiverFollowUpMove),
       },
     };
   }
@@ -2260,6 +2341,14 @@
       return true;
     }
 
+    function playPreparedMove(candidate) {
+      if (root.DhametMatchMode && typeof root.DhametMatchMode.isPvC === 'function' && !root.DhametMatchMode.isPvC()) return false;
+      if (Game.gameOver || Game.awaitingPenalty) return false;
+      const side = typeof aiSide === 'function' ? aiSide() : Game.player;
+      if (Game.player !== side) return false;
+      return executeMove(candidate);
+    }
+
     async function play() {
       const coordinator = root.DhametMatchCoordinator;
       const taskToken = scheduledEpochToken || (coordinator && coordinator.token ? coordinator.token() : null);
@@ -2369,6 +2458,7 @@
       scheduleMove,
       cancelScheduledMove,
       pickSouflaDecision,
+      playPreparedMove,
       _lastAnalysis: () => lastAnalysis,
       _debug: () => ({ version: ENGINE_VERSION, ttSize: TT.map.size, ttGeneration: TT.generation }),
     });
@@ -2379,6 +2469,6 @@
     create,
     analyzePosition,
     analyzePenalty,
-    _internals: Object.freeze({ normalizePosition, applyMove, evaluate, evaluateBreakdown, validateCanonicalMove, penaltyPosition, positionIdentity, souflaPlanRootBonus: SOUFLA_PLAN_ROOT_BONUS }),
+    _internals: Object.freeze({ normalizePosition, applyMove, evaluate, evaluateBreakdown, validateCanonicalMove, penaltyPosition, positionIdentity, souflaPlanRootBonus: SOUFLA_PLAN_ROOT_BONUS, souflaWaiverMargin: SOUFLA_WAIVER_MARGIN }),
   });
 })(typeof globalThis !== 'undefined' ? globalThis : this);

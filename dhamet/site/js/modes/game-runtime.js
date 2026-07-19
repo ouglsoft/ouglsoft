@@ -815,12 +815,12 @@ const Turn = {
                 if (souflaToken && window.DhametMatchCoordinator && !DhametMatchCoordinator.isCurrent(souflaToken)) return;
                 if (window.DhametMatchMode && typeof DhametMatchMode.isPvC === "function" && !DhametMatchMode.isPvC()) return;
                 if (Game.souflaPending !== pending || !Game.awaitingPenalty) return;
-                if (!applySouflaDecision(decision, pending)) {
+                if (!applyComputerSouflaDecision(decision, pending)) {
                   throw new Error("computer/invalid-soufla-decision");
                 }
-                try {
-                  UI.showSouflaAgainstHuman(decision, pending);
-                } catch {}
+                if (decision && decision.kind !== "waive") {
+                  try { UI.showSouflaAgainstHuman(decision, pending); } catch {}
+                }
               })
               .catch((error) => {
                 if (
@@ -1395,6 +1395,43 @@ try {
   window.addEventListener("beforeunload", flushPvCSession, { capture: true });
 } catch {}
 
+function applyComputerSouflaDecision(decision, pending) {
+  if (!decision || decision.kind !== "waive") {
+    return applySouflaDecision(decision, pending);
+  }
+  if (!pending || Game.souflaPending !== pending || !Game.awaitingPenalty) return false;
+  if (window.Online && window.Online.isActive) return false;
+  if (window.DhametMatchMode && typeof DhametMatchMode.isPvC === "function" && !DhametMatchMode.isPvC()) return false;
+
+  const penalizer = Number(pending.penalizer);
+  if (penalizer !== aiSide()) return false;
+  if (!decision.followUpMove || !Array.isArray(decision.followUpMove.path) || !decision.followUpMove.path.length) return false;
+  if (!AI || typeof AI.playPreparedMove !== "function") return false;
+
+  const before = snapshotState();
+  try {
+    // Waiver means starting the computer turn without applying removal or
+    // force. The exact continuation that justified the exceptional decision
+    // is executed immediately, preventing a second search from choosing a
+    // different move after the right has been surrendered.
+    Game.awaitingPenalty = false;
+    Game.souflaPending = null;
+    Game.availableSouflaForHuman = null;
+    if (Game.player !== penalizer) switchPlayer();
+    Turn.start();
+    if (!AI.playPreparedMove(decision.followUpMove)) {
+      throw new Error("computer/invalid-soufla-waiver-follow-up");
+    }
+    return true;
+  } catch (error) {
+    try { AI.cancelScheduledMove && AI.cancelScheduledMove(); } catch (_) {}
+    try { restoreSnapshotSilent(before); } catch (_) {}
+    try { console.error("Computer Soufla waiver failed atomically", error); } catch (_) {}
+    try { UI.updateAll(); } catch (_) {}
+    return false;
+  }
+}
+
 function canonicalSouflaDecision(decision, pending) {
   if (!decision || !pending || !Array.isArray(pending.options)) return null;
   const kind = decision.kind === "remove" || decision.kind === "force" ? decision.kind : null;
@@ -1822,8 +1859,10 @@ function resumePendingGameWorkAfterRestore() {
         if (token && window.DhametMatchCoordinator && !DhametMatchCoordinator.isCurrent(token)) return;
         if (Game.souflaPending !== pending || !Game.awaitingPenalty || Game.gameOver) return;
         if (window.DhametMatchMode && typeof DhametMatchMode.isPvC === "function" && !DhametMatchMode.isPvC()) return;
-        if (!applySouflaDecision(decision, pending)) throw new Error("computer/invalid-restored-soufla-decision");
-        try { UI.showSouflaAgainstHuman(decision, pending); } catch (_) {}
+        if (!applyComputerSouflaDecision(decision, pending)) throw new Error("computer/invalid-restored-soufla-decision");
+        if (decision && decision.kind !== "waive") {
+          try { UI.showSouflaAgainstHuman(decision, pending); } catch (_) {}
+        }
       }).catch((error) => {
         try { console.error("Restored computer soufla analysis failed", error); UI.updateAll(); } catch (_) {}
       });
