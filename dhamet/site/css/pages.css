@@ -821,3 +821,82 @@ html.dark .z-form-row textarea { background: rgb(var(--rgb-primary-900) / .86); 
 }
 html.dark .z-info-note a,
 html.dark .z-auth-seo-card a { color: rgb(var(--rgb-primary-300)); }
+
+/* ==========================================================================
+   2.13.2 REFINEMENTS — COMPACT LOBBY ROWS
+   ========================================================================== */
+.z-lobby-list.players .z-row,
+.z-lobby-list.rooms .z-row { align-items: center; }
+.z-player-row,
+.z-room-row { min-height: 44px; }
+.z-player-row .z-row-main,
+.z-room-row .z-row-main {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  flex-direction: row;
+  gap: 0;
+}
+.z-player-row .z-row-title,
+.z-room-row .z-row-title {
+  min-width: 0;
+  flex: 1 1 auto;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.z-row-inline-sub {
+  color: var(--color-text-muted);
+  font-weight: 700;
+  font-size: .86em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.z-row-status-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  display: inline-block;
+  flex: 0 0 auto;
+  background: var(--color-secondary);
+  box-shadow: 0 0 0 4px var(--color-secondary-soft);
+}
+.z-row-status-dot.is-available,
+.z-player-row.is-available .z-row-status-dot,
+.z-room-row.is-live .z-row-status-dot {
+  background: var(--color-success);
+  box-shadow: 0 0 0 4px var(--color-success-soft);
+}
+.z-row-status-dot.is-busy,
+.z-player-row.is-busy .z-row-status-dot,
+.z-room-row.is-reconnecting .z-row-status-dot {
+  background: var(--color-danger);
+  box-shadow: 0 0 0 4px var(--color-danger-soft);
+}
+.z-row-status-dot.is-private,
+.z-room-row.is-private .z-row-status-dot {
+  background: var(--color-warning);
+  box-shadow: 0 0 0 4px var(--color-warning-soft);
+}
+.z-row-status-dot.is-self,
+.z-player-row.is-self .z-row-status-dot {
+  background: var(--color-primary);
+  box-shadow: 0 0 0 4px var(--color-primary-soft);
+}
+.z-room-row .z-row-actions .btn,
+.z-player-row .z-row-actions .btn { min-width: 72px; }
+.z-empty,
+.z-loading {
+  border-radius: 16px;
+  border: 1px solid var(--color-border);
+  background: linear-gradient(180deg, rgb(var(--rgb-white) / .98), rgb(var(--rgb-light-primary-200) / .72));
+  color: var(--color-text) !important;
+  opacity: 1;
+  font-weight: 700;
+}
+html.dark .z-empty,
+html.dark .z-loading {
+  background: linear-gradient(180deg, rgb(var(--rgb-primary-800) / .96), rgb(var(--rgb-primary-700) / .88));
+  color: var(--color-text) !important;
+}

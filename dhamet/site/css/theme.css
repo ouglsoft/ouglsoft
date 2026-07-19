@@ -1235,3 +1235,135 @@ body.z-mobile-on[data-mobile-orientation="landscape"] .z-page-title,
 body.z-mobile-on[data-mobile-orientation="landscape"] .z-dash-title {
   font-size: 19px !important;
 }
+
+/* ========================================================================== 
+   2.13.2 REFINEMENTS — HARMONY, AUTH, MODE, LOBBY, BOARD
+   ========================================================================== */
+:root {
+  --rgb-board-light: 228 217 191;
+  --rgb-board-light-alt: 171 198 226;
+  --rgb-board-dark: 28 36 58;
+  --rgb-board-dark-alt: 74 98 138;
+  --rgb-board-grid-light: 68 80 112;
+  --rgb-board-diag-light: 133 103 69;
+  --rgb-board-grid-dark: 220 226 240;
+  --rgb-board-diag-dark: 255 205 120;
+
+  --game-board-grid: rgb(var(--rgb-board-grid-light));
+  --game-board-diag: rgb(var(--rgb-board-diag-light));
+  --game-board-start: rgb(var(--rgb-board-light));
+  --game-board-end: rgb(var(--rgb-board-light-alt));
+
+  --piece-white-light: rgb(255 255 255);
+  --piece-white-mid: rgb(247 245 239);
+  --piece-white-dark: rgb(223 229 242);
+  --piece-white-edge: rgb(var(--rgb-light-primary-700));
+  --piece-white-edge-soft: rgb(var(--rgb-light-primary-500));
+  --piece-white-dot: rgb(var(--rgb-light-primary-700));
+  --piece-black-light: rgb(56 76 112);
+  --piece-black-mid: rgb(35 50 81);
+  --piece-black-dark: rgb(18 29 49);
+  --piece-black-edge: rgb(var(--rgb-secondary-300));
+  --piece-black-edge-soft: rgb(var(--rgb-secondary-400));
+  --piece-black-dot: rgb(var(--rgb-secondary-300));
+  --piece-shadow: rgb(15 23 42 / .30);
+}
+:root.dark {
+  --game-board-grid: rgb(var(--rgb-board-grid-dark));
+  --game-board-diag: rgb(var(--rgb-board-diag-dark));
+  --game-board-start: rgb(var(--rgb-board-dark));
+  --game-board-end: rgb(var(--rgb-board-dark-alt));
+}
+.z-auth-card {
+  background: linear-gradient(155deg, rgb(var(--rgb-white) / .99) 0%, rgb(var(--rgb-light-primary-200) / .60) 50%, rgb(var(--rgb-secondary-100) / .74) 100%) !important;
+  border: 1px solid rgb(var(--rgb-light-primary-400) / .28) !important;
+}
+.z-auth-card::after,
+.z-auth-seo-card::after {
+  content: "";
+  position: absolute;
+  inset-inline-end: -48px;
+  inset-block-start: -48px;
+  width: 160px;
+  height: 160px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgb(var(--rgb-white) / .32), transparent 70%);
+  pointer-events: none;
+}
+.z-auth-seo-card {
+  background: linear-gradient(145deg, rgb(var(--rgb-white) / .97), rgb(var(--rgb-sand-100) / .94), rgb(var(--rgb-light-primary-200) / .58)) !important;
+}
+.z-auth-page #btnLogin,
+.z-auth-page #btnRegister,
+.z-auth-page #btnRecover,
+.z-auth-page #btnLoginGoogle {
+  background: var(--gradient-primary) !important;
+  color: var(--color-on-primary) !important;
+  border-color: rgb(var(--rgb-white) / .24) !important;
+  box-shadow: var(--shadow-primary) !important;
+}
+.z-auth-page #btnGuest {
+  background: linear-gradient(145deg, rgb(var(--rgb-neutral-800)), rgb(var(--rgb-light-primary-700))) !important;
+  border-color: rgb(var(--rgb-white) / .18) !important;
+}
+.z-auth-row label,
+.z-auth-help,
+.z-auth-seo-para,
+.z-auth-seo-list li,
+.z-auth-foot a,
+.z-auth-links a {
+  color: var(--color-text-strong) !important;
+}
+.z-auth-links a,
+.z-auth-foot a { opacity: .96; }
+.z-auth-msg { background: rgb(var(--rgb-white) / .86) !important; color: var(--color-text) !important; }
+html.dark .z-auth-card {
+  background: linear-gradient(150deg, rgb(var(--rgb-primary-800) / .98), rgb(var(--rgb-dark-surface-alt) / .97), rgb(var(--rgb-primary-700) / .86)) !important;
+}
+html.dark .z-auth-seo-card {
+  background: linear-gradient(150deg, rgb(var(--rgb-dark-surface) / .98), rgb(var(--rgb-primary-800) / .94), rgb(var(--rgb-secondary-700) / .24)) !important;
+}
+.z-mode-card,
+.z-mode-card h2 { color: var(--color-text-strong) !important; }
+.z-mode-card p {
+  color: rgb(var(--rgb-neutral-700)) !important;
+  font-weight: 600;
+}
+.z-mode-text {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.z-mode-badge {
+  order: 2;
+  align-self: flex-start;
+  padding: 4px 10px;
+  margin-bottom: 0;
+  font-size: .72rem;
+  font-weight: 800;
+  background: rgb(var(--rgb-white) / .78);
+  color: rgb(var(--rgb-light-primary-700));
+}
+.z-mode-badge::before {
+  width: 8px;
+  height: 8px;
+  box-shadow: 0 0 0 3px rgb(var(--rgb-white) / .16);
+}
+.z-mode-card h2 { order: 1; }
+.z-mode-card p { order: 3; }
+.z-lobby-panel:first-child,
+.z-lobby-panel:nth-child(2) {
+  box-shadow: var(--shadow-lg-unified) !important;
+}
+.z-lobby-panel:first-child .z-lobby-h2,
+.z-lobby-panel:nth-child(2) .z-lobby-h2 {
+  background: rgb(var(--rgb-white) / .76);
+}
+.z-loading,
+.z-empty {
+  box-shadow: var(--shadow-xs);
+}
+html.dark .z-mode-card,
+html.dark .z-mode-card h2,
+html.dark .z-mode-card p { color: rgb(var(--rgb-white)) !important; }
+html.dark .z-mode-card p { color: rgb(var(--rgb-white) / .86) !important; }

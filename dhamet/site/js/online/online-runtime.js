@@ -5559,12 +5559,9 @@
                 .map((r) => {
                   if (r.isSelf) {
                     return `
-                      <div class="z-row z-player-row" data-uid="${r.uid}">
+                      <div class="z-row z-player-row is-self" data-uid="${r.uid}">
                         <div class="z-row-main">
-                          <div class="z-row-title"><img class="z-avatar" src="${r.icon}" alt="" /><span class="z-player-name">${escapeHtml(r.nick)}</span></div>
-                          <div class="z-row-meta">
-                            <span class="z-row-status-chip">${escapeHtml(r.stLabel)}</span>
-                          </div>
+                          <div class="z-row-title"><span class="z-row-status-dot is-self" aria-hidden="true"></span><img class="z-avatar" src="${r.icon}" alt="" /><span class="z-player-name">${escapeHtml(r.nick)}</span></div>
                         </div>
                         <div class="z-row-actions">
                           <span class="z-self">${window.I18N.translateArgs("players.you")}</span>
@@ -5572,17 +5569,15 @@
                       </div>
                     `;
                   }
-    
+
                   const dis = r.canInvite ? "" : 'disabled aria-disabled="true"';
-                  const title = r.canInvite ? "" : `title=\"${window.I18N.translateArgs(r.st === "inPvP" ? "lobby.inviteDisabled" : "lobby.invitesDisabled")}\"`;
+                  const title = r.canInvite ? "" : `title="${window.I18N.translateArgs(r.st === "inPvP" ? "lobby.inviteDisabled" : "lobby.invitesDisabled")}"`;
                   const inviteLabel = window.I18N.translateArgs("actions.invite");
+                  const playerStateClass = r.canInvite ? "is-available" : "is-busy";
                   return `
-                    <div class="z-row z-player-row" data-uid="${r.uid}">
+                    <div class="z-row z-player-row ${playerStateClass}" data-uid="${r.uid}">
                       <div class="z-row-main">
-                        <div class="z-row-title"><img class="z-avatar" src="${r.icon}" alt="" /><span class="z-player-name">${escapeHtml(r.nick)}</span></div>
-                        <div class="z-row-meta">
-                          <span class="z-row-status-chip">${escapeHtml(r.stLabel)}</span>
-                        </div>
+                        <div class="z-row-title"><span class="z-row-status-dot ${playerStateClass}" aria-hidden="true"></span><img class="z-avatar" src="${r.icon}" alt="" /><span class="z-player-name">${escapeHtml(r.nick)}</span></div>
                       </div>
                       <div class="z-row-actions">
                         <button class="btn small ok" data-action="invite" ${dis} ${title}>
@@ -5593,7 +5588,6 @@
                   `;
                 })
                 .join("");
-    
               Array.from(playersEl.querySelectorAll("button[data-action='invite']")).forEach((btn) => {
                 btn.addEventListener("click", async (ev) => {
                   const row = ev.currentTarget.closest(".z-row");
@@ -5688,29 +5682,21 @@
                          <span>${spectatorLabel}</span>
                        </button>`
                     : "";
-                  const roomState = r.reconnecting
-                    ? window.I18N.translateArgs("lobby.reconnectingRoom")
-                    : (r.ownerOnly && isMePlayer ? window.I18N.translateArgs("lobby.yourActiveMatch") : "");
-                  const roomBadge = isPrivateRoom
-                    ? window.I18N.translateArgs("lobby.privateRoom")
-                    : "مباشرة";
-                  const spectatorMeta = isPrivateRoom
-                    ? ""
-                    : (r.spectatorCountFresh ? `<span class="z-room-meta-chip">المشاهدون: ${Number(r.spectatorCount || 0)}/3</span>` : "");
-                  const playerLine = [r.w, r.b]
+                  const roomStateLabel = r.reconnecting ? window.I18N.translateArgs("lobby.reconnectingRoom") : "";
+                  const roomStateClass = r.reconnecting
+                    ? "is-reconnecting"
+                    : (r.ownerOnly ? "is-private" : "is-live");
+                  const roomPlayers = [r.w, r.b]
                     .filter(Boolean)
-                    .map((name) => `<span class="z-player-name">${escapeHtml(name)}</span>`)
+                    .map((name) => escapeHtml(name))
                     .join(" · ");
+                  const roomInline = roomPlayers
+                    ? `<span class="z-row-inline-sub">• ${roomPlayers}</span>`
+                    : "";
                   return `
-                    <div class="z-row z-room-row${r.ownerOnly ? " z-room-owner-only" : ""}${r.reconnecting ? " z-room-reconnecting" : ""}" data-gid="${r.gid}">
+                    <div class="z-row z-room-row ${roomStateClass}${r.ownerOnly ? " z-room-owner-only" : ""}${r.reconnecting ? " z-room-reconnecting" : ""}" data-gid="${r.gid}">
                       <div class="z-row-main">
-                        <div class="z-row-title z-room-title"><span>${window.I18N.translateArgs("lobby.roomLabel")} : </span><span>${escapeHtml(r.name)}</span></div>
-                        ${playerLine ? `<div class="z-row-sub z-room-players">${playerLine}</div>` : ""}
-                        <div class="z-room-meta">
-                          <span class="z-row-badge">${escapeHtml(roomBadge)}</span>
-                          ${spectatorMeta}
-                          ${roomState ? `<span class="z-room-meta-chip z-room-state">${escapeHtml(roomState)}</span>` : ""}
-                        </div>
+                        <div class="z-row-title z-room-title"><span class="z-row-status-dot ${roomStateClass}" aria-hidden="true"></span><span>${window.I18N.translateArgs("lobby.roomLabel")} : </span><span>${escapeHtml(r.name)}</span>${roomInline}</div>
                       </div>
                       <div class="z-row-actions">
                         ${joinBtn || spectateBtn}
@@ -5719,7 +5705,7 @@
                   `;
                 })
                 .join("");
-    
+
               Array.from(roomsEl.querySelectorAll("button[data-action='join']")).forEach((btn) => {
                 btn.addEventListener("click", (ev) => {
                   const gid = ev.currentTarget.getAttribute("data-gid");
