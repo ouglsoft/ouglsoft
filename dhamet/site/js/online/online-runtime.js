@@ -5559,10 +5559,12 @@
                 .map((r) => {
                   if (r.isSelf) {
                     return `
-                      <div class="z-row" data-uid="${r.uid}">
+                      <div class="z-row z-player-row" data-uid="${r.uid}">
                         <div class="z-row-main">
                           <div class="z-row-title"><img class="z-avatar" src="${r.icon}" alt="" /><span class="z-player-name">${escapeHtml(r.nick)}</span></div>
-                          <div class="z-row-sub">${escapeHtml(r.stLabel)}</div>
+                          <div class="z-row-meta">
+                            <span class="z-row-status-chip">${escapeHtml(r.stLabel)}</span>
+                          </div>
                         </div>
                         <div class="z-row-actions">
                           <span class="z-self">${window.I18N.translateArgs("players.you")}</span>
@@ -5572,13 +5574,15 @@
                   }
     
                   const dis = r.canInvite ? "" : 'disabled aria-disabled="true"';
-                  const title = r.canInvite ? "" : `title=\"${window.I18N.translateArgs(r.status === "inPvP" ? "lobby.inviteDisabled" : "lobby.invitesDisabled")}\"`;
+                  const title = r.canInvite ? "" : `title=\"${window.I18N.translateArgs(r.st === "inPvP" ? "lobby.inviteDisabled" : "lobby.invitesDisabled")}\"`;
                   const inviteLabel = window.I18N.translateArgs("actions.invite");
                   return `
-                    <div class="z-row" data-uid="${r.uid}">
+                    <div class="z-row z-player-row" data-uid="${r.uid}">
                       <div class="z-row-main">
                         <div class="z-row-title"><img class="z-avatar" src="${r.icon}" alt="" /><span class="z-player-name">${escapeHtml(r.nick)}</span></div>
-                        <div class="z-row-sub">${escapeHtml(r.stLabel)}</div>
+                        <div class="z-row-meta">
+                          <span class="z-row-status-chip">${escapeHtml(r.stLabel)}</span>
+                        </div>
                       </div>
                       <div class="z-row-actions">
                         <button class="btn small ok" data-action="invite" ${dis} ${title}>
@@ -5687,6 +5691,12 @@
                   const roomState = r.reconnecting
                     ? window.I18N.translateArgs("lobby.reconnectingRoom")
                     : (r.ownerOnly && isMePlayer ? window.I18N.translateArgs("lobby.yourActiveMatch") : "");
+                  const roomBadge = isPrivateRoom
+                    ? window.I18N.translateArgs("lobby.privateRoom")
+                    : "مباشرة";
+                  const spectatorMeta = isPrivateRoom
+                    ? ""
+                    : (r.spectatorCountFresh ? `<span class="z-room-meta-chip">المشاهدون: ${Number(r.spectatorCount || 0)}/3</span>` : "");
                   const playerLine = [r.w, r.b]
                     .filter(Boolean)
                     .map((name) => `<span class="z-player-name">${escapeHtml(name)}</span>`)
@@ -5696,7 +5706,11 @@
                       <div class="z-row-main">
                         <div class="z-row-title z-room-title"><span>${window.I18N.translateArgs("lobby.roomLabel")} : </span><span>${escapeHtml(r.name)}</span></div>
                         ${playerLine ? `<div class="z-row-sub z-room-players">${playerLine}</div>` : ""}
-                        ${roomState ? `<div class="z-row-sub z-room-state">${escapeHtml(roomState)}</div>` : ""}
+                        <div class="z-room-meta">
+                          <span class="z-row-badge">${escapeHtml(roomBadge)}</span>
+                          ${spectatorMeta}
+                          ${roomState ? `<span class="z-room-meta-chip z-room-state">${escapeHtml(roomState)}</span>` : ""}
+                        </div>
                       </div>
                       <div class="z-row-actions">
                         ${joinBtn || spectateBtn}

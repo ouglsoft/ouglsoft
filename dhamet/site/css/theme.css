@@ -1,12 +1,42 @@
 /* ========================================================================== 
    DHAMET UNIFIED THEME — ELECTRIC DESERT
-   Single source of truth for application colors, gradients and elevation.
-   Desktop, portrait-mobile, landscape-mobile and Canvas rendering inherit it.
+   Single source of truth for every application color, gradient and elevation.
+   Loaded after the legacy layout styles so desktop, mobile portrait and mobile
+   landscape share the same visual identity without changing game geometry.
    ========================================================================== */
+
 :root {
-  /* Raw palette. Color literals belong in this file only. */
+  /* ------------------------------------------------------------------------
+     RAW PALETTE
+     Concrete color channels are intentionally confined to this file.
+     ------------------------------------------------------------------------ */
   --rgb-white: 255 255 255;
   --rgb-black: 0 0 0;
+
+  --rgb-sand-50: 252 249 244;
+  --rgb-sand-100: 246 239 228;
+  --rgb-sand-200: 232 223 207;
+  --rgb-sand-300: 215 201 179;
+
+  --rgb-neutral-50: 248 250 252;
+  --rgb-neutral-100: 241 245 249;
+  --rgb-neutral-200: 226 232 240;
+  --rgb-neutral-300: 203 213 225;
+  --rgb-neutral-400: 148 163 184;
+  --rgb-neutral-500: 100 116 139;
+  --rgb-neutral-600: 71 85 105;
+  --rgb-neutral-700: 51 65 85;
+  --rgb-neutral-800: 30 41 59;
+  --rgb-neutral-900: 15 23 42;
+  --rgb-neutral-950: 2 6 23;
+
+  --rgb-light-primary-200: 218 234 255;
+  --rgb-light-primary-300: 175 208 255;
+  --rgb-light-primary-400: 96 165 250;
+  --rgb-light-primary-500: 37 99 235;
+  --rgb-light-primary-600: 29 78 216;
+  --rgb-light-primary-700: 30 64 175;
+  --rgb-light-primary-800: 30 58 138;
 
   --rgb-primary-100: 247 245 255;
   --rgb-primary-200: 238 233 255;
@@ -26,7 +56,7 @@
   --rgb-secondary-600: 0 124 116;
   --rgb-secondary-700: 0 91 86;
 
-  --rgb-success-100: 220 252 231;
+  --rgb-success-100: 226 249 239;
   --rgb-success-500: 71 215 155;
   --rgb-success-600: 22 132 91;
   --rgb-success-700: 14 101 68;
@@ -36,112 +66,179 @@
   --rgb-gold-500: 255 200 87;
   --rgb-gold-600: 255 176 32;
   --rgb-gold-700: 185 113 0;
-  --rgb-gold-800: 133 77 14;
+  --rgb-gold-800: 112 68 0;
 
-  --rgb-danger-300: 252 165 165;
+  --rgb-danger-300: 255 160 168;
   --rgb-danger-400: 255 107 120;
   --rgb-danger-500: 201 56 66;
   --rgb-danger-600: 164 39 50;
   --rgb-danger-700: 124 27 38;
-  --rgb-danger-800: 96 20 31;
+  --rgb-danger-800: 80 18 27;
 
-  --rgb-neutral-50: 248 250 252;
-  --rgb-neutral-600: 71 85 105;
-  --rgb-neutral-800: 30 41 59;
-  --rgb-neutral-900: 15 23 42;
-  --rgb-neutral-950: 2 6 23;
+  --rgb-violet-mid: 139 92 246;
+  --rgb-violet-bright: 180 92 255;
+  --rgb-ink: 23 31 56;
+  --rgb-muted-ink: 91 101 127;
+  --rgb-dark-muted: 173 164 190;
+  --rgb-dark-surface: 23 17 38;
+  --rgb-dark-surface-alt: 19 14 33;
+  --rgb-dark-border: 53 42 74;
+  --rgb-board-light: 255 252 242;
+  --rgb-board-light-alt: 236 228 255;
+  --rgb-board-dark: 20 14 34;
+  --rgb-board-dark-alt: 10 7 19;
+  --rgb-board-grid-light: 37 29 58;
+  --rgb-board-diag-light: 73 55 105;
+  --rgb-board-grid-dark: 205 190 234;
+  --rgb-board-diag-dark: 154 123 255;
 
-  /* Raw-channel aliases required by embedded Canvas/dialog styles. */
-  --rgb-border: 216 209 232;
-  --rgb-panel: 255 255 255;
-  --rgb-danger: var(--rgb-danger-500);
-
-  /* Semantic surfaces and content. */
-  --color-bg: rgb(var(--rgb-primary-100));
-  --color-bg-alt: rgb(var(--rgb-primary-200));
+  /* ------------------------------------------------------------------------
+     SEMANTIC COLOR ROLES — LIGHT
+     ------------------------------------------------------------------------ */
+  --color-bg: rgb(var(--rgb-sand-50));
+  --color-bg-alt: rgb(var(--rgb-sand-100));
   --color-surface: rgb(var(--rgb-white) / .90);
-  --color-surface-solid: rgb(var(--rgb-white));
-  --color-surface-raised: rgb(241 237 255 / .94);
-  --color-surface-muted: rgb(var(--rgb-primary-200) / .72);
-  --color-text: rgb(23 19 42);
-  --color-text-strong: var(--color-text);
-  --color-text-muted: rgb(108 100 123);
-  --color-border: rgb(var(--rgb-border) / .82);
-  --color-border-strong: rgb(var(--rgb-primary-400) / .48);
-  --color-primary: rgb(var(--rgb-primary-500));
-  --color-primary-hover: rgb(var(--rgb-primary-600));
-  --color-primary-soft: rgb(var(--rgb-primary-500) / .12);
-  --color-secondary: rgb(var(--rgb-secondary-600));
-  --color-secondary-soft: rgb(var(--rgb-secondary-500) / .13);
-  --color-success: rgb(var(--rgb-success-600));
-  --color-warning: rgb(var(--rgb-gold-600));
-  --color-danger: rgb(var(--rgb-danger-500));
-  --color-on-primary: rgb(var(--rgb-white));
-  --color-on-accent: var(--color-on-primary);
-  --color-on-warning: rgb(50 31 0);
+  --color-surface-solid: rgb(var(--rgb-white) / .97);
+  --color-surface-raised: rgb(var(--rgb-white) / .98);
+  --color-surface-muted: rgb(var(--rgb-sand-100) / .84);
+  --color-surface-inverse: rgb(var(--rgb-neutral-900));
+  --color-text: rgb(var(--rgb-ink));
+  --color-text-strong: rgb(var(--rgb-ink));
+  --color-text-muted: rgb(var(--rgb-muted-ink));
   --color-on-dark: rgb(var(--rgb-white));
-  --color-panel-inverse: var(--color-text);
+  --color-on-primary: rgb(var(--rgb-white));
+  --color-on-accent: rgb(var(--rgb-white));
+  --color-on-warning: rgb(var(--rgb-neutral-900));
+  --color-border: rgb(var(--rgb-light-primary-300) / .42);
+  --color-border-strong: rgb(var(--rgb-light-primary-400) / .38);
+  --color-primary: rgb(var(--rgb-light-primary-500));
+  --color-primary-hover: rgb(var(--rgb-light-primary-600));
+  --color-primary-soft: rgb(var(--rgb-light-primary-500) / .12);
+  --color-secondary: rgb(var(--rgb-secondary-600));
+  --color-secondary-hover: rgb(var(--rgb-secondary-700));
+  --color-secondary-soft: rgb(var(--rgb-secondary-500) / .12);
+  --color-success: rgb(var(--rgb-success-600));
+  --color-success-soft: rgb(var(--rgb-success-500) / .14);
+  --color-warning: rgb(var(--rgb-gold-600));
+  --color-warning-soft: rgb(var(--rgb-gold-600) / .14);
+  --color-danger: rgb(var(--rgb-danger-500));
+  --color-danger-soft: rgb(var(--rgb-danger-500) / .13);
+  --color-focus: rgb(var(--rgb-light-primary-400) / .36);
 
-  /* Game and Canvas colors. */
+  /* ------------------------------------------------------------------------
+     GAME / CANVAS ROLES
+     JavaScript resolves these values through js/theme-colors.js.
+     ------------------------------------------------------------------------ */
   --game-move-top: rgb(var(--rgb-secondary-600));
-  --game-move-bottom: rgb(var(--rgb-primary-600));
+  --game-move-bottom: rgb(var(--rgb-light-primary-600));
   --game-capture: rgb(var(--rgb-gold-600));
   --game-danger: rgb(var(--rgb-danger-500));
   --game-soufla-green: rgb(var(--rgb-success-600));
   --game-soufla-red: rgb(var(--rgb-danger-500));
-  --game-board-grid: rgb(37 29 58);
-  --game-board-diag: rgb(73 55 105);
-  --game-board-start: rgb(255 252 242);
-  --game-board-end: rgb(236 228 255);
-  --game-piece-light-edge: rgb(var(--rgb-primary-500));
-  --game-piece-dark-edge: rgb(var(--rgb-gold-600));
-  --game-piece-king: rgb(var(--rgb-gold-500));
+  --game-board-grid: rgb(var(--rgb-board-grid-light));
+  --game-board-diag: rgb(var(--rgb-board-diag-light));
+  --game-board-start: rgb(var(--rgb-board-light));
+  --game-board-end: rgb(var(--rgb-board-light-alt));
 
-  --board-point: rgb(var(--rgb-primary-500));
-  --board-highlight: rgb(var(--rgb-white) / .34);
-  --board-shadow: rgb(var(--rgb-neutral-900) / .12);
+  --board-point: rgb(var(--rgb-light-primary-500));
   --mark-danger: rgb(var(--rgb-danger-500));
   --mark-danger-strong: rgb(var(--rgb-danger-600));
   --mark-move: rgb(var(--rgb-secondary-600));
   --mark-move-strong: rgb(var(--rgb-secondary-700));
-  --mark-undo: rgb(var(--rgb-gold-500));
-  --mark-label-bg: rgb(var(--rgb-white) / .84);
-  --mark-overlay-light: rgb(var(--rgb-white) / .72);
-  --mark-overlay-dark: rgb(var(--rgb-black) / .58);
+  --mark-undo: rgb(var(--rgb-gold-600));
+  --mark-label-bg: rgb(var(--rgb-white) / .88);
+  --mark-overlay-light: rgb(var(--rgb-white) / .76);
+  --mark-overlay-dark: rgb(var(--rgb-black) / .60);
 
   --piece-white-light: rgb(var(--rgb-white));
-  --piece-white-mid: rgb(243 240 255);
-  --piece-white-dark: rgb(var(--rgb-primary-300));
-  --piece-white-edge: rgb(var(--rgb-primary-500));
-  --piece-white-edge-soft: rgb(var(--rgb-primary-400));
-  --piece-white-dot: rgb(var(--rgb-primary-400));
-  --piece-black-light: rgb(42 32 62);
-  --piece-black-mid: rgb(23 17 38);
-  --piece-black-dark: rgb(var(--rgb-primary-900));
+  --piece-white-mid: rgb(var(--rgb-sand-100));
+  --piece-white-dark: rgb(var(--rgb-light-primary-200));
+  --piece-white-edge: rgb(var(--rgb-light-primary-500));
+  --piece-white-edge-soft: rgb(var(--rgb-light-primary-400));
+  --piece-white-dot: rgb(var(--rgb-light-primary-400));
+  --piece-black-light: rgb(var(--rgb-neutral-800));
+  --piece-black-mid: rgb(var(--rgb-neutral-900));
+  --piece-black-dark: rgb(var(--rgb-neutral-950));
   --piece-black-edge: rgb(var(--rgb-gold-600));
   --piece-black-edge-soft: rgb(var(--rgb-gold-500));
   --piece-black-dot: rgb(var(--rgb-gold-500));
-  --piece-shadow: rgb(var(--rgb-primary-900));
+  --piece-shadow: rgb(var(--rgb-neutral-900));
   --piece-highlight: rgb(var(--rgb-white));
-  --piece-crown-light: rgb(255 240 184);
+  --piece-crown-light: rgb(var(--rgb-gold-400));
   --piece-crown-mid: rgb(var(--rgb-gold-500));
   --piece-crown-dark: rgb(var(--rgb-gold-600));
-  --piece-crown-edge: rgb(143 87 0);
+  --piece-crown-edge: rgb(var(--rgb-gold-800));
 
-  /* Gradients, elevation and shape. */
-  --gradient-primary: linear-gradient(135deg, rgb(var(--rgb-primary-500)) 0%, rgb(139 92 246) 55%, rgb(180 92 255) 100%);
-  --gradient-secondary: linear-gradient(135deg, rgb(var(--rgb-secondary-700)) 0%, rgb(var(--rgb-secondary-500)) 55%, rgb(var(--rgb-secondary-400)) 100%);
+  /* ------------------------------------------------------------------------
+     GRADIENTS, SHADOWS, SHAPE AND TYPE
+     ------------------------------------------------------------------------ */
+  --gradient-primary: linear-gradient(135deg, rgb(var(--rgb-light-primary-600)) 0%, rgb(var(--rgb-light-primary-400)) 54%, rgb(var(--rgb-secondary-400)) 100%);
+  --gradient-secondary: linear-gradient(135deg, rgb(var(--rgb-secondary-700)) 0%, rgb(var(--rgb-secondary-500)) 55%, rgb(var(--rgb-secondary-300)) 100%);
   --gradient-warning: linear-gradient(135deg, rgb(var(--rgb-gold-700)) 0%, rgb(var(--rgb-gold-600)) 56%, rgb(var(--rgb-gold-400)) 100%);
-  --gradient-danger: linear-gradient(135deg, rgb(var(--rgb-danger-600)), rgb(var(--rgb-danger-400)));
-  --gradient-surface: linear-gradient(145deg, rgb(var(--rgb-white) / .98), rgb(var(--rgb-primary-100) / .90));
-  --shadow-xs: 0 4px 12px rgb(37 18 74 / .06);
-  --shadow-sm-unified: 0 10px 26px rgb(37 18 74 / .09);
-  --shadow-md-unified: 0 18px 42px rgb(37 18 74 / .13), 0 3px 10px rgb(37 18 74 / .06);
-  --shadow-lg-unified: 0 28px 68px rgb(37 18 74 / .18);
+  --gradient-danger: linear-gradient(135deg, rgb(var(--rgb-danger-600)) 0%, rgb(var(--rgb-danger-400)) 100%);
+  --gradient-success: linear-gradient(135deg, rgb(var(--rgb-success-700)) 0%, rgb(var(--rgb-success-500)) 100%);
+  --gradient-surface: linear-gradient(155deg, rgb(var(--rgb-white) / .98) 0%, rgb(var(--rgb-sand-100) / .96) 48%, rgb(var(--rgb-light-primary-200) / .76) 100%);
+  --gradient-profile: linear-gradient(135deg, rgb(var(--rgb-light-primary-700)) 0%, rgb(var(--rgb-light-primary-500)) 58%, rgb(var(--rgb-secondary-500)) 100%);
+  --gradient-game-panel: linear-gradient(150deg, rgb(var(--rgb-white) / .98) 0%, rgb(var(--rgb-sand-100) / .95) 52%, rgb(var(--rgb-light-primary-200) / .82) 100%);
+  --gradient-mode-pvc: linear-gradient(145deg, rgb(var(--rgb-white) / .98) 0%, rgb(var(--rgb-light-primary-200) / .98) 58%, rgb(var(--rgb-secondary-200) / .84) 100%);
+  --gradient-mode-pvp: linear-gradient(145deg, rgb(var(--rgb-white) / .98) 0%, rgb(var(--rgb-secondary-100) / .98) 58%, rgb(var(--rgb-light-primary-200) / .82) 100%);
+  --gradient-lobby-rooms: linear-gradient(160deg, rgb(var(--rgb-white) / .98) 0%, rgb(var(--rgb-light-primary-200) / .72) 56%, rgb(var(--rgb-white) / .98) 100%);
+  --gradient-lobby-players: linear-gradient(160deg, rgb(var(--rgb-white) / .98) 0%, rgb(var(--rgb-secondary-200) / .74) 56%, rgb(var(--rgb-white) / .98) 100%);
+  --gradient-row-room: linear-gradient(140deg, rgb(var(--rgb-white) / .98) 0%, rgb(var(--rgb-light-primary-200) / .72) 100%);
+  --gradient-row-player: linear-gradient(140deg, rgb(var(--rgb-white) / .98) 0%, rgb(var(--rgb-secondary-100) / .88) 100%);
+  --gradient-action-sync: linear-gradient(145deg, rgb(var(--rgb-secondary-700)) 0%, rgb(var(--rgb-secondary-500)) 100%);
+  --gradient-action-soufla: linear-gradient(145deg, rgb(var(--rgb-gold-700)) 0%, rgb(var(--rgb-gold-600)) 56%, rgb(var(--rgb-danger-400)) 100%);
+  --gradient-action-undo: linear-gradient(145deg, rgb(var(--rgb-gold-600)) 0%, rgb(var(--rgb-gold-500)) 100%);
+  --gradient-action-settings: linear-gradient(145deg, rgb(var(--rgb-neutral-700)) 0%, rgb(var(--rgb-neutral-500)) 100%);
+  --gradient-action-save: linear-gradient(145deg, rgb(var(--rgb-success-700)) 0%, rgb(var(--rgb-success-500)) 100%);
+  --gradient-action-resume: linear-gradient(145deg, rgb(var(--rgb-light-primary-700)) 0%, rgb(var(--rgb-light-primary-500)) 100%);
+  --gradient-action-new: linear-gradient(145deg, rgb(var(--rgb-light-primary-600)) 0%, rgb(var(--rgb-secondary-400)) 100%);
+  --gradient-action-chat: linear-gradient(145deg, rgb(var(--rgb-light-primary-600)) 0%, rgb(var(--rgb-secondary-500)) 100%);
+  --gradient-action-audio: linear-gradient(145deg, rgb(var(--rgb-secondary-600)) 0%, rgb(var(--rgb-light-primary-400)) 100%);
+  --gradient-action-mic: linear-gradient(145deg, rgb(var(--rgb-danger-600)) 0%, rgb(var(--rgb-danger-400)) 100%);
+  --gradient-action-danger: linear-gradient(145deg, rgb(var(--rgb-danger-600)) 0%, rgb(var(--rgb-danger-400)) 100%);
+  --mode-card-text: rgb(var(--rgb-ink));
+  --mode-card-muted: rgb(var(--rgb-muted-ink));
+  --mode-card-border: rgb(var(--rgb-white) / .74);
+  --mode-card-glow: rgb(var(--rgb-white) / .40);
+  --mode-icon-bg: rgb(var(--rgb-white) / .76);
+  --mode-icon-border: rgb(var(--rgb-light-primary-400) / .24);
+  --mode-icon-filter: none;
+  --mode-badge-bg: rgb(var(--rgb-white) / .84);
+  --mode-badge-text: rgb(var(--rgb-light-primary-700));
+  --lobby-rooms-accent: rgb(var(--rgb-light-primary-500));
+  --lobby-players-accent: rgb(var(--rgb-secondary-600));
+  --row-room-badge-bg: rgb(var(--rgb-light-primary-500) / .12);
+  --row-room-badge-text: rgb(var(--rgb-light-primary-700));
+  --row-player-badge-bg: rgb(var(--rgb-secondary-500) / .12);
+  --row-player-badge-text: rgb(var(--rgb-secondary-700));
+
+  --shadow-xs: 0 4px 12px rgb(var(--rgb-light-primary-700) / .06);
+  --shadow-sm-unified: 0 10px 26px rgb(var(--rgb-light-primary-700) / .10);
+  --shadow-md-unified: 0 18px 42px rgb(var(--rgb-light-primary-700) / .15), 0 3px 10px rgb(var(--rgb-light-primary-700) / .05);
+  --shadow-lg-unified: 0 28px 68px rgb(var(--rgb-light-primary-700) / .20);
+  --shadow-primary: 0 18px 38px rgb(var(--rgb-light-primary-500) / .24);
+  --shadow-secondary: 0 16px 34px rgb(var(--rgb-secondary-600) / .20);
+  --shadow-warning: 0 14px 30px rgb(var(--rgb-gold-700) / .18);
+
   --radius-card: 22px;
   --radius-control: 14px;
+  --radius-small: 11px;
+  --fs-title: 30px;
 
-  /* Compatibility aliases used by the existing UI. */
+  /* ------------------------------------------------------------------------
+     LEGACY COMPATIBILITY ALIASES
+     Existing layouts use these names; their values are now centrally owned.
+     ------------------------------------------------------------------------ */
+  --primary-green: var(--color-success);
+  --primary-gold: var(--color-warning);
+  --primary-red: var(--color-danger);
+  --sand-beige: var(--color-bg-alt);
+  --desert-orange: var(--color-primary);
+  --desert-brown: var(--color-primary);
+  --sky-blue: var(--color-secondary);
+  --dark-blue: var(--color-surface-inverse);
+  --light-sand: var(--color-bg-alt);
   --bg: var(--color-bg);
   --bg-soft: var(--color-bg-alt);
   --panel: var(--color-surface);
@@ -168,148 +265,156 @@
   --shadow-lg: var(--shadow-lg-unified);
   --radius: var(--radius-card);
   --radius-sm: var(--radius-control);
-  --btn-start: rgb(var(--rgb-primary-500));
-  --btn-end: rgb(139 92 246);
+  --btn-start: rgb(var(--rgb-light-primary-600));
+  --btn-end: rgb(var(--rgb-secondary-400));
   --btn-text: var(--color-on-primary);
   --btn-border: rgb(var(--rgb-white) / .24);
-  --btn-shadow: 0 14px 30px rgb(var(--rgb-primary-500) / .28);
+  --btn-shadow: var(--shadow-primary);
   --board-grid: var(--game-board-grid);
   --board-diag: var(--game-board-diag);
   --board-bg-start: var(--game-board-start);
   --board-bg-end: var(--game-board-end);
-  --board-depth-shadow: rgb(37 18 74 / .24);
+  --board-depth-shadow: rgb(var(--rgb-light-primary-700) / .20);
   --surface-elev-1: var(--color-surface);
   --surface-elev-2: var(--color-surface-solid);
   --surface-stroke: var(--color-border);
   --surface-stroke-strong: var(--color-border-strong);
-  --primary-green: var(--color-success);
-  --primary-gold: var(--color-warning);
-  --primary-red: var(--color-danger);
-  --sand-beige: var(--color-bg-alt);
-  --desert-orange: var(--color-primary);
-  --desert-brown: var(--color-primary);
-  --sky-blue: var(--color-secondary);
-  --dark-blue: rgb(var(--rgb-primary-900));
-  --light-sand: var(--color-bg-alt);
-  --icon-dark-bg: rgb(var(--rgb-white));
-  --fs-title: 30px;
+  --icon-dark-bg: var(--color-surface-solid);
 }
 
 :root.dark {
-  --rgb-border: 53 42 74;
-  --rgb-panel: 23 17 38;
   --color-bg: rgb(var(--rgb-primary-900));
-  --color-bg-alt: rgb(19 14 33);
-  --color-surface: rgb(23 17 38 / .92);
-  --color-surface-solid: rgb(23 17 38);
+  --color-bg-alt: rgb(var(--rgb-dark-surface-alt));
+  --color-surface: rgb(var(--rgb-dark-surface) / .92);
+  --color-surface-solid: rgb(var(--rgb-dark-surface));
   --color-surface-raised: rgb(var(--rgb-primary-800));
-  --color-surface-muted: rgb(29 22 47 / .84);
-  --color-text: rgb(247 243 255);
-  --color-text-muted: rgb(173 164 190);
-  --color-border: rgb(var(--rgb-border) / .92);
+  --color-surface-muted: rgb(var(--rgb-primary-800) / .78);
+  --color-surface-inverse: rgb(var(--rgb-primary-100));
+  --color-text: rgb(var(--rgb-primary-100));
+  --color-text-strong: rgb(var(--rgb-primary-100));
+  --color-text-muted: rgb(var(--rgb-dark-muted));
+  --color-border: rgb(var(--rgb-dark-border) / .92);
   --color-border-strong: rgb(var(--rgb-primary-400) / .46);
   --color-primary: rgb(var(--rgb-primary-400));
-  --color-primary-hover: rgb(177 151 255);
+  --color-primary-hover: rgb(var(--rgb-primary-300));
   --color-primary-soft: rgb(var(--rgb-primary-400) / .18);
   --color-secondary: rgb(var(--rgb-secondary-400));
+  --color-secondary-hover: rgb(var(--rgb-secondary-300));
   --color-secondary-soft: rgb(var(--rgb-secondary-400) / .16);
   --color-success: rgb(var(--rgb-success-500));
+  --color-success-soft: rgb(var(--rgb-success-500) / .16);
   --color-warning: rgb(var(--rgb-gold-500));
+  --color-warning-soft: rgb(var(--rgb-gold-500) / .16);
   --color-danger: rgb(var(--rgb-danger-400));
+  --color-danger-soft: rgb(var(--rgb-danger-400) / .16);
+  --color-focus: rgb(var(--rgb-primary-400) / .52);
+
   --game-move-top: rgb(var(--rgb-secondary-400));
   --game-move-bottom: rgb(var(--rgb-primary-400));
   --game-capture: rgb(var(--rgb-gold-500));
   --game-danger: rgb(var(--rgb-danger-400));
   --game-soufla-green: rgb(var(--rgb-success-500));
   --game-soufla-red: rgb(var(--rgb-danger-400));
-  --game-board-grid: rgb(205 190 234);
-  --game-board-diag: rgb(var(--rgb-primary-400));
-  --game-board-start: rgb(20 14 34);
-  --game-board-end: rgb(10 7 19);
-  --board-highlight: rgb(var(--rgb-white) / .06);
-  --board-shadow: rgb(var(--rgb-black) / .28);
-  --gradient-surface: linear-gradient(145deg, rgb(31 23 51 / .98), rgb(19 14 33 / .96));
+  --game-board-grid: rgb(var(--rgb-board-grid-dark));
+  --game-board-diag: rgb(var(--rgb-board-diag-dark));
+  --game-board-start: rgb(var(--rgb-board-dark));
+  --game-board-end: rgb(var(--rgb-board-dark-alt));
+  --board-point: rgb(var(--rgb-primary-400));
+  --mark-danger: rgb(var(--rgb-danger-400));
+  --mark-danger-strong: rgb(var(--rgb-danger-300));
+  --mark-move: rgb(var(--rgb-secondary-400));
+  --mark-move-strong: rgb(var(--rgb-secondary-300));
+  --mark-undo: rgb(var(--rgb-gold-500));
+  --mark-label-bg: rgb(var(--rgb-dark-surface) / .90);
+
+  --gradient-primary: linear-gradient(135deg, rgb(var(--rgb-primary-400)) 0%, rgb(var(--rgb-violet-mid)) 54%, rgb(var(--rgb-violet-bright)) 100%);
+  --gradient-secondary: linear-gradient(135deg, rgb(var(--rgb-secondary-700)) 0%, rgb(var(--rgb-secondary-500)) 55%, rgb(var(--rgb-secondary-400)) 100%);
+  --gradient-surface: linear-gradient(155deg, rgb(var(--rgb-primary-800) / .98) 0%, rgb(var(--rgb-dark-surface-alt) / .97) 48%, rgb(var(--rgb-primary-700) / .82) 100%);
+  --gradient-game-panel: linear-gradient(150deg, rgb(var(--rgb-primary-800) / .97) 0%, rgb(var(--rgb-dark-surface) / .96) 52%, rgb(var(--rgb-primary-700) / .72) 100%);
+  --gradient-profile: linear-gradient(135deg, rgb(var(--rgb-primary-700)) 0%, rgb(var(--rgb-primary-500)) 58%, rgb(var(--rgb-violet-mid)) 100%);
+  --gradient-mode-pvc: linear-gradient(145deg, rgb(var(--rgb-primary-700) / .98) 0%, rgb(var(--rgb-primary-500) / .88) 58%, rgb(var(--rgb-violet-mid) / .92) 100%);
+  --gradient-mode-pvp: linear-gradient(145deg, rgb(var(--rgb-secondary-700) / .98) 0%, rgb(var(--rgb-secondary-500) / .80) 58%, rgb(var(--rgb-primary-700) / .82) 100%);
+  --gradient-lobby-rooms: linear-gradient(160deg, rgb(var(--rgb-primary-800) / .98) 0%, rgb(var(--rgb-primary-700) / .84) 56%, rgb(var(--rgb-dark-surface) / .98) 100%);
+  --gradient-lobby-players: linear-gradient(160deg, rgb(var(--rgb-dark-surface) / .98) 0%, rgb(var(--rgb-secondary-700) / .38) 56%, rgb(var(--rgb-dark-surface-alt) / .98) 100%);
+  --gradient-row-room: linear-gradient(140deg, rgb(var(--rgb-primary-800) / .98) 0%, rgb(var(--rgb-primary-700) / .86) 100%);
+  --gradient-row-player: linear-gradient(140deg, rgb(var(--rgb-dark-surface) / .98) 0%, rgb(var(--rgb-secondary-700) / .42) 100%);
+  --gradient-action-sync: linear-gradient(145deg, rgb(var(--rgb-secondary-700)) 0%, rgb(var(--rgb-secondary-400)) 100%);
+  --gradient-action-soufla: linear-gradient(145deg, rgb(var(--rgb-gold-700)) 0%, rgb(var(--rgb-gold-500)) 56%, rgb(var(--rgb-danger-400)) 100%);
+  --gradient-action-undo: linear-gradient(145deg, rgb(var(--rgb-gold-700)) 0%, rgb(var(--rgb-gold-500)) 100%);
+  --gradient-action-settings: linear-gradient(145deg, rgb(var(--rgb-neutral-700)) 0%, rgb(var(--rgb-neutral-500)) 100%);
+  --gradient-action-save: linear-gradient(145deg, rgb(var(--rgb-success-700)) 0%, rgb(var(--rgb-success-500)) 100%);
+  --gradient-action-resume: linear-gradient(145deg, rgb(var(--rgb-primary-700)) 0%, rgb(var(--rgb-primary-400)) 100%);
+  --gradient-action-new: linear-gradient(145deg, rgb(var(--rgb-primary-600)) 0%, rgb(var(--rgb-violet-mid)) 100%);
+  --gradient-action-chat: linear-gradient(145deg, rgb(var(--rgb-primary-600)) 0%, rgb(var(--rgb-secondary-400)) 100%);
+  --gradient-action-audio: linear-gradient(145deg, rgb(var(--rgb-secondary-700)) 0%, rgb(var(--rgb-secondary-400)) 100%);
+  --gradient-action-mic: linear-gradient(145deg, rgb(var(--rgb-danger-600)) 0%, rgb(var(--rgb-danger-400)) 100%);
+  --gradient-action-danger: linear-gradient(145deg, rgb(var(--rgb-danger-600)) 0%, rgb(var(--rgb-danger-400)) 100%);
+  --mode-card-text: rgb(var(--rgb-white));
+  --mode-card-muted: rgb(var(--rgb-white) / .82);
+  --mode-card-border: rgb(var(--rgb-white) / .22);
+  --mode-card-glow: rgb(var(--rgb-white) / .12);
+  --mode-icon-bg: rgb(var(--rgb-white) / .14);
+  --mode-icon-border: rgb(var(--rgb-white) / .28);
+  --mode-icon-filter: brightness(0) invert(1);
+  --mode-badge-bg: rgb(var(--rgb-white) / .14);
+  --mode-badge-text: rgb(var(--rgb-white));
+  --lobby-rooms-accent: rgb(var(--rgb-primary-400));
+  --lobby-players-accent: rgb(var(--rgb-secondary-400));
+  --row-room-badge-bg: rgb(var(--rgb-primary-400) / .16);
+  --row-room-badge-text: rgb(var(--rgb-primary-100));
+  --row-player-badge-bg: rgb(var(--rgb-secondary-400) / .16);
+  --row-player-badge-text: rgb(var(--rgb-secondary-100));
+
   --shadow-xs: 0 4px 14px rgb(var(--rgb-black) / .22);
   --shadow-sm-unified: 0 12px 30px rgb(var(--rgb-black) / .32);
   --shadow-md-unified: 0 20px 48px rgb(var(--rgb-black) / .44), inset 0 1px 0 rgb(var(--rgb-white) / .04);
   --shadow-lg-unified: 0 30px 76px rgb(var(--rgb-black) / .55);
+  --shadow-primary: 0 16px 36px rgb(var(--rgb-primary-900) / .56);
+  --shadow-secondary: 0 16px 36px rgb(var(--rgb-black) / .44);
+  --shadow-warning: 0 14px 32px rgb(var(--rgb-black) / .38);
   --btn-start: rgb(var(--rgb-primary-400));
-  --btn-end: rgb(180 92 255);
-  --board-depth-shadow: rgb(var(--rgb-black) / .54);
+  --btn-end: rgb(var(--rgb-violet-bright));
+  --board-depth-shadow: rgb(var(--rgb-black) / .56);
 }
 
-/* Unified background without the legacy repeated logo watermark. */
+/* ========================================================================== 
+   GLOBAL VISUAL FOUNDATION
+   ========================================================================== */
+html,
+body {
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+
 body::before {
   background-image:
     linear-gradient(135deg, transparent 0 46%, rgb(var(--rgb-primary-500) / .035) 46% 47%, transparent 47% 100%),
-    linear-gradient(45deg, transparent 0 48%, rgb(var(--rgb-secondary-500) / .03) 48% 49%, transparent 49% 100%),
+    linear-gradient(45deg, transparent 0 48%, rgb(var(--rgb-secondary-500) / .030) 48% 49%, transparent 49% 100%),
     radial-gradient(circle at 12% 10%, rgb(var(--rgb-primary-400) / .18), transparent 30%),
     radial-gradient(circle at 88% 14%, rgb(var(--rgb-secondary-400) / .15), transparent 28%),
     radial-gradient(circle at 50% 105%, rgb(var(--rgb-gold-500) / .11), transparent 32%);
   background-size: 64px 64px, 64px 64px, cover, cover, cover;
+  background-position: center;
+  background-repeat: repeat, repeat, no-repeat, no-repeat, no-repeat;
   opacity: 1;
 }
 
-/* Shared elevated surfaces. Keep gameplay-specific surfaces in their own CSS. */
-.z-card,
-.z-mode-card,
-.z-lobby-panel,
-.z-auth-card,
-.z-dashboard-card,
-.modal-content {
-  border-color: var(--color-border) !important;
-  background: var(--gradient-surface) !important;
-  box-shadow: var(--shadow-md-unified) !important;
-  border-radius: var(--radius-card) !important;
+::selection {
+  background: var(--color-primary-soft);
+  color: var(--color-text-strong);
 }
 
-.z-mode-card,
-.z-card,
-.z-lobby-card,
-.player-item,
-.room-item {
-  transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
+:focus-visible {
+  outline: 3px solid var(--color-focus);
+  outline-offset: 2px;
 }
-
-@media (hover: hover) {
-  .z-mode-card:hover,
-  .z-card:hover,
-  .z-lobby-card:hover,
-  .player-item:hover,
-  .room-item:hover {
-    transform: translateY(-2px);
-    box-shadow: var(--shadow-lg-unified) !important;
-    border-color: var(--color-border-strong) !important;
-  }
-}
-
-.btn,
-button,
-input,
-select,
-textarea {
-  border-radius: var(--radius-control);
-}
-
-.btn:not(.ghost):not(.danger):not(.warning):not(.success),
-.btn.primary,
-button.primary {
-  background: var(--gradient-primary);
-  color: var(--color-on-primary);
-  border-color: rgb(var(--rgb-white) / .22);
-  box-shadow: var(--btn-shadow);
-}
-
-.btn.danger,
-button.danger { background: var(--gradient-danger); color: var(--color-on-primary); }
-.btn.warning,
-button.warning { background: var(--gradient-warning); color: var(--color-on-warning); }
-.btn.success,
-button.success { background: var(--gradient-secondary); color: var(--color-on-primary); }
 
 h1,
 .z-page-title,
 .z-dash-title {
+  color: var(--color-text-strong);
+  font-size: clamp(1.55rem, 2.4vw, 2rem);
+  font-weight: 800;
   letter-spacing: -.025em;
   text-wrap: balance;
 }
@@ -320,60 +425,813 @@ h3,
 .z-card h3,
 .z-mode-text h2,
 .z-lobby-h2 {
+  color: var(--color-text-strong);
   letter-spacing: -.012em;
 }
 
-/* Stable selectors for the two game modes. */
-.z-mode-card.pvc {
+.muted,
+.z-mode-sub,
+.z-lobby-subtitle {
+  color: var(--color-text-muted);
+}
+
+/* ========================================================================== 
+   SHARED SURFACES, CONTROLS AND BUTTON HIERARCHY
+   ========================================================================== */
+.z-card,
+.z-auth-card,
+.z-auth-seo-card,
+.z-reset-card,
+.z-dash-summary,
+.z-dash-details,
+.z-dash-actions-panel,
+.z-lobby-panel,
+.modal-content,
+.dialog,
+.panel,
+.status,
+.stats,
+.online-box,
+.controls-box,
+.log,
+.clock {
+  position: relative;
+  overflow: hidden;
+  border-color: var(--color-border) !important;
+  background: var(--gradient-surface) !important;
+  box-shadow: var(--shadow-md-unified) !important;
+}
+
+.z-card,
+.z-auth-card,
+.z-auth-seo-card,
+.z-reset-card,
+.z-dash-summary,
+.z-dash-details,
+.z-dash-actions-panel,
+.z-lobby-panel,
+.modal-content,
+.dialog,
+.panel {
+  border-radius: var(--radius-card) !important;
+}
+
+.z-card::before,
+.z-auth-card::before,
+.z-auth-seo-card::before,
+.z-reset-card::before,
+.z-dash-summary::before,
+.z-dash-details::before,
+.z-dash-actions-panel::before,
+.z-lobby-panel::before,
+.modal-content::before,
+.dialog::before,
+.panel::before,
+.status::before,
+.stats::before,
+.online-box::before,
+.controls-box::before,
+.log::before,
+.clock::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(180deg, rgb(var(--rgb-white) / .18), transparent 42%),
+    radial-gradient(circle at top right, rgb(var(--rgb-white) / .14), transparent 34%);
+  z-index: 0;
+}
+
+.z-card > *,
+.z-auth-card > *,
+.z-auth-seo-card > *,
+.z-reset-card > *,
+.z-dash-summary > *,
+.z-dash-details > *,
+.z-dash-actions-panel > *,
+.z-lobby-panel > *,
+.modal-content > *,
+.dialog > *,
+.panel > *,
+.status > *,
+.stats > *,
+.online-box > *,
+.controls-box > *,
+.log > *,
+.clock > * {
+  position: relative;
+  z-index: 1;
+}
+
+input,
+select,
+textarea,
+button,
+.btn {
+  border-radius: var(--radius-control);
+}
+
+input,
+select,
+textarea {
+  color: var(--color-text) !important;
+  background: var(--color-surface-solid) !important;
+  border-color: var(--color-border) !important;
+  box-shadow: inset 0 1px 0 rgb(var(--rgb-white) / .24);
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: var(--color-primary) !important;
+  box-shadow: 0 0 0 3px var(--color-primary-soft) !important;
+}
+
+.btn,
+button {
+  border-color: var(--color-border);
+  transition: transform .16s ease, box-shadow .16s ease, filter .16s ease, border-color .16s ease, background .16s ease;
+}
+
+.btn.primary,
+button.primary,
+.z-dash-play-btn,
+.z-lobby-back {
   background: var(--gradient-primary) !important;
   color: var(--color-on-primary) !important;
   border-color: rgb(var(--rgb-white) / .22) !important;
+  box-shadow: var(--shadow-primary) !important;
 }
-.z-mode-card.pvp {
-  background: var(--gradient-secondary) !important;
-  color: var(--color-on-primary) !important;
-  border-color: rgb(var(--rgb-white) / .20) !important;
-}
-.z-mode-card.pvc *,
-.z-mode-card.pvp * { color: inherit; }
 
-/* Board frame and status emphasis. */
-.board-wrap,
-.board-container,
-#boardWrap {
+.btn.secondary,
+button.secondary,
+.z-lobby-refresh-btn,
+.z-invite-receive-toggle {
+  color: var(--color-secondary) !important;
+  background: var(--color-secondary-soft) !important;
+  border-color: rgb(var(--rgb-secondary-500) / .30) !important;
+  box-shadow: var(--shadow-xs) !important;
+}
+
+.btn.ok,
+.btn.success,
+button.success {
+  color: var(--color-on-primary) !important;
+  background: var(--gradient-success) !important;
+  border-color: rgb(var(--rgb-success-500) / .36) !important;
+}
+
+.btn.warn,
+.btn.warning,
+button.warning,
+#btnSoufla {
+  color: var(--color-on-warning) !important;
+  background: var(--gradient-warning) !important;
+  border-color: rgb(var(--rgb-gold-500) / .44) !important;
+  box-shadow: var(--shadow-warning) !important;
+}
+
+.btn.danger,
+button.danger,
+.btn.end,
+#btnEndLocalMatch,
+#btnEndOnline,
+#btnLeaveRoom,
+#btnDashLogout {
+  color: var(--color-on-primary) !important;
+  background: var(--gradient-danger) !important;
+  border-color: rgb(var(--rgb-danger-400) / .34) !important;
+}
+
+.btn.ghost,
+.btn.guest,
+button.ghost {
+  color: var(--color-text-strong) !important;
+  background: var(--color-surface-muted) !important;
+  border-color: var(--color-border) !important;
+  box-shadow: var(--shadow-xs) !important;
+}
+
+@media (hover: hover) {
+  .btn:hover:not(:disabled),
+  button:hover:not(:disabled) {
+    transform: translateY(-1px);
+    filter: brightness(1.035);
+  }
+
+  .z-card:hover,
+  .z-lobby-panel:hover,
+  .z-dash-summary:hover,
+  .z-dash-details:hover {
+    border-color: var(--color-border-strong) !important;
+  }
+}
+
+/* ========================================================================== 
+   AUTHENTICATION / FIRST IMPRESSION
+   ========================================================================== */
+.z-auth-wrap {
+  position: relative;
+}
+
+.z-auth-main {
+  align-items: center;
+}
+
+.z-auth-card {
   border-color: var(--color-border-strong) !important;
   box-shadow: var(--shadow-lg-unified) !important;
 }
-.status,
-.turn-card,
-.z-game-status {
+
+.z-auth-card::before {
+  background: radial-gradient(circle at top right, var(--color-primary-soft), transparent 46%) !important;
+}
+
+.z-auth-seo-card {
+  background: linear-gradient(145deg, var(--color-surface), var(--color-surface-muted)) !important;
+  box-shadow: var(--shadow-sm-unified) !important;
+}
+
+.z-auth-login-heading,
+.z-auth-card h2 {
+  font-size: clamp(1.25rem, 2vw, 1.65rem);
+  font-weight: 800;
+}
+
+.z-auth-google-top {
+  color: var(--color-text-strong) !important;
+  background: var(--color-surface-solid) !important;
+  border-color: var(--color-border) !important;
+  box-shadow: var(--shadow-sm-unified) !important;
+}
+
+.z-auth-links a {
+  color: var(--color-primary) !important;
+  font-weight: 700;
+}
+
+.z-auth-brand img,
+.z-reset-brand img {
+  filter: drop-shadow(0 16px 28px rgb(var(--rgb-primary-500) / .22));
+}
+
+/* ========================================================================== 
+   MODE SELECTION — TWO DISTINCT GAME EXPERIENCES
+   ========================================================================== */
+.z-mode-grid {
+  perspective: 1000px;
+}
+
+.z-mode-card {
+  position: relative;
+  border: 1px solid var(--mode-card-border) !important;
+  color: var(--mode-card-text) !important;
+  box-shadow: var(--shadow-lg-unified) !important;
+  isolation: isolate;
+  overflow: hidden;
+}
+
+.z-mode-card.pvc {
+  background: var(--gradient-mode-pvc) !important;
+}
+
+.z-mode-card.pvp {
+  background: var(--gradient-mode-pvp) !important;
+}
+
+.z-mode-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at top right, var(--mode-card-glow), transparent 34%),
+    linear-gradient(180deg, rgb(var(--rgb-white) / .14), transparent 38%);
+  z-index: 0;
+}
+
+.z-mode-card::after {
+  content: "";
+  position: absolute;
+  inset-inline: 16px;
+  inset-block-end: 12px;
+  height: 4px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, transparent, rgb(var(--rgb-white) / .28), transparent);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.z-mode-card > * {
+  position: relative;
+  z-index: 1;
+}
+
+.z-mode-card,
+.z-mode-card h2,
+.z-mode-card p {
+  color: var(--mode-card-text) !important;
+}
+
+.z-mode-card p {
+  color: var(--mode-card-muted) !important;
+  opacity: 1;
+}
+
+.z-mode-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  margin-bottom: 12px;
+  background: var(--mode-badge-bg);
+  color: var(--mode-badge-text);
+  font-size: .82rem;
+  font-weight: 800;
+  box-shadow: inset 0 1px 0 rgb(var(--rgb-white) / .34);
+}
+
+.z-mode-badge::before {
+  content: "";
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 0 4px rgb(var(--rgb-white) / .18);
+}
+
+.z-mode-ico {
+  background: var(--mode-icon-bg) !important;
+  border-color: var(--mode-icon-border) !important;
+  box-shadow: inset 0 1px 0 rgb(var(--rgb-white) / .22), 0 12px 28px rgb(var(--rgb-black) / .13) !important;
+}
+
+.z-mode-ico img {
+  filter: var(--mode-icon-filter);
+}
+
+@media (min-width: 900px) {
+  .z-mode-card.pvc {
+    transform: translateY(-6px);
+  }
+
+  .z-mode-card.pvp {
+    transform: translateY(8px);
+  }
+
+  @media (hover: hover) {
+    .z-mode-card.pvc:hover {
+      transform: translateY(-10px) scale(1.012);
+    }
+
+    .z-mode-card.pvp:hover {
+      transform: translateY(4px) scale(1.012);
+    }
+  }
+}
+
+/* ========================================================================== 
+   DASHBOARD / PLAYER PROFILE
+   ========================================================================== */
+.z-dash-profile-card {
+  position: relative;
+  overflow: hidden;
+  padding: 16px !important;
+  color: var(--color-on-primary) !important;
+  background: var(--gradient-profile) !important;
+  border: 1px solid rgb(var(--rgb-white) / .20) !important;
+  box-shadow: var(--shadow-lg-unified) !important;
+}
+
+.z-dash-profile-card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(45deg, transparent 0 24px, rgb(var(--rgb-white) / .045) 24px 25px);
+}
+
+.z-dash-profile-card > * {
+  position: relative;
+  z-index: 1;
+}
+
+.z-dash-profile-card .z-dash-profile-label,
+.z-dash-profile-card .z-dash-profile-sep,
+.z-dash-profile-card .z-dash-profile-name,
+.z-dash-profile-card .z-dash-profile-text {
+  color: var(--color-on-primary) !important;
+}
+
+.z-dash-profile-icon {
+  filter: drop-shadow(0 12px 24px rgb(var(--rgb-black) / .24));
+}
+
+.z-dash-summary-table th,
+.z-dash-details-table thead th,
+.z-dash-details-table tbody th {
+  color: var(--color-text-strong) !important;
+  background: linear-gradient(135deg, var(--color-primary-soft), var(--color-secondary-soft)) !important;
+}
+
+.z-dash-summary-table-rank {
+  color: var(--color-primary) !important;
+  background: var(--color-primary-soft) !important;
+  border-color: var(--color-border-strong) !important;
+}
+
+.z-dash-summary-card {
+  background: linear-gradient(145deg, var(--color-surface-solid), var(--color-surface-muted)) !important;
+  border-color: var(--color-border) !important;
+  box-shadow: var(--shadow-sm-unified) !important;
+}
+
+.z-dash-summary-value {
+  color: var(--color-primary);
+}
+
+/* ========================================================================== 
+   LOBBY / LIVE PRESENCE
+   ========================================================================== */
+.z-lobby-panel {
+  position: relative;
+  overflow: hidden;
+}
+
+.z-lobby-panel:first-child {
+  background: var(--gradient-lobby-rooms) !important;
+  border-top: 4px solid var(--lobby-rooms-accent) !important;
+}
+
+.z-lobby-panel:nth-child(2) {
+  background: var(--gradient-lobby-players) !important;
+  border-top: 4px solid var(--lobby-players-accent) !important;
+}
+
+.z-lobby-panel::after {
+  content: "";
+  position: absolute;
+  inset-inline-end: -36px;
+  inset-block-start: -36px;
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgb(var(--rgb-white) / .24), transparent 68%);
+  pointer-events: none;
+}
+
+.z-lobby-h2 {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 14px;
+  padding: 9px 14px;
+  border-radius: 999px;
+  font-size: 1.05rem;
+  font-weight: 900;
+  letter-spacing: -.02em;
+  background: rgb(var(--rgb-white) / .54);
+  box-shadow: inset 0 1px 0 rgb(var(--rgb-white) / .28);
+}
+
+.z-lobby-panel:first-child .z-lobby-h2 {
+  color: var(--row-room-badge-text) !important;
+}
+
+.z-lobby-panel:nth-child(2) .z-lobby-h2 {
+  color: var(--row-player-badge-text) !important;
+}
+
+.z-lobby-h2::before {
+  content: "";
+  width: 18px;
+  height: 18px;
+  border-radius: 7px;
+  background: currentColor;
+  box-shadow: inset 0 0 0 4px rgb(var(--rgb-white) / .38);
+}
+
+.z-lobby-list .z-row,
+.player-item,
+.room-item {
+  position: relative;
+  border-color: var(--color-border) !important;
+  box-shadow: var(--shadow-xs) !important;
+  border-radius: 18px !important;
+  overflow: hidden;
+}
+
+.z-lobby-list.rooms .z-row {
+  background: var(--gradient-row-room) !important;
+}
+
+.z-lobby-list.players .z-row,
+.player-item {
+  background: var(--gradient-row-player) !important;
+}
+
+.z-lobby-list.players .z-row::before,
+.player-item::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--color-success);
+  box-shadow: 0 0 0 4px var(--color-success-soft);
+}
+
+.z-row-badge,
+.z-row-status-chip,
+.z-room-meta-chip,
+.z-self {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 24px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: .74rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.z-row-badge,
+.z-room-meta-chip {
+  background: var(--row-room-badge-bg);
+  color: var(--row-room-badge-text);
+}
+
+.z-row-status-chip,
+.z-self {
+  background: var(--row-player-badge-bg);
+  color: var(--row-player-badge-text);
+}
+
+.z-row-meta,
+.z-room-meta {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+
+.z-room-state {
+  color: var(--color-warning) !important;
+}
+
+.z-invite-receive-toggle[aria-pressed="true"] {
+  color: var(--color-on-primary) !important;
+  background: var(--gradient-secondary) !important;
+}
+
+.z-empty,
+.z-loading {
+  color: var(--color-text-muted) !important;
+  background: var(--color-surface-muted) !important;
+  border-color: var(--color-border) !important;
+}
+
+/* ========================================================================== 
+   GAME SCREEN — BOARD, TURN, STATS AND ACTIONS
+   ========================================================================== */
+body.z-game-page .app {
+  background: transparent;
+}
+
+.board-wrap {
+  position: relative;
+  border: 1px solid var(--color-border-strong) !important;
+  border-radius: calc(var(--radius-card) + 2px) !important;
+  background: linear-gradient(145deg, var(--color-surface-solid), var(--color-surface-muted)) !important;
+  box-shadow: var(--shadow-lg-unified) !important;
+}
+
+canvas#board {
+  border-color: var(--game-board-diag) !important;
+  border-radius: calc(var(--radius-card) - 5px) !important;
+  background: linear-gradient(180deg, var(--game-board-start), var(--game-board-end)) !important;
+}
+
+.side {
+  border-color: var(--color-border) !important;
+  background: var(--gradient-game-panel) !important;
+  box-shadow: var(--shadow-md-unified) !important;
+}
+
+.status {
+  position: relative;
+  overflow: hidden;
   border-color: var(--color-border-strong) !important;
   background: linear-gradient(135deg, var(--color-primary-soft), var(--color-secondary-soft)) !important;
 }
 
-/* Portrait and landscape mobile preserve geometry while inheriting the theme. */
+.status::before {
+  content: "";
+  position: absolute;
+  inset-inline-start: 0;
+  inset-block: 0;
+  width: 4px;
+  background: var(--gradient-primary);
+}
+
+.stats th,
+.stats-mobile-table th {
+  color: var(--color-text-strong) !important;
+  background: linear-gradient(135deg, var(--color-primary-soft), var(--color-secondary-soft)) !important;
+}
+
+.stats td,
+.stats-mobile-table td {
+  background: var(--color-surface-solid) !important;
+}
+
+.clock {
+  color: var(--color-warning) !important;
+  border-color: rgb(var(--rgb-gold-500) / .34) !important;
+  background: var(--color-warning-soft) !important;
+  box-shadow: var(--shadow-warning) !important;
+}
+
+.online-box {
+  border-color: rgb(var(--rgb-secondary-500) / .30) !important;
+  background: linear-gradient(135deg, var(--color-secondary-soft), var(--color-surface)) !important;
+}
+
+.controls-box,
+.controls-wrap,
+.controls-pool {
+  border-color: var(--color-border) !important;
+}
+
+.log {
+  color: var(--color-text);
+  background: linear-gradient(145deg, var(--color-surface), var(--color-surface-muted)) !important;
+}
+
+.log-item {
+  border-color: var(--color-border) !important;
+}
+
+#btnSettings,
+#btnUndo,
+#btnSave,
+#btnResume,
+#btnNew,
+#btnRefreshLocal,
+#btnSync,
+#btnChat,
+#btnSpk,
+#btnMic {
+  color: var(--color-text-strong) !important;
+  background: var(--color-surface-muted) !important;
+  border-color: var(--color-border) !important;
+  box-shadow: var(--shadow-xs) !important;
+}
+
+#btnUndo {
+  color: var(--color-warning) !important;
+  border-color: rgb(var(--rgb-gold-500) / .34) !important;
+  background: var(--color-warning-soft) !important;
+}
+
+#btnSync,
+#btnRefreshLocal {
+  color: var(--color-secondary) !important;
+  border-color: rgb(var(--rgb-secondary-500) / .30) !important;
+  background: var(--color-secondary-soft) !important;
+}
+
+.sync-issue-notice {
+  color: var(--color-danger) !important;
+  background: var(--color-danger-soft) !important;
+  border-color: rgb(var(--rgb-danger-500) / .34) !important;
+}
+
+/* ========================================================================== 
+   MODALS, ALERTS AND FEEDBACK
+   ========================================================================== */
+.modal-backdrop,
+.z-modal-backdrop {
+  background: rgb(var(--rgb-primary-900) / .64) !important;
+  backdrop-filter: blur(7px);
+}
+
+.modal-content,
+.dialog {
+  border-color: var(--color-border-strong) !important;
+  box-shadow: var(--shadow-lg-unified) !important;
+}
+
+.z-auth-msg.ok,
+.z-dash-msg.ok {
+  color: var(--color-success) !important;
+  background: var(--color-success-soft) !important;
+  border-color: rgb(var(--rgb-success-500) / .34) !important;
+}
+
+.z-auth-msg.error,
+.z-dash-msg.error {
+  color: var(--color-danger) !important;
+  background: var(--color-danger-soft) !important;
+  border-color: rgb(var(--rgb-danger-500) / .34) !important;
+}
+
+/* ========================================================================== 
+   MOBILE: SHARED IDENTITY FOR PORTRAIT AND LANDSCAPE
+   Layout dimensions remain controlled by mobile.css.
+   ========================================================================== */
 body.z-mobile-on {
   --fs-title: 22px;
   --m-card-radius: 20px;
-  background: var(--color-bg);
+  background: var(--color-bg) !important;
 }
-body.z-mobile-on .z-card,
-body.z-mobile-on .z-mode-card,
-body.z-mobile-on .z-lobby-panel,
-body.z-mobile-on .z-auth-card {
-  border-radius: var(--m-card-radius) !important;
-  border-color: var(--color-border) !important;
-  box-shadow: var(--shadow-sm-unified) !important;
-}
+
 body.z-mobile-on[data-mobile-orientation="landscape"] {
   --fs-title: 20px;
   --m-card-radius: 18px;
 }
 
+body.z-mobile-on .z-card,
+body.z-mobile-on .z-auth-card,
+body.z-mobile-on .z-auth-seo-card,
+body.z-mobile-on .z-mode-card,
+body.z-mobile-on .z-lobby-panel,
+body.z-mobile-on .z-dash-summary,
+body.z-mobile-on .z-dash-details,
+body.z-mobile-on .z-dash-actions-panel {
+  border-radius: var(--m-card-radius) !important;
+}
+
+body.z-mobile-on .z-mode-card {
+  color: var(--mode-card-text) !important;
+  border-color: var(--mode-card-border) !important;
+  box-shadow: var(--shadow-md-unified) !important;
+}
+
+body.z-mobile-on[data-mobile-page="mode"] .z-mode-card.pvc {
+  background: var(--gradient-mode-pvc) !important;
+}
+
+body.z-mobile-on[data-mobile-page="mode"] .z-mode-card.pvp {
+  background: var(--gradient-mode-pvp) !important;
+}
+
+body.z-mobile-on[data-mobile-page="mode"] .z-mode-card,
+body.z-mobile-on[data-mobile-page="mode"] .z-mode-card h2,
+body.z-mobile-on[data-mobile-page="mode"] .z-mode-card p {
+  color: var(--mode-card-text) !important;
+}
+
+body.z-mobile-on[data-mobile-page="game"] .side,
+body.z-mobile-on.z-game-page .side {
+  background: var(--gradient-game-panel) !important;
+  border-color: var(--color-border-strong) !important;
+}
+
+body.z-mobile-on[data-mobile-orientation="portrait"].z-game-page .board-wrap,
+body.z-mobile-on[data-mobile-orientation="landscape"].z-game-page .board-wrap {
+  box-shadow: var(--shadow-md-unified) !important;
+}
+
+body.z-mobile-on[data-mobile-orientation="landscape"] .z-mode-card.pvc,
+body.z-mobile-on[data-mobile-orientation="landscape"] .z-mode-card.pvp {
+  transform: none;
+}
+
+body.z-mobile-on .z-mobile-shell-button,
+body.z-mobile-on .z-mobile-shell-menu,
+body.z-mobile-on .z-mobile-drawer-toggle {
+  color: var(--color-on-primary) !important;
+  background: var(--gradient-primary) !important;
+  border-color: rgb(var(--rgb-white) / .22) !important;
+  box-shadow: var(--shadow-primary) !important;
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .z-mode-card,
-  .z-card,
-  .z-lobby-card,
-  .player-item,
-  .room-item { transition: none; }
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: .01ms !important;
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+
+/* Compact title scale is explicit so the desktop refresh does not crowd either
+   mobile orientation. */
+body.z-mobile-on h1,
+body.z-mobile-on .z-page-title,
+body.z-mobile-on .z-dash-title {
+  font-size: 22px !important;
+}
+
+body.z-mobile-on[data-mobile-orientation="landscape"] h1,
+body.z-mobile-on[data-mobile-orientation="landscape"] .z-page-title,
+body.z-mobile-on[data-mobile-orientation="landscape"] .z-dash-title {
+  font-size: 19px !important;
 }
