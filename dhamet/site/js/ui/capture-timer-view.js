@@ -20,10 +20,15 @@
     try {
       const row = qs(".timer-row");
       const btn = qs("#btnEndKill");
+      const clock = qs(".timer-row .clock");
       if (!row || !btn) return;
       const active = btn.getAttribute("data-chain-active") === "true";
       row.classList.toggle("is-live", active);
       row.classList.toggle("is-disabled", !active);
+      if (clock) {
+        clock.setAttribute("data-chain-active", active ? "true" : "false");
+        clock.setAttribute("aria-disabled", active ? "false" : "true");
+      }
     } catch (_) {}
   }
 

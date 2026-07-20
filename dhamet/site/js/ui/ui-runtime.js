@@ -1343,7 +1343,10 @@ function endKillPressed() {
     } catch (_) {}
     return;
   }
-  if (!Game.inChain) return;
+  if (!Game.inChain) {
+    showUiNotice(t("chain.notice.inactive"), t("modals.notice"));
+    return;
+  }
 
   Game.killTimer.stop();
 
@@ -2527,6 +2530,20 @@ function bindUI() {
     localRefreshButton.addEventListener("click", () => window.location.reload());
   }
   qs("#btnEndKill").addEventListener("click", endKillPressed);
+  const killClockButton = qs(".timer-row .clock");
+  if (killClockButton) {
+    killClockButton.addEventListener("click", endKillPressed);
+    killClockButton.setAttribute("role", "button");
+    killClockButton.setAttribute("tabindex", "0");
+    killClockButton.addEventListener("keydown", function (ev) {
+      if (!ev) return;
+      const key = ev.key || ev.code;
+      if (key === "Enter" || key === " " || key === "Spacebar") {
+        ev.preventDefault();
+        endKillPressed();
+      }
+    });
+  }
 
   const __boardInputCanvas = qs("#board");
   if (__boardInputCanvas) {

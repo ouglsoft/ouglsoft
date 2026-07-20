@@ -3017,3 +3017,113 @@ body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-drawer .log {
   touch-action: pan-y;
   scrollbar-gutter: stable;
 }
+
+
+/* ========================================================================== 
+   2.13.19 REFINEMENTS — ORIENTATION BUTTON, MOBILE CAPTURE TIMER, PIECE EDGES
+   ========================================================================== */
+body.z-mobile-on .z-mobile-orient {
+  background: rgb(var(--rgb-white)) !important;
+  border-color: rgb(var(--rgb-primary-700) / .20) !important;
+  box-shadow: 0 10px 22px rgb(var(--rgb-primary-900) / .18), inset 0 1px 0 rgb(var(--rgb-white)) !important;
+  color: rgb(var(--rgb-primary-700)) !important;
+}
+html.dark body.z-mobile-on .z-mobile-orient {
+  background: rgb(var(--rgb-white)) !important;
+  border-color: rgb(var(--rgb-primary-700) / .20) !important;
+  box-shadow: 0 12px 26px rgb(var(--rgb-black) / .26), inset 0 1px 0 rgb(var(--rgb-white)) !important;
+  color: rgb(var(--rgb-primary-700)) !important;
+}
+body.z-mobile-on .z-mobile-orient .z-mobile-orient-ico {
+  width: 34px !important;
+  height: 34px !important;
+  background-color: currentColor !important;
+}
+
+/* Sharper 2D piece borders: strong dark outline for white pieces in dark mode,
+   and brighter gold outline for black pieces in light mode. */
+:root:not(.dark) {
+  --piece-black-edge: rgb(245 220 160) !important;
+  --piece-black-edge-soft: rgb(255 240 205) !important;
+}
+html.dark {
+  --piece-white-edge: rgb(10 67 92) !important;
+  --piece-white-edge-soft: rgb(51 155 181) !important;
+}
+
+/* Mobile capture timer replaces the separate end-capture button. */
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid .timer-row {
+  position: relative !important;
+  overflow: hidden !important;
+  border-radius: 10px !important;
+}
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid .timer-row .clock {
+  position: relative !important;
+  inset: auto !important;
+  width: 100% !important;
+  height: 100% !important;
+  min-height: inherit !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 0 !important;
+  padding: 0 10px !important;
+  border-radius: inherit !important;
+  color: rgb(var(--rgb-white)) !important;
+  background: var(--gradient-game-control) !important;
+  border: 1px solid rgb(var(--rgb-white) / .18) !important;
+  box-shadow: 0 9px 20px rgb(var(--rgb-primary-900) / .24), inset 0 1px 0 rgb(var(--rgb-white) / .20) !important;
+  text-shadow: 0 1px 2px rgb(var(--rgb-black) / .42) !important;
+  cursor: pointer;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid .timer-row .clock .muted {
+  display: none !important;
+}
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid .timer-row #killClock {
+  color: rgb(var(--rgb-white)) !important;
+  font-weight: 950 !important;
+  letter-spacing: .03em;
+  font-variant-numeric: tabular-nums;
+}
+body.z-mobile-on[data-mobile-orientation="portrait"][data-mobile-page="game"] .z-mobile-game-controls-grid .timer-row #killClock {
+  font-size: 14px !important;
+}
+body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="game"] .z-mobile-game-controls-grid .timer-row #killClock {
+  font-size: 18px !important;
+}
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid .timer-row #btnEndKill {
+  display: none !important;
+}
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid .timer-row.is-live .clock {
+  background: linear-gradient(145deg, rgb(15 39 55 / .96), rgb(133 45 53 / .94)) !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid .timer-row.is-live #killClock {
+  color: rgb(var(--rgb-white)) !important;
+  font-size: clamp(13px, 3.6vw, 19px) !important;
+}
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid .timer-row.is-live {
+  border: 2px solid rgb(var(--rgb-danger-300)) !important;
+  box-shadow: 0 0 0 2px rgb(var(--rgb-danger-500) / .20), 0 10px 24px rgb(var(--rgb-danger-700) / .24) !important;
+}
+body.z-mobile-on[data-mobile-orientation="portrait"][data-mobile-page="game"] .z-mobile-game-controls-grid .timer-row,
+body.z-mobile-on[data-mobile-orientation="portrait"][data-mobile-page="game"] .z-mobile-game-controls-grid .timer-row.is-live {
+  min-height: 31px !important;
+  height: 31px !important;
+}
+body.z-mobile-on[data-mobile-orientation="portrait"][data-mobile-page="game"] .z-mobile-game-controls-grid .timer-row.is-live {
+  min-height: 38px !important;
+  height: 38px !important;
+}
+body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="game"] .z-mobile-game-controls-grid .timer-row,
+body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="game"] .z-mobile-game-controls-grid .timer-row.is-live {
+  min-height: 50px !important;
+  height: 50px !important;
+}
+body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="game"] .z-mobile-game-controls-grid .timer-row.is-live {
+  min-height: 60px !important;
+  height: 60px !important;
+}
