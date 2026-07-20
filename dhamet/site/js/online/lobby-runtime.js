@@ -753,7 +753,12 @@
 
   function localAcceptsInvitesPreference() {
     try {
-      return localStorage.getItem(INVITE_PREF_CACHE_KEY) !== "0";
+      const stored = localStorage.getItem(INVITE_PREF_CACHE_KEY);
+      if (stored == null) {
+        localStorage.setItem(INVITE_PREF_CACHE_KEY, "1");
+        return true;
+      }
+      return stored !== "0";
     } catch (e) {
       return true;
     }
@@ -3001,6 +3006,7 @@
     _restoreInviteToggleFromCache: function () {
           try {
             const cached = localStorage.getItem(INVITE_PREF_CACHE_KEY);
+            if (cached == null) localStorage.setItem(INVITE_PREF_CACHE_KEY, "1");
             this._syncInviteToggleButton(cached === "0" ? false : true);
           } catch (e) {
             try { this._syncInviteToggleButton(true); } catch (_) {}

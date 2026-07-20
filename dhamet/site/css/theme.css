@@ -2459,3 +2459,101 @@ body.z-mobile-on[data-mobile-page="lobby"] .z-player-row .z-row-actions .btn {
   padding: 4px 7px;
   font-size: .72rem;
 }
+
+/* ========================================================================== 
+   2.13.8 INVITE STATE, RESPONSIVE SOUFLA, SYNC ICON, ORIENTATION POSITION
+   ========================================================================== */
+
+/* Disabled invitations must read as unavailable, not as an active action. */
+.z-player-row .z-invite-btn.is-invite-disabled,
+.z-player-row .z-invite-btn:disabled {
+  opacity: 1 !important;
+  color: rgb(var(--rgb-danger-700)) !important;
+  background: linear-gradient(145deg, rgb(var(--rgb-neutral-200) / .92), rgb(var(--rgb-danger-300) / .46)) !important;
+  border-color: rgb(var(--rgb-danger-500) / .34) !important;
+  box-shadow: inset 0 1px 0 rgb(var(--rgb-white) / .42) !important;
+  cursor: not-allowed !important;
+  filter: saturate(.72) !important;
+}
+html.dark .z-player-row .z-invite-btn.is-invite-disabled,
+html.dark .z-player-row .z-invite-btn:disabled {
+  color: rgb(var(--rgb-danger-300)) !important;
+  background: linear-gradient(145deg, rgb(var(--rgb-neutral-800) / .96), rgb(var(--rgb-danger-800) / .72)) !important;
+  border-color: rgb(var(--rgb-danger-400) / .42) !important;
+}
+
+/* Desktop keeps the original pictogram and its label. Mobile uses the
+   localized word only, because Soufla has no universally recognizable icon. */
+body.z-game-page:not(.z-mobile-on) #btnSoufla .z-soufla-icon {
+  display: block !important;
+  width: 22px !important;
+  height: 22px !important;
+  padding: 0 !important;
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  object-fit: contain !important;
+}
+body.z-game-page:not(.z-mobile-on) #btnSoufla .z-soufla-label {
+  display: inline !important;
+  position: static !important;
+  width: auto !important;
+  height: auto !important;
+  margin: 0 !important;
+  overflow: visible !important;
+  clip: auto !important;
+  white-space: nowrap !important;
+}
+body.z-mobile-on[data-mobile-page="game"] #btnSoufla .z-soufla-icon {
+  display: none !important;
+}
+body.z-mobile-on[data-mobile-page="game"] #btnSoufla .z-soufla-label {
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  position: static !important;
+  width: auto !important;
+  min-width: 44px;
+  height: auto !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  overflow: visible !important;
+  clip: auto !important;
+  color: rgb(var(--rgb-white)) !important;
+  font-size: 14px !important;
+  font-weight: 950 !important;
+  line-height: 1 !important;
+  letter-spacing: 0 !important;
+  white-space: nowrap !important;
+  text-shadow: 0 1px 2px rgb(var(--rgb-black) / .34);
+}
+html[dir="ltr"] body.z-mobile-on[data-mobile-page="game"] #btnSoufla .z-soufla-label {
+  font-size: 13px !important;
+  letter-spacing: .01em !important;
+}
+
+/* Online refresh uses the same transparent icon treatment as other controls. */
+body.z-mobile-on[data-mobile-page="game"] #btnSync .btn-ico,
+body.z-mobile-on[data-mobile-page="game"] .sync-control-wrap #btnSync .btn-ico {
+  display: block !important;
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  object-fit: contain !important;
+}
+html.dark body.z-mobile-on[data-mobile-page="game"] #btnSync .btn-ico {
+  filter: brightness(0) invert(1) drop-shadow(0 1px 2px rgb(var(--rgb-black) / .42)) !important;
+}
+
+/* Keep the orientation control above the bottom drawer handle and away from
+   the gameplay control grid. */
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-orient {
+  bottom: calc(var(--m-safe-bottom) + 50px) !important;
+  z-index: 10062 !important;
+}
+body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="game"] .z-mobile-orient {
+  bottom: calc(var(--m-safe-bottom) + 42px) !important;
+}
