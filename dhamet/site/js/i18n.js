@@ -249,7 +249,7 @@
       "no": "لا",
       "forcedOpening": {
         "title": "الافتتاح الإجباري",
-        "body": "تبدأ المباراة بعشر نقلات إجبارية. في النقلة الرابعة يختار اللاعب غير البادئ أحد مساري الأسر القانونيين، ثم ينفّذ المسار الآخر في النقلة السادسة. اتبع السهم الأحمر لبقية النقلات."
+        "body": "تبدأ المباراة بخمس نقلات إجبارية لكل لاعب. اتبع السهم الأحمر لتنفيذ النقلة المطلوبة، ثم ينتقل اللعب إلى الوضع الحر."
       },
       "notice": "تنبيه",
       "undo": {
@@ -788,7 +788,7 @@
       "no": "No",
       "forcedOpening": {
         "title": "Forced opening",
-        "body": "The match begins with ten forced moves. On move four, the non-starting player may choose either legal capture; on move six, that player must make the other capture. Follow the red arrow for the remaining moves."
+        "body": "The match begins with five forced moves for each player. Follow the red arrow for the required move; free play starts afterward."
       },
       "notice": "Notice",
       "undo": {
@@ -1327,7 +1327,7 @@
       "no": "Non",
       "forcedOpening": {
         "title": "Ouverture obligatoire",
-        "body": "La partie commence par dix coups obligatoires. Au quatrième coup, le joueur qui n’a pas commencé peut choisir l’une des deux captures légales ; au sixième, il doit jouer l’autre. Suivez la flèche rouge pour les autres coups."
+        "body": "La partie commence par cinq coups obligatoires pour chaque joueur. Suivez la flèche rouge pour jouer le coup demandé ; le jeu devient ensuite libre."
       },
       "notice": "Information",
       "undo": {

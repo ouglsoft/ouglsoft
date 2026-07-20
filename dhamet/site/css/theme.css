@@ -2826,12 +2826,14 @@ html[dir="ltr"] body.z-mobile-on[data-mobile-orientation="landscape"][data-mobil
    ========================================================================== */
 .z-select-trigger-arrow,
 .z-select-dropdown.is-open .z-select-trigger-arrow {
-  width: 10px;
-  height: 10px;
-  border-inline-end: 2.5px solid currentColor;
-  border-block-end: 2.5px solid currentColor;
-  transform: rotate(45deg) translate(-1px, -1px) !important;
-  transform-origin: center;
+  width: 0;
+  height: 0;
+  flex: 0 0 auto;
+  border: 0 !important;
+  border-left: 6px solid transparent !important;
+  border-right: 6px solid transparent !important;
+  border-top: 8px solid currentColor !important;
+  transform: none !important;
   opacity: .94;
 }
 
@@ -2894,4 +2896,19 @@ html[dir="ltr"] body.z-mobile-on[data-mobile-orientation="portrait"][data-mobile
 }
 html[dir="ltr"] body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="game"] #btnSoufla .z-soufla-label {
   font-size: 16px !important;
+}
+
+
+/* ==========================================================================
+   2.13.17 — DOWNWARD CHEVRONS AND ORIENTATION ICON CONTRAST
+   ========================================================================== */
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-orient .z-mobile-orient-ico {
+  width: 46px !important;
+  height: 42px !important;
+  background-color: rgb(var(--rgb-primary-900)) !important;
+  filter: drop-shadow(0 1px 0 rgb(var(--rgb-white) / .75)) drop-shadow(0 2px 3px rgb(var(--rgb-black) / .24)) !important;
+}
+html.dark body.z-mobile-on[data-mobile-page="game"] .z-mobile-orient .z-mobile-orient-ico {
+  background-color: rgb(var(--rgb-white)) !important;
+  filter: drop-shadow(0 2px 3px rgb(var(--rgb-black) / .52)) !important;
 }

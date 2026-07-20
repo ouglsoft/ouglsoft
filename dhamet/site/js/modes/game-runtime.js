@@ -552,16 +552,25 @@ function legalActions() {
   }
 
   if (isForcedOpeningActive()) {
-    const expected = getForcedOpeningExpectedAction();
-    if (!expected) return { mask, meta };
-    if (expected.endChain) {
+    const expected = getForcedOpeningExpectedAction(Input && Input.selected != null ? Input.selected : null);
+    if (expected && expected.endChain) {
       mask[ACTION_ENDCHAIN] = 1;
       return { mask, meta };
     }
 
-    const a = encodeAction(expected.from, expected.to);
-    mask[a] = 1;
-    meta[a] = [expected.from, expected.to];
+    const openingInfos = !Game.inChain && Input && Input.selected == null
+      ? getForcedOpeningInfos()
+      : expected && expected.info
+        ? [expected.info]
+        : [];
+    for (const info of openingInfos) {
+      const from = expected && openingInfos.length === 1 ? expected.from : info.from;
+      const to = expected && openingInfos.length === 1 ? expected.to : info.toFirst;
+      if (from == null || to == null) continue;
+      const a = encodeAction(from, to);
+      mask[a] = 1;
+      meta[a] = [from, to];
+    }
     mask[ACTION_ENDCHAIN] = 0;
     return { mask, meta };
   }
@@ -778,6 +787,17 @@ const Turn = {
     }
 
     UI.updateStatus();
+
+    if (isForcedOpeningActive() && Game.player === humanSide()) {
+      const openingInfos = getForcedOpeningInfos();
+      if (openingInfos.length > 1 && Visual && typeof Visual.setForcedOpeningArrows === "function") {
+        Visual.setForcedOpeningArrows(openingInfos.map((info) => ({ from: info.from, to: info.toFirst })), true);
+        Visual.setHighlightCells(openingInfos.map((info) => idxToRC(info.from)));
+        Visual.draw();
+      } else if (openingInfos.length === 1) {
+        Visual.setForcedOpeningArrow(openingInfos[0].from, openingInfos[0].toFirst);
+      }
+    }
   },
   beginCapture(fromIdx) {
     if (!this.ctx) {

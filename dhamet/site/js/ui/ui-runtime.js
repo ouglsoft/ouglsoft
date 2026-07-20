@@ -52,6 +52,7 @@ const Visual = (() => {
     souflaForcePathsAll: [],
     ignoredKills: [],
     forcedOpeningArrow: null,
+    forcedOpeningArrows: [],
     highlightCells: [],
     crownQueue: [],
     showCoords: false,
@@ -70,6 +71,7 @@ const Visual = (() => {
     S.capturedOrder = [];
     S.pendingTurnClear = false;
     S.forcedOpeningArrow = null;
+    S.forcedOpeningArrows = [];
     S.highlightCells = [];
     S.souflaRemove = null;
     S.souflaForcePath = [];
@@ -150,6 +152,7 @@ const Visual = (() => {
     S.capturedOrder = [];
     S.pendingTurnClear = false;
     S.forcedOpeningArrow = null;
+    S.forcedOpeningArrows = [];
     S.highlightCells = [];
 
     if (!preserveSoufla) {
@@ -406,10 +409,21 @@ const Visual = (() => {
 
   function setForcedOpeningArrow(fr, to) {
     S.forcedOpeningArrow = { from: fr, to: to };
+    S.forcedOpeningArrows = [];
     draw();
+  }
+  function setForcedOpeningArrows(items, noDraw) {
+    S.forcedOpeningArrow = null;
+    S.forcedOpeningArrows = Array.isArray(items)
+      ? items
+          .filter((item) => item && item.from != null && item.to != null)
+          .map((item) => ({ from: Number(item.from), to: Number(item.to) }))
+      : [];
+    if (!noDraw) draw();
   }
   function clearForcedOpeningArrow(noDraw) {
     S.forcedOpeningArrow = null;
+    S.forcedOpeningArrows = [];
     if (!noDraw) draw();
   }
 
@@ -458,8 +472,13 @@ const Visual = (() => {
       const __numLabels = [];
       try { S._arrowStacks = new Map(); } catch (_) { S._arrowStacks = null; }
 
-      if (S.forcedOpeningArrow)
+      if (Array.isArray(S.forcedOpeningArrows) && S.forcedOpeningArrows.length) {
+        for (const openingArrow of S.forcedOpeningArrows) {
+          drawArrow(ctx, openingArrow.from, openingArrow.to, themeColor("--mark-danger"));
+        }
+      } else if (S.forcedOpeningArrow) {
         drawArrow(ctx, S.forcedOpeningArrow.from, S.forcedOpeningArrow.to, themeColor("--mark-danger"));
+      }
 
       if (S.souflaRemove != null) {
         drawX(ctx, S.souflaRemove, themeColor("--mark-danger"));
@@ -671,6 +690,7 @@ const Visual = (() => {
     setUndoMovePath,
     setIgnoredKills,
     setForcedOpeningArrow,
+    setForcedOpeningArrows,
     clearForcedOpeningArrow,
     setHighlightCells,
     queueCrown,
@@ -1050,7 +1070,13 @@ const Input = {
         const hintTo = hintInfo.toFirst;
 
         if (allowedStart == null || idx !== allowedStart || pieceOwner(v) !== Game.player) {
-          Visual.setForcedOpeningArrow(hintFrom, hintTo);
+          if (openingOptions.length > 1 && typeof Visual.setForcedOpeningArrows === "function") {
+            Visual.setForcedOpeningArrows(openingOptions.map((item) => ({ from: item.from, to: item.toFirst })), true);
+            Visual.setHighlightCells(openingOptions.map((item) => idxToRC(item.from)));
+            Visual.draw();
+          } else {
+            Visual.setForcedOpeningArrow(hintFrom, hintTo);
+          }
           UI.status(
             t("status.forcedMove", {
               from: rcStr(hintFrom),
@@ -1068,6 +1094,7 @@ const Input = {
           return;
         }
         Input.selected = idx;
+        Visual.setForcedOpeningArrow(info.from, info.toFirst);
         Visual.setHighlightCells([[r, c]]);
         Visual.draw();
         return;

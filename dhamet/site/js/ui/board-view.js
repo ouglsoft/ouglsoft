@@ -487,9 +487,9 @@
     var dark = isWhite ? colors.whiteDark : colors.blackDark;
     var baseY = anchorY - height * 0.03;
     var topY = anchorY - height * 0.84;
-    var headR = width * 0.17;
-    var collarY = topY + headR * 1.62;
-    var stemTop = collarY + height * 0.05;
+    var headR = width * 0.18;
+    var collarY = topY + headR * 1.10;
+    var stemTop = collarY + height * 0.015;
     var stemBottom = anchorY - height * 0.25;
 
     var bodyGrad = ctx.createLinearGradient(x - width * 0.38, topY, x + width * 0.38, baseY);
@@ -554,7 +554,7 @@
 
     // Collar and spherical head.
     ctx.beginPath();
-    ctx.ellipse(x, collarY, width * 0.22, height * 0.075, 0, 0, Math.PI * 2);
+    ctx.ellipse(x, collarY, width * 0.24, height * 0.092, 0, 0, Math.PI * 2);
     ctx.fillStyle = bodyGrad;
     ctx.fill();
     ctx.strokeStyle = edgeSoft;
