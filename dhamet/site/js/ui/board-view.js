@@ -178,14 +178,16 @@
 
   function dimensionalPalette(opts) {
     var root = getComputedRoot(opts);
+    var gridFallback = themeColor("--game-board-grid");
+    var grid = cssValue(root, "--board-grid", gridFallback);
     return {
-      base: cssValue(root, "--board-bg-end", ""),
-      surface: cssValue(root, "--board-bg-start", ""),
-      diag: cssValue(root, "--board-diag", ""),
-      grid: cssValue(root, "--board-grid", ""),
-      point: cssValue(root, "--board-point", cssValue(root, "--board-grid", "")),
-      highlight: cssValue(root, "--board-highlight", ""),
-      shadow: cssValue(root, "--board-shadow", ""),
+      base: cssValue(root, "--board-bg-end", themeColor("--game-board-end")),
+      surface: cssValue(root, "--board-bg-start", themeColor("--game-board-start")),
+      diag: cssValue(root, "--board-diag", themeColor("--game-board-diag")),
+      grid: cssValue(root, "--board-grid", gridFallback),
+      point: cssValue(root, "--board-point", grid),
+      highlight: cssValue(root, "--board-highlight", themeChannels("--rgb-white", ".28")),
+      shadow: cssValue(root, "--board-shadow", themeChannels("--rgb-black", ".28")),
     };
   }
 
@@ -315,7 +317,14 @@
   function drawGrid(ctx, W, H, opts) {
     opts = opts || {};
     var dimensional = opts.boardStyle === "3d";
-    if (dimensional) drawDimensionalBoardSurface(ctx, W, H, opts);
+    if (dimensional) {
+      try {
+        drawDimensionalBoardSurface(ctx, W, H, opts);
+      } catch (_) {
+        dimensional = false;
+        ctx.clearRect(0, 0, W, H);
+      }
+    }
 
     var n = boardSize(opts);
     ctx.save();
@@ -589,8 +598,12 @@
     var canvas = opts.canvas;
     if (!canvas || !board) return;
     if (opts.boardStyle === "3d") {
-      drawDimensionalPieces(ctx, board, opts);
-      return;
+      try {
+        drawDimensionalPieces(ctx, board, opts);
+        return;
+      } catch (_) {
+        /* Fall through to the canonical 2D pieces instead of leaving an empty board. */
+      }
     }
 
     var n = boardSize(opts);

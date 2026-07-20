@@ -1895,6 +1895,8 @@ const UI = {
     Modal.open({
       title: t("buttons.settings"),
       body: wrap,
+      modalClassName: "z-apply-settings",
+      onEnter: applyNow,
       onClose: () => document.removeEventListener("keydown", keyHandler),
       buttons: [
         { label: t("modals.apply"), className: "ok", onClick: applyNow },

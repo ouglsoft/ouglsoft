@@ -2593,3 +2593,85 @@ body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="game"] .
   border-bottom-right-radius: 0 !important;
   z-index: 10062 !important;
 }
+
+/* ========================================================================== 
+   2.13.10 SOUFLA COPY AND ORIENTATION LAYER PRIORITY
+   ========================================================================== */
+/* The orientation control occupies the bottom edge but must remain above the
+   drawer handle, whose full-width surface stays available everywhere else. */
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-orient,
+body.z-mobile-on[data-mobile-orientation="portrait"][data-mobile-page="game"] .z-mobile-orient,
+body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="game"] .z-mobile-orient {
+  bottom: 0 !important;
+  inset-block-end: 0 !important;
+  margin-bottom: 0 !important;
+  z-index: 2147483647 !important;
+  pointer-events: auto !important;
+  touch-action: manipulation;
+  isolation: isolate;
+}
+
+/* ========================================================================== 
+   2.13.13 FIXES — 3D BOARD, MOBILE AUTH HERO, ORIENTATION PRIORITY
+   ========================================================================== */
+
+/* The mobile login artwork replaces only the stretched mobile brand image.
+   Desktop keeps the compact application icon. */
+.z-auth-mobile-hero { display: none; }
+body.z-mobile-on[data-mobile-page="auth"] .z-auth-brand {
+  position: relative;
+}
+body.z-mobile-on[data-mobile-page="auth"] .z-auth-brand-icon {
+  display: none !important;
+}
+body.z-mobile-on[data-mobile-page="auth"] .z-auth-mobile-hero {
+  display: block !important;
+  width: 100% !important;
+  height: 100% !important;
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  max-width: none !important;
+  max-height: none !important;
+  object-fit: fill !important;
+  border-radius: 0 !important;
+}
+body.z-mobile-on[data-mobile-page="auth"] .z-auth-brand h1 {
+  display: block !important;
+  position: absolute;
+  inset-inline: 16px;
+  inset-block-start: 10px;
+  z-index: 2;
+  margin: 0;
+  padding: 8px 12px;
+  color: rgb(10 61 81) !important;
+  font-size: clamp(20px, 5vw, 34px) !important;
+  line-height: 1.15;
+  font-weight: 950;
+  text-align: center;
+  text-shadow: 0 1px 0 rgb(var(--rgb-white) / .90), 0 3px 12px rgb(var(--rgb-white) / .86);
+  pointer-events: none;
+}
+body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="auth"] .z-auth-brand h1 {
+  inset-block-start: 8px;
+  font-size: clamp(18px, 3vw, 30px) !important;
+}
+
+/* Keep the orientation action at its existing position, but always above the
+   bottom drawer handle and its pointer layer. */
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-orient {
+  z-index: 2147483647 !important;
+  pointer-events: auto !important;
+  isolation: isolate;
+}
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-drawer-handle {
+  z-index: 1 !important;
+}
+
+/* The dimensional mode still uses the same canvas and must never make it
+   transparent while a redraw is pending or fails. */
+body.board-depth canvas#board {
+  background: linear-gradient(180deg, var(--board-bg-start) 0%, var(--board-bg-end) 100%) !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+}

@@ -363,7 +363,7 @@
       "currentLevel": "المستوى الحالي",
       "aiThinkingMoveLevelDuration": "المستوى: ${level} (مدة تفكير الحاسوب من ${min} إلى ${max} ثانية لكل نقلة)",
       "turn": "الدور الآن على:",
-      "forcedChainIncomplete": "ما زال هناك أسر متاح. أكمل السلسلة ثم اضغط «إنهاء الأسر».",
+      "forcedChainIncomplete": "ما زال هناك أسر متاح. أكمل السلسلة ثم اضغط مؤقت إنهاء الأسر.",
       "forcedMove": "نقلة الافتتاح المطلوبة: من ${from} إلى ${to}",
       "moveSendFail": "تعذر إرسال النقلة. تحقق من الاتصال ثم أعد تنفيذها.",
       "aiThinkingMoveLevelNote": "ملاحظة: كلما كان المستوى أعلى، قد يستغرق التفكير وقتًا أطول."
@@ -488,7 +488,7 @@
     },
     "chain": {
       "notice": {
-        "body": "نفّذ الأسر المتتابع خطوةً خطوة، ثم اضغط «إنهاء الأسر» لإكمال دورك."
+        "body": "نفّذ الأسر المتتابع خطوةً خطوة، ثم اضغط على مؤقت إنهاء الأسر لإكمال دورك."
       }
     },
     "actions": {
@@ -902,7 +902,7 @@
       "currentLevel": "Current level",
       "aiThinkingMoveLevelDuration": "Level: ${level} (computer thinking time from ${min} to ${max} seconds per move)",
       "turn": "Turn:",
-      "forcedChainIncomplete": "Another capture is available. Finish the chain, then press “End capture”.",
+      "forcedChainIncomplete": "Another capture is available. Finish the chain, then press the end-capture timer.",
       "forcedMove": "Required opening move: ${from} → ${to}",
       "moveSendFail": "The move could not be sent. Check your connection and play it again.",
       "aiThinkingMoveLevelNote": "Note: higher levels may take longer to think."
@@ -1027,7 +1027,7 @@
     },
     "chain": {
       "notice": {
-        "body": "Complete the capture chain one step at a time, then press “End capture” to finish your turn."
+        "body": "Complete the capture chain one step at a time, then press the end-capture timer to finish your turn."
       }
     },
     "actions": {
@@ -1441,7 +1441,7 @@
       "currentLevel": "Niveau actuel",
       "aiThinkingMoveLevelDuration": "Niveau : ${level} (temps de réflexion de l’ordinateur de ${min} à ${max} secondes par coup)",
       "turn": "Au tour de :",
-      "forcedChainIncomplete": "Une autre prise est disponible. Terminez la chaîne, puis appuyez sur « Terminer la prise ».",
+      "forcedChainIncomplete": "Une autre prise est disponible. Terminez la chaîne, puis appuyez sur le minuteur de fin de prise.",
       "forcedMove": "Coup d’ouverture requis : ${from} → ${to}",
       "moveSendFail": "Le coup n’a pas pu être envoyé. Vérifiez votre connexion et rejouez-le.",
       "aiThinkingMoveLevelNote": "Remarque : plus le niveau est élevé, plus la réflexion peut durer."
@@ -1566,7 +1566,7 @@
     },
     "chain": {
       "notice": {
-        "body": "Effectuez la chaîne de prises étape par étape, puis appuyez sur « Terminer la prise » pour finir votre tour."
+        "body": "Effectuez la chaîne de prises étape par étape, puis appuyez sur le minuteur de fin de prise pour terminer votre tour."
       }
     },
     "actions": {
