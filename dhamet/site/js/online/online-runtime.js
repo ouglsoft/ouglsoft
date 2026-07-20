@@ -1292,7 +1292,7 @@
                   },
                 },
                 {
-                  label: window.I18N.translateArgs("online.invites.returnToMatch"),
+                  label: window.I18N.translateArgs("lobby.returnToMatch"),
                   className: "ok",
                   onClick: async () => {
                     done(false);
@@ -1616,7 +1616,7 @@
           } else if (winner != null) {
             add(formatTpl(window.I18N.translateArgs("online.endPresentation.winner"), { player: winnerName }));
           } else if (isDraw) {
-            add(window.I18N.translateArgs("online.endPresentation.draw"));
+            add(window.I18N.translateArgs("modals.gameOver.draw"));
           } else if (isManual && actorName) {
             add(isAbsence
               ? formatTpl(window.I18N.translateArgs("online.endPresentation.endedByAbsence"), { player: actorName, opponent: otherName })
@@ -1627,7 +1627,7 @@
 
           if (!missingOfficial) {
             if (reason === "no_pieces") {
-              add(formatTpl(window.I18N.translateArgs("online.endPresentation.reason.noPieces"), { player: loserName }));
+              add(formatTpl(window.I18N.translateArgs("modals.gameOver.reason.noPieces"), { player: loserName }));
             } else if (reason === "no_legal_moves") {
               add(formatTpl(window.I18N.translateArgs("online.endPresentation.reason.noLegalMoves"), { player: loserName }));
             } else if (reason === "one_king_each") {
@@ -1654,7 +1654,7 @@
 
           const primary = lines[0] || window.I18N.translateArgs("online.endPresentation.noRecordedResult");
           return {
-            title: window.I18N.translateArgs("online.pvpEndTitle"),
+            title: window.I18N.translateArgs("modals.gameOver.title"),
             primary,
             details: lines.slice(1),
             text: lines.join("\n\n"),
@@ -2631,7 +2631,7 @@
           };
     
           if (btnChat) {
-            setBtn(btnChat, "chat.svg", window.I18N.translateArgs("pvp.chat.open"));
+            setBtn(btnChat, "chat.svg", window.I18N.translateArgs("pvp.chat.title"));
           }
           setBtn(
             btnSpk,
@@ -2848,11 +2848,11 @@
     
             const _chatDisplayName = (m) => {
               try {
-                const fallback = String((m && m.fromNick) || "").trim() || window.I18N.translateArgs("online.player");
+                const fallback = String((m && m.fromNick) || "").trim() || window.I18N.translateArgs("players.player");
                 const base = this._displayNameForGameUid(m && m.fromUid, fallback) || fallback;
                 return `${base} (${_chatRoleLabel(_chatMessageRole(m))})`;
               } catch (e) {
-                return String((m && m.fromNick) || "").trim() || window.I18N.translateArgs("online.player");
+                return String((m && m.fromNick) || "").trim() || window.I18N.translateArgs("players.player");
               }
             };
             const _chatDir = () => {
@@ -2910,7 +2910,7 @@
     
             const send = document.createElement("button");
             send.className = "btn primary pvp-chat-send";
-            send.textContent = window.I18N.translateArgs("pvp.chat.send");
+            send.textContent = window.I18N.translateArgs("actions.send");
             send.type = "button";
     
             form.appendChild(input);

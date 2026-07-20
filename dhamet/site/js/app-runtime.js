@@ -891,7 +891,7 @@ const btnRegister = qs("#btnRegister", root);
       if (window.Modal && typeof window.Modal.confirm === "function" && window.I18N) {
         confirmLogout = await window.Modal.confirm(
           window.I18N.text("dashboard.logoutConfirm.body"),
-          window.I18N.text("dashboard.logoutConfirm.title"),
+          window.I18N.text("topbar.logout"),
           window.I18N.text("topbar.logout"),
           window.I18N.text("actions.cancel")
         );
@@ -1436,13 +1436,13 @@ function buildTopbar() {
         
         area.innerHTML =
           '<div class="z-acc-desktop">' +
-            '<button type="button" class="btn small secondary z-acc-menu-btn" id="zAccMenuBtn" aria-expanded="false" data-i18n-title="topbar.dashboard">' +
+            '<button type="button" class="btn small secondary z-acc-menu-btn" id="zAccMenuBtn" aria-expanded="false" data-i18n-title="dashboard.title">' +
               '<span class="z-acc-ico" aria-hidden="true"><img class="z-ico" src="' + base + '/assets/icons/dashboard.svg" alt="" aria-hidden="true" /></span>' +
-              '<span class="z-acc-text" data-i18n="topbar.dashboard"></span>' +
+              '<span class="z-acc-text" data-i18n="dashboard.title"></span>' +
             '</button>' +
           '</div>' +
           '<div class="z-acc-menu" id="zAccMenu" hidden>' +
-            '<a class="z-acc-item" href="' + base + '/pages/dashboard.html" data-i18n="topbar.dashboard"></a>' +
+            '<a class="z-acc-item" href="' + base + '/pages/dashboard.html" data-i18n="dashboard.title"></a>' +
             '<button type="button" class="z-acc-item danger" id="zAccLogout" data-i18n="topbar.logout"></button>' +
           '</div>';
         var btn = qs("#zAccMenuBtn");

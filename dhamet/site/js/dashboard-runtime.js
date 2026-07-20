@@ -538,7 +538,7 @@
 
     const inp = createInput({ type: "password", id: "dashDelPass", placeholder: "••••••••" });
     if (usesPasswordProvider) {
-      body.appendChild(createFormRow(window.I18N.text("dashboard.delete.passwordLabel"), inp));
+      body.appendChild(createFormRow(window.I18N.text("auth.password"), inp));
     }
 
     let busy = false;

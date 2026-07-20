@@ -1496,7 +1496,7 @@ const UI = {
   },
   showOnlineGameOverModal(options) {
     const opts = options && typeof options === "object" ? options : {};
-    const title = String(opts.title || t("online.pvpEndTitle") || "").trim();
+    const title = String(opts.title || t("modals.gameOver.title") || "").trim();
     const bodyTxt = String(opts.text || opts.message || "").trim();
     if (!bodyTxt) return false;
     let leaving = false;
@@ -1635,7 +1635,7 @@ const UI = {
           },
         },
         {
-          label: t("buttons.home") || t("pages.mode.title"),
+          label: t("buttons.home") || t("mode.title"),
           className: "ghost",
           onClick: () => {
             goHome = true;
