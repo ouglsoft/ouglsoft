@@ -6,20 +6,9 @@
    ========================================================================== */
 
 :root {
-  /* ------------------------------------------------------------------------
-     RAW PALETTE
-     Concrete color channels are intentionally confined to this file.
-     ------------------------------------------------------------------------ */
   --rgb-white: 255 255 255;
   --rgb-black: 0 0 0;
-
-  --rgb-sand-50: 252 249 244;
-  --rgb-sand-100: 246 239 228;
-  --rgb-sand-200: 232 223 207;
-  --rgb-sand-300: 215 201 179;
-
   --rgb-neutral-50: 248 250 252;
-  --rgb-neutral-100: 241 245 249;
   --rgb-neutral-200: 226 232 240;
   --rgb-neutral-300: 203 213 225;
   --rgb-neutral-400: 148 163 184;
@@ -29,94 +18,29 @@
   --rgb-neutral-800: 30 41 59;
   --rgb-neutral-900: 15 23 42;
   --rgb-neutral-950: 2 6 23;
-
-  --rgb-light-primary-200: 218 234 255;
-  --rgb-light-primary-300: 175 208 255;
-  --rgb-light-primary-400: 96 165 250;
-  --rgb-light-primary-500: 37 99 235;
-  --rgb-light-primary-600: 29 78 216;
-  --rgb-light-primary-700: 30 64 175;
-  --rgb-light-primary-800: 30 58 138;
-
-  --rgb-primary-100: 247 245 255;
-  --rgb-primary-200: 238 233 255;
-  --rgb-primary-300: 216 209 232;
-  --rgb-primary-400: 154 123 255;
-  --rgb-primary-500: 91 43 224;
-  --rgb-primary-600: 75 32 194;
-  --rgb-primary-700: 55 28 132;
-  --rgb-primary-800: 33 25 54;
-  --rgb-primary-900: 13 9 24;
-
-  --rgb-secondary-100: 227 252 249;
-  --rgb-secondary-200: 174 241 233;
-  --rgb-secondary-300: 102 224 211;
-  --rgb-secondary-400: 54 214 197;
-  --rgb-secondary-500: 0 169 154;
-  --rgb-secondary-600: 0 124 116;
-  --rgb-secondary-700: 0 91 86;
-
   --rgb-success-100: 226 249 239;
   --rgb-success-500: 71 215 155;
   --rgb-success-600: 22 132 91;
   --rgb-success-700: 14 101 68;
   --rgb-success-800: 10 72 49;
-
   --rgb-gold-400: 255 216 117;
   --rgb-gold-500: 255 200 87;
   --rgb-gold-600: 255 176 32;
   --rgb-gold-700: 185 113 0;
   --rgb-gold-800: 112 68 0;
-
   --rgb-danger-300: 255 160 168;
   --rgb-danger-400: 255 107 120;
   --rgb-danger-500: 201 56 66;
   --rgb-danger-600: 164 39 50;
   --rgb-danger-700: 124 27 38;
   --rgb-danger-800: 80 18 27;
-
   --rgb-violet-mid: 139 92 246;
   --rgb-violet-bright: 180 92 255;
-  --rgb-ink: 23 31 56;
-  --rgb-muted-ink: 91 101 127;
-  --rgb-dark-muted: 173 164 190;
-  --rgb-dark-surface: 23 17 38;
-  --rgb-dark-surface-alt: 19 14 33;
-  --rgb-dark-border: 53 42 74;
-  --rgb-board-light: 255 252 242;
-  --rgb-board-light-alt: 236 228 255;
-  --rgb-board-dark: 20 14 34;
-  --rgb-board-dark-alt: 10 7 19;
-  --rgb-board-grid-light: 37 29 58;
-  --rgb-board-diag-light: 73 55 105;
-  --rgb-board-grid-dark: 205 190 234;
-  --rgb-board-diag-dark: 154 123 255;
-
-  /* ------------------------------------------------------------------------
-     SEMANTIC COLOR ROLES — LIGHT
-     ------------------------------------------------------------------------ */
-  --color-bg: rgb(var(--rgb-sand-50));
-  --color-bg-alt: rgb(var(--rgb-sand-100));
-  --color-surface: rgb(var(--rgb-white) / .90);
-  --color-surface-solid: rgb(var(--rgb-white) / .97);
-  --color-surface-raised: rgb(var(--rgb-white) / .98);
-  --color-surface-muted: rgb(var(--rgb-sand-100) / .84);
   --color-surface-inverse: rgb(var(--rgb-neutral-900));
-  --color-text: rgb(var(--rgb-ink));
-  --color-text-strong: rgb(var(--rgb-ink));
-  --color-text-muted: rgb(var(--rgb-muted-ink));
   --color-on-dark: rgb(var(--rgb-white));
   --color-on-primary: rgb(var(--rgb-white));
   --color-on-accent: rgb(var(--rgb-white));
   --color-on-warning: rgb(var(--rgb-neutral-900));
-  --color-border: rgb(var(--rgb-light-primary-300) / .42);
-  --color-border-strong: rgb(var(--rgb-light-primary-400) / .38);
-  --color-primary: rgb(var(--rgb-light-primary-500));
-  --color-primary-hover: rgb(var(--rgb-light-primary-600));
-  --color-primary-soft: rgb(var(--rgb-light-primary-500) / .12);
-  --color-secondary: rgb(var(--rgb-secondary-600));
-  --color-secondary-hover: rgb(var(--rgb-secondary-700));
-  --color-secondary-soft: rgb(var(--rgb-secondary-500) / .12);
   --color-success: rgb(var(--rgb-success-600));
   --color-success-soft: rgb(var(--rgb-success-500) / .14);
   --color-warning: rgb(var(--rgb-gold-600));
@@ -124,22 +48,12 @@
   --color-danger: rgb(var(--rgb-danger-500));
   --color-danger-soft: rgb(var(--rgb-danger-500) / .13);
   --color-focus: rgb(var(--rgb-light-primary-400) / .36);
-
-  /* ------------------------------------------------------------------------
-     GAME / CANVAS ROLES
-     JavaScript resolves these values through js/theme-colors.js.
-     ------------------------------------------------------------------------ */
   --game-move-top: rgb(var(--rgb-secondary-600));
   --game-move-bottom: rgb(var(--rgb-light-primary-600));
   --game-capture: rgb(var(--rgb-gold-600));
   --game-danger: rgb(var(--rgb-danger-500));
   --game-soufla-green: rgb(var(--rgb-success-600));
   --game-soufla-red: rgb(var(--rgb-danger-500));
-  --game-board-grid: rgb(var(--rgb-board-grid-light));
-  --game-board-diag: rgb(var(--rgb-board-diag-light));
-  --game-board-start: rgb(var(--rgb-board-light));
-  --game-board-end: rgb(var(--rgb-board-light-alt));
-
   --board-point: rgb(var(--rgb-light-primary-500));
   --mark-danger: rgb(var(--rgb-danger-500));
   --mark-danger-strong: rgb(var(--rgb-danger-600));
@@ -149,43 +63,15 @@
   --mark-label-bg: rgb(var(--rgb-white) / .88);
   --mark-overlay-light: rgb(var(--rgb-white) / .76);
   --mark-overlay-dark: rgb(var(--rgb-black) / .60);
-
-  --piece-white-light: rgb(var(--rgb-white));
-  --piece-white-mid: rgb(var(--rgb-sand-100));
-  --piece-white-dark: rgb(var(--rgb-light-primary-200));
-  --piece-white-edge: rgb(var(--rgb-light-primary-500));
-  --piece-white-edge-soft: rgb(var(--rgb-light-primary-400));
-  --piece-white-dot: rgb(var(--rgb-light-primary-400));
-  --piece-black-light: rgb(var(--rgb-neutral-800));
-  --piece-black-mid: rgb(var(--rgb-neutral-900));
-  --piece-black-dark: rgb(var(--rgb-neutral-950));
-  --piece-black-edge: rgb(var(--rgb-gold-600));
-  --piece-black-edge-soft: rgb(var(--rgb-gold-500));
-  --piece-black-dot: rgb(var(--rgb-gold-500));
-  --piece-shadow: rgb(var(--rgb-neutral-900));
   --piece-highlight: rgb(var(--rgb-white));
   --piece-crown-light: rgb(var(--rgb-gold-400));
   --piece-crown-mid: rgb(var(--rgb-gold-500));
   --piece-crown-dark: rgb(var(--rgb-gold-600));
   --piece-crown-edge: rgb(var(--rgb-gold-800));
-
-  /* ------------------------------------------------------------------------
-     GRADIENTS, SHADOWS, SHAPE AND TYPE
-     ------------------------------------------------------------------------ */
-  --gradient-primary: linear-gradient(135deg, rgb(var(--rgb-light-primary-600)) 0%, rgb(var(--rgb-light-primary-400)) 54%, rgb(var(--rgb-secondary-400)) 100%);
-  --gradient-secondary: linear-gradient(135deg, rgb(var(--rgb-secondary-700)) 0%, rgb(var(--rgb-secondary-500)) 55%, rgb(var(--rgb-secondary-300)) 100%);
   --gradient-warning: linear-gradient(135deg, rgb(var(--rgb-gold-700)) 0%, rgb(var(--rgb-gold-600)) 56%, rgb(var(--rgb-gold-400)) 100%);
   --gradient-danger: linear-gradient(135deg, rgb(var(--rgb-danger-600)) 0%, rgb(var(--rgb-danger-400)) 100%);
   --gradient-success: linear-gradient(135deg, rgb(var(--rgb-success-700)) 0%, rgb(var(--rgb-success-500)) 100%);
-  --gradient-surface: linear-gradient(155deg, rgb(var(--rgb-white) / .98) 0%, rgb(var(--rgb-sand-100) / .96) 48%, rgb(var(--rgb-light-primary-200) / .76) 100%);
   --gradient-profile: linear-gradient(135deg, rgb(var(--rgb-light-primary-700)) 0%, rgb(var(--rgb-light-primary-500)) 58%, rgb(var(--rgb-secondary-500)) 100%);
-  --gradient-game-panel: linear-gradient(150deg, rgb(var(--rgb-white) / .98) 0%, rgb(var(--rgb-sand-100) / .95) 52%, rgb(var(--rgb-light-primary-200) / .82) 100%);
-  --gradient-mode-pvc: linear-gradient(145deg, rgb(var(--rgb-white) / .98) 0%, rgb(var(--rgb-light-primary-200) / .98) 58%, rgb(var(--rgb-secondary-200) / .84) 100%);
-  --gradient-mode-pvp: linear-gradient(145deg, rgb(var(--rgb-white) / .98) 0%, rgb(var(--rgb-secondary-100) / .98) 58%, rgb(var(--rgb-light-primary-200) / .82) 100%);
-  --gradient-lobby-rooms: linear-gradient(160deg, rgb(var(--rgb-white) / .98) 0%, rgb(var(--rgb-light-primary-200) / .72) 56%, rgb(var(--rgb-white) / .98) 100%);
-  --gradient-lobby-players: linear-gradient(160deg, rgb(var(--rgb-white) / .98) 0%, rgb(var(--rgb-secondary-200) / .74) 56%, rgb(var(--rgb-white) / .98) 100%);
-  --gradient-row-room: linear-gradient(140deg, rgb(var(--rgb-white) / .98) 0%, rgb(var(--rgb-light-primary-200) / .72) 100%);
-  --gradient-row-player: linear-gradient(140deg, rgb(var(--rgb-white) / .98) 0%, rgb(var(--rgb-secondary-100) / .88) 100%);
   --gradient-action-sync: linear-gradient(145deg, rgb(var(--rgb-secondary-700)) 0%, rgb(var(--rgb-secondary-500)) 100%);
   --gradient-action-soufla: linear-gradient(145deg, rgb(var(--rgb-gold-700)) 0%, rgb(var(--rgb-gold-600)) 56%, rgb(var(--rgb-danger-400)) 100%);
   --gradient-action-undo: linear-gradient(145deg, rgb(var(--rgb-gold-600)) 0%, rgb(var(--rgb-gold-500)) 100%);
@@ -212,7 +98,6 @@
   --row-room-badge-text: rgb(var(--rgb-light-primary-700));
   --row-player-badge-bg: rgb(var(--rgb-secondary-500) / .12);
   --row-player-badge-text: rgb(var(--rgb-secondary-700));
-
   --shadow-xs: 0 4px 12px rgb(var(--rgb-light-primary-700) / .06);
   --shadow-sm-unified: 0 10px 26px rgb(var(--rgb-light-primary-700) / .10);
   --shadow-md-unified: 0 18px 42px rgb(var(--rgb-light-primary-700) / .15), 0 3px 10px rgb(var(--rgb-light-primary-700) / .05);
@@ -220,16 +105,9 @@
   --shadow-primary: 0 18px 38px rgb(var(--rgb-light-primary-500) / .24);
   --shadow-secondary: 0 16px 34px rgb(var(--rgb-secondary-600) / .20);
   --shadow-warning: 0 14px 30px rgb(var(--rgb-gold-700) / .18);
-
   --radius-card: 22px;
   --radius-control: 14px;
-  --radius-small: 11px;
   --fs-title: 30px;
-
-  /* ------------------------------------------------------------------------
-     LEGACY COMPATIBILITY ALIASES
-     Existing layouts use these names; their values are now centrally owned.
-     ------------------------------------------------------------------------ */
   --primary-green: var(--color-success);
   --primary-gold: var(--color-warning);
   --primary-red: var(--color-danger);
@@ -280,27 +158,112 @@
   --surface-stroke: var(--color-border);
   --surface-stroke-strong: var(--color-border-strong);
   --icon-dark-bg: var(--color-surface-solid);
+  --piece-shadow: rgb(15 23 42 / .30);
+  --rgb-sand-50: 248 250 250;
+  --rgb-sand-100: 238 244 244;
+  --rgb-sand-200: 221 232 232;
+  --rgb-sand-300: 198 215 214;
+  --rgb-light-primary-200: 205 224 233;
+  --rgb-light-primary-300: 155 193 208;
+  --rgb-light-primary-400: 63 133 157;
+  --rgb-light-primary-500: 23 89 118;
+  --rgb-light-primary-600: 18 71 96;
+  --rgb-light-primary-700: 13 54 76;
+  --rgb-light-primary-800: 9 41 60;
+  --rgb-primary-100: 235 245 249;
+  --rgb-primary-200: 211 230 238;
+  --rgb-primary-300: 159 200 216;
+  --rgb-primary-400: 79 151 178;
+  --rgb-primary-500: 32 104 134;
+  --rgb-primary-600: 22 80 106;
+  --rgb-primary-700: 15 59 82;
+  --rgb-primary-800: 11 43 62;
+  --rgb-primary-900: 7 27 40;
+  --rgb-secondary-100: 222 245 241;
+  --rgb-secondary-200: 181 226 219;
+  --rgb-secondary-300: 100 199 187;
+  --rgb-secondary-400: 40 174 161;
+  --rgb-secondary-500: 15 139 130;
+  --rgb-secondary-600: 10 111 105;
+  --rgb-secondary-700: 7 83 80;
+  --rgb-ink: 19 38 55;
+  --rgb-muted-ink: 75 91 104;
+  --rgb-dark-surface: 11 34 49;
+  --rgb-dark-surface-alt: 8 27 40;
+  --rgb-dark-border: 38 83 99;
+  --rgb-dark-muted: 178 205 213;
+  --color-bg: rgb(var(--rgb-sand-50));
+  --color-bg-alt: rgb(var(--rgb-sand-100));
+  --color-surface: rgb(var(--rgb-white) / .94);
+  --color-surface-solid: rgb(var(--rgb-white) / .99);
+  --color-surface-raised: rgb(var(--rgb-white));
+  --color-surface-muted: rgb(var(--rgb-sand-100) / .92);
+  --color-text: rgb(var(--rgb-ink));
+  --color-text-strong: rgb(var(--rgb-ink));
+  --color-text-muted: rgb(var(--rgb-muted-ink));
+  --color-primary: rgb(var(--rgb-light-primary-500));
+  --color-primary-hover: rgb(var(--rgb-light-primary-600));
+  --color-primary-soft: rgb(var(--rgb-light-primary-500) / .12);
+  --color-secondary: rgb(var(--rgb-secondary-600));
+  --color-secondary-hover: rgb(var(--rgb-secondary-700));
+  --color-secondary-soft: rgb(var(--rgb-secondary-500) / .13);
+  --color-border: rgb(var(--rgb-light-primary-300) / .46);
+  --color-border-strong: rgb(var(--rgb-light-primary-500) / .42);
+  --gradient-surface: linear-gradient(150deg, rgb(var(--rgb-white) / .99) 0%, rgb(var(--rgb-sand-100) / .97) 58%, rgb(var(--rgb-light-primary-200) / .82) 100%);
+  --gradient-game-panel: linear-gradient(150deg, rgb(var(--rgb-white) / .99) 0%, rgb(var(--rgb-sand-100) / .96) 56%, rgb(var(--rgb-secondary-100) / .84) 100%);
+  --gradient-mode-pvc: linear-gradient(145deg, rgb(var(--rgb-white)) 0%, rgb(var(--rgb-light-primary-200) / .94) 64%, rgb(var(--rgb-secondary-100) / .86) 100%);
+  --gradient-mode-pvp: linear-gradient(145deg, rgb(var(--rgb-white)) 0%, rgb(var(--rgb-secondary-100) / .96) 62%, rgb(var(--rgb-light-primary-200) / .84) 100%);
+  --gradient-lobby-rooms: linear-gradient(150deg, rgb(var(--rgb-white)) 0%, rgb(var(--rgb-light-primary-200) / .88) 100%);
+  --gradient-lobby-players: linear-gradient(150deg, rgb(var(--rgb-white)) 0%, rgb(var(--rgb-secondary-100) / .95) 100%);
+  --gradient-row-room: linear-gradient(140deg, rgb(var(--rgb-white)) 0%, rgb(var(--rgb-light-primary-200) / .78) 100%);
+  --gradient-row-player: linear-gradient(140deg, rgb(var(--rgb-white)) 0%, rgb(var(--rgb-secondary-100) / .88) 100%);
+  --rgb-board-dark: 17 36 50;
+  --rgb-board-dark-alt: 45 80 96;
+  --rgb-board-grid-light: 25 57 76;
+  --rgb-board-diag-light: 176 105 45;
+  --rgb-board-grid-dark: 218 236 239;
+  --rgb-board-diag-dark: 255 202 114;
+  --game-board-grid: rgb(var(--rgb-board-grid-light));
+  --game-board-diag: rgb(var(--rgb-board-diag-light));
+  --game-board-start: rgb(var(--rgb-board-light));
+  --game-board-end: rgb(var(--rgb-board-light-alt));
+  --piece-white-light: rgb(var(--rgb-white));
+  --piece-white-mid: rgb(240 247 248);
+  --piece-white-dark: rgb(199 220 226);
+  --piece-white-dot: rgb(var(--rgb-light-primary-700));
+  --piece-black-light: rgb(43 76 92);
+  --piece-black-mid: rgb(22 49 65);
+  --piece-black-dark: rgb(8 27 39);
+  --piece-black-dot: rgb(var(--rgb-secondary-200));
+  --gradient-primary: linear-gradient(135deg, rgb(21 86 114) 0%, rgb(24 125 132) 58%, rgb(53 160 145) 100%);
+  --gradient-secondary: linear-gradient(135deg, rgb(25 75 96) 0%, rgb(28 112 119) 58%, rgb(64 151 140) 100%);
+  --gradient-game-control: linear-gradient(145deg, rgb(19 69 94) 0%, rgb(25 108 119) 58%, rgb(49 143 132) 100%);
+  --gradient-game-control-danger: linear-gradient(145deg, rgb(128 40 48) 0%, rgb(177 61 70) 100%);
+  --gradient-modal-header: linear-gradient(135deg, rgb(18 66 90) 0%, rgb(24 105 116) 58%, rgb(48 143 132) 100%);
+  /* ------------------------------------------------------------------------
+     RAW PALETTE
+     Concrete color channels are intentionally confined to this file.
+     ------------------------------------------------------------------------ */
+  /* ------------------------------------------------------------------------
+     SEMANTIC COLOR ROLES — LIGHT
+     ------------------------------------------------------------------------ */
+  /* ------------------------------------------------------------------------
+     GAME / CANVAS ROLES
+     JavaScript resolves these values through js/theme-colors.js.
+     ------------------------------------------------------------------------ */
+  /* ------------------------------------------------------------------------
+     GRADIENTS, SHADOWS, SHAPE AND TYPE
+     ------------------------------------------------------------------------ */
+  /* ------------------------------------------------------------------------
+     LEGACY COMPATIBILITY ALIASES
+     Existing layouts use these names; their values are now centrally owned.
+     ------------------------------------------------------------------------ */
+  --rgb-board-light: 250 253 253;
+  --rgb-board-light-alt: 222 241 244;
 }
 
 :root.dark {
-  --color-bg: rgb(var(--rgb-primary-900));
-  --color-bg-alt: rgb(var(--rgb-dark-surface-alt));
-  --color-surface: rgb(var(--rgb-dark-surface) / .92);
-  --color-surface-solid: rgb(var(--rgb-dark-surface));
-  --color-surface-raised: rgb(var(--rgb-primary-800));
-  --color-surface-muted: rgb(var(--rgb-primary-800) / .78);
   --color-surface-inverse: rgb(var(--rgb-primary-100));
-  --color-text: rgb(var(--rgb-primary-100));
-  --color-text-strong: rgb(var(--rgb-primary-100));
-  --color-text-muted: rgb(var(--rgb-dark-muted));
-  --color-border: rgb(var(--rgb-dark-border) / .92);
-  --color-border-strong: rgb(var(--rgb-primary-400) / .46);
-  --color-primary: rgb(var(--rgb-primary-400));
-  --color-primary-hover: rgb(var(--rgb-primary-300));
-  --color-primary-soft: rgb(var(--rgb-primary-400) / .18);
-  --color-secondary: rgb(var(--rgb-secondary-400));
-  --color-secondary-hover: rgb(var(--rgb-secondary-300));
-  --color-secondary-soft: rgb(var(--rgb-secondary-400) / .16);
   --color-success: rgb(var(--rgb-success-500));
   --color-success-soft: rgb(var(--rgb-success-500) / .16);
   --color-warning: rgb(var(--rgb-gold-500));
@@ -308,36 +271,13 @@
   --color-danger: rgb(var(--rgb-danger-400));
   --color-danger-soft: rgb(var(--rgb-danger-400) / .16);
   --color-focus: rgb(var(--rgb-primary-400) / .52);
-
   --game-move-top: rgb(var(--rgb-secondary-400));
   --game-move-bottom: rgb(var(--rgb-primary-400));
   --game-capture: rgb(var(--rgb-gold-500));
   --game-danger: rgb(var(--rgb-danger-400));
   --game-soufla-green: rgb(var(--rgb-success-500));
   --game-soufla-red: rgb(var(--rgb-danger-400));
-  --game-board-grid: rgb(var(--rgb-board-grid-dark));
-  --game-board-diag: rgb(var(--rgb-board-diag-dark));
-  --game-board-start: rgb(var(--rgb-board-dark));
-  --game-board-end: rgb(var(--rgb-board-dark-alt));
-  --board-point: rgb(var(--rgb-primary-400));
-  --mark-danger: rgb(var(--rgb-danger-400));
-  --mark-danger-strong: rgb(var(--rgb-danger-300));
-  --mark-move: rgb(var(--rgb-secondary-400));
-  --mark-move-strong: rgb(var(--rgb-secondary-300));
-  --mark-undo: rgb(var(--rgb-gold-500));
-  --mark-label-bg: rgb(var(--rgb-dark-surface) / .90);
-
-  --gradient-primary: linear-gradient(135deg, rgb(var(--rgb-primary-400)) 0%, rgb(var(--rgb-violet-mid)) 54%, rgb(var(--rgb-violet-bright)) 100%);
-  --gradient-secondary: linear-gradient(135deg, rgb(var(--rgb-secondary-700)) 0%, rgb(var(--rgb-secondary-500)) 55%, rgb(var(--rgb-secondary-400)) 100%);
-  --gradient-surface: linear-gradient(155deg, rgb(var(--rgb-primary-800) / .98) 0%, rgb(var(--rgb-dark-surface-alt) / .97) 48%, rgb(var(--rgb-primary-700) / .82) 100%);
-  --gradient-game-panel: linear-gradient(150deg, rgb(var(--rgb-primary-800) / .97) 0%, rgb(var(--rgb-dark-surface) / .96) 52%, rgb(var(--rgb-primary-700) / .72) 100%);
   --gradient-profile: linear-gradient(135deg, rgb(var(--rgb-primary-700)) 0%, rgb(var(--rgb-primary-500)) 58%, rgb(var(--rgb-violet-mid)) 100%);
-  --gradient-mode-pvc: linear-gradient(145deg, rgb(var(--rgb-primary-700) / .98) 0%, rgb(var(--rgb-primary-500) / .88) 58%, rgb(var(--rgb-violet-mid) / .92) 100%);
-  --gradient-mode-pvp: linear-gradient(145deg, rgb(var(--rgb-secondary-700) / .98) 0%, rgb(var(--rgb-secondary-500) / .80) 58%, rgb(var(--rgb-primary-700) / .82) 100%);
-  --gradient-lobby-rooms: linear-gradient(160deg, rgb(var(--rgb-primary-800) / .98) 0%, rgb(var(--rgb-primary-700) / .84) 56%, rgb(var(--rgb-dark-surface) / .98) 100%);
-  --gradient-lobby-players: linear-gradient(160deg, rgb(var(--rgb-dark-surface) / .98) 0%, rgb(var(--rgb-secondary-700) / .38) 56%, rgb(var(--rgb-dark-surface-alt) / .98) 100%);
-  --gradient-row-room: linear-gradient(140deg, rgb(var(--rgb-primary-800) / .98) 0%, rgb(var(--rgb-primary-700) / .86) 100%);
-  --gradient-row-player: linear-gradient(140deg, rgb(var(--rgb-dark-surface) / .98) 0%, rgb(var(--rgb-secondary-700) / .42) 100%);
   --gradient-action-sync: linear-gradient(145deg, rgb(var(--rgb-secondary-700)) 0%, rgb(var(--rgb-secondary-400)) 100%);
   --gradient-action-soufla: linear-gradient(145deg, rgb(var(--rgb-gold-700)) 0%, rgb(var(--rgb-gold-500)) 56%, rgb(var(--rgb-danger-400)) 100%);
   --gradient-action-undo: linear-gradient(145deg, rgb(var(--rgb-gold-700)) 0%, rgb(var(--rgb-gold-500)) 100%);
@@ -364,7 +304,6 @@
   --row-room-badge-text: rgb(var(--rgb-primary-100));
   --row-player-badge-bg: rgb(var(--rgb-secondary-400) / .16);
   --row-player-badge-text: rgb(var(--rgb-secondary-100));
-
   --shadow-xs: 0 4px 14px rgb(var(--rgb-black) / .22);
   --shadow-sm-unified: 0 12px 30px rgb(var(--rgb-black) / .32);
   --shadow-md-unified: 0 20px 48px rgb(var(--rgb-black) / .44), inset 0 1px 0 rgb(var(--rgb-white) / .04);
@@ -375,11 +314,71 @@
   --btn-start: rgb(var(--rgb-primary-400));
   --btn-end: rgb(var(--rgb-violet-bright));
   --board-depth-shadow: rgb(var(--rgb-black) / .56);
+  --color-bg: rgb(var(--rgb-primary-900));
+  --color-bg-alt: rgb(var(--rgb-dark-surface-alt));
+  --color-surface: rgb(var(--rgb-dark-surface) / .95);
+  --color-surface-solid: rgb(var(--rgb-dark-surface));
+  --color-surface-raised: rgb(var(--rgb-primary-800));
+  --color-surface-muted: rgb(var(--rgb-primary-800) / .88);
+  --color-text: rgb(var(--rgb-primary-100));
+  --color-text-strong: rgb(var(--rgb-white));
+  --color-text-muted: rgb(var(--rgb-dark-muted));
+  --color-primary: rgb(var(--rgb-primary-300));
+  --color-primary-hover: rgb(var(--rgb-primary-200));
+  --color-primary-soft: rgb(var(--rgb-primary-300) / .16);
+  --color-secondary: rgb(var(--rgb-secondary-300));
+  --color-secondary-hover: rgb(var(--rgb-secondary-200));
+  --color-secondary-soft: rgb(var(--rgb-secondary-300) / .16);
+  --color-border: rgb(var(--rgb-dark-border) / .92);
+  --color-border-strong: rgb(var(--rgb-primary-300) / .48);
+  --gradient-primary: linear-gradient(135deg, rgb(var(--rgb-primary-700)) 0%, rgb(var(--rgb-primary-500)) 58%, rgb(var(--rgb-secondary-500)) 100%);
+  --gradient-secondary: linear-gradient(135deg, rgb(var(--rgb-secondary-700)) 0%, rgb(var(--rgb-secondary-500)) 58%, rgb(var(--rgb-primary-400)) 100%);
+  --gradient-surface: linear-gradient(150deg, rgb(var(--rgb-dark-surface) / .99) 0%, rgb(var(--rgb-primary-800) / .96) 58%, rgb(var(--rgb-secondary-700) / .28) 100%);
+  --gradient-game-panel: linear-gradient(150deg, rgb(var(--rgb-dark-surface) / .99) 0%, rgb(var(--rgb-primary-800) / .96) 58%, rgb(var(--rgb-secondary-700) / .32) 100%);
+  --gradient-mode-pvc: linear-gradient(145deg, rgb(var(--rgb-primary-800)) 0%, rgb(var(--rgb-primary-600)) 64%, rgb(var(--rgb-secondary-700)) 100%);
+  --gradient-mode-pvp: linear-gradient(145deg, rgb(var(--rgb-secondary-700)) 0%, rgb(var(--rgb-secondary-600)) 62%, rgb(var(--rgb-primary-700)) 100%);
+  --gradient-lobby-rooms: linear-gradient(150deg, rgb(var(--rgb-primary-800)) 0%, rgb(var(--rgb-primary-700)) 100%);
+  --gradient-lobby-players: linear-gradient(150deg, rgb(var(--rgb-dark-surface)) 0%, rgb(var(--rgb-secondary-700) / .52) 100%);
+  --gradient-row-room: linear-gradient(140deg, rgb(var(--rgb-primary-800)) 0%, rgb(var(--rgb-primary-700)) 100%);
+  --gradient-row-player: linear-gradient(140deg, rgb(var(--rgb-dark-surface)) 0%, rgb(var(--rgb-secondary-700) / .48) 100%);
+  --gradient-game-control: linear-gradient(145deg, rgb(var(--rgb-primary-700)) 0%, rgb(var(--rgb-primary-500)) 58%, rgb(var(--rgb-secondary-600)) 100%);
+  --gradient-modal-header: linear-gradient(135deg, rgb(var(--rgb-primary-700)) 0%, rgb(var(--rgb-primary-500)) 58%, rgb(var(--rgb-secondary-600)) 100%);
+  --rgb-board-dark: 20 42 58;
+  --rgb-board-dark-alt: 58 96 112;
+  --rgb-board-grid-dark: 222 238 242;
+  --rgb-board-diag-dark: 255 202 114;
+  --game-board-start: rgb(var(--rgb-board-dark));
+  --game-board-end: rgb(var(--rgb-board-dark-alt));
+  --game-board-grid: rgb(var(--rgb-board-grid-dark));
+  --game-board-diag: rgb(var(--rgb-board-diag-dark));
+  --board-point: rgb(98 229 216);
+  --board-highlight: rgb(var(--rgb-white) / .28);
+  --board-shadow: rgb(var(--rgb-black) / .54);
+  --mark-move: rgb(72 228 205);
+  --mark-move-strong: rgb(133 255 235);
+  --mark-danger: rgb(255 107 120);
+  --mark-danger-strong: rgb(255 160 168);
+  --mark-undo: rgb(255 202 114);
+  --mark-label-bg: rgb(8 31 44 / .94);
+  --mark-overlay-dark: rgb(var(--rgb-black) / .72);
+  --piece-white-light: rgb(255 255 255);
+  --piece-white-mid: rgb(239 248 248);
+  --piece-white-dark: rgb(194 224 229);
+  --piece-white-dot: rgb(83 211 196);
+  --piece-black-light: rgb(34 68 84);
+  --piece-black-mid: rgb(13 38 52);
+  --piece-black-dark: rgb(4 21 31);
+  --piece-black-dot: rgb(255 202 114);
+  --piece-white-edge: rgb(8 57 80);
+  --piece-white-edge-soft: rgb(52 157 184);
+  --piece-black-edge: rgb(var(--rgb-white));
+  --piece-black-edge-soft: rgb(var(--rgb-secondary-300));
 }
 
 /* ========================================================================== 
    GLOBAL VISUAL FOUNDATION
    ========================================================================== */
+
 html,
 body {
   background: var(--color-bg);
@@ -387,8 +386,7 @@ body {
 }
 
 body::before {
-  background-image:
-    linear-gradient(135deg, transparent 0 46%, rgb(var(--rgb-primary-500) / .035) 46% 47%, transparent 47% 100%),
+  background-image: linear-gradient(135deg, transparent 0 46%, rgb(var(--rgb-primary-500) / .035) 46% 47%, transparent 47% 100%),
     linear-gradient(45deg, transparent 0 48%, rgb(var(--rgb-secondary-500) / .030) 48% 49%, transparent 49% 100%),
     radial-gradient(circle at 12% 10%, rgb(var(--rgb-primary-400) / .18), transparent 30%),
     radial-gradient(circle at 88% 14%, rgb(var(--rgb-secondary-400) / .15), transparent 28%),
@@ -421,8 +419,6 @@ h1,
 
 h2,
 h3,
-.z-card h2,
-.z-card h3,
 .z-mode-text h2,
 .z-lobby-h2 {
   color: var(--color-text-strong);
@@ -438,7 +434,7 @@ h3,
 /* ========================================================================== 
    SHARED SURFACES, CONTROLS AND BUTTON HIERARCHY
    ========================================================================== */
-.z-card,
+
 .z-auth-card,
 .z-auth-seo-card,
 .z-reset-card,
@@ -446,9 +442,7 @@ h3,
 .z-dash-details,
 .z-dash-actions-panel,
 .z-lobby-panel,
-.modal-content,
 .dialog,
-.panel,
 .status,
 .stats,
 .online-box,
@@ -462,7 +456,6 @@ h3,
   box-shadow: var(--shadow-md-unified) !important;
 }
 
-.z-card,
 .z-auth-card,
 .z-auth-seo-card,
 .z-reset-card,
@@ -470,13 +463,10 @@ h3,
 .z-dash-details,
 .z-dash-actions-panel,
 .z-lobby-panel,
-.modal-content,
-.dialog,
-.panel {
+.dialog {
   border-radius: var(--radius-card) !important;
 }
 
-.z-card::before,
 .z-auth-card::before,
 .z-auth-seo-card::before,
 .z-reset-card::before,
@@ -484,9 +474,7 @@ h3,
 .z-dash-details::before,
 .z-dash-actions-panel::before,
 .z-lobby-panel::before,
-.modal-content::before,
 .dialog::before,
-.panel::before,
 .status::before,
 .stats::before,
 .online-box::before,
@@ -497,13 +485,11 @@ h3,
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background:
-    linear-gradient(180deg, rgb(var(--rgb-white) / .18), transparent 42%),
+  background: linear-gradient(180deg, rgb(var(--rgb-white) / .18), transparent 42%),
     radial-gradient(circle at top right, rgb(var(--rgb-white) / .14), transparent 34%);
   z-index: 0;
 }
 
-.z-card > *,
 .z-auth-card > *,
 .z-auth-seo-card > *,
 .z-reset-card > *,
@@ -511,9 +497,7 @@ h3,
 .z-dash-details > *,
 .z-dash-actions-panel > *,
 .z-lobby-panel > *,
-.modal-content > *,
 .dialog > *,
-.panel > *,
 .status > *,
 .stats > *,
 .online-box > *,
@@ -618,11 +602,9 @@ button.ghost {
     transform: translateY(-1px);
     filter: brightness(1.035);
   }
-
-  .z-card:hover,
   .z-lobby-panel:hover,
-  .z-dash-summary:hover,
-  .z-dash-details:hover {
+.z-dash-summary:hover,
+.z-dash-details:hover {
     border-color: var(--color-border-strong) !important;
   }
 }
@@ -630,6 +612,7 @@ button.ghost {
 /* ========================================================================== 
    AUTHENTICATION / FIRST IMPRESSION
    ========================================================================== */
+
 .z-auth-wrap {
   position: relative;
 }
@@ -648,7 +631,6 @@ button.ghost {
 }
 
 .z-auth-seo-card {
-  background: linear-gradient(145deg, var(--color-surface), var(--color-surface-muted)) !important;
   box-shadow: var(--shadow-sm-unified) !important;
 }
 
@@ -678,6 +660,7 @@ button.ghost {
 /* ========================================================================== 
    MODE SELECTION — TWO DISTINCT GAME EXPERIENCES
    ========================================================================== */
+
 .z-mode-grid {
   perspective: 1000px;
 }
@@ -704,8 +687,7 @@ button.ghost {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background:
-    radial-gradient(circle at top right, var(--mode-card-glow), transparent 34%),
+  background: radial-gradient(circle at top right, var(--mode-card-glow), transparent 34%),
     linear-gradient(180deg, rgb(var(--rgb-white) / .14), transparent 38%);
   z-index: 0;
 }
@@ -733,34 +715,6 @@ button.ghost {
   color: var(--mode-card-text) !important;
 }
 
-.z-mode-card p {
-  color: var(--mode-card-muted) !important;
-  opacity: 1;
-}
-
-.z-mode-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  border-radius: 999px;
-  margin-bottom: 12px;
-  background: var(--mode-badge-bg);
-  color: var(--mode-badge-text);
-  font-size: .82rem;
-  font-weight: 800;
-  box-shadow: inset 0 1px 0 rgb(var(--rgb-white) / .34);
-}
-
-.z-mode-badge::before {
-  content: "";
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  background: currentColor;
-  box-shadow: 0 0 0 4px rgb(var(--rgb-white) / .18);
-}
-
 .z-mode-ico {
   background: var(--mode-icon-bg) !important;
   border-color: var(--mode-icon-border) !important;
@@ -775,16 +729,13 @@ button.ghost {
   .z-mode-card.pvc {
     transform: translateY(-6px);
   }
-
   .z-mode-card.pvp {
     transform: translateY(8px);
   }
-
   @media (hover: hover) {
     .z-mode-card.pvc:hover {
       transform: translateY(-10px) scale(1.012);
     }
-
     .z-mode-card.pvp:hover {
       transform: translateY(4px) scale(1.012);
     }
@@ -794,6 +745,7 @@ button.ghost {
 /* ========================================================================== 
    DASHBOARD / PLAYER PROFILE
    ========================================================================== */
+
 .z-dash-profile-card {
   position: relative;
   overflow: hidden;
@@ -847,13 +799,10 @@ button.ghost {
   box-shadow: var(--shadow-sm-unified) !important;
 }
 
-.z-dash-summary-value {
-  color: var(--color-primary);
-}
-
 /* ========================================================================== 
    LOBBY / LIVE PRESENCE
    ========================================================================== */
+
 .z-lobby-panel {
   position: relative;
   overflow: hidden;
@@ -882,25 +831,8 @@ button.ghost {
 }
 
 .z-lobby-h2 {
-  display: inline-flex;
-  align-items: center;
   gap: 10px;
-  margin: 0 0 14px;
-  padding: 9px 14px;
-  border-radius: 999px;
-  font-size: 1.05rem;
-  font-weight: 900;
-  letter-spacing: -.02em;
   background: rgb(var(--rgb-white) / .54);
-  box-shadow: inset 0 1px 0 rgb(var(--rgb-white) / .28);
-}
-
-.z-lobby-panel:first-child .z-lobby-h2 {
-  color: var(--row-room-badge-text) !important;
-}
-
-.z-lobby-panel:nth-child(2) .z-lobby-h2 {
-  color: var(--row-player-badge-text) !important;
 }
 
 .z-lobby-h2::before {
@@ -912,9 +844,7 @@ button.ghost {
   box-shadow: inset 0 0 0 4px rgb(var(--rgb-white) / .38);
 }
 
-.z-lobby-list .z-row,
-.player-item,
-.room-item {
+.z-lobby-list .z-row {
   position: relative;
   border-color: var(--color-border) !important;
   box-shadow: var(--shadow-xs) !important;
@@ -926,14 +856,11 @@ button.ghost {
   background: var(--gradient-row-room) !important;
 }
 
-.z-lobby-list.players .z-row,
-.player-item {
+.z-lobby-list.players .z-row {
   background: var(--gradient-row-player) !important;
 }
 
-.z-lobby-list.players .z-row::before,
-.player-item::before {
-  content: "";
+.z-lobby-list.players .z-row::before {
   width: 8px;
   height: 8px;
   flex: 0 0 auto;
@@ -942,9 +869,6 @@ button.ghost {
   box-shadow: 0 0 0 4px var(--color-success-soft);
 }
 
-.z-row-badge,
-.z-row-status-chip,
-.z-room-meta-chip,
 .z-self {
   display: inline-flex;
   align-items: center;
@@ -958,28 +882,9 @@ button.ghost {
   line-height: 1;
 }
 
-.z-row-badge,
-.z-room-meta-chip {
-  background: var(--row-room-badge-bg);
-  color: var(--row-room-badge-text);
-}
-
-.z-row-status-chip,
 .z-self {
   background: var(--row-player-badge-bg);
   color: var(--row-player-badge-text);
-}
-
-.z-row-meta,
-.z-room-meta {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-  margin-top: 6px;
-}
-
-.z-room-state {
-  color: var(--color-warning) !important;
 }
 
 .z-invite-receive-toggle[aria-pressed="true"] {
@@ -997,6 +902,7 @@ button.ghost {
 /* ========================================================================== 
    GAME SCREEN — BOARD, TURN, STATS AND ACTIONS
    ========================================================================== */
+
 body.z-game-page .app {
   background: transparent;
 }
@@ -1010,7 +916,6 @@ body.z-game-page .app {
 }
 
 canvas#board {
-  border-color: var(--game-board-diag) !important;
   border-radius: calc(var(--radius-card) - 5px) !important;
   background: linear-gradient(180deg, var(--game-board-start), var(--game-board-end)) !important;
 }
@@ -1113,27 +1018,19 @@ canvas#board {
 /* ========================================================================== 
    MODALS, ALERTS AND FEEDBACK
    ========================================================================== */
-.modal-backdrop,
-.z-modal-backdrop {
-  background: rgb(var(--rgb-primary-900) / .64) !important;
-  backdrop-filter: blur(7px);
-}
 
-.modal-content,
 .dialog {
   border-color: var(--color-border-strong) !important;
   box-shadow: var(--shadow-lg-unified) !important;
 }
 
-.z-auth-msg.ok,
-.z-dash-msg.ok {
+.z-auth-msg.ok {
   color: var(--color-success) !important;
   background: var(--color-success-soft) !important;
   border-color: rgb(var(--rgb-success-500) / .34) !important;
 }
 
-.z-auth-msg.error,
-.z-dash-msg.error {
+.z-auth-msg.error {
   color: var(--color-danger) !important;
   background: var(--color-danger-soft) !important;
   border-color: rgb(var(--rgb-danger-500) / .34) !important;
@@ -1143,6 +1040,7 @@ canvas#board {
    MOBILE: SHARED IDENTITY FOR PORTRAIT AND LANDSCAPE
    Layout dimensions remain controlled by mobile.css.
    ========================================================================== */
+
 body.z-mobile-on {
   --fs-title: 22px;
   --m-card-radius: 20px;
@@ -1154,7 +1052,6 @@ body.z-mobile-on[data-mobile-orientation="landscape"] {
   --m-card-radius: 18px;
 }
 
-body.z-mobile-on .z-card,
 body.z-mobile-on .z-auth-card,
 body.z-mobile-on .z-auth-seo-card,
 body.z-mobile-on .z-mode-card,
@@ -1201,9 +1098,7 @@ body.z-mobile-on[data-mobile-orientation="landscape"] .z-mode-card.pvp {
   transform: none;
 }
 
-body.z-mobile-on .z-mobile-shell-button,
-body.z-mobile-on .z-mobile-shell-menu,
-body.z-mobile-on .z-mobile-drawer-toggle {
+body.z-mobile-on .z-mobile-shell-menu {
   color: var(--color-on-primary) !important;
   background: var(--gradient-primary) !important;
   border-color: rgb(var(--rgb-white) / .22) !important;
@@ -1223,6 +1118,7 @@ body.z-mobile-on .z-mobile-drawer-toggle {
 
 /* Compact title scale is explicit so the desktop refresh does not crowd either
    mobile orientation. */
+
 body.z-mobile-on h1,
 body.z-mobile-on .z-page-title,
 body.z-mobile-on .z-dash-title {
@@ -1235,48 +1131,11 @@ body.z-mobile-on[data-mobile-orientation="landscape"] .z-dash-title {
   font-size: 19px !important;
 }
 
-/* ========================================================================== 
-   2.13.2 REFINEMENTS — HARMONY, AUTH, MODE, LOBBY, BOARD
-   ========================================================================== */
-:root {
-  --rgb-board-light: 228 217 191;
-  --rgb-board-light-alt: 171 198 226;
-  --rgb-board-dark: 28 36 58;
-  --rgb-board-dark-alt: 74 98 138;
-  --rgb-board-grid-light: 68 80 112;
-  --rgb-board-diag-light: 133 103 69;
-  --rgb-board-grid-dark: 220 226 240;
-  --rgb-board-diag-dark: 255 205 120;
-
-  --game-board-grid: rgb(var(--rgb-board-grid-light));
-  --game-board-diag: rgb(var(--rgb-board-diag-light));
-  --game-board-start: rgb(var(--rgb-board-light));
-  --game-board-end: rgb(var(--rgb-board-light-alt));
-
-  --piece-white-light: rgb(255 255 255);
-  --piece-white-mid: rgb(247 245 239);
-  --piece-white-dark: rgb(223 229 242);
-  --piece-white-edge: rgb(var(--rgb-light-primary-700));
-  --piece-white-edge-soft: rgb(var(--rgb-light-primary-500));
-  --piece-white-dot: rgb(var(--rgb-light-primary-700));
-  --piece-black-light: rgb(56 76 112);
-  --piece-black-mid: rgb(35 50 81);
-  --piece-black-dark: rgb(18 29 49);
-  --piece-black-edge: rgb(var(--rgb-secondary-300));
-  --piece-black-edge-soft: rgb(var(--rgb-secondary-400));
-  --piece-black-dot: rgb(var(--rgb-secondary-300));
-  --piece-shadow: rgb(15 23 42 / .30);
-}
-:root.dark {
-  --game-board-grid: rgb(var(--rgb-board-grid-dark));
-  --game-board-diag: rgb(var(--rgb-board-diag-dark));
-  --game-board-start: rgb(var(--rgb-board-dark));
-  --game-board-end: rgb(var(--rgb-board-dark-alt));
-}
 .z-auth-card {
   background: linear-gradient(155deg, rgb(var(--rgb-white) / .99) 0%, rgb(var(--rgb-light-primary-200) / .60) 50%, rgb(var(--rgb-secondary-100) / .74) 100%) !important;
   border: 1px solid rgb(var(--rgb-light-primary-400) / .28) !important;
 }
+
 .z-auth-card::after,
 .z-auth-seo-card::after {
   content: "";
@@ -1289,9 +1148,11 @@ body.z-mobile-on[data-mobile-orientation="landscape"] .z-dash-title {
   background: radial-gradient(circle, rgb(var(--rgb-white) / .32), transparent 70%);
   pointer-events: none;
 }
+
 .z-auth-seo-card {
   background: linear-gradient(145deg, rgb(var(--rgb-white) / .97), rgb(var(--rgb-sand-100) / .94), rgb(var(--rgb-light-primary-200) / .58)) !important;
 }
+
 .z-auth-page #btnLogin,
 .z-auth-page #btnRegister,
 .z-auth-page #btnRecover,
@@ -1301,210 +1162,83 @@ body.z-mobile-on[data-mobile-orientation="landscape"] .z-dash-title {
   border-color: rgb(var(--rgb-white) / .24) !important;
   box-shadow: var(--shadow-primary) !important;
 }
+
 .z-auth-page #btnGuest {
-  background: linear-gradient(145deg, rgb(var(--rgb-neutral-800)), rgb(var(--rgb-light-primary-700))) !important;
   border-color: rgb(var(--rgb-white) / .18) !important;
 }
+
 .z-auth-row label,
-.z-auth-help,
 .z-auth-seo-para,
 .z-auth-seo-list li,
 .z-auth-foot a,
 .z-auth-links a {
   color: var(--color-text-strong) !important;
 }
+
 .z-auth-links a,
-.z-auth-foot a { opacity: .96; }
-.z-auth-msg { background: rgb(var(--rgb-white) / .86) !important; color: var(--color-text) !important; }
+.z-auth-foot a {
+  opacity: .96;
+}
+
+.z-auth-msg {
+  background: rgb(var(--rgb-white) / .86) !important;
+  color: var(--color-text) !important;
+}
+
 html.dark .z-auth-card {
   background: linear-gradient(150deg, rgb(var(--rgb-primary-800) / .98), rgb(var(--rgb-dark-surface-alt) / .97), rgb(var(--rgb-primary-700) / .86)) !important;
 }
+
 html.dark .z-auth-seo-card {
   background: linear-gradient(150deg, rgb(var(--rgb-dark-surface) / .98), rgb(var(--rgb-primary-800) / .94), rgb(var(--rgb-secondary-700) / .24)) !important;
 }
+
 .z-mode-card,
-.z-mode-card h2 { color: var(--color-text-strong) !important; }
-.z-mode-card p {
-  color: rgb(var(--rgb-neutral-700)) !important;
-  font-weight: 600;
+.z-mode-card h2 {
+  color: var(--color-text-strong) !important;
 }
+
 .z-mode-text {
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
-.z-mode-badge {
-  order: 2;
-  align-self: flex-start;
-  padding: 4px 10px;
-  margin-bottom: 0;
-  font-size: .72rem;
-  font-weight: 800;
-  background: rgb(var(--rgb-white) / .78);
-  color: rgb(var(--rgb-light-primary-700));
+
+.z-mode-card h2 {
+  order: 1;
 }
-.z-mode-badge::before {
-  width: 8px;
-  height: 8px;
-  box-shadow: 0 0 0 3px rgb(var(--rgb-white) / .16);
+
+.z-mode-card p {
+  order: 3;
 }
-.z-mode-card h2 { order: 1; }
-.z-mode-card p { order: 3; }
+
 .z-lobby-panel:first-child,
 .z-lobby-panel:nth-child(2) {
   box-shadow: var(--shadow-lg-unified) !important;
 }
+
 .z-lobby-panel:first-child .z-lobby-h2,
 .z-lobby-panel:nth-child(2) .z-lobby-h2 {
   background: rgb(var(--rgb-white) / .76);
 }
+
 .z-loading,
 .z-empty {
   box-shadow: var(--shadow-xs);
 }
+
 html.dark .z-mode-card,
 html.dark .z-mode-card h2,
-html.dark .z-mode-card p { color: rgb(var(--rgb-white)) !important; }
-html.dark .z-mode-card p { color: rgb(var(--rgb-white) / .86) !important; }
-
-/* ========================================================================== 
-   2.13.3 REBALANCE — DEEP OCEAN PALETTE, CONTROLS, MODALS, MOBILE
-   ========================================================================== */
-:root {
-  --rgb-sand-50: 248 250 250;
-  --rgb-sand-100: 238 244 244;
-  --rgb-sand-200: 221 232 232;
-  --rgb-sand-300: 198 215 214;
-
-  --rgb-light-primary-200: 205 224 233;
-  --rgb-light-primary-300: 155 193 208;
-  --rgb-light-primary-400: 63 133 157;
-  --rgb-light-primary-500: 23 89 118;
-  --rgb-light-primary-600: 18 71 96;
-  --rgb-light-primary-700: 13 54 76;
-  --rgb-light-primary-800: 9 41 60;
-
-  --rgb-primary-100: 235 245 249;
-  --rgb-primary-200: 211 230 238;
-  --rgb-primary-300: 159 200 216;
-  --rgb-primary-400: 79 151 178;
-  --rgb-primary-500: 32 104 134;
-  --rgb-primary-600: 22 80 106;
-  --rgb-primary-700: 15 59 82;
-  --rgb-primary-800: 11 43 62;
-  --rgb-primary-900: 7 27 40;
-
-  --rgb-secondary-100: 222 245 241;
-  --rgb-secondary-200: 181 226 219;
-  --rgb-secondary-300: 100 199 187;
-  --rgb-secondary-400: 40 174 161;
-  --rgb-secondary-500: 15 139 130;
-  --rgb-secondary-600: 10 111 105;
-  --rgb-secondary-700: 7 83 80;
-
-  --rgb-ink: 19 38 55;
-  --rgb-muted-ink: 75 91 104;
-  --rgb-dark-surface: 11 34 49;
-  --rgb-dark-surface-alt: 8 27 40;
-  --rgb-dark-border: 38 83 99;
-  --rgb-dark-muted: 178 205 213;
-
-  --color-bg: rgb(var(--rgb-sand-50));
-  --color-bg-alt: rgb(var(--rgb-sand-100));
-  --color-surface: rgb(var(--rgb-white) / .94);
-  --color-surface-solid: rgb(var(--rgb-white) / .99);
-  --color-surface-raised: rgb(var(--rgb-white));
-  --color-surface-muted: rgb(var(--rgb-sand-100) / .92);
-  --color-text: rgb(var(--rgb-ink));
-  --color-text-strong: rgb(var(--rgb-ink));
-  --color-text-muted: rgb(var(--rgb-muted-ink));
-  --color-primary: rgb(var(--rgb-light-primary-500));
-  --color-primary-hover: rgb(var(--rgb-light-primary-600));
-  --color-primary-soft: rgb(var(--rgb-light-primary-500) / .12);
-  --color-secondary: rgb(var(--rgb-secondary-600));
-  --color-secondary-hover: rgb(var(--rgb-secondary-700));
-  --color-secondary-soft: rgb(var(--rgb-secondary-500) / .13);
-  --color-border: rgb(var(--rgb-light-primary-300) / .46);
-  --color-border-strong: rgb(var(--rgb-light-primary-500) / .42);
-
-  --gradient-primary: linear-gradient(135deg, rgb(var(--rgb-light-primary-700)) 0%, rgb(var(--rgb-light-primary-500)) 55%, rgb(var(--rgb-secondary-500)) 100%);
-  --gradient-secondary: linear-gradient(135deg, rgb(var(--rgb-secondary-700)) 0%, rgb(var(--rgb-secondary-500)) 58%, rgb(var(--rgb-light-primary-400)) 100%);
-  --gradient-surface: linear-gradient(150deg, rgb(var(--rgb-white) / .99) 0%, rgb(var(--rgb-sand-100) / .97) 58%, rgb(var(--rgb-light-primary-200) / .82) 100%);
-  --gradient-game-panel: linear-gradient(150deg, rgb(var(--rgb-white) / .99) 0%, rgb(var(--rgb-sand-100) / .96) 56%, rgb(var(--rgb-secondary-100) / .84) 100%);
-  --gradient-mode-pvc: linear-gradient(145deg, rgb(var(--rgb-white)) 0%, rgb(var(--rgb-light-primary-200) / .94) 64%, rgb(var(--rgb-secondary-100) / .86) 100%);
-  --gradient-mode-pvp: linear-gradient(145deg, rgb(var(--rgb-white)) 0%, rgb(var(--rgb-secondary-100) / .96) 62%, rgb(var(--rgb-light-primary-200) / .84) 100%);
-  --gradient-lobby-rooms: linear-gradient(150deg, rgb(var(--rgb-white)) 0%, rgb(var(--rgb-light-primary-200) / .88) 100%);
-  --gradient-lobby-players: linear-gradient(150deg, rgb(var(--rgb-white)) 0%, rgb(var(--rgb-secondary-100) / .95) 100%);
-  --gradient-row-room: linear-gradient(140deg, rgb(var(--rgb-white)) 0%, rgb(var(--rgb-light-primary-200) / .78) 100%);
-  --gradient-row-player: linear-gradient(140deg, rgb(var(--rgb-white)) 0%, rgb(var(--rgb-secondary-100) / .88) 100%);
-  --gradient-game-control: linear-gradient(145deg, rgb(var(--rgb-light-primary-700)) 0%, rgb(var(--rgb-light-primary-500)) 58%, rgb(var(--rgb-secondary-600)) 100%);
-  --gradient-game-control-danger: linear-gradient(145deg, rgb(var(--rgb-danger-700)) 0%, rgb(var(--rgb-danger-500)) 100%);
-  --gradient-modal-header: linear-gradient(135deg, rgb(var(--rgb-light-primary-700)) 0%, rgb(var(--rgb-light-primary-500)) 58%, rgb(var(--rgb-secondary-600)) 100%);
-
-  --rgb-board-light: 202 218 222;
-  --rgb-board-light-alt: 109 146 166;
-  --rgb-board-dark: 17 36 50;
-  --rgb-board-dark-alt: 45 80 96;
-  --rgb-board-grid-light: 25 57 76;
-  --rgb-board-diag-light: 176 105 45;
-  --rgb-board-grid-dark: 218 236 239;
-  --rgb-board-diag-dark: 255 202 114;
-  --game-board-grid: rgb(var(--rgb-board-grid-light));
-  --game-board-diag: rgb(var(--rgb-board-diag-light));
-  --game-board-start: rgb(var(--rgb-board-light));
-  --game-board-end: rgb(var(--rgb-board-light-alt));
-
-  --piece-white-light: rgb(var(--rgb-white));
-  --piece-white-mid: rgb(240 247 248);
-  --piece-white-dark: rgb(199 220 226);
-  --piece-white-edge: rgb(var(--rgb-light-primary-800));
-  --piece-white-edge-soft: rgb(var(--rgb-light-primary-500));
-  --piece-white-dot: rgb(var(--rgb-light-primary-700));
-  --piece-black-light: rgb(43 76 92);
-  --piece-black-mid: rgb(22 49 65);
-  --piece-black-dark: rgb(8 27 39);
-  --piece-black-edge: rgb(var(--rgb-secondary-300));
-  --piece-black-edge-soft: rgb(var(--rgb-secondary-400));
-  --piece-black-dot: rgb(var(--rgb-secondary-200));
+html.dark .z-mode-card p {
+  color: rgb(var(--rgb-white)) !important;
 }
 
-:root.dark {
-  --color-bg: rgb(var(--rgb-primary-900));
-  --color-bg-alt: rgb(var(--rgb-dark-surface-alt));
-  --color-surface: rgb(var(--rgb-dark-surface) / .95);
-  --color-surface-solid: rgb(var(--rgb-dark-surface));
-  --color-surface-raised: rgb(var(--rgb-primary-800));
-  --color-surface-muted: rgb(var(--rgb-primary-800) / .88);
-  --color-text: rgb(var(--rgb-primary-100));
-  --color-text-strong: rgb(var(--rgb-white));
-  --color-text-muted: rgb(var(--rgb-dark-muted));
-  --color-primary: rgb(var(--rgb-primary-300));
-  --color-primary-hover: rgb(var(--rgb-primary-200));
-  --color-primary-soft: rgb(var(--rgb-primary-300) / .16);
-  --color-secondary: rgb(var(--rgb-secondary-300));
-  --color-secondary-hover: rgb(var(--rgb-secondary-200));
-  --color-secondary-soft: rgb(var(--rgb-secondary-300) / .16);
-  --color-border: rgb(var(--rgb-dark-border) / .92);
-  --color-border-strong: rgb(var(--rgb-primary-300) / .48);
-  --gradient-primary: linear-gradient(135deg, rgb(var(--rgb-primary-700)) 0%, rgb(var(--rgb-primary-500)) 58%, rgb(var(--rgb-secondary-500)) 100%);
-  --gradient-secondary: linear-gradient(135deg, rgb(var(--rgb-secondary-700)) 0%, rgb(var(--rgb-secondary-500)) 58%, rgb(var(--rgb-primary-400)) 100%);
-  --gradient-surface: linear-gradient(150deg, rgb(var(--rgb-dark-surface) / .99) 0%, rgb(var(--rgb-primary-800) / .96) 58%, rgb(var(--rgb-secondary-700) / .28) 100%);
-  --gradient-game-panel: linear-gradient(150deg, rgb(var(--rgb-dark-surface) / .99) 0%, rgb(var(--rgb-primary-800) / .96) 58%, rgb(var(--rgb-secondary-700) / .32) 100%);
-  --gradient-mode-pvc: linear-gradient(145deg, rgb(var(--rgb-primary-800)) 0%, rgb(var(--rgb-primary-600)) 64%, rgb(var(--rgb-secondary-700)) 100%);
-  --gradient-mode-pvp: linear-gradient(145deg, rgb(var(--rgb-secondary-700)) 0%, rgb(var(--rgb-secondary-600)) 62%, rgb(var(--rgb-primary-700)) 100%);
-  --gradient-lobby-rooms: linear-gradient(150deg, rgb(var(--rgb-primary-800)) 0%, rgb(var(--rgb-primary-700)) 100%);
-  --gradient-lobby-players: linear-gradient(150deg, rgb(var(--rgb-dark-surface)) 0%, rgb(var(--rgb-secondary-700) / .52) 100%);
-  --gradient-row-room: linear-gradient(140deg, rgb(var(--rgb-primary-800)) 0%, rgb(var(--rgb-primary-700)) 100%);
-  --gradient-row-player: linear-gradient(140deg, rgb(var(--rgb-dark-surface)) 0%, rgb(var(--rgb-secondary-700) / .48) 100%);
-  --gradient-game-control: linear-gradient(145deg, rgb(var(--rgb-primary-700)) 0%, rgb(var(--rgb-primary-500)) 58%, rgb(var(--rgb-secondary-600)) 100%);
-  --gradient-modal-header: linear-gradient(135deg, rgb(var(--rgb-primary-700)) 0%, rgb(var(--rgb-primary-500)) 58%, rgb(var(--rgb-secondary-600)) 100%);
-  --game-board-grid: rgb(var(--rgb-board-grid-dark));
-  --game-board-diag: rgb(var(--rgb-board-diag-dark));
-  --game-board-start: rgb(var(--rgb-board-dark));
-  --game-board-end: rgb(var(--rgb-board-dark-alt));
+html.dark .z-mode-card p {
+  color: rgb(var(--rgb-white) / .86) !important;
 }
 
 /* Login and lobby actions use one strong, harmonious family instead of pale tints. */
+
 .z-auth-page #btnLogin,
 .z-auth-page #btnRegister,
 .z-auth-page #btnRecover,
@@ -1522,46 +1256,24 @@ html.dark .z-mode-card p { color: rgb(var(--rgb-white) / .86) !important; }
   border-color: rgb(var(--rgb-white) / .22) !important;
   box-shadow: 0 12px 28px rgb(var(--rgb-light-primary-700) / .24) !important;
 }
+
 .z-auth-page #btnGuest {
   color: rgb(var(--rgb-white)) !important;
-  background: linear-gradient(145deg, rgb(var(--rgb-primary-800)), rgb(var(--rgb-primary-600))) !important;
 }
+
 .z-lobby-panel .btn:disabled,
 .z-lobby-panel button:disabled {
   opacity: .48 !important;
   filter: saturate(.55) !important;
 }
-.z-lobby-list.players .z-row::before,
-.player-item::before {
-  content: none !important;
-  display: none !important;
-}
-.z-row-status-dot.is-available,
-.z-player-row.is-available .z-row-status-dot {
-  background: rgb(var(--rgb-success-600)) !important;
-  box-shadow: 0 0 0 4px rgb(var(--rgb-success-500) / .16) !important;
-}
-.z-row-status-dot.is-busy,
-.z-player-row.is-busy .z-row-status-dot {
-  background: rgb(var(--rgb-danger-500)) !important;
-  box-shadow: 0 0 0 4px rgb(var(--rgb-danger-500) / .15) !important;
-}
 
 /* Modal family: clearly new surface, header, close control and footer hierarchy. */
-.modal-backdrop,
-.z-modal-backdrop {
-  background: rgb(var(--rgb-primary-900) / .72) !important;
-  backdrop-filter: blur(12px) saturate(1.08) !important;
-}
+
 .modal,
-.modal-content,
 .dialog {
-  border: 1px solid var(--color-border-strong) !important;
-  border-radius: 24px !important;
-  background: var(--gradient-surface) !important;
-  box-shadow: 0 32px 90px rgb(var(--rgb-primary-900) / .42), inset 0 1px 0 rgb(var(--rgb-white) / .24) !important;
   overflow: hidden !important;
 }
+
 .modal::before {
   content: "";
   position: absolute;
@@ -1573,18 +1285,20 @@ html.dark .z-mode-card p { color: rgb(var(--rgb-white) / .86) !important; }
   background: radial-gradient(circle, rgb(var(--rgb-secondary-300) / .18), transparent 70%);
   pointer-events: none;
 }
+
 .modal-header {
   min-height: 54px;
   padding: 13px 18px !important;
   color: rgb(var(--rgb-white)) !important;
-  background: var(--gradient-modal-header) !important;
   border-bottom: 1px solid rgb(var(--rgb-white) / .18) !important;
 }
+
 .modal-title {
   color: rgb(var(--rgb-white)) !important;
   font-weight: 900 !important;
   letter-spacing: -.02em;
 }
+
 .modal-close {
   width: 34px !important;
   height: 34px !important;
@@ -1593,30 +1307,35 @@ html.dark .z-mode-card p { color: rgb(var(--rgb-white) / .86) !important; }
   border: 1px solid rgb(var(--rgb-white) / .22) !important;
   box-shadow: inset 0 1px 0 rgb(var(--rgb-white) / .16);
 }
+
 .modal-body {
-  color: var(--color-text) !important;
   background: linear-gradient(180deg, rgb(var(--rgb-white) / .22), transparent) !important;
 }
+
 .modal-footer {
   border-top: 1px solid var(--color-border) !important;
   background: rgb(var(--rgb-white) / .52) !important;
 }
+
 html.dark .modal-footer {
   background: rgb(var(--rgb-primary-900) / .38) !important;
 }
+
 .modal-footer .btn,
 .modal-footer button {
   min-width: 112px;
   font-weight: 800;
 }
+
 .modal-body th {
   color: var(--color-primary) !important;
   border-color: var(--color-border) !important;
 }
+
 .modal-body td {
   border-color: var(--color-border) !important;
 }
-.option-item,
+
 .modal-body input,
 .modal-body select,
 .modal-body textarea {
@@ -1625,21 +1344,22 @@ html.dark .modal-footer {
 }
 
 /* Mobile shell icons stay crisp in dark mode. */
-html.dark body.z-mobile-on .z-mobile-shell-btn,
-html.dark body.z-mobile-on .z-mobile-orient {
+
+html.dark body.z-mobile-on .z-mobile-shell-btn {
   color: rgb(var(--rgb-white)) !important;
   background: linear-gradient(145deg, rgb(var(--rgb-primary-800)), rgb(var(--rgb-primary-600))) !important;
   border-color: rgb(var(--rgb-primary-300) / .40) !important;
   box-shadow: 0 10px 26px rgb(var(--rgb-black) / .38) !important;
 }
+
 html.dark body.z-mobile-on .z-mobile-shell-btn img {
   filter: brightness(0) invert(1) drop-shadow(0 1px 1px rgb(var(--rgb-black) / .32)) !important;
   opacity: 1 !important;
 }
 
 /* Game controls: one coherent color family, with destructive actions only in red. */
+
 body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid .btn,
-body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnEndKill,
 body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid .soufla-row .btn,
 body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnSync,
 body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnRefreshLocal,
@@ -1651,20 +1371,18 @@ body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnNew,
 body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnChat,
 body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnSpk,
 body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnMic {
-  color: rgb(var(--rgb-white)) !important;
-  background: var(--gradient-game-control) !important;
   border: 1px solid rgb(var(--rgb-white) / .18) !important;
   box-shadow: 0 9px 20px rgb(var(--rgb-primary-900) / .24), inset 0 1px 0 rgb(var(--rgb-white) / .20) !important;
 }
+
 body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnSync.z-sync-issue,
-body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnEndKill,
 body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnEndLocalMatch,
 body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnEndOnline,
 body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnLeaveRoom {
   background: var(--gradient-game-control-danger) !important;
 }
-body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid .btn .btn-ico,
-body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnEndKill .btn-ico {
+
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid .btn .btn-ico {
   display: block !important;
   margin: 0 !important;
   padding: 0 !important;
@@ -1677,80 +1395,30 @@ body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnEndKi
   filter: brightness(0) invert(1) drop-shadow(0 1px 1px rgb(var(--rgb-black) / .30)) !important;
   opacity: 1 !important;
 }
-body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid .btn .btn-text,
-body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnEndKill .btn-text {
+
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid .btn .btn-text {
   display: none !important;
 }
 
 /* Portrait buttons are reduced by about 40%; icons consume essentially the full tile. */
-body.z-mobile-on[data-mobile-orientation="portrait"][data-mobile-page="game"] .z-mobile-game-controls-grid .btn,
-body.z-mobile-on[data-mobile-orientation="portrait"][data-mobile-page="game"] .z-mobile-game-controls-grid .timer-row,
-body.z-mobile-on[data-mobile-orientation="portrait"][data-mobile-page="game"] .z-mobile-game-controls-grid .soufla-row,
-body.z-mobile-on[data-mobile-orientation="portrait"][data-mobile-page="game"] .z-mobile-game-controls-grid #btnEndKill {
-  min-height: 32px !important;
-  height: 32px !important;
-  padding: 0 !important;
-  border-radius: 11px !important;
-}
-body.z-mobile-on[data-mobile-orientation="portrait"][data-mobile-page="game"] .z-mobile-game-controls-grid .btn .btn-ico,
-body.z-mobile-on[data-mobile-orientation="portrait"][data-mobile-page="game"] .z-mobile-game-controls-grid #btnEndKill .btn-ico {
-  width: 30px !important;
-  height: 30px !important;
-  transform: scale(1.22);
-}
+
 body.z-mobile-on[data-mobile-orientation="portrait"][data-mobile-page="game"] .z-mobile-game-controls-grid {
   gap: 4px !important;
 }
 
 /* Landscape retains button height; the icon fills the available vertical area. */
+
 body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="game"] .z-mobile-game-controls-grid .btn,
-body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="game"] .z-mobile-game-controls-grid .timer-row,
-body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="game"] .z-mobile-game-controls-grid .soufla-row,
-body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="game"] .z-mobile-game-controls-grid #btnEndKill {
+body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="game"] .z-mobile-game-controls-grid .soufla-row {
   min-height: 50px !important;
   height: 50px !important;
   padding: 0 !important;
 }
-body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="game"] .z-mobile-game-controls-grid .btn .btn-ico,
-body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="game"] .z-mobile-game-controls-grid #btnEndKill .btn-ico {
-  width: 46px !important;
-  height: 46px !important;
-  transform: scale(1.16);
-}
 
 /* Capture timer is always above the end-capture button while the chain is active. */
-body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid .timer-row {
-  position: relative !important;
-  overflow: hidden !important;
-}
-body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid .timer-row #btnEndKill {
-  position: relative !important;
-  z-index: 1 !important;
-}
-body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid .timer-row.is-live .clock {
-  display: flex !important;
-  z-index: 5 !important;
-  inset: 0 !important;
-  color: rgb(var(--rgb-white)) !important;
-  background: linear-gradient(145deg, rgb(var(--rgb-primary-900) / .92), rgb(var(--rgb-danger-700) / .90)) !important;
-  border: 0 !important;
-  border-radius: inherit !important;
-  text-shadow: 0 1px 2px rgb(var(--rgb-black) / .45) !important;
-}
-body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid .timer-row.is-live .clock::before {
-  content: none !important;
-}
-body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid .timer-row.is-live #btnEndKill .btn-ico,
-body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid .timer-row.is-live #btnEndKill .btn-text {
-  opacity: 0 !important;
-}
-body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid .timer-row.is-live #killClock {
-  color: rgb(var(--rgb-white)) !important;
-  font-size: clamp(13px, 3.6vw, 19px) !important;
-  font-weight: 950 !important;
-}
 
 /* Desktop game controls use the same restrained ocean family as mobile. */
+
 body.z-game-page:not(.z-mobile-on) .side .btn,
 body.z-game-page:not(.z-mobile-on) .controls-box .btn,
 body.z-game-page:not(.z-mobile-on) #btnUndo,
@@ -1768,6 +1436,7 @@ body.z-game-page:not(.z-mobile-on) #btnMic {
   border-color: rgb(var(--rgb-white) / .18) !important;
   box-shadow: 0 10px 24px rgb(var(--rgb-primary-900) / .22), inset 0 1px 0 rgb(var(--rgb-white) / .20) !important;
 }
+
 body.z-game-page:not(.z-mobile-on) #btnEndKill,
 body.z-game-page:not(.z-mobile-on) #btnEndLocalMatch,
 body.z-game-page:not(.z-mobile-on) #btnEndOnline,
@@ -1776,6 +1445,7 @@ body.z-game-page:not(.z-mobile-on) #btnSync.z-sync-issue {
   color: rgb(var(--rgb-white)) !important;
   background: var(--gradient-game-control-danger) !important;
 }
+
 body.z-game-page:not(.z-mobile-on) .side .btn .btn-ico,
 body.z-game-page:not(.z-mobile-on) .controls-box .btn .btn-ico {
   filter: brightness(0) invert(1) drop-shadow(0 1px 1px rgb(var(--rgb-black) / .26)) !important;
@@ -1783,16 +1453,6 @@ body.z-game-page:not(.z-mobile-on) .controls-box .btn .btn-ico {
   box-shadow: none !important;
 }
 
-/* ========================================================================== 
-   2.13.3 FINAL OVERRIDES — BALANCED COLOR, ICON SCALE, TIMER, MODALS
-   ========================================================================== */
-:root {
-  --gradient-primary: linear-gradient(135deg, rgb(21 86 114) 0%, rgb(24 125 132) 58%, rgb(53 160 145) 100%);
-  --gradient-secondary: linear-gradient(135deg, rgb(25 75 96) 0%, rgb(28 112 119) 58%, rgb(64 151 140) 100%);
-  --gradient-game-control: linear-gradient(145deg, rgb(19 69 94) 0%, rgb(25 108 119) 58%, rgb(49 143 132) 100%);
-  --gradient-game-control-danger: linear-gradient(145deg, rgb(128 40 48) 0%, rgb(177 61 70) 100%);
-  --gradient-modal-header: linear-gradient(135deg, rgb(18 66 90) 0%, rgb(24 105 116) 58%, rgb(48 143 132) 100%);
-}
 .z-auth-page #btnLogin,
 .z-auth-page #btnRegister,
 .z-auth-page #btnRecover,
@@ -1804,18 +1464,29 @@ body.z-game-page:not(.z-mobile-on) .controls-box .btn .btn-ico {
   border-color: rgb(var(--rgb-white) / .22) !important;
   box-shadow: 0 10px 24px rgb(10 48 66 / .22), inset 0 1px 0 rgb(var(--rgb-white) / .22) !important;
 }
+
 .z-auth-page #btnGuest {
   background: linear-gradient(145deg, rgb(33 52 67), rgb(41 79 91)) !important;
 }
-.z-lobby-list.players .z-row::before,
-.player-item::before { content: none !important; display: none !important; }
+
+.z-lobby-list.players .z-row::before {
+  content: none !important;
+  display: none !important;
+}
+
 .z-row-status-dot.is-available,
-.z-player-row.is-available .z-row-status-dot { background: rgb(28 159 92) !important; box-shadow: 0 0 0 4px rgb(28 159 92 / .15) !important; }
+.z-player-row.is-available .z-row-status-dot {
+  background: rgb(28 159 92) !important;
+  box-shadow: 0 0 0 4px rgb(28 159 92 / .15) !important;
+}
+
 .z-row-status-dot.is-busy,
-.z-player-row.is-busy .z-row-status-dot { background: rgb(204 67 74) !important; box-shadow: 0 0 0 4px rgb(204 67 74 / .14) !important; }
+.z-player-row.is-busy .z-row-status-dot {
+  background: rgb(204 67 74) !important;
+  box-shadow: 0 0 0 4px rgb(204 67 74 / .14) !important;
+}
 
 body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid .btn,
-body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnEndKill,
 body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid .soufla-row .btn,
 body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnSync,
 body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnRefreshLocal,
@@ -1830,17 +1501,16 @@ body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnMic {
   background: var(--gradient-game-control) !important;
   color: rgb(var(--rgb-white)) !important;
 }
+
 body.z-mobile-on[data-mobile-orientation="portrait"][data-mobile-page="game"] .z-mobile-game-controls-grid .btn,
-body.z-mobile-on[data-mobile-orientation="portrait"][data-mobile-page="game"] .z-mobile-game-controls-grid .timer-row,
-body.z-mobile-on[data-mobile-orientation="portrait"][data-mobile-page="game"] .z-mobile-game-controls-grid .soufla-row,
-body.z-mobile-on[data-mobile-orientation="portrait"][data-mobile-page="game"] .z-mobile-game-controls-grid #btnEndKill {
+body.z-mobile-on[data-mobile-orientation="portrait"][data-mobile-page="game"] .z-mobile-game-controls-grid .soufla-row {
   min-height: 31px !important;
   height: 31px !important;
   padding: 0 !important;
   border-radius: 10px !important;
 }
-body.z-mobile-on[data-mobile-orientation="portrait"][data-mobile-page="game"] .z-mobile-game-controls-grid .btn .btn-ico,
-body.z-mobile-on[data-mobile-orientation="portrait"][data-mobile-page="game"] .z-mobile-game-controls-grid #btnEndKill .btn-ico {
+
+body.z-mobile-on[data-mobile-orientation="portrait"][data-mobile-page="game"] .z-mobile-game-controls-grid .btn .btn-ico {
   width: 30px !important;
   height: 30px !important;
   max-width: 94% !important;
@@ -1849,8 +1519,8 @@ body.z-mobile-on[data-mobile-orientation="portrait"][data-mobile-page="game"] .z
   margin: 0 !important;
   transform: none !important;
 }
-body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="game"] .z-mobile-game-controls-grid .btn .btn-ico,
-body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="game"] .z-mobile-game-controls-grid #btnEndKill .btn-ico {
+
+body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="game"] .z-mobile-game-controls-grid .btn .btn-ico {
   width: 48px !important;
   height: 48px !important;
   max-width: 94% !important;
@@ -1859,52 +1529,42 @@ body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="game"] .
   margin: 0 !important;
   transform: none !important;
 }
-body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid .timer-row.is-live .clock {
-  display: flex !important;
-  position: absolute !important;
-  inset: 0 !important;
-  z-index: 20 !important;
-  align-items: center !important;
-  justify-content: center !important;
-  opacity: 1 !important;
-  visibility: visible !important;
-  background: linear-gradient(145deg, rgb(15 39 55 / .96), rgb(133 45 53 / .94)) !important;
-  color: rgb(var(--rgb-white)) !important;
-  pointer-events: none !important;
-}
-body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid .timer-row.is-live #btnEndKill { z-index: 1 !important; }
 
 html.dark body.z-mobile-on .z-mobile-shell-btn img,
-html.dark body.z-mobile-on .z-mobile-orient img,
-html.dark body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid .btn .btn-ico,
-html.dark body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnEndKill .btn-ico {
+html.dark body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid .btn .btn-ico {
   filter: brightness(0) invert(1) drop-shadow(0 1px 2px rgb(var(--rgb-black) / .48)) !important;
   opacity: 1 !important;
 }
 
-.modal-backdrop,
-.z-modal-backdrop { background: rgb(5 24 34 / .78) !important; backdrop-filter: blur(14px) saturate(1.1) !important; }
+.modal-backdrop {
+  background: rgb(5 24 34 / .78) !important;
+  backdrop-filter: blur(14px) saturate(1.1) !important;
+}
+
 .modal,
-.modal-content,
 .dialog {
   background: linear-gradient(155deg, rgb(var(--rgb-white) / .99), rgb(229 240 240 / .98), rgb(213 231 233 / .96)) !important;
   border: 1px solid rgb(42 118 125 / .36) !important;
   border-radius: 24px !important;
   box-shadow: 0 34px 92px rgb(7 40 55 / .38), inset 0 1px 0 rgb(var(--rgb-white) / .34) !important;
 }
+
 html.dark .modal,
-html.dark .modal-content,
 html.dark .dialog {
   background: linear-gradient(155deg, rgb(12 38 52 / .99), rgb(13 50 61 / .98), rgb(18 65 69 / .96)) !important;
   border-color: rgb(88 181 173 / .34) !important;
 }
-.modal-header { background: var(--gradient-modal-header) !important; }
-.modal-body { color: var(--color-text) !important; }
 
-/* ========================================================================== 
-   2.13.4 REFINEMENTS — LANGUAGE, COPY, BOARD, TIMER, DARK ICONS
-   ========================================================================== */
+.modal-header {
+  background: var(--gradient-modal-header) !important;
+}
+
+.modal-body {
+  color: var(--color-text) !important;
+}
+
 /* Language controls: readable native select and mobile language menu. */
+
 #authLangSel,
 #langSel,
 #zLangSel,
@@ -1916,6 +1576,7 @@ html.dark .dialog {
   background: linear-gradient(145deg, rgb(var(--rgb-primary-800)), rgb(var(--rgb-primary-600))) !important;
   border-color: rgb(var(--rgb-primary-300) / .38) !important;
 }
+
 #authLangSel option,
 #langSel option,
 #zLangSel option,
@@ -1924,17 +1585,20 @@ html.dark .dialog {
   color: rgb(var(--rgb-white)) !important;
   background: rgb(var(--rgb-primary-800)) !important;
 }
+
 .z-mobile-shell-menu [data-lang],
 .z-mobile-game-shell-menu [data-lang] {
   color: rgb(var(--rgb-white)) !important;
   background: transparent !important;
 }
+
 .z-mobile-shell-menu [data-lang].is-active,
 .z-mobile-game-shell-menu [data-lang].is-active {
   background: rgb(var(--rgb-white) / .15) !important;
 }
 
 /* Stronger page guidance text. */
+
 .z-mode-sub,
 .z-lobby-subtitle {
   color: var(--color-text-strong) !important;
@@ -1942,16 +1606,17 @@ html.dark .dialog {
   font-weight: 700 !important;
   line-height: 1.65;
 }
-.z-mode-badge { display: none !important; }
+
 .z-mode-card h2 {
   color: var(--color-text-strong) !important;
-  font-weight: 900 !important;
 }
+
 .z-mode-card p {
   color: var(--color-text) !important;
   opacity: .96 !important;
   font-weight: 650 !important;
 }
+
 html.dark .z-mode-card h2,
 html.dark .z-mode-card p,
 html.dark .z-mode-sub,
@@ -1960,36 +1625,12 @@ html.dark .z-lobby-subtitle {
 }
 
 /* Light board: same hue family, slightly brighter only. */
-:root:not(.dark) {
-  --rgb-board-light: 218 229 232;
-  --rgb-board-light-alt: 132 164 181;
-  --game-board-start: rgb(var(--rgb-board-light));
-  --game-board-end: rgb(var(--rgb-board-light-alt));
-}
-
 
 /* Active capture timer: explicit red outline and 20% height increase only while live. */
-body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid .timer-row.is-live {
-  border: 2px solid rgb(var(--rgb-danger-300)) !important;
-  box-shadow: 0 0 0 2px rgb(var(--rgb-danger-500) / .20), 0 10px 24px rgb(var(--rgb-danger-700) / .24) !important;
-}
-body.z-mobile-on[data-mobile-orientation="portrait"][data-mobile-page="game"] .z-mobile-game-controls-grid .timer-row.is-live,
-body.z-mobile-on[data-mobile-orientation="portrait"][data-mobile-page="game"] .z-mobile-game-controls-grid .timer-row.is-live #btnEndKill {
-  height: 38px !important;
-  min-height: 38px !important;
-}
-body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="game"] .z-mobile-game-controls-grid .timer-row.is-live,
-body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="game"] .z-mobile-game-controls-grid .timer-row.is-live #btnEndKill {
-  height: 60px !important;
-  min-height: 60px !important;
-}
-body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid .timer-row:not(.is-live) {
-  border-color: rgb(var(--rgb-white) / .18) !important;
-}
 
 /* Dark mode icon treatment outside game controls: preserve glyph, remove white discs. */
+
 html.dark body.z-mobile-on .z-mobile-shell-btn img,
-html.dark body.z-mobile-on .z-mobile-orient img,
 html.dark body.z-mobile-on[data-mobile-page="auth"] .btn-ico,
 html.dark body.z-mobile-on[data-mobile-page="lobby"] .btn-ico,
 html.dark body.z-mobile-on[data-mobile-page="dashboard"] .btn-ico,
@@ -2001,27 +1642,24 @@ html.dark body:not(.z-game-page) .btn-ico {
   filter: brightness(0) invert(1) drop-shadow(0 1px 1px rgb(var(--rgb-black) / .30)) !important;
   opacity: 1 !important;
 }
+
 html.dark body.z-mobile-on .z-mobile-shell-btn,
-html.dark body.z-mobile-on .z-mobile-orient,
 html.dark body.z-mobile-on[data-mobile-page="auth"] .btn,
 html.dark body.z-mobile-on[data-mobile-page="lobby"] .btn,
 html.dark body.z-mobile-on[data-mobile-page="dashboard"] .btn {
   overflow: visible;
 }
 
-
-/* ========================================================================== 
-   2.13.5 CONFLICT CLEANUP — ICONS, FOOTER AND BOARD CONTRAST
-   ========================================================================== */
-
 /* Mode icons retain their real SVG silhouette in dark mode. The surrounding
    tile is translucent, never an opaque white square. */
+
 html.dark .z-mode-ico {
   color: rgb(var(--rgb-white)) !important;
   background: rgb(8 37 51 / .44) !important;
   border-color: rgb(var(--rgb-secondary-300) / .34) !important;
   box-shadow: inset 0 1px 0 rgb(var(--rgb-white) / .10), 0 10px 24px rgb(var(--rgb-black) / .24) !important;
 }
+
 html.dark .z-mode-ico img {
   display: block !important;
   background: transparent !important;
@@ -2033,6 +1671,7 @@ html.dark .z-mode-ico img {
 }
 
 /* Login footer content and external links remain readable over dark surfaces. */
+
 html.dark .z-auth-foot,
 html.dark .z-auth-foot a,
 html.dark body.z-mobile-on .z-mobile-footer,
@@ -2041,80 +1680,50 @@ html.dark body.z-mobile-on .z-mobile-footer-nav,
 html.dark body.z-mobile-on .z-mobile-footer-nav a {
   color: rgb(var(--rgb-white)) !important;
 }
+
 html.dark body.z-mobile-on .z-mobile-footer-nav a {
   background: rgb(8 37 51 / .76) !important;
   border-color: rgb(var(--rgb-secondary-300) / .22) !important;
 }
+
 html.dark body.z-mobile-on .z-mobile-footer-rights {
   background: rgb(8 37 51 / .88) !important;
 }
 
 /* Brighter light board with explicit contrast roles for lines, routes, markers
    and pieces. Hue identity stays in the existing blue/teal/ocher family. */
+
 :root:not(.dark) {
-  --rgb-board-light: 236 242 243;
-  --rgb-board-light-alt: 166 194 205;
-  --rgb-board-grid-light: 22 58 78;
-  --rgb-board-diag-light: 132 62 18;
-  --game-board-start: rgb(var(--rgb-board-light));
-  --game-board-end: rgb(var(--rgb-board-light-alt));
-  --game-board-grid: rgb(var(--rgb-board-grid-light));
-  --game-board-diag: rgb(var(--rgb-board-diag-light));
-  --board-point: rgb(13 76 94);
-  --board-highlight: rgb(var(--rgb-white) / .72);
-  --board-shadow: rgb(13 48 65 / .30);
-  --mark-move: rgb(0 111 112);
-  --mark-move-strong: rgb(0 77 82);
-  --mark-danger: rgb(211 47 60);
-  --mark-danger-strong: rgb(145 22 34);
-  --mark-undo: rgb(166 94 0);
   --mark-label-bg: rgb(var(--rgb-white) / .94);
   --mark-overlay-light: rgb(var(--rgb-white) / .88);
   --piece-white-light: rgb(var(--rgb-white));
   --piece-white-mid: rgb(244 249 248);
   --piece-white-dark: rgb(211 226 230);
-  --piece-white-edge: rgb(17 68 91);
-  --piece-white-edge-soft: rgb(36 108 132);
-  --piece-white-dot: rgb(17 68 91);
-  --piece-black-light: rgb(48 82 98);
-  --piece-black-mid: rgb(20 48 64);
-  --piece-black-dark: rgb(6 24 35);
-  --piece-black-edge: rgb(55 196 177);
-  --piece-black-edge-soft: rgb(91 220 201);
-  --piece-black-dot: rgb(91 220 201);
-}
-
-:root.dark {
-  --rgb-board-dark: 20 42 58;
-  --rgb-board-dark-alt: 58 96 112;
-  --rgb-board-grid-dark: 222 238 242;
-  --rgb-board-diag-dark: 255 202 114;
-  --game-board-start: rgb(var(--rgb-board-dark));
-  --game-board-end: rgb(var(--rgb-board-dark-alt));
-  --game-board-grid: rgb(var(--rgb-board-grid-dark));
-  --game-board-diag: rgb(var(--rgb-board-diag-dark));
-  --board-point: rgb(98 229 216);
-  --board-highlight: rgb(var(--rgb-white) / .28);
-  --board-shadow: rgb(var(--rgb-black) / .54);
-  --mark-move: rgb(72 228 205);
-  --mark-move-strong: rgb(133 255 235);
-  --mark-danger: rgb(255 107 120);
-  --mark-danger-strong: rgb(255 160 168);
-  --mark-undo: rgb(255 202 114);
-  --mark-label-bg: rgb(8 31 44 / .94);
-  --mark-overlay-dark: rgb(var(--rgb-black) / .72);
-  --piece-white-light: rgb(255 255 255);
-  --piece-white-mid: rgb(239 248 248);
-  --piece-white-dark: rgb(194 224 229);
-  --piece-white-edge: rgb(83 211 196);
-  --piece-white-edge-soft: rgb(133 255 235);
-  --piece-white-dot: rgb(83 211 196);
-  --piece-black-light: rgb(34 68 84);
-  --piece-black-mid: rgb(13 38 52);
-  --piece-black-dark: rgb(4 21 31);
-  --piece-black-edge: rgb(255 202 114);
-  --piece-black-edge-soft: rgb(255 221 155);
-  --piece-black-dot: rgb(255 202 114);
+  --rgb-board-grid-light: 18 62 82;
+  --rgb-board-diag-light: 138 71 25;
+  --game-board-grid: rgb(var(--rgb-board-grid-light));
+  --game-board-diag: rgb(var(--rgb-board-diag-light));
+  --board-point: rgb(12 88 105);
+  --board-highlight: rgb(var(--rgb-white) / .78);
+  --board-shadow: rgb(15 45 61 / .24);
+  --mark-move: rgb(0 123 122);
+  --mark-move-strong: rgb(0 89 92);
+  --mark-danger: rgb(212 49 61);
+  --mark-danger-strong: rgb(148 20 31);
+  --mark-undo: rgb(174 101 8);
+  --piece-white-dot: rgb(20 73 95);
+  --piece-black-light: rgb(48 88 102);
+  --piece-black-mid: rgb(18 53 68);
+  --piece-black-dark: rgb(6 26 38);
+  --piece-black-dot: rgb(96 226 207);
+  --game-board-start: rgb(var(--rgb-board-light));
+  --game-board-end: rgb(var(--rgb-board-light-alt));
+  --board-bg-start: var(--game-board-start);
+  --board-bg-end: var(--game-board-end);
+  --piece-white-edge: rgb(var(--rgb-primary-900));
+  --piece-white-edge-soft: rgb(var(--rgb-light-primary-600));
+  --piece-black-edge: rgb(255 221 145);
+  --piece-black-edge-soft: rgb(255 242 204);
 }
 
 canvas#board {
@@ -2122,12 +1731,9 @@ canvas#board {
   box-shadow: inset 0 0 0 1px rgb(var(--rgb-white) / .18), 0 14px 34px rgb(var(--rgb-primary-900) / .20) !important;
 }
 
-/* ========================================================================== 
-   2.13.6 TARGETED FIXES — SOUFLA ICON, LOBBY HEADERS, AUTH DARK, MODE DARK
-   ========================================================================== */
-
 /* Soufla must use the same icon treatment as the other game buttons.
    No dedicated white plate, no extra background, no enlarged desktop tile. */
+
 body.z-game-page .soufla-row .btn .btn-ico,
 body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid .soufla-row .btn .btn-ico {
   display: block !important;
@@ -2140,62 +1746,62 @@ body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid .soufla-r
   box-shadow: none !important;
   object-fit: contain !important;
 }
+
 body.z-game-page:not(.z-mobile-on) .soufla-row .btn .btn-ico {
   width: 22px !important;
   height: 22px !important;
   padding: 0 !important;
 }
+
 body.z-mobile-on[data-mobile-orientation="portrait"][data-mobile-page="game"] .z-mobile-game-controls-grid .soufla-row .btn .btn-ico {
   width: 36px !important;
   height: 36px !important;
   padding: 0 !important;
 }
+
 body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="game"] .z-mobile-game-controls-grid .soufla-row .btn .btn-ico {
   width: 28px !important;
   height: 28px !important;
   padding: 0 !important;
 }
+
 body.z-game-page .soufla-row .btn,
 body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid .soufla-row .btn {
   overflow: hidden !important;
 }
+
 html.dark body.z-game-page .soufla-row .btn .btn-ico {
   filter: brightness(0) invert(1) drop-shadow(0 1px 2px rgb(var(--rgb-black) / .42)) !important;
 }
 
 /* Lobby titles act as real card headers, similar to table heads. */
+
 .z-lobby-panel {
   padding-top: 0 !important;
 }
+
 .z-lobby-h2 {
-  display: flex !important;
-  align-items: center;
-  justify-content: center;
-  width: calc(100% + 28px);
-  min-height: 52px;
-  margin: -14px -14px 14px !important;
-  padding: 12px 18px !important;
-  border-radius: 24px 24px 16px 16px !important;
-  font-size: 1rem !important;
-  font-weight: 900 !important;
   letter-spacing: -.01em;
-  text-align: center;
   box-shadow: inset 0 1px 0 rgb(var(--rgb-white) / .22), 0 8px 18px rgb(var(--rgb-black) / .08) !important;
 }
+
 .z-lobby-panel:first-child .z-lobby-h2 {
   background: linear-gradient(135deg, rgb(var(--rgb-light-primary-700)) 0%, rgb(var(--rgb-light-primary-500)) 60%, rgb(var(--rgb-secondary-500)) 100%) !important;
   color: rgb(var(--rgb-white)) !important;
 }
+
 .z-lobby-panel:nth-child(2) .z-lobby-h2 {
   background: linear-gradient(135deg, rgb(var(--rgb-secondary-700)) 0%, rgb(var(--rgb-secondary-500)) 60%, rgb(var(--rgb-light-primary-500)) 100%) !important;
   color: rgb(var(--rgb-white)) !important;
 }
+
 html.dark .z-lobby-panel:first-child .z-lobby-h2,
 html.dark .z-lobby-panel:nth-child(2) .z-lobby-h2 {
   border-bottom: 1px solid rgb(var(--rgb-white) / .12);
 }
 
 /* Auth page in dark mode: keep every entry and footer link readable and on-brand. */
+
 html.dark .z-auth-page #btnLogin,
 html.dark .z-auth-page #btnRegister,
 html.dark .z-auth-page #btnRecover,
@@ -2209,11 +1815,13 @@ html.dark body.z-mobile-on[data-mobile-page="auth"] #btnLoginGoogle {
   border-color: rgb(var(--rgb-white) / .18) !important;
   box-shadow: 0 10px 24px rgb(var(--rgb-black) / .24), inset 0 1px 0 rgb(var(--rgb-white) / .16) !important;
 }
+
 html.dark .z-auth-page #btnGuest,
 html.dark body.z-mobile-on[data-mobile-page="auth"] #btnGuest {
   background: linear-gradient(145deg, rgb(22 43 58), rgb(29 75 91)) !important;
   color: rgb(var(--rgb-white)) !important;
 }
+
 html.dark .z-auth-links a,
 html.dark .z-auth-links button,
 html.dark .z-auth-foot,
@@ -2226,10 +1834,12 @@ html.dark body.z-mobile-on[data-mobile-page="auth"] .z-mobile-footer-nav a {
 }
 
 /* Dark mode mode-selection icons: keep a visible glyph, not a pale square. */
+
 html.dark .z-mode-card .z-mode-ico {
   background: rgb(5 32 45 / .58) !important;
   border-color: rgb(var(--rgb-secondary-300) / .30) !important;
 }
+
 html.dark .z-mode-card .z-mode-ico img {
   background: transparent !important;
   border: 0 !important;
@@ -2238,47 +1848,16 @@ html.dark .z-mode-card .z-mode-ico img {
   filter: brightness(0) invert(1) drop-shadow(0 1px 2px rgb(var(--rgb-black) / .45)) !important;
   opacity: 1 !important;
 }
+
 html.dark body.z-mobile-on[data-mobile-page="mode"] .z-mode-card p {
   color: rgb(var(--rgb-white) / .88) !important;
 }
 
 /* Light board: a little brighter, while lines, diagonals, routes and pieces stay clearer. */
-:root:not(.dark) {
-  --rgb-board-light: 242 247 248;
-  --rgb-board-light-alt: 185 211 219;
-  --rgb-board-grid-light: 18 62 82;
-  --rgb-board-diag-light: 138 71 25;
-  --game-board-start: rgb(var(--rgb-board-light));
-  --game-board-end: rgb(var(--rgb-board-light-alt));
-  --game-board-grid: rgb(var(--rgb-board-grid-light));
-  --game-board-diag: rgb(var(--rgb-board-diag-light));
-  --board-point: rgb(12 88 105);
-  --board-highlight: rgb(var(--rgb-white) / .78);
-  --board-shadow: rgb(15 45 61 / .24);
-  --mark-move: rgb(0 123 122);
-  --mark-move-strong: rgb(0 89 92);
-  --mark-danger: rgb(212 49 61);
-  --mark-danger-strong: rgb(148 20 31);
-  --mark-undo: rgb(174 101 8);
-  --piece-white-edge: rgb(20 73 95);
-  --piece-white-edge-soft: rgb(41 117 141);
-  --piece-white-dot: rgb(20 73 95);
-  --piece-black-light: rgb(48 88 102);
-  --piece-black-mid: rgb(18 53 68);
-  --piece-black-dark: rgb(6 26 38);
-  --piece-black-edge: rgb(58 202 182);
-  --piece-black-edge-soft: rgb(96 226 207);
-  --piece-black-dot: rgb(96 226 207);
-}
-
-
-/* ========================================================================== 
-   2.13.7 UNIFIED LOBBY HEADERS, PLAYER STATES AND SOUFLA WORDMARK
-   ========================================================================== */
 
 /* The Soufla control is represented by its unique name rather than an
    ambiguous pictogram. It inherits the current game-control color language. */
-body.z-game-page .z-soufla-word,
+
 body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid .z-soufla-word {
   display: inline-flex !important;
   align-items: center;
@@ -2302,20 +1881,24 @@ body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid .z-soufla
   white-space: nowrap;
   text-shadow: 0 1px 2px rgb(var(--rgb-black) / .34);
 }
+
 body.z-mobile-on[data-mobile-orientation="portrait"][data-mobile-page="game"] .z-mobile-game-controls-grid .z-soufla-word {
   min-width: 48px;
   font-size: 15px;
 }
+
 body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="game"] .z-mobile-game-controls-grid .z-soufla-word {
   min-width: 44px;
   font-size: 13px;
 }
 
 /* A single structural header model applies to desktop and mobile. */
+
 .z-lobby-panel {
   padding: 0 14px 14px !important;
   gap: 0 !important;
 }
+
 .z-lobby-h2 {
   display: flex !important;
   align-items: center;
@@ -2332,15 +1915,18 @@ body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="game"] .
   text-align: center;
   box-sizing: border-box;
 }
+
 .z-lobby-h2::before,
 .z-lobby-h2::after {
   content: none !important;
   display: none !important;
 }
+
 body.z-mobile-on[data-mobile-page="lobby"] .z-lobby-panel {
   padding: 0 12px 12px !important;
   gap: 0 !important;
 }
+
 body.z-mobile-on[data-mobile-page="lobby"] .z-lobby-h2 {
   width: calc(100% + 24px) !important;
   min-height: 44px;
@@ -2351,14 +1937,17 @@ body.z-mobile-on[data-mobile-page="lobby"] .z-lobby-h2 {
 }
 
 /* Player rows stay on one line: avatar, name, status, action. */
+
 .z-player-row {
   min-height: 42px;
   flex-wrap: nowrap !important;
 }
+
 .z-player-row .z-row-main {
   min-width: 0;
   flex: 1 1 auto;
 }
+
 .z-player-row .z-row-title {
   display: flex;
   align-items: center;
@@ -2367,9 +1956,11 @@ body.z-mobile-on[data-mobile-page="lobby"] .z-lobby-h2 {
   white-space: nowrap;
   overflow: hidden;
 }
+
 .z-player-row .z-avatar {
   flex: 0 0 auto;
 }
+
 .z-player-row .z-player-name {
   min-width: 0;
   overflow: hidden;
@@ -2377,6 +1968,7 @@ body.z-mobile-on[data-mobile-page="lobby"] .z-lobby-h2 {
   white-space: nowrap;
   font-weight: 900;
 }
+
 .z-player-status {
   display: inline-flex;
   align-items: center;
@@ -2391,68 +1983,72 @@ body.z-mobile-on[data-mobile-page="lobby"] .z-lobby-h2 {
   line-height: 1;
   white-space: nowrap;
 }
+
 .z-player-status.is-available {
   color: rgb(var(--rgb-success-700));
   background: rgb(var(--rgb-success-500) / .14);
   border-color: rgb(var(--rgb-success-600) / .22);
 }
+
 .z-player-status.is-computer {
   color: rgb(var(--rgb-light-primary-700));
   background: rgb(var(--rgb-light-primary-500) / .12);
   border-color: rgb(var(--rgb-light-primary-500) / .22);
 }
+
 .z-player-status.is-online {
   color: rgb(var(--rgb-gold-800));
   background: rgb(var(--rgb-gold-500) / .18);
   border-color: rgb(var(--rgb-gold-700) / .24);
 }
+
 .z-player-status.is-no-invites {
   color: rgb(var(--rgb-danger-700));
   background: rgb(var(--rgb-danger-500) / .12);
   border-color: rgb(var(--rgb-danger-500) / .22);
 }
+
 .z-player-row .z-row-actions {
   flex: 0 0 auto;
   margin-inline-start: auto;
 }
-.z-player-row .z-invite-btn.is-invite-disabled,
-.z-player-row .z-invite-btn:disabled {
-  opacity: 1 !important;
-  filter: none !important;
-  color: rgb(var(--rgb-danger-700)) !important;
-  background: linear-gradient(145deg, rgb(var(--rgb-danger-500) / .12), rgb(var(--rgb-danger-400) / .20)) !important;
-  border-color: rgb(var(--rgb-danger-500) / .30) !important;
-  box-shadow: inset 0 1px 0 rgb(var(--rgb-white) / .20) !important;
-}
+
 html.dark .z-player-status.is-available {
   color: rgb(var(--rgb-success-100));
   background: rgb(var(--rgb-success-500) / .18);
 }
+
 html.dark .z-player-status.is-computer {
   color: rgb(var(--rgb-light-primary-200));
   background: rgb(var(--rgb-light-primary-400) / .18);
 }
+
 html.dark .z-player-status.is-online {
   color: rgb(var(--rgb-gold-400));
   background: rgb(var(--rgb-gold-500) / .18);
 }
+
 html.dark .z-player-status.is-no-invites,
 html.dark .z-player-row .z-invite-btn.is-invite-disabled,
 html.dark .z-player-row .z-invite-btn:disabled {
   color: rgb(var(--rgb-danger-300)) !important;
 }
+
 body.z-mobile-on[data-mobile-page="lobby"] .z-player-row {
   min-height: 40px;
   padding: 5px 7px;
 }
+
 body.z-mobile-on[data-mobile-page="lobby"] .z-player-row .z-row-title {
   gap: 5px;
 }
+
 body.z-mobile-on[data-mobile-page="lobby"] .z-player-status {
   min-height: 19px;
   padding: 2px 6px;
   font-size: .64rem;
 }
+
 body.z-mobile-on[data-mobile-page="lobby"] .z-player-row .z-row-actions .btn {
   min-width: 62px;
   min-height: 29px;
@@ -2460,11 +2056,8 @@ body.z-mobile-on[data-mobile-page="lobby"] .z-player-row .z-row-actions .btn {
   font-size: .72rem;
 }
 
-/* ========================================================================== 
-   2.13.8 INVITE STATE, RESPONSIVE SOUFLA, SYNC ICON, ORIENTATION POSITION
-   ========================================================================== */
-
 /* Disabled invitations must read as unavailable, not as an active action. */
+
 .z-player-row .z-invite-btn.is-invite-disabled,
 .z-player-row .z-invite-btn:disabled {
   opacity: 1 !important;
@@ -2475,6 +2068,7 @@ body.z-mobile-on[data-mobile-page="lobby"] .z-player-row .z-row-actions .btn {
   cursor: not-allowed !important;
   filter: saturate(.72) !important;
 }
+
 html.dark .z-player-row .z-invite-btn.is-invite-disabled,
 html.dark .z-player-row .z-invite-btn:disabled {
   color: rgb(var(--rgb-danger-300)) !important;
@@ -2484,56 +2078,9 @@ html.dark .z-player-row .z-invite-btn:disabled {
 
 /* Desktop keeps the original pictogram and its label. Mobile uses the
    localized word only, because Soufla has no universally recognizable icon. */
-body.z-game-page:not(.z-mobile-on) #btnSoufla .z-soufla-icon {
-  display: block !important;
-  width: 22px !important;
-  height: 22px !important;
-  padding: 0 !important;
-  background: transparent !important;
-  border: 0 !important;
-  border-radius: 0 !important;
-  box-shadow: none !important;
-  object-fit: contain !important;
-}
-body.z-game-page:not(.z-mobile-on) #btnSoufla .z-soufla-label {
-  display: inline !important;
-  position: static !important;
-  width: auto !important;
-  height: auto !important;
-  margin: 0 !important;
-  overflow: visible !important;
-  clip: auto !important;
-  white-space: nowrap !important;
-}
-body.z-mobile-on[data-mobile-page="game"] #btnSoufla .z-soufla-icon {
-  display: none !important;
-}
-body.z-mobile-on[data-mobile-page="game"] #btnSoufla .z-soufla-label {
-  display: inline-flex !important;
-  align-items: center;
-  justify-content: center;
-  position: static !important;
-  width: auto !important;
-  min-width: 44px;
-  height: auto !important;
-  padding: 0 !important;
-  margin: 0 !important;
-  overflow: visible !important;
-  clip: auto !important;
-  color: rgb(var(--rgb-white)) !important;
-  font-size: 14px !important;
-  font-weight: 950 !important;
-  line-height: 1 !important;
-  letter-spacing: 0 !important;
-  white-space: nowrap !important;
-  text-shadow: 0 1px 2px rgb(var(--rgb-black) / .34);
-}
-html[dir="ltr"] body.z-mobile-on[data-mobile-page="game"] #btnSoufla .z-soufla-label {
-  font-size: 13px !important;
-  letter-spacing: .01em !important;
-}
 
 /* Online refresh uses the same transparent icon treatment as other controls. */
+
 body.z-mobile-on[data-mobile-page="game"] #btnSync .btn-ico,
 body.z-mobile-on[data-mobile-page="game"] .sync-control-wrap #btnSync .btn-ico {
   display: block !important;
@@ -2544,25 +2091,17 @@ body.z-mobile-on[data-mobile-page="game"] .sync-control-wrap #btnSync .btn-ico {
   padding: 0 !important;
   object-fit: contain !important;
 }
+
 html.dark body.z-mobile-on[data-mobile-page="game"] #btnSync .btn-ico {
   filter: brightness(0) invert(1) drop-shadow(0 1px 2px rgb(var(--rgb-black) / .42)) !important;
 }
 
 /* Keep the orientation control above the bottom drawer handle and away from
    the gameplay control grid. */
-body.z-mobile-on[data-mobile-page="game"] .z-mobile-orient {
-  bottom: calc(var(--m-safe-bottom) + 50px) !important;
-  z-index: 10062 !important;
-}
-body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="game"] .z-mobile-orient {
-  bottom: calc(var(--m-safe-bottom) + 42px) !important;
-}
 
-/* ========================================================================== 
-   2.13.9 UNIFIED DISABLED INVITES AND BOTTOM-EDGE ORIENTATION CONTROL
-   ========================================================================== */
 /* This selector deliberately outranks the general lobby action gradient.
    Disabled invitations are neutral and unmistakably unavailable on every size. */
+
 .z-lobby-panel .z-player-row .z-row-actions .z-invite-btn.is-invite-disabled:disabled,
 body.z-mobile-on[data-mobile-page="lobby"] .z-lobby-panel .z-player-row .z-row-actions .z-invite-btn.is-invite-disabled:disabled {
   opacity: 1 !important;
@@ -2574,6 +2113,7 @@ body.z-mobile-on[data-mobile-page="lobby"] .z-lobby-panel .z-player-row .z-row-a
   cursor: not-allowed !important;
   transform: none !important;
 }
+
 html.dark .z-lobby-panel .z-player-row .z-row-actions .z-invite-btn.is-invite-disabled:disabled,
 html.dark body.z-mobile-on[data-mobile-page="lobby"] .z-lobby-panel .z-player-row .z-row-actions .z-invite-btn.is-invite-disabled:disabled {
   color: rgb(var(--rgb-neutral-300)) !important;
@@ -2583,47 +2123,25 @@ html.dark body.z-mobile-on[data-mobile-page="lobby"] .z-lobby-panel .z-player-ro
 }
 
 /* The orientation control sits on the physical bottom edge with no gap below it. */
-body.z-mobile-on[data-mobile-page="game"] .z-mobile-orient,
-body.z-mobile-on[data-mobile-orientation="portrait"][data-mobile-page="game"] .z-mobile-orient,
-body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="game"] .z-mobile-orient {
-  bottom: 0 !important;
-  inset-block-end: 0 !important;
-  margin-bottom: 0 !important;
-  border-bottom-left-radius: 0 !important;
-  border-bottom-right-radius: 0 !important;
-  z-index: 10062 !important;
-}
 
-/* ========================================================================== 
-   2.13.10 SOUFLA COPY AND ORIENTATION LAYER PRIORITY
-   ========================================================================== */
 /* The orientation control occupies the bottom edge but must remain above the
    drawer handle, whose full-width surface stays available everywhere else. */
-body.z-mobile-on[data-mobile-page="game"] .z-mobile-orient,
-body.z-mobile-on[data-mobile-orientation="portrait"][data-mobile-page="game"] .z-mobile-orient,
-body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="game"] .z-mobile-orient {
-  bottom: 0 !important;
-  inset-block-end: 0 !important;
-  margin-bottom: 0 !important;
-  z-index: 2147483647 !important;
-  pointer-events: auto !important;
-  touch-action: manipulation;
-  isolation: isolate;
-}
-
-/* ========================================================================== 
-   2.13.13 FIXES — 3D BOARD, MOBILE AUTH HERO, ORIENTATION PRIORITY
-   ========================================================================== */
 
 /* The mobile login artwork replaces only the stretched mobile brand image.
    Desktop keeps the compact application icon. */
-.z-auth-mobile-hero { display: none; }
+
+.z-auth-mobile-hero {
+  display: none;
+}
+
 body.z-mobile-on[data-mobile-page="auth"] .z-auth-brand {
   position: relative;
 }
+
 body.z-mobile-on[data-mobile-page="auth"] .z-auth-brand-icon {
   display: none !important;
 }
+
 body.z-mobile-on[data-mobile-page="auth"] .z-auth-mobile-hero {
   display: block !important;
   width: 100% !important;
@@ -2636,205 +2154,21 @@ body.z-mobile-on[data-mobile-page="auth"] .z-auth-mobile-hero {
   object-fit: fill !important;
   border-radius: 0 !important;
 }
-body.z-mobile-on[data-mobile-page="auth"] .z-auth-brand h1 {
-  display: block !important;
-  position: absolute;
-  inset-inline: 16px;
-  inset-block-start: 10px;
-  z-index: 2;
-  margin: 0;
-  padding: 8px 12px;
-  color: rgb(10 61 81) !important;
-  font-size: clamp(20px, 5vw, 34px) !important;
-  line-height: 1.15;
-  font-weight: 950;
-  text-align: center;
-  text-shadow: 0 1px 0 rgb(var(--rgb-white) / .90), 0 3px 12px rgb(var(--rgb-white) / .86);
-  pointer-events: none;
-}
-body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="auth"] .z-auth-brand h1 {
-  inset-block-start: 8px;
-  font-size: clamp(18px, 3vw, 30px) !important;
-}
 
 /* Keep the orientation action at its existing position, but always above the
    bottom drawer handle and its pointer layer. */
-body.z-mobile-on[data-mobile-page="game"] .z-mobile-orient {
-  z-index: 2147483647 !important;
-  pointer-events: auto !important;
-  isolation: isolate;
-}
+
 body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-drawer-handle {
   z-index: 1 !important;
 }
 
 /* The dimensional mode still uses the same canvas and must never make it
    transparent while a redraw is pending or fails. */
+
 body.board-depth canvas#board {
   background: linear-gradient(180deg, var(--board-bg-start) 0%, var(--board-bg-end) 100%) !important;
   opacity: 1 !important;
   visibility: visible !important;
-}
-
-
-
-
-/* ========================================================================== 
-   2.13.15 — TRUE DROPDOWN MENUS, PIECE CONTRAST, AUTH TITLE, SOUFLA LABEL
-   ========================================================================== */
-.z-select-dropdown {
-  display: inline-block;
-  position: relative;
-  width: min(100%, 220px);
-  min-width: 0;
-}
-.z-select-dropdown.is-ai-level {
-  width: auto;
-  min-width: 118px;
-  max-width: 100%;
-}
-.z-native-select-hidden {
-  position: absolute !important;
-  width: 1px !important;
-  height: 1px !important;
-  opacity: 0 !important;
-  pointer-events: none !important;
-  overflow: hidden !important;
-}
-.z-select-trigger {
-  width: 100%;
-  min-height: 44px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 10px 12px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--panel-strong);
-  color: var(--text);
-  box-shadow: inset 0 1px 0 rgb(var(--rgb-white) / .6);
-  font: inherit;
-  font-weight: 800;
-  text-align: start;
-  cursor: pointer;
-}
-.z-select-dropdown.is-ai-level .z-select-trigger {
-  min-height: 0;
-  padding: 6px 10px;
-  border-radius: 12px;
-  background: var(--panel);
-  color: var(--danger);
-}
-.z-select-trigger:focus-visible,
-.z-select-dropdown.is-open .z-select-trigger {
-  outline: none;
-  border-color: var(--accent);
-  box-shadow: 0 0 0 4px var(--accent-soft), var(--shadow-sm);
-}
-.z-select-trigger-label {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.z-select-trigger-arrow {
-  width: 9px;
-  height: 9px;
-  flex: 0 0 auto;
-  border-inline-end: 2px solid currentColor;
-  border-block-end: 2px solid currentColor;
-  transform: rotate(45deg) translateY(-2px);
-  opacity: .82;
-}
-.z-select-dropdown.is-open .z-select-trigger-arrow {
-  transform: rotate(225deg) translate(-1px, -1px);
-}
-.z-select-menu {
-  z-index: 2147483646;
-  display: grid;
-  gap: 4px;
-  max-height: min(44vh, 320px);
-  overflow-y: auto;
-  padding: 6px;
-  border: 1px solid var(--border-strong);
-  border-radius: 14px;
-  background: var(--panel-strong);
-  box-shadow: 0 16px 38px rgb(var(--rgb-black) / .22);
-  overscroll-behavior: contain;
-}
-.z-select-menu[hidden] { display: none !important; }
-.z-select-option {
-  width: 100%;
-  min-height: 38px;
-  padding: 8px 10px;
-  border: 0;
-  border-radius: 10px;
-  background: transparent;
-  color: var(--text);
-  box-shadow: none;
-  font: inherit;
-  font-weight: 750;
-  text-align: start;
-  cursor: pointer;
-}
-.z-select-option:hover,
-.z-select-option:focus-visible {
-  background: var(--accent-soft);
-  outline: none;
-}
-.z-select-option.is-selected {
-  background: var(--gradient-primary);
-  color: var(--color-on-primary);
-}
-html.dark .z-select-trigger,
-html.dark .z-select-menu {
-  background: rgb(var(--rgb-primary-900) / .96);
-  color: var(--color-on-dark);
-  border-color: rgb(var(--rgb-primary-300) / .32);
-}
-html.dark .z-select-option { color: var(--color-on-dark); }
-
-body.z-mobile-on[data-mobile-page="auth"] .z-auth-brand h1 {
-  inset-block-start: 44% !important;
-  transform: translateY(-50%);
-  padding: 10px 14px;
-  font-size: clamp(24px, 6vw, 40px) !important;
-}
-body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="auth"] .z-auth-brand h1 {
-  inset-block-start: 43% !important;
-  transform: translateY(-50%);
-  font-size: clamp(22px, 4.2vw, 34px) !important;
-}
-body.z-mobile-on[data-mobile-orientation="portrait"][data-mobile-page="game"] #btnSoufla .z-soufla-label {
-  font-size: 18px !important;
-  line-height: 1 !important;
-}
-body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="game"] #btnSoufla .z-soufla-label {
-  font-size: 16px !important;
-  line-height: 1 !important;
-}
-html[dir="ltr"] body.z-mobile-on[data-mobile-orientation="portrait"][data-mobile-page="game"] #btnSoufla .z-soufla-label {
-  font-size: 16px !important;
-}
-html[dir="ltr"] body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="game"] #btnSoufla .z-soufla-label {
-  font-size: 14px !important;
-}
-
-/* ========================================================================== 
-   2.13.16 — DOWNWARD MENUS, MODE TITLES, PIECE CONTRAST, ORIENTATION CONTROL
-   ========================================================================== */
-.z-select-trigger-arrow,
-.z-select-dropdown.is-open .z-select-trigger-arrow {
-  width: 0;
-  height: 0;
-  flex: 0 0 auto;
-  border: 0 !important;
-  border-left: 6px solid transparent !important;
-  border-right: 6px solid transparent !important;
-  border-top: 8px solid currentColor !important;
-  transform: none !important;
-  opacity: .94;
 }
 
 .z-mode-card h2 {
@@ -2843,173 +2177,23 @@ html[dir="ltr"] body.z-mobile-on[data-mobile-orientation="landscape"][data-mobil
   font-weight: 950 !important;
   margin-block: 0 7px !important;
 }
+
 .z-mode-card p {
   font-size: clamp(.94rem, 1.45vw, 1.06rem) !important;
   line-height: 1.65 !important;
 }
 
 /* Strong, opposing outlines keep the flat pieces separate from every board line. */
-:root:not(.dark) {
-  --piece-white-edge: rgb(var(--rgb-primary-900));
-  --piece-white-edge-soft: rgb(var(--rgb-light-primary-600));
-  --piece-black-edge: rgb(var(--rgb-white));
-  --piece-black-edge-soft: rgb(var(--rgb-secondary-500));
-}
-html.dark {
-  --piece-white-edge: rgb(var(--rgb-primary-900));
-  --piece-white-edge-soft: rgb(var(--rgb-secondary-300));
-  --piece-black-edge: rgb(var(--rgb-white));
-  --piece-black-edge-soft: rgb(var(--rgb-secondary-300));
-}
 
-body.z-mobile-on[data-mobile-page="game"] .z-mobile-orient,
-body.z-mobile-on[data-mobile-orientation="portrait"][data-mobile-page="game"] .z-mobile-orient,
-body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="game"] .z-mobile-orient {
-  width: 58px !important;
-  height: 50px !important;
-  color: rgb(var(--rgb-white)) !important;
-  background: linear-gradient(145deg, rgb(var(--rgb-light-primary-800)) 0%, rgb(var(--rgb-light-primary-600)) 48%, rgb(var(--rgb-secondary-500)) 100%) !important;
-  border: 2px solid rgb(var(--rgb-white) / .82) !important;
-  border-bottom: 0 !important;
-  border-radius: 18px 18px 0 0 !important;
-  box-shadow: 0 -8px 24px rgb(var(--rgb-black) / .30), inset 0 1px 0 rgb(var(--rgb-white) / .34) !important;
-  opacity: 1 !important;
-}
-body.z-mobile-on[data-mobile-page="game"] .z-mobile-orient .z-mobile-orient-ico {
-  width: 31px !important;
-  height: 31px !important;
-  background-color: rgb(var(--rgb-white)) !important;
-  filter: drop-shadow(0 2px 2px rgb(var(--rgb-black) / .34));
-}
-body.z-mobile-on[data-mobile-page="game"] .z-mobile-orient:active {
-  transform: translateY(1px) scale(.98);
-}
-
-body.z-mobile-on[data-mobile-orientation="portrait"][data-mobile-page="game"] #btnSoufla .z-soufla-label {
-  font-size: 20px !important;
-}
-body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="game"] #btnSoufla .z-soufla-label {
-  font-size: 18px !important;
-}
-html[dir="ltr"] body.z-mobile-on[data-mobile-orientation="portrait"][data-mobile-page="game"] #btnSoufla .z-soufla-label {
-  font-size: 18px !important;
-}
-html[dir="ltr"] body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="game"] #btnSoufla .z-soufla-label {
-  font-size: 16px !important;
-}
-
-
-/* ==========================================================================
-   2.13.17 — DOWNWARD CHEVRONS AND ORIENTATION ICON CONTRAST
-   ========================================================================== */
-body.z-mobile-on[data-mobile-page="game"] .z-mobile-orient .z-mobile-orient-ico {
-  width: 46px !important;
-  height: 42px !important;
-  background-color: rgb(var(--rgb-primary-900)) !important;
-  filter: drop-shadow(0 1px 0 rgb(var(--rgb-white) / .75)) drop-shadow(0 2px 3px rgb(var(--rgb-black) / .24)) !important;
-}
-html.dark body.z-mobile-on[data-mobile-page="game"] .z-mobile-orient .z-mobile-orient-ico {
-  background-color: rgb(var(--rgb-white)) !important;
-  filter: drop-shadow(0 2px 3px rgb(var(--rgb-black) / .52)) !important;
-}
-
-/* ========================================================================== 
-   2.13.18 — UNIFIED ORIENTATION CONTROL, AUTH COPY, LIGHT BOARD, LOG SCROLL
-   ========================================================================== */
 /* One compact orientation control on every mobile page and in both rotations. */
-body.z-mobile-on .z-mobile-orient,
-body.z-mobile-on[data-mobile-page="game"] .z-mobile-orient,
-body.z-mobile-on[data-mobile-orientation="portrait"][data-mobile-page="game"] .z-mobile-orient,
-body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="game"] .z-mobile-orient {
-  width: var(--m-shell-size) !important;
-  height: var(--m-shell-size) !important;
-  min-width: var(--m-shell-size) !important;
-  min-height: var(--m-shell-size) !important;
-  padding: 0 !important;
-  color: rgb(var(--rgb-white)) !important;
-  background: linear-gradient(145deg, rgb(var(--rgb-light-primary-800)), rgb(var(--rgb-secondary-600))) !important;
-  border: 2px solid rgb(var(--rgb-white) / .82) !important;
-  border-radius: 14px !important;
-  box-shadow: 0 8px 22px rgb(var(--rgb-black) / .28), inset 0 1px 0 rgb(var(--rgb-white) / .30) !important;
-  opacity: 1 !important;
-}
-body.z-mobile-on[data-mobile-page="game"] .z-mobile-orient,
-body.z-mobile-on[data-mobile-orientation="portrait"][data-mobile-page="game"] .z-mobile-orient,
-body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="game"] .z-mobile-orient {
-  bottom: 0 !important;
-  inset-block-end: 0 !important;
-  border-bottom-left-radius: 0 !important;
-  border-bottom-right-radius: 0 !important;
-  border-bottom-width: 0 !important;
-}
-body.z-mobile-on .z-mobile-orient .z-mobile-orient-ico,
-body.z-mobile-on[data-mobile-page="game"] .z-mobile-orient .z-mobile-orient-ico {
-  width: 34px !important;
-  height: 34px !important;
-  max-width: calc(var(--m-shell-size) - 6px) !important;
-  max-height: calc(var(--m-shell-size) - 6px) !important;
-  background-color: rgb(var(--rgb-white)) !important;
-  filter: drop-shadow(0 2px 2px rgb(var(--rgb-black) / .46)) !important;
-}
-html.dark body.z-mobile-on .z-mobile-orient {
-  background: linear-gradient(145deg, rgb(var(--rgb-primary-700)), rgb(var(--rgb-secondary-500))) !important;
-}
 
 /* The title/subtitle pair shares one overlay and sits slightly above the
    visual centre of the mobile login artwork. */
-body.z-mobile-on[data-mobile-page="auth"] .z-auth-brand-copy {
-  position: absolute;
-  inset-inline: 14px;
-  inset-block-start: 39%;
-  z-index: 3;
-  display: grid;
-  justify-items: center;
-  gap: 5px;
-  transform: translateY(-50%);
-  text-align: center;
-  pointer-events: none;
-}
-body.z-mobile-on[data-mobile-page="auth"] .z-auth-brand-copy h1,
-body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="auth"] .z-auth-brand-copy h1 {
-  position: static !important;
-  inset: auto !important;
-  transform: none !important;
-  margin: 0 !important;
-  padding: 0 !important;
-  font-size: clamp(24px, 6vw, 40px) !important;
-  line-height: 1.1 !important;
-}
-body.z-mobile-on[data-mobile-page="auth"] .z-auth-brand-copy p {
-  margin: 0;
-  padding: 3px 10px;
-  color: rgb(var(--rgb-primary-900));
-  font-size: clamp(12px, 3.1vw, 18px) !important;
-  line-height: 1.25;
-  font-weight: 900;
-  text-shadow: 0 1px 0 rgb(var(--rgb-white) / .95), 0 2px 9px rgb(var(--rgb-white) / .86);
-}
-body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="auth"] .z-auth-brand-copy {
-  inset-block-start: 37%;
-  gap: 3px;
-}
-body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="auth"] .z-auth-brand-copy h1 {
-  font-size: clamp(21px, 4vw, 32px) !important;
-}
-body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="auth"] .z-auth-brand-copy p {
-  font-size: clamp(11px, 2vw, 15px) !important;
-}
 
 /* Very light application-derived board gradient in light mode. */
-:root:not(.dark) {
-  --rgb-board-light: 250 253 253;
-  --rgb-board-light-alt: 222 241 244;
-  --game-board-start: rgb(var(--rgb-board-light));
-  --game-board-end: rgb(var(--rgb-board-light-alt));
-  --board-bg-start: var(--game-board-start);
-  --board-bg-end: var(--game-board-end);
-}
 
 /* The log itself owns vertical scrolling in every layout. */
+
 .log,
 body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-drawer .log {
   overflow-y: auto !important;
@@ -3018,135 +2202,11 @@ body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-drawer .log {
   scrollbar-gutter: stable;
 }
 
-
-/* ========================================================================== 
-   2.13.20 CORRECTIONS — ORIGINAL ORIENTATION ICON, SINGLE MOBILE TIMER TILE
-   ========================================================================== */
 /* Restore the original orientation control exactly: compact translucent shell
    and the original 20px two-device glyph. The same shared component is used on
    every mobile page. */
-body.z-mobile-on .z-mobile-orient {
-  background: rgb(var(--rgb-white) / .66) !important;
-  color: var(--text) !important;
-  border: 1px solid var(--border) !important;
-  box-shadow: var(--shadow-sm) !important;
-}
-html.dark body.z-mobile-on .z-mobile-orient {
-  background: rgb(var(--rgb-primary-900) / .88) !important;
-  color: rgb(var(--rgb-white)) !important;
-  border-color: var(--border) !important;
-  box-shadow: var(--shadow-sm) !important;
-}
-body.z-mobile-on .z-mobile-orient .z-mobile-orient-ico {
-  width: 20px !important;
-  height: 20px !important;
-  background-color: currentColor !important;
-}
 
 /* Strong, comfortable 2D piece separation in the two difficult combinations. */
-:root:not(.dark) {
-  --piece-black-edge: rgb(255 221 145) !important;
-  --piece-black-edge-soft: rgb(255 242 204) !important;
-}
-html.dark {
-  --piece-white-edge: rgb(8 57 80) !important;
-  --piece-white-edge-soft: rgb(52 157 184) !important;
-}
 
 /* On phones the timer row itself is the one end-capture control. There is no
    small white clock layered over a hidden button. */
-body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid .timer-row {
-  position: relative !important;
-  display: flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  width: 100% !important;
-  min-width: 0 !important;
-  padding: 0 !important;
-  overflow: hidden !important;
-  cursor: pointer;
-  user-select: none;
-  -webkit-tap-highlight-color: transparent;
-  color: rgb(var(--rgb-white)) !important;
-  background: var(--gradient-game-control) !important;
-  border: 1px solid rgb(var(--rgb-white) / .18) !important;
-  box-shadow: 0 9px 20px rgb(var(--rgb-primary-900) / .24), inset 0 1px 0 rgb(var(--rgb-white) / .20) !important;
-}
-body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid .timer-row .clock {
-  position: static !important;
-  inset: auto !important;
-  flex: 1 1 100% !important;
-  width: 100% !important;
-  max-width: none !important;
-  height: 100% !important;
-  min-width: 0 !important;
-  min-height: inherit !important;
-  margin: 0 !important;
-  padding: 0 8px !important;
-  display: flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  gap: 0 !important;
-  background: transparent !important;
-  border: 0 !important;
-  border-radius: inherit !important;
-  box-shadow: none !important;
-  color: rgb(var(--rgb-white)) !important;
-  text-shadow: 0 1px 2px rgb(var(--rgb-black) / .42) !important;
-  pointer-events: none !important;
-}
-body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid .timer-row .clock::before,
-body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid .timer-row .clock .muted {
-  content: none !important;
-  display: none !important;
-}
-body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid .timer-row #killClock {
-  display: block !important;
-  width: 100% !important;
-  color: rgb(var(--rgb-white)) !important;
-  font-weight: 950 !important;
-  line-height: 1 !important;
-  text-align: center !important;
-  letter-spacing: .04em;
-  font-variant-numeric: tabular-nums;
-}
-body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid .timer-row #btnEndKill {
-  display: none !important;
-}
-body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid .timer-row.is-live {
-  color: rgb(var(--rgb-white)) !important;
-  background: linear-gradient(145deg, rgb(15 39 55 / .96), rgb(133 45 53 / .94)) !important;
-  border: 2px solid rgb(var(--rgb-danger-300)) !important;
-  box-shadow: 0 0 0 2px rgb(var(--rgb-danger-500) / .20), 0 10px 24px rgb(var(--rgb-danger-700) / .24) !important;
-}
-body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid .timer-row.is-live .clock,
-body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid .timer-row.is-live #killClock {
-  background: transparent !important;
-  border: 0 !important;
-  box-shadow: none !important;
-  color: rgb(var(--rgb-white)) !important;
-}
-body.z-mobile-on[data-mobile-orientation="portrait"][data-mobile-page="game"] .z-mobile-game-controls-grid .timer-row {
-  height: 31px !important;
-  min-height: 31px !important;
-  border-radius: 10px !important;
-}
-body.z-mobile-on[data-mobile-orientation="portrait"][data-mobile-page="game"] .z-mobile-game-controls-grid .timer-row #killClock {
-  font-size: 14px !important;
-}
-body.z-mobile-on[data-mobile-orientation="portrait"][data-mobile-page="game"] .z-mobile-game-controls-grid .timer-row.is-live {
-  height: 38px !important;
-  min-height: 38px !important;
-}
-body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="game"] .z-mobile-game-controls-grid .timer-row {
-  height: 50px !important;
-  min-height: 50px !important;
-  border-radius: 18px !important;
-}
-body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="game"] .z-mobile-game-controls-grid .timer-row #killClock {
-  font-size: 18px !important;
-}
-body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="game"] .z-mobile-game-controls-grid .timer-row.is-live {
-  height: 60px !important;
-  min-height: 60px !important;
-}

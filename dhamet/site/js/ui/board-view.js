@@ -72,104 +72,7 @@
     };
   }
 
-  var PIECE_COLORS = Object.freeze(piecePalette()); // Compatibility alias; live rendering still reads current theme tokens.
-  var PIECE_SPRITE_SVG = "";
-
-  var PIECE_SPRITE_TILE = 256;
-
-  function buildPieceSpriteSvg() {
-    var c = piecePalette();
-    return [
-      '<svg xmlns="http://www.w3.org/2000/svg" width="768" height="256" viewBox="0 0 768 256">',
-      '<defs>',
-      '<filter id="ps" x="-34%" y="-34%" width="170%" height="190%"><feDropShadow dx="0" dy="11" stdDeviation="9" flood-color="' + c.shadow + '" flood-opacity=".46"/></filter>',
-      '<linearGradient id="wb" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="' + c.whiteLight + '"/><stop offset=".58" stop-color="' + c.whiteMid + '"/><stop offset="1" stop-color="' + c.whiteDark + '"/></linearGradient>',
-      '<linearGradient id="wr" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="' + c.whiteEdgeSoft + '"/><stop offset="1" stop-color="' + c.whiteEdge + '"/></linearGradient>',
-      '<radialGradient id="wh" cx="35%" cy="25%" r="78%"><stop offset="0" stop-color="' + c.whiteLight + '"/><stop offset=".50" stop-color="' + c.whiteMid + '"/><stop offset="1" stop-color="' + c.whiteDark + '"/></radialGradient>',
-      '<linearGradient id="bb" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="' + c.blackLight + '"/><stop offset=".54" stop-color="' + c.blackMid + '"/><stop offset="1" stop-color="' + c.blackDark + '"/></linearGradient>',
-      '<linearGradient id="br" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="' + c.blackEdgeSoft + '"/><stop offset="1" stop-color="' + c.blackEdge + '"/></linearGradient>',
-      '<radialGradient id="bh" cx="35%" cy="25%" r="78%"><stop offset="0" stop-color="' + c.blackLight + '"/><stop offset=".48" stop-color="' + c.blackMid + '"/><stop offset="1" stop-color="' + c.blackDark + '"/></radialGradient>',
-      '<linearGradient id="gold" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="' + c.crownLight + '"/><stop offset=".32" stop-color="' + c.crownMid + '"/><stop offset=".72" stop-color="' + c.crownDark + '"/><stop offset="1" stop-color="' + c.crownEdge + '"/></linearGradient>',
-      '<linearGradient id="goldEdge" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="' + c.crownLight + '"/><stop offset="1" stop-color="' + c.crownEdge + '"/></linearGradient>',
-      '</defs>',
-      '<g filter="url(#ps)">',
-      '<g transform="translate(0 0)">',
-      '<ellipse cx="128" cy="211" rx="73" ry="17" fill="' + c.shadow + '" opacity=".28"/>',
-      '<ellipse cx="128" cy="190" rx="74" ry="25" fill="url(#wb)" stroke="' + c.whiteEdge + '" stroke-width="5"/>',
-      '<ellipse cx="128" cy="181" rx="66" ry="18" fill="' + c.highlight + '" opacity=".34"/>',
-      '<path d="M78 179 C83 151 101 138 104 114 C106 100 98 93 92 87 C103 83 113 80 128 80 C143 80 153 83 164 87 C158 93 150 100 152 114 C155 138 173 151 178 179 Z" fill="url(#wb)" stroke="' + c.whiteEdgeSoft + '" stroke-width="3"/>',
-      '<ellipse cx="128" cy="118" rx="28" ry="12" fill="url(#wr)" opacity=".92"/>',
-      '<circle cx="128" cy="69" r="34" fill="url(#wh)" stroke="' + c.whiteEdgeSoft + '" stroke-width="3"/>',
-      '<ellipse cx="117" cy="57" rx="13" ry="8" fill="' + c.highlight + '" opacity=".75"/>',
-      '<ellipse cx="128" cy="91" rx="29" ry="9" fill="' + c.whiteEdgeSoft + '" opacity=".36"/>',
-      '</g>',
-      '<g transform="translate(256 0)">',
-      '<ellipse cx="128" cy="211" rx="73" ry="17" fill="' + c.shadow + '" opacity=".50"/>',
-      '<ellipse cx="128" cy="190" rx="74" ry="25" fill="url(#bb)" stroke="' + c.blackEdge + '" stroke-width="5"/>',
-      '<ellipse cx="128" cy="181" rx="66" ry="18" fill="' + c.whiteEdgeSoft + '" opacity=".12"/>',
-      '<path d="M78 179 C83 151 101 138 104 114 C106 100 98 93 92 87 C103 83 113 80 128 80 C143 80 153 83 164 87 C158 93 150 100 152 114 C155 138 173 151 178 179 Z" fill="url(#bb)" stroke="' + c.blackLight + '" stroke-width="3"/>',
-      '<ellipse cx="128" cy="118" rx="28" ry="12" fill="url(#br)" opacity=".94"/>',
-      '<circle cx="128" cy="69" r="34" fill="url(#bh)" stroke="' + c.blackLight + '" stroke-width="3"/>',
-      '<ellipse cx="117" cy="57" rx="13" ry="8" fill="' + c.whiteDark + '" opacity=".20"/>',
-      '<ellipse cx="128" cy="91" rx="29" ry="9" fill="' + c.shadow + '" opacity=".40"/>',
-      '</g>',
-      '<g transform="translate(512 0)">',
-      '<ellipse cx="128" cy="205" rx="79" ry="15" fill="' + c.shadow + '" opacity=".32"/>',
-      '<path d="M48 157 L65 72 L108 116 L128 43 L148 116 L191 72 L208 157 Z" fill="url(#gold)" stroke="' + c.crownEdge + '" stroke-width="5" stroke-linejoin="round"/>',
-      '<path d="M52 157 H204 L196 198 Q194 211 181 211 H75 Q62 211 60 198 Z" fill="url(#goldEdge)" stroke="' + c.crownEdge + '" stroke-width="5"/>',
-      '<path d="M67 167 H189" stroke="' + c.crownLight + '" stroke-width="8" stroke-linecap="round" opacity=".72"/>',
-      '<circle cx="77" cy="139" r="9" fill="' + c.danger + '" stroke="' + c.crownLight + '" stroke-width="3"/>',
-      '<circle cx="128" cy="139" r="10" fill="' + c.primary + '" stroke="' + c.crownLight + '" stroke-width="3"/>',
-      '<circle cx="179" cy="139" r="9" fill="' + c.success + '" stroke="' + c.crownLight + '" stroke-width="3"/>',
-      '<circle cx="128" cy="47" r="8" fill="' + c.crownLight + '"/>',
-      '</g>',
-      '</g>',
-      '</svg>'
-    ].join("");
-  }
-
-  var PIECE_SPRITE_DATA_URI = "";
-  var PIECE_SPRITE_BASE_ANCHOR_Y = 0.845;
-  var PIECE_SPRITE_HEIGHT_RATIO = 0.75;
-  var pieceSpriteImage = null;
-  var pieceSpriteState = "idle";
-  var pieceSpriteRedrawPending = false;
-
-  function requestSpriteRedraw(opts) {
-    if (pieceSpriteRedrawPending || !opts || typeof opts.requestRedraw !== "function") return;
-    pieceSpriteRedrawPending = true;
-    setTimeout(function () {
-      pieceSpriteRedrawPending = false;
-      try { opts.requestRedraw(); } catch (_) {}
-    }, 0);
-  }
-
-  function ensurePieceSprite(opts) {
-    if (pieceSpriteState === "ready") return pieceSpriteImage;
-    if (pieceSpriteState === "failed") return null;
-    if (pieceSpriteState === "loading") return null;
-    var ImageCtor = global.Image;
-    if (typeof ImageCtor !== "function") {
-      pieceSpriteState = "failed";
-      return null;
-    }
-    pieceSpriteState = "loading";
-    PIECE_SPRITE_SVG = buildPieceSpriteSvg();
-    PIECE_SPRITE_DATA_URI = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(PIECE_SPRITE_SVG);
-    pieceSpriteImage = new ImageCtor();
-    try { pieceSpriteImage.decoding = "async"; } catch (_) {}
-    pieceSpriteImage.onload = function () {
-      pieceSpriteState = "ready";
-      requestSpriteRedraw(opts);
-    };
-    pieceSpriteImage.onerror = function () {
-      pieceSpriteState = "failed";
-      pieceSpriteImage = null;
-      requestSpriteRedraw(opts);
-    };
-    pieceSpriteImage.src = PIECE_SPRITE_DATA_URI;
-    return null;
-  }
+  var DIMENSIONAL_PIECE_HEIGHT_RATIO = 0.75;
 
   function cssValue(cssRoot, name, fallback) {
     var value = cssRoot && cssRoot.getPropertyValue ? (cssRoot.getPropertyValue(name) || "").trim() : "";
@@ -464,7 +367,6 @@
     ctx.restore();
   }
 
-  /* pieceFill uses the same themed spectrum: PIECE_COLORS.whiteLight through PIECE_COLORS.blackDark. */
   function pieceFill(value, opts) {
     opts = opts || {};
     var colors = piecePalette();
@@ -576,22 +478,6 @@
     ctx.restore();
   }
 
-  function drawSpriteTile(ctx, sprite, tileIndex, x, anchorY, width, height, anchorRatio) {
-    height = Number(height) || width;
-    anchorRatio = Number.isFinite(anchorRatio) ? anchorRatio : 0.5;
-    ctx.drawImage(
-      sprite,
-      tileIndex * PIECE_SPRITE_TILE,
-      0,
-      PIECE_SPRITE_TILE,
-      PIECE_SPRITE_TILE,
-      x - width / 2,
-      anchorY - height * anchorRatio,
-      width,
-      height,
-    );
-  }
-
   function drawDimensionalPieces(ctx, board, opts) {
     var canvas = opts.canvas;
     var n = boardSize(opts);
@@ -601,11 +487,7 @@
     var ownerFn = opts.pieceOwner || global.pieceOwner;
     var kindFn = opts.pieceKind || global.pieceKind;
     var bot = opts.BOT != null ? opts.BOT : global.BOT;
-    // Canvas-native pieces are deterministic across browsers and themes.
-    // The generated SVG sprite remains available for compatibility tests, but
-    // is not used at runtime because some mobile engines briefly decode it as
-    // an empty image after switching to the dimensional board.
-    var sprite = null;
+    // Canvas-native pieces are the single dimensional rendering path.
 
     for (var r = 0; r < n; r++) {
       for (var c = 0; c < n; c++) {
@@ -616,24 +498,11 @@
         var y = view[0] * stepY + stepY / 2;
         var isWhite = ownerFn && ownerFn(v) === bot;
         var pieceWidth = Math.max(22, unit * 0.82);
-        var pieceHeight = pieceWidth * PIECE_SPRITE_HEIGHT_RATIO;
-        if (sprite) {
-          drawSpriteTile(
-            ctx, sprite, isWhite ? 0 : 1, x, y,
-            pieceWidth, pieceHeight, PIECE_SPRITE_BASE_ANCHOR_Y
-          );
-        } else {
-          drawDimensionalFallbackPiece(ctx, x, y, pieceWidth, pieceHeight, isWhite);
-        }
+        var pieceHeight = pieceWidth * DIMENSIONAL_PIECE_HEIGHT_RATIO;
+        drawDimensionalFallbackPiece(ctx, x, y, pieceWidth, pieceHeight, isWhite);
 
         var kind = kindFn ? kindFn(v) : Math.abs(Number(v));
         if (kind === 2 || Math.abs(Number(v)) === 2) {
-          if (sprite) {
-            var crownWidth = pieceWidth * 0.50;
-            var crownHeight = crownWidth * 0.72;
-            var crownBaseY = y - pieceHeight * 0.46;
-            drawSpriteTile(ctx, sprite, 2, x, crownBaseY, crownWidth, crownHeight, 0.84);
-          } else {
             ctx.save();
             var crownY = y - pieceHeight * 0.56;
             ctx.fillStyle = themeColor("--piece-crown-mid");
@@ -649,7 +518,6 @@
             ctx.fill();
             ctx.stroke();
             ctx.restore();
-          }
         }
       }
     }

@@ -1,5 +1,7 @@
 /* ========================================================================== STYLE.CSS ========================================================================== */
+
 /* ========================================================================== THEME TOKENS & GLOBAL FOUNDATIONS ========================================================================== */
+
 :root {
   --primary-green: rgb(var(--rgb-success-600));
   --primary-gold: rgb(var(--rgb-gold-600));
@@ -182,6 +184,7 @@ img[src*="assets/icons/"]:not([src*="assets/icons/users/"]) {
 }
 
 /* ========================================================================== SHARED TYPOGRAPHY ========================================================================== */
+
 h1,
 .z-page-title,
 .z-dash-title {
@@ -192,8 +195,6 @@ h1,
 
 h2,
 h3,
-.z-card h2,
-.z-card h3,
 .z-mode-text h2,
 .z-lobby-h2 {
   font-size: var(--fs-body);
@@ -244,6 +245,7 @@ footer,
 }
 
 /* ========================================================================== SHARED SURFACES & PANELS ========================================================================== */
+
 .board-wrap,
 .side,
 .stats,
@@ -251,8 +253,6 @@ footer,
 .online-box,
 .log,
 .modal,
-.z-card,
-.z-dash-msg,
 .z-dash-profile-card,
 .z-dash-summary,
 .z-dash-details,
@@ -268,6 +268,7 @@ footer,
 }
 
 /* ========================================================================== SHARED SOFT CONTROLS ========================================================================== */
+
 .z-lang-select,
 .z-nav-toggle {
   border: 1px solid var(--border);
@@ -282,6 +283,7 @@ html.dark .z-nav-toggle {
 }
 
 /* ========================================================================== GAME SHELL LAYOUT ========================================================================== */
+
 :root.dark canvas#board {
   background: linear-gradient(180deg, var(--board-bg-start) 0%, var(--board-bg-end) 100%);
   color: var(--text);
@@ -290,9 +292,6 @@ html.dark .z-nav-toggle {
 body.z-game-page .z-footer-wrap,
 body.z-game-page footer,
 .mode-pvp .ai-level-box,
-.z-hidden,
-.option-item.z-hidden,
-.option-item[hidden],
 .z-spectator .btn-grid,
 .z-spectator #btnEndOnline,
 .z-spectator #pvpVoiceBar,
@@ -349,11 +348,9 @@ body.board-depth canvas#board {
 }
 
 body.board-depth .board-wrap {
-  box-shadow:
-    0 16px 38px var(--board-depth-shadow),
+  box-shadow: 0 16px 38px var(--board-depth-shadow),
     0 4px 12px rgb(var(--rgb-primary-900) / .1);
 }
-
 
 .side {
   display: flex;
@@ -379,6 +376,7 @@ body.board-depth .board-wrap {
 }
 
 /* ========================================================================== GAME HEADER & STATUS ========================================================================== */
+
 :root.dark .status-row {
   background: linear-gradient(180deg, rgb(var(--rgb-primary-900) / .94), rgb(var(--rgb-primary-900) / .88));
 }
@@ -422,19 +420,6 @@ body.board-depth .board-wrap {
   max-width: 100%;
 }
 
-.lang-select label {
-  color: var(--muted);
-  white-space: nowrap;
-  font-size: var(--fs-body);
-}
-
-.lang-select select {
-  padding: 6px 10px;
-  min-width: 110px;
-  max-width: 150px;
-  font-size: var(--fs-body);
-}
-
 .lang-ar .status {
   font-family: var(--font-arabic);
   text-align: right;
@@ -473,6 +458,7 @@ body.board-depth .board-wrap {
 }
 
 /* ========================================================================== STATS, PRESENCE & INFO PANELS ========================================================================== */
+
 :root.dark .stats-mobile-table th,
 :root.dark .stats tbody td,
 :root.dark .ai-level-prefix {
@@ -531,9 +517,11 @@ body[dir="rtl"] .stats-mobile-table,
 .mode-pvp .controls-pvp {
   display: block;
 }
+
 body.z-game-page:not(.z-mobile-on) .side .stats {
   flex-shrink: 0;
 }
+
 .stats-mobile,
 .modal.z-chat-modal .modal-footer,
 .controls-pool,
@@ -563,48 +551,6 @@ body.z-game-page:not(.z-mobile-on) .side .stats {
   justify-content: center;
   gap: 8px;
   line-height: 1.15;
-}
-
-.player-avatar-frame {
-  flex: 0 0 auto;
-  width: 34px;
-  height: 34px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 3px;
-  border: 3px solid transparent;
-  border-radius: 999px;
-  background: rgb(var(--rgb-white));
-  box-shadow: var(--shadow-sm);
-}
-
-.player-avatar-frame.is-black-piece {
-  border-color: rgb(var(--rgb-primary-900));
-  background: rgb(var(--rgb-white));
-}
-
-.player-avatar-frame.is-white-piece {
-  border-color: rgb(var(--rgb-white));
-  background: rgb(var(--rgb-white));
-  box-shadow: 0 0 0 1px rgb(var(--rgb-primary-900) / .16), var(--shadow-sm);
-}
-
-.player-avatar-frame.is-active-turn {
-  box-shadow: 0 0 0 3px rgb(var(--rgb-danger-500) / .92), var(--shadow-sm);
-}
-
-.player-avatar {
-  width: 100%;
-  height: 100%;
-  display: block;
-  object-fit: contain;
-}
-
-.piece-ico-frame {
-  width: 28px;
-  height: 28px;
-  padding: 2px;
 }
 
 .stats-mobile-table .piece-ico {
@@ -759,8 +705,14 @@ body[dir="rtl"] .ai-level-value {
   border-radius: var(--radius);
   font-size: var(--fs-body);
 }
-html[dir="rtl"] .presence-chip { direction: rtl; }
-html[dir="ltr"] .presence-chip { direction: ltr; }
+
+html[dir="rtl"] .presence-chip {
+  direction: rtl;
+}
+
+html[dir="ltr"] .presence-chip {
+  direction: ltr;
+}
 
 .presence-name {
   min-width: 0;
@@ -839,6 +791,7 @@ body[dir="rtl"] #aiLevelBox {
 }
 
 /* ========================================================================== FORM CONTROLS & BUTTONS ========================================================================== */
+
 body.z-game-page .btn-grid .btn {
   padding-top: 6px;
   padding-bottom: 6px;
@@ -943,13 +896,6 @@ body.z-game-page:not(.mode-pvp):not(.z-mobile-on) #btnNew {
   color: rgb(var(--rgb-primary-200)) !important;
 }
 
-.btn-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 8px;
-  margin-top: 8px;
-}
-
 .btn {
   font: inherit;
   cursor: pointer;
@@ -1042,7 +988,6 @@ body.z-game-page:not(.mode-pvp):not(.z-mobile-on) #btnNew {
   width: 100%;
   margin-top: 4px;
 }
-
 
 .sync-control-wrap {
   display: flex;
@@ -1216,6 +1161,7 @@ body.z-game-page:not(.mode-pvp):not(.z-mobile-on) #btnNew {
 }
 
 /* ========================================================================== ACTIVITY LOG ========================================================================== */
+
 :root.dark .log .time {
   color: rgb(var(--rgb-secondary-300));
 }
@@ -1298,21 +1244,13 @@ body.z-game-page:not(.mode-pvp):not(.z-mobile-on) #btnNew {
 }
 
 /* ========================================================================== MODAL DIALOGS & SETTINGS ========================================================================== */
+
 :root.dark .modal {
   border: 3px solid var(--primary-gold);
 }
 
 :root.dark .modal-header {
   background: linear-gradient(90deg, var(--primary-green), var(--primary-gold));
-}
-
-:root.dark .apply-settings-note,
-:root.dark .apply-settings-table-wrap {
-  border: 1px solid rgb(var(--rgb-white) / .14);
-}
-
-:root.dark .apply-settings-table td {
-  border-top: 1px solid rgb(var(--rgb-white) / .12);
 }
 
 :root.dark .modal-body th {
@@ -1328,69 +1266,6 @@ body.z-game-page:not(.mode-pvp):not(.z-mobile-on) #btnNew {
   background: linear-gradient(180deg, rgb(var(--rgb-primary-400) / .08), rgb(var(--rgb-secondary-600) / .04));
 }
 
-.apply-settings-wrap {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
-  width: 100%;
-}
-
-.apply-settings-notes {
-  width: 100%;
-  max-width: 640px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  align-items: center;
-}
-
-.apply-settings-note {
-  width: 100%;
-  padding: 10px 12px;
-  border: 1px solid rgb(var(--rgb-black) / .12);
-  background: transparent;
-  font-weight: 800;
-  line-height: 1.5;
-  white-space: pre-wrap;
-  text-align: center;
-  border-radius: var(--radius);
-}
-
-.apply-settings-table-wrap {
-  width: 100%;
-  max-width: 640px;
-  border: 1px solid rgb(var(--rgb-black) / .12);
-  background: transparent;
-  overflow: hidden;
-  border-radius: var(--radius);
-}
-
-.apply-settings-changes-title {
-  font-weight: 900;
-  padding: 10px 12px;
-  text-align: center;
-}
-
-.apply-settings-table {
-  width: 100%;
-  border-collapse: collapse;
-  text-align: start;
-}
-
-.apply-settings-table td {
-  padding: 9px 12px;
-  border-top: 1px solid rgb(var(--rgb-black) / .1);
-  vertical-align: top;
-  font-weight: 800;
-}
-
-.apply-settings-table td.k {
-  opacity: 0.9;
-  width: 44%;
-}
-
-.apply-settings-table td.v,
 .modal-footer .row,
 .modal-footer #modalFooterButtons {
   width: 100%;
@@ -1531,35 +1406,6 @@ body.z-game-page:not(.mode-pvp):not(.z-mobile-on) #btnNew {
   vertical-align: top;
 }
 
-.option-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.option-item {
-  display: grid !important;
-  grid-template-columns: 1fr 1fr;
-  align-items: center;
-  gap: 12px;
-}
-
-.option-item>div:first-child {
-  text-align: start;
-}
-
-.option-item>div:last-child {
-  text-align: end;
-  justify-self: stretch;
-}
-
-.option-item select,
-.option-item input[type="text"],
-.option-item input[type="number"] {
-  width: 100%;
-  max-width: 100%;
-}
-
 .settings-feedback {
   margin: 8px 0 10px;
   padding: 10px 12px;
@@ -1609,6 +1455,7 @@ body[dir="rtl"] #aiLevelValue {
 }
 
 /* ========================================================================== GAME STATE & ROLE VISIBILITY ========================================================================== */
+
 .ui-hold body.z-game-page .timer-row,
 .ui-hold body.z-game-page .soufla-row,
 .ui-hold body.z-game-page #controlsWrap,
@@ -1622,7 +1469,6 @@ body[dir="rtl"] #aiLevelValue {
   pointer-events: none;
 }
 
-
 .mode-pvp .online-box {
   display: flex;
 }
@@ -1632,6 +1478,7 @@ body[dir="rtl"] #aiLevelValue {
 }
 
 /* ========================================================================== PVP CONTROLS & CHAT ========================================================================== */
+
 :root.dark .pvp-chat-list {
   background: rgb(var(--rgb-white) / .05);
 }
@@ -1687,7 +1534,6 @@ body[dir="rtl"] #aiLevelValue {
   gap: 8px;
 }
 
-
 .sr-only {
   position: absolute !important;
   width: 1px !important;
@@ -1742,7 +1588,6 @@ body[dir="rtl"] #aiLevelValue {
   gap: 8px;
 }
 
-
 #btnChat[data-badge] {
   position: relative;
 }
@@ -1768,7 +1613,6 @@ body[dir="rtl"] #aiLevelValue {
 }
 
 .pvp-chat {
-  --pvp-chat-name-col: clamp(122px, 26%, 190px);
   flex: 1 1 auto;
   min-height: 0;
   display: flex;
@@ -1914,7 +1758,9 @@ body[dir="rtl"] #aiLevelValue {
 }
 
 /* ========================================================================== FOOTER ========================================================================== */
+
 /* ========================================================================== MISCELLANEOUS GAME STYLES ========================================================================== */
+
 :root.dark select:focus,
 :root.dark button:focus,
 :root.dark input:focus {
@@ -1934,7 +1780,6 @@ body[dir="rtl"] #aiLevelValue {
 }
 
 :root.dark body {
-
   background: radial-gradient(circle at top right, rgb(var(--rgb-secondary-400) / .14), transparent 32%), radial-gradient(circle at top left, rgb(var(--rgb-primary-400) / .14), transparent 28%), linear-gradient(180deg, rgb(var(--rgb-primary-900) / .82), rgb(var(--rgb-primary-900) / .96)), var(--bg);
 }
 
@@ -2000,7 +1845,11 @@ textarea {
   width: 20px;
   height: 20px;
 }
-.z-mobile-game-presence { color: var(--danger); font-weight: 700; }
+
+.z-mobile-game-presence {
+  color: var(--danger);
+  font-weight: 700;
+}
 
 body.z-spectator #btnEndKill,
 body.z-spectator #btnUndo,
@@ -2016,13 +1865,11 @@ body.z-spectator #btnMic {
   display: none !important;
 }
 
-
 body.z-spectator .timer-row,
 body.z-spectator .soufla-row {
   display: none !important;
 }
 
-/* Minimax-level UI refinements */
 .settings-general,
 .settings-list {
   max-width: 100%;
@@ -2083,31 +1930,10 @@ body[dir="rtl"] .settings-control {
   max-width: 100%;
 }
 
-.range-control {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: min(100%, 240px);
-  min-width: 0;
-}
-
-.range-control input[type="range"] {
-  flex: 1 1 auto;
-  min-width: 0;
-}
-
 .range-control .mono {
   flex: 0 0 54px;
   text-align: end;
   font-weight: 800;
-}
-
-.range-control.is-disabled {
-  opacity: 0.55;
-}
-
-.range-control input[type="range"]:disabled {
-  cursor: not-allowed;
 }
 
 .settings-control .checkline {
@@ -2165,26 +1991,17 @@ body[dir="rtl"] .settings-control {
   line-height: 1.65;
 }
 
-
 @media (max-width: 560px) {
   .settings-row {
     grid-template-columns: minmax(0, 1fr) minmax(0, 44%);
     gap: 8px 10px;
   }
-
   .settings-label small {
     font-size: 0.86em;
   }
-
   .settings-control select {
     width: 100%;
   }
-
-  .range-control {
-    width: 100%;
-    gap: 8px;
-  }
-
   .range-control .mono {
     flex-basis: 46px;
   }
@@ -2216,7 +2033,6 @@ body[dir="rtl"] .settings-control {
   box-shadow: 0 8px 18px rgb(var(--rgb-danger-600) / .28) !important;
 }
 
-
 /* Compact desktop game layout. This is used only when the responsive mobile
    controller is not active, so a narrow desktop window never crushes the 9×9 board. */
 
@@ -2232,7 +2048,6 @@ body[dir="rtl"] .settings-control {
   body.z-game-page:not(.z-mobile-on) {
     overflow-y: auto;
   }
-
   body.z-game-page:not(.z-mobile-on) .app {
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: auto auto;
@@ -2242,14 +2057,12 @@ body[dir="rtl"] .settings-control {
     max-width: 900px;
     overflow: visible;
   }
-
   body.z-game-page:not(.z-mobile-on) .board-wrap {
     width: 100%;
     min-height: 420px;
     max-height: calc(100dvh - 20px);
     aspect-ratio: 5 / 4;
   }
-
   body.z-game-page:not(.z-mobile-on) .side {
     width: 100%;
     height: auto;
@@ -2262,6 +2075,7 @@ body[dir="rtl"] .settings-control {
  * Avoid backdrop-filter/transform compositing inside the scroll container:
  * on Chromium/Windows touch-capable desktops it can continuously rebuild the
  * hit-test layer while hovering a button or the scrollbar. */
+
 body.z-game-page:not(.z-mobile-on) .side {
   background: var(--panel-strong) !important;
   -webkit-backdrop-filter: none !important;
@@ -2269,10 +2083,12 @@ body.z-game-page:not(.z-mobile-on) .side {
   scrollbar-gutter: stable;
   overscroll-behavior: contain;
 }
+
 body.z-game-page:not(.z-mobile-on) .side * {
   -webkit-backdrop-filter: none !important;
   backdrop-filter: none !important;
 }
+
 body.z-game-page:not(.z-mobile-on) .side .btn:hover,
 body.z-game-page:not(.z-mobile-on) .side .btn:hover:not(:disabled),
 body.z-game-page:not(.z-mobile-on) .side button:hover,
@@ -2281,20 +2097,18 @@ body.z-game-page:not(.z-mobile-on) .side input:hover {
   transform: none !important;
   filter: none !important;
 }
+
 body.z-game-page:not(.z-mobile-on) .side::-webkit-scrollbar-thumb,
 body.z-game-page:not(.z-mobile-on) .side::-webkit-scrollbar-thumb:hover {
   background: var(--accent) !important;
 }
 
 /* Online identity and recovery states */
+
 .z-player-name,
 .z-notice-player-name {
   font-weight: 850;
   color: var(--text-strong);
-}
-
-.z-room-state {
-  font-weight: 750;
 }
 
 .z-room-reconnecting .z-room-state {
@@ -2312,7 +2126,6 @@ body.z-game-page:not(.z-mobile-on) .side::-webkit-scrollbar-thumb:hover {
   display: grid;
   place-items: center;
   padding: 24px;
-  background: var(--bg);
   background: color-mix(in srgb, var(--bg) 88%, transparent);
   backdrop-filter: blur(4px);
 }
@@ -2333,12 +2146,310 @@ body.z-game-page:not(.z-mobile-on) .side::-webkit-scrollbar-thumb:hover {
   box-shadow: var(--shadow);
 }
 
-
 /* Prevent desktop-side panels from flashing before mobile layout ownership is known. */
+
 html.ui-hold body.z-game-page .app {
   visibility: hidden;
 }
+
 html.ui-ready body.z-game-page .app,
 html:not(.ui-hold) body.z-game-page .app {
   visibility: visible;
+}
+
+/* In-page select component */
+
+.z-select-dropdown {
+  display: inline-block;
+  position: relative;
+  width: min(100%, 220px);
+  min-width: 0;
+}
+
+.z-select-dropdown.is-ai-level {
+  width: auto;
+  min-width: 118px;
+  max-width: 100%;
+}
+
+.z-native-select-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.z-select-trigger {
+  width: 100%;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--panel-strong);
+  color: var(--text);
+  box-shadow: inset 0 1px 0 rgb(var(--rgb-white) / .6);
+  font: inherit;
+  font-weight: 800;
+  text-align: start;
+  cursor: pointer;
+}
+
+.z-select-dropdown.is-ai-level .z-select-trigger {
+  min-height: 0;
+  padding: 6px 10px;
+  border-radius: 12px;
+  background: var(--panel);
+  color: var(--danger);
+}
+
+.z-select-trigger:focus-visible,
+.z-select-dropdown.is-open .z-select-trigger {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px var(--accent-soft), var(--shadow-sm);
+}
+
+.z-select-trigger-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.z-select-trigger-arrow,
+.z-select-dropdown.is-open .z-select-trigger-arrow {
+  width: 0;
+  height: 0;
+  flex: 0 0 auto;
+  border-left: 6px solid transparent;
+  border-right: 6px solid transparent;
+  border-top: 8px solid currentColor;
+  opacity: .94;
+}
+
+.z-select-menu {
+  z-index: 2147483646;
+  display: grid;
+  gap: 4px;
+  max-height: min(44vh, 320px);
+  overflow-y: auto;
+  padding: 6px;
+  border: 1px solid var(--border-strong);
+  border-radius: 14px;
+  background: var(--panel-strong);
+  box-shadow: 0 16px 38px rgb(var(--rgb-black) / .22);
+  overscroll-behavior: contain;
+}
+
+.z-select-menu[hidden] {
+  display: none;
+}
+
+.z-select-option {
+  width: 100%;
+  min-height: 38px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text);
+  box-shadow: none;
+  font: inherit;
+  font-weight: 750;
+  text-align: start;
+  cursor: pointer;
+}
+
+.z-select-option:hover,
+.z-select-option:focus-visible {
+  background: var(--accent-soft);
+  outline: none;
+}
+
+.z-select-option.is-selected {
+  background: var(--gradient-primary);
+  color: var(--color-on-primary);
+}
+
+html.dark .z-select-trigger,
+html.dark .z-select-menu {
+  background: rgb(var(--rgb-primary-900) / .96);
+  color: var(--color-on-dark);
+  border-color: rgb(var(--rgb-primary-300) / .32);
+}
+
+html.dark .z-select-option {
+  color: var(--color-on-dark);
+}
+
+/* Desktop Soufla control */
+
+body.z-game-page:not(.z-mobile-on) #btnSoufla .z-soufla-icon {
+  display: block;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  object-fit: contain;
+}
+
+body.z-game-page:not(.z-mobile-on) #btnSoufla .z-soufla-label {
+  display: inline;
+  position: static;
+  width: auto;
+  height: auto;
+  margin: 0;
+  overflow: visible;
+  clip: auto;
+  white-space: nowrap;
+}
+
+/* Runtime pre-initialization guard */
+
+html.z-mobile-preinit body {
+  visibility: hidden;
+  opacity: 0;
+}
+
+html.z-mobile-preinit body,
+html.z-mobile-preinit body * {
+  transition: none;
+  animation: none;
+}
+
+/* Soufla decision modal */
+
+.soufla-root {
+  width: 100%;
+}
+
+.soufla-boardwrap {
+  position: relative;
+  display: block;
+  width: 100%;
+  margin: 0 auto;
+  overflow: visible;
+  padding-top: 12px;
+}
+
+.soufla-board {
+  width: 100%;
+  height: auto;
+  display: block;
+  border-radius: 14px;
+  border: 1px solid var(--color-border-strong);
+  background: rgb(var(--rgb-neutral-950) / .04);
+  max-height: 74vh;
+}
+
+.soufla-warning-dialog {
+  position: absolute;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 6;
+  padding: 18px;
+  background: rgb(var(--rgb-neutral-950) / .42);
+}
+
+.soufla-warning-dialog.is-open {
+  display: flex;
+}
+
+.soufla-warning-box {
+  width: min(92%, 520px);
+  padding: 18px;
+  border-radius: 16px;
+  background: rgb(var(--rgb-neutral-800));
+  color: var(--color-on-dark);
+  box-shadow: 0 22px 60px rgb(var(--rgb-black) / .42);
+  text-align: center;
+}
+
+.soufla-warning-text {
+  font-weight: 900;
+  font-size: var(--fs-title);
+  line-height: 1.55;
+  margin-bottom: 14px;
+}
+
+.soufla-warning-ok {
+  min-width: 120px;
+  padding: 9px 18px;
+  border-radius: 999px;
+  font-weight: 900;
+  border: 0;
+  cursor: pointer;
+}
+
+:root:not(.dark) .soufla-warning-box {
+  background: var(--color-on-dark);
+  color: var(--color-text-strong);
+  box-shadow: 0 22px 60px rgb(var(--rgb-neutral-900) / .24);
+}
+
+.soufla-actionbar {
+  scrollbar-width: thin;
+  position: absolute;
+  display: none;
+  z-index: 3;
+  align-items: center;
+  gap: 8px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  user-select: none;
+  white-space: nowrap;
+  flex-wrap: nowrap;
+  max-width: calc(100% - 18px);
+  overflow-x: auto;
+  overflow-y: visible;
+  -webkit-overflow-scrolling: touch;
+}
+
+.soufla-actionbar button {
+  padding: 8px 12px;
+  border-radius: 999px;
+  font-weight: 900;
+  border: 2px solid rgb(var(--rgb-danger-500) / .92);
+  background: rgb(var(--rgb-neutral-900) / .65);
+  color: var(--color-on-dark);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+:root:not(.dark) .soufla-actionbar button {
+  background: rgb(var(--rgb-white) / .78);
+  color: var(--color-text-strong);
+}
+
+.soufla-actionbar button:active {
+  transform: translateY(1px);
+}
+
+.soufla-forces {
+  display: flex;
+  gap: 8px;
+  flex-wrap: nowrap;
+  align-items: center;
+}
+
+#modalBackdrop .modal.soufla-modal {
+  width: min(1040px, 96vw);
+  max-height: 92vh;
+}
+
+#modalBackdrop .modal.soufla-modal .modal-body {
+  padding: 14px;
 }

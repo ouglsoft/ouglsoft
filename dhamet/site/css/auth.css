@@ -1,57 +1,127 @@
 /* ========================================================================== AUTH.CSS ========================================================================== */
+
 /* ========================================================================== AUTH LAYOUT & FORMS ========================================================================== */
+
 .z-auth-page {
-  min-height: 100vh; display: flex;
-  flex-direction: column; align-items: stretch;
-  padding: 0; --z-auth-action-bg: linear-gradient(135deg, var(--btn-start), var(--btn-end));
-  --z-auth-action-border: rgb(var(--rgb-primary-500) / .22); --z-auth-action-text: var(--btn-text);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  padding: 0;
+  --z-auth-action-bg: linear-gradient(135deg, var(--btn-start), var(--btn-end));
+  --z-auth-action-border: rgb(var(--rgb-primary-500) / .22);
+  --z-auth-action-text: var(--btn-text);
 }
+
 .z-auth-wrap {
-  width: min(1240px, 100%); margin: 0 auto;
-  flex: 1; display: flex;
-  flex-direction: column; justify-content: flex-start;
+  width: min(1240px, 100%);
+  margin: 0 auto;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
   padding: 20px 14px 88px;
 }
+
 .z-auth-main {
-  display: grid; grid-template-columns: 1fr minmax(380px, 560px) 1fr;
-  gap: 18px; align-items: stretch;
+  display: grid;
+  grid-template-columns: 1fr minmax(380px, 560px) 1fr;
+  gap: 18px;
+  align-items: stretch;
   width: 100%;
 }
+
 .z-auth-card, .z-auth-seo-card {
-  position: relative; padding: 20px;
-  overflow: hidden; border: 1px solid var(--border);
+  position: relative;
+  padding: 20px;
+  overflow: hidden;
+  border: 1px solid var(--border);
   border-radius: 26px;
 }
+
 .z-auth-main .z-auth-card,
-.z-auth-titlebar h2 { margin: 0; }
-.z-auth-card::before, .z-auth-card h2, .z-auth-seo-card h2 { position: relative; margin: 0 0 12px; color: var(--text-strong); }
-.z-auth-login-heading { display: block; margin: 0 0 12px; text-align: center; color: var(--text-strong); }
-.z-auth-grid { display: grid; gap: 12px; }
-.z-auth-row { display: grid; gap: 7px; }
-.z-auth-row label { font-weight: 800; color: var(--text-strong); font-size: var(--fs-body); }
-.z-auth-row-inline-field { gap: 0; }
-.z-auth-row input, .z-auth-row select {
-  width: 100%; min-height: 48px;
-  padding: 11px 12px; border-radius: 16px;
-  border: 1px solid var(--border); background: var(--panel-strong);
-  color: var(--text); font-size: var(--fs-body);
+.z-auth-titlebar h2 {
+  margin: 0;
 }
+
+.z-auth-card::before, .z-auth-card h2, .z-auth-seo-card h2 {
+  position: relative;
+  margin: 0 0 12px;
+  color: var(--text-strong);
+}
+
+.z-auth-login-heading {
+  display: block;
+  margin: 0 0 12px;
+  text-align: center;
+  color: var(--text-strong);
+}
+
+.z-auth-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.z-auth-row {
+  display: grid;
+  gap: 7px;
+}
+
+.z-auth-row label {
+  font-weight: 800;
+  color: var(--text-strong);
+  font-size: var(--fs-body);
+}
+
+.z-auth-row-inline-field {
+  gap: 0;
+}
+
+.z-auth-row input, .z-auth-row select {
+  width: 100%;
+  min-height: 48px;
+  padding: 11px 12px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: var(--panel-strong);
+  color: var(--text);
+  font-size: var(--fs-body);
+}
+
 .z-auth-card section[data-auth-view="login"] .z-auth-grid,
 .z-auth-card section[data-auth-view="register"] .z-auth-grid,
 .z-auth-card section[data-auth-view="recover"] .z-auth-grid {
   gap: 10px;
 }
+
 .z-auth-card section[data-auth-view="login"] .z-auth-row,
 .z-auth-card section[data-auth-view="register"] .z-auth-row-register,
 .z-auth-card section[data-auth-view="recover"] .z-auth-row {
   gap: 0;
 }
-.z-auth-actions { display: grid; gap: 10px; margin-top: 12px; }
-.z-auth-actions .btn { width: 100%; font-size: var(--fs-body); }
-.z-auth-actions-wrap { flex-wrap: wrap; gap: 10px; }
-.z-auth-row-stack-gap { margin-top: 10px; }
+
+.z-auth-actions {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.z-auth-actions .btn {
+  width: 100%;
+  font-size: var(--fs-body);
+}
+
+.z-auth-actions-wrap {
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
 /* ========================================================================== AUTH BRANDING & LANGUAGE CONTROLS ========================================================================== */
-.z-auth-seo-card .seo-small{ display: none; }
+
+.z-auth-seo-card .seo-small {
+  display: none;
+}
+
 .z-auth-brand {
   display: none;
   flex-direction: column;
@@ -61,67 +131,140 @@
   margin-bottom: 12px;
   text-align: center;
 }
-.z-auth-brand img { width: 40px; height: 40px; border-radius: 14px; box-shadow: var(--shadow-sm); }
+
+.z-auth-brand img {
+  width: 40px;
+  height: 40px;
+  border-radius: 14px;
+  box-shadow: var(--shadow-sm);
+}
+
 .z-auth-brand h1 {
-  margin: 0; line-height: 1.1;
-  text-align: center; color: var(--text-strong);
+  margin: 0;
+  line-height: 1.1;
+  text-align: center;
+  color: var(--text-strong);
   font-size: var(--fs-title);
 }
+
 .z-auth-lang {
-  display: flex; justify-content: flex-end;
-  align-items: center; gap: 8px;
-  position: relative; margin-bottom: 12px;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+  position: relative;
+  margin-bottom: 12px;
 }
 
-.z-auth-page.z-has-topbar .z-auth-lang { display: none; }
-.z-auth-page.z-auth-desktop-topbar { padding-top: var(--z-topbar-h); }
-.z-auth-page.z-auth-desktop-topbar .z-topbar { display: block !important; }
-/* ========================================================================== AUTH FOOTER ========================================================================== */
-.z-auth-foot {
-  position: fixed; left: 0;
-  right: 0; bottom: 0;
-  display: flex; justify-content: center;
-  flex-wrap: wrap; gap: 14px;
-  padding: 12px 10px; background: rgb(var(--rgb-white) / .9);
-  border-top: 1px solid var(--border); backdrop-filter: blur(16px);
-  box-shadow: 0 -8px 24px rgb(var(--rgb-primary-900) / .08);
-  z-index: 40; font-size: var(--fs-footer);
+.z-auth-page.z-has-topbar .z-auth-lang {
+  display: none;
 }
-:root.dark .z-auth-foot { background: rgb(var(--rgb-primary-900) / .9); }
-.z-auth-foot a { text-decoration: none; opacity: .92; }
+
+.z-auth-page.z-auth-desktop-topbar {
+  padding-top: var(--z-topbar-h);
+}
+
+.z-auth-page.z-auth-desktop-topbar .z-topbar {
+  display: block !important;
+}
+
+/* ========================================================================== AUTH FOOTER ========================================================================== */
+
+.z-auth-foot {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 14px;
+  padding: 12px 10px;
+  background: rgb(var(--rgb-white) / .9);
+  border-top: 1px solid var(--border);
+  backdrop-filter: blur(16px);
+  box-shadow: 0 -8px 24px rgb(var(--rgb-primary-900) / .08);
+  z-index: 40;
+  font-size: var(--fs-footer);
+}
+
+:root.dark .z-auth-foot {
+  background: rgb(var(--rgb-primary-900) / .9);
+}
+
+.z-auth-foot a {
+  text-decoration: none;
+  opacity: .92;
+}
+
 /* ========================================================================== AUTH SEO CONTENT ========================================================================== */
-:root.dark .z-auth-card::before, :root.dark .z-auth-seo-card::before { background: radial-gradient(circle at top right, rgb(var(--rgb-secondary-400) / .12), transparent 36%); }
+
+:root.dark .z-auth-card::before, :root.dark .z-auth-seo-card::before {
+  background: radial-gradient(circle at top right, rgb(var(--rgb-secondary-400) / .12), transparent 36%);
+}
+
 .z-auth-seo-list {
-  position: relative; margin: 0;
-  padding-inline-start: 18px; display: grid;
+  position: relative;
+  margin: 0;
+  padding-inline-start: 18px;
+  display: grid;
   gap: 8px;
 }
-.z-auth-seo-list li { line-height: 1.6; opacity: 0.92; font-size: var(--fs-body); }
-.z-auth-seo-para {
-  line-height: 1.6; opacity: 0.92;
-  position: relative; margin: 0;
-  display: -webkit-box; -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical; overflow: hidden;
+
+.z-auth-seo-list li {
+  line-height: 1.6;
+  opacity: 0.92;
   font-size: var(--fs-body);
 }
-.z-auth-seo-card .seo-large, .z-auth-msg.is-show{ display: block; }
+
+.z-auth-seo-para {
+  line-height: 1.6;
+  opacity: 0.92;
+  position: relative;
+  margin: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-size: var(--fs-body);
+}
+
+.z-auth-seo-card .seo-large, .z-auth-msg.is-show {
+  display: block;
+}
 
 /* ========================================================================== AUTH PRIMARY ACTIONS ========================================================================== */
+
 .z-auth-page .z-auth-google-top {
-  background: var(--z-auth-action-bg) !important; color: var(--z-auth-action-text) !important;
-  border-color: var(--z-auth-action-border) !important; box-shadow: var(--btn-shadow) !important;
-  display: inline-flex; align-items: center;
-  justify-content: center; gap: 8px;
+  background: var(--z-auth-action-bg) !important;
+  color: var(--z-auth-action-text) !important;
+  border-color: var(--z-auth-action-border) !important;
+  box-shadow: var(--btn-shadow) !important;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
 }
+
 .z-auth-page #btnGuest {
   background: linear-gradient(135deg, rgb(var(--rgb-danger-600)), rgb(var(--rgb-danger-700))) !important;
   color: rgb(var(--rgb-white)) !important;
   border-color: rgb(var(--rgb-danger-700) / .36) !important;
   box-shadow: var(--btn-shadow) !important;
-  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
 }
-.z-auth-page .z-auth-google-top:hover, .z-auth-page #btnGuest:hover { filter: brightness(1.03); }
-.z-auth-page .z-auth-google-top .btn-ico, .z-auth-page #btnGuest .btn-ico { filter: none; }
+
+.z-auth-page .z-auth-google-top:hover, .z-auth-page #btnGuest:hover {
+  filter: brightness(1.03);
+}
+
+.z-auth-page .z-auth-google-top .btn-ico, .z-auth-page #btnGuest .btn-ico {
+  filter: none;
+}
+
 .z-auth-titlebar {
   display: grid;
   grid-template-columns: 1fr;
@@ -129,71 +272,132 @@
   gap: 10px;
   margin: 0 0 12px;
 }
-.z-auth-titlebar h2 { width: 100%; text-align: center; }
-.z-auth-google-top { padding: 9px 12px; font-size: var(--fs-body); border-radius: 14px; white-space: nowrap; justify-self: center; }
-.z-auth-google-top .btn-ico { width: 16px; height: 16px; }
-#btnGuest { justify-content: center; padding: 13px 14px; font-size: var(--fs-body); }
-.btn.guest { padding: 15px 14px; justify-content: center; text-align: center; font-size: var(--fs-body); }
-.btn.guest .btn-ico { width: 18px; height: 18px; }
-/* ========================================================================== AUTH FEEDBACK & SUPPORT LINKS ========================================================================== */
-.z-auth-msg {
-  display: none; margin: 12px 0;
-  padding: 12px 14px; border-radius: 16px;
-  border: 1px solid var(--border); background: rgb(var(--rgb-white) / .56);
-  box-shadow: var(--shadow-sm); font-size: var(--fs-body);
-}
-:root.dark .z-auth-msg { background: rgb(var(--rgb-primary-900) / .78); }
 
-.z-auth-msg.is-error { border-color: rgb(var(--rgb-danger-500) / .34); color: var(--danger); }
-.z-auth-msg.is-ok { border-color: rgb(var(--rgb-success-600) / .34); color: var(--ok); }
+.z-auth-titlebar h2 {
+  width: 100%;
+  text-align: center;
+}
+
+.z-auth-google-top {
+  padding: 9px 12px;
+  font-size: var(--fs-body);
+  border-radius: 14px;
+  white-space: nowrap;
+  justify-self: center;
+}
+
+.z-auth-google-top .btn-ico {
+  width: 16px;
+  height: 16px;
+}
+
+#btnGuest {
+  justify-content: center;
+  padding: 13px 14px;
+  font-size: var(--fs-body);
+}
+
+.btn.guest {
+  padding: 15px 14px;
+  justify-content: center;
+  text-align: center;
+  font-size: var(--fs-body);
+}
+
+.btn.guest .btn-ico {
+  width: 18px;
+  height: 18px;
+}
+
+/* ========================================================================== AUTH FEEDBACK & SUPPORT LINKS ========================================================================== */
+
+.z-auth-msg {
+  display: none;
+  margin: 12px 0;
+  padding: 12px 14px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: rgb(var(--rgb-white) / .56);
+  box-shadow: var(--shadow-sm);
+  font-size: var(--fs-body);
+}
+
+:root.dark .z-auth-msg {
+  background: rgb(var(--rgb-primary-900) / .78);
+}
+
+.z-auth-msg.is-error {
+  border-color: rgb(var(--rgb-danger-500) / .34);
+  color: var(--danger);
+}
+
+.z-auth-msg.is-ok {
+  border-color: rgb(var(--rgb-success-600) / .34);
+  color: var(--ok);
+}
+
 .z-auth-links {
-  display: flex; justify-content: space-between;
-  gap: 10px; flex-wrap: wrap;
-  margin-top: 10px; font-size: var(--fs-body);
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+  font-size: var(--fs-body);
 }
+
 .z-auth-links a {
-  color: rgb(var(--rgb-primary-700)); opacity: 0.9;
-  text-decoration: none; cursor: pointer;
-  font-weight: 800; font-size: var(--fs-body);
+  color: rgb(var(--rgb-primary-700));
+  opacity: 0.9;
+  text-decoration: none;
+  cursor: pointer;
+  font-weight: 800;
+  font-size: var(--fs-body);
 }
-.z-auth-links a:hover { text-decoration: underline; }
-html.dark .z-auth-links a { color: rgb(var(--rgb-primary-700)); }
-.z-auth-foot a { color: rgb(var(--rgb-primary-700)); font-weight: 800; }
-html.dark .z-auth-foot a { color: rgb(var(--rgb-primary-700)); font-weight: 800; }
+
+.z-auth-links a:hover {
+  text-decoration: underline;
+}
+
+html.dark .z-auth-links a {
+  color: rgb(var(--rgb-primary-700));
+}
+
+.z-auth-foot a {
+  color: rgb(var(--rgb-primary-700));
+  font-weight: 800;
+}
+
+html.dark .z-auth-foot a {
+  color: rgb(var(--rgb-primary-700));
+  font-weight: 800;
+}
+
 html.dark .z-auth-card, html.dark .z-auth-seo-card {
   color: var(--text);
   background: linear-gradient(180deg, rgb(var(--rgb-primary-900) / .96), rgb(var(--rgb-primary-900) / .98));
   border-color: rgb(var(--rgb-primary-400) / .2);
 }
+
 /* ========================================================================== AUTH DARK THEME HARMONIZATION ========================================================================== */
-html.dark .z-auth-page, html.dark .z-auth-wrap, html.dark .z-auth-main, html.dark .z-auth-foot { color: var(--text); }
-html.dark .z-auth-row input, html.dark .z-auth-row select {
-  background: rgb(var(--rgb-primary-900) / .78); border-color: rgb(var(--rgb-primary-400) / .2);
+
+html.dark .z-auth-page, html.dark .z-auth-wrap, html.dark .z-auth-main, html.dark .z-auth-foot {
   color: var(--text);
 }
 
-
-.z-auth-main-reset {
-  display: flex;
-  justify-content: center;
-  width: 100%;
-}
-.z-auth-reset-card {
-  max-width: 520px;
-  width: min(520px, 100%);
-}
-.z-auth-help {
-  margin: 0 0 14px;
-  opacity: 0.82;
-  line-height: 1.7;
+html.dark .z-auth-row input, html.dark .z-auth-row select {
+  background: rgb(var(--rgb-primary-900) / .78);
+  border-color: rgb(var(--rgb-primary-400) / .2);
+  color: var(--text);
 }
 
 /* ========================================================================== RESET PASSWORD PAGE ========================================================================== */
+
 .z-reset-page {
   min-height: 100svh;
   display: block;
   background: var(--bg);
 }
+
 .z-reset-shell {
   width: 100%;
   min-height: 100svh;
@@ -202,6 +406,7 @@ html.dark .z-auth-row input, html.dark .z-auth-row select {
   justify-content: center;
   padding: max(24px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
 }
+
 .z-reset-card {
   width: min(560px, 100%);
   margin: 0 auto;
@@ -212,16 +417,19 @@ html.dark .z-auth-row input, html.dark .z-auth-row select {
   box-shadow: var(--shadow-lg);
   color: var(--text);
 }
+
 html.dark .z-reset-card {
   background: linear-gradient(180deg, rgb(var(--rgb-primary-900) / .96), rgb(var(--rgb-primary-900) / .98));
   border-color: rgb(var(--rgb-primary-400) / .22);
 }
+
 .z-reset-brand {
   display: flex;
   align-items: center;
   gap: 14px;
   margin: 0 0 18px;
 }
+
 .z-reset-brand img {
   width: 54px;
   height: 54px;
@@ -229,18 +437,21 @@ html.dark .z-reset-card {
   box-shadow: var(--shadow-sm);
   flex: 0 0 auto;
 }
+
 .z-reset-brand p {
   margin: 0 0 4px;
   color: var(--muted);
   font-size: clamp(13px, 1.7vw, 15px);
   font-weight: 800;
 }
+
 .z-reset-brand h1 {
   margin: 0;
   color: var(--text-strong);
   font-size: clamp(22px, 3.2vw, 32px);
   line-height: 1.25;
 }
+
 .z-reset-help {
   margin: 0 0 16px;
   color: var(--text);
@@ -248,10 +459,12 @@ html.dark .z-reset-card {
   line-height: 1.8;
   font-size: clamp(15px, 2vw, 17px);
 }
+
 .z-reset-form {
   display: grid;
   gap: 16px;
 }
+
 .z-reset-field {
   display: grid;
   gap: 8px;
@@ -259,12 +472,14 @@ html.dark .z-reset-card {
   font-weight: 900;
   font-size: clamp(14px, 1.8vw, 16px);
 }
+
 .z-reset-input-wrap {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
   align-items: center;
 }
+
 .z-reset-input-wrap input {
   min-width: 0;
   width: 100%;
@@ -276,22 +491,26 @@ html.dark .z-reset-card {
   color: var(--text);
   font-size: clamp(15px, 2vw, 17px);
 }
+
 html.dark .z-reset-input-wrap input {
   background: rgb(var(--rgb-primary-900) / .78);
   border-color: rgb(var(--rgb-primary-400) / .22);
 }
+
 .z-reset-toggle {
   min-height: 52px;
   padding-inline: 14px;
   white-space: nowrap;
   border-radius: 16px;
 }
+
 .z-reset-actions {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 10px;
   margin-top: 6px;
 }
+
 .z-reset-actions .btn {
   width: 100%;
   min-height: 52px;
@@ -299,21 +518,26 @@ html.dark .z-reset-input-wrap input {
   text-align: center;
   font-size: clamp(14px, 1.8vw, 16px);
 }
+
 .z-reset-page .z-auth-msg {
   display: none;
   margin: 0 0 16px;
   line-height: 1.7;
 }
+
 .z-reset-page .z-auth-msg.is-show {
   display: block;
 }
+
 .z-auth-msg.is-warn {
   border-color: rgb(var(--rgb-gold-500) / .38);
   color: rgb(var(--rgb-gold-700));
 }
+
 html.dark .z-auth-msg.is-warn {
   color: rgb(var(--rgb-gold-500));
 }
+
 @media (max-width: 640px) {
   .z-reset-shell {
     align-items: stretch;
@@ -344,6 +568,7 @@ html.dark .z-auth-msg.is-warn {
     grid-template-columns: 1fr;
   }
 }
+
 @media (min-width: 980px) {
   .z-reset-card {
     width: min(680px, 100%);

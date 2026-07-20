@@ -41,64 +41,7 @@
 
     if (!pending) return;
 
-    (function ensureSouflaModalStyles() {
-      if (document.getElementById("souflaModalStyles")) return;
-      const st = document.createElement("style");
-      st.id = "souflaModalStyles";
-      st.textContent = `
-  .soufla-root{ width:100%; }
-  
-  .soufla-boardwrap { position: relative; display: block; width: 100%; margin: 0 auto; overflow: visible; padding-top: 12px; }
-  .soufla-board { width: 100%; height: auto; display: block; border-radius: 14px; border: 1px solid rgb(var(--rgb-border) / .72); background: rgb(var(--rgb-neutral-950) / .04); max-height: 74vh; }
-  .soufla-warning-dialog{ position:absolute; inset:0; display:none; align-items:center; justify-content:center; z-index:6; padding:18px; background:rgb(var(--rgb-neutral-950) / .42); }
-  .soufla-warning-dialog.is-open{ display:flex; }
-  .soufla-warning-box{ width:min(92%,520px); padding:18px; border-radius:16px; background:rgb(var(--rgb-neutral-800)); color:var(--color-on-dark); box-shadow:0 22px 60px rgb(var(--rgb-black) / .42); text-align:center; }
-  .soufla-warning-text{ font-weight:900; font-size:var(--fs-title); line-height:1.55; margin-bottom:14px; }
-  .soufla-warning-ok{ min-width:120px; padding:9px 18px; border-radius:999px; font-weight:900; border:0; cursor:pointer; }
-  :root:not(.dark) .soufla-warning-box{ background:var(--color-on-dark); color:var(--color-panel-inverse); box-shadow:0 22px 60px rgb(var(--rgb-neutral-900) / .24); }
-  
-  .soufla-actionbar {
-    scrollbar-width: thin;
-    position: absolute;
-    display: none;
-    z-index: 3;
-    align-items: center;
-    gap: 8px;
-    padding: 0;
-    background: transparent;
-    border: none;
-    box-shadow: none;
-    user-select: none;
-    white-space: nowrap;
-    flex-wrap: nowrap;
-    max-width: calc(100% - 18px);
-    overflow-x: auto;
-    overflow-y: visible;
-    -webkit-overflow-scrolling: touch;
-  }
-  .soufla-actionbar button {
-    padding: 8px 12px;
-    border-radius: 999px;
-    font-weight: 900;
-    border: 2px solid rgb(var(--rgb-danger) / .92);
-    background: rgb(var(--rgb-neutral-900) / .65);
-    color: var(--color-on-dark);
-    cursor: pointer;
-    white-space: nowrap;
-  }
-  :root:not(.dark) .soufla-actionbar button {
-    background: rgb(var(--rgb-panel) / .78);
-    color: var(--color-text-strong);
-  }
-  .soufla-actionbar button:active { transform: translateY(1px); }
-  .soufla-forces{ display:flex; gap:8px; flex-wrap:nowrap; align-items:center; }
 
-  
-  #modalBackdrop .modal.soufla-modal{ width: min(1040px, 96vw) !important; max-height: 92vh; }
-  #modalBackdrop .modal.soufla-modal .modal-body{ padding: 14px; }
-`;
-      document.head.appendChild(st);
-    })();
 
     Game.awaitingPenalty = true;
     Game.souflaPending = pending;
@@ -433,46 +376,22 @@
     const d = buildDeps(deps);
     const t = d.t;
     const Modal = d.Modal;
-    const rcStr = d.rcStr;
-
-    const offenderStart = rcStr(decision.offenderIdx);
-    const startedFrom = pending.startedFrom != null ? rcStr(pending.startedFrom) : null;
-    const endedAt = pending.lastPieceIdx != null ? rcStr(pending.lastPieceIdx) : null;
-    const Lmax = pending.longestGlobal || 0;
-
-    const startedFromPart = startedFrom ? t("soufla.cpu.startedFromPart", { startedFrom }) : "";
+    const hasRevertedMove = pending.startedFrom != null && pending.lastPieceIdx != null;
 
     let title = t("modals.soufla.header");
     let body = "";
 
     if (decision.kind === "remove") {
-      const removeCell =
-        pending.startedFrom === decision.offenderIdx && pending.lastPieceIdx != null
-          ? rcStr(pending.lastPieceIdx)
-          : offenderStart;
-
-      const reasonLine = t("soufla.cpu.reason", {
-        offender: offenderStart,
-        startedFromPart,
-        len: Lmax,
-      });
+      const reasonLine = t("soufla.cpu.reason");
       body = `
   <div><b>${t("soufla.cpu.title")}</b></div>
   <div>${reasonLine}</div>
-  <div>${t("soufla.cpu.penaltyRemove", { cell: removeCell })}</div>
+  <div>${t("soufla.cpu.penaltyRemove")}</div>
       `;
     } else {
-      const pathStr = (decision.path || []).map(rcStr).join("→");
-      const reasonLine = t("soufla.cpu.reason", {
-        offender: offenderStart,
-        startedFromPart,
-        len: Lmax,
-      });
+      const reasonLine = t("soufla.cpu.reason");
 
-      const forceInline = t("soufla.cpu.penaltyForceInline", {
-        from: offenderStart,
-        path: pathStr,
-      });
+      const forceInline = t("soufla.cpu.penaltyForceInline");
 
       const forcePicked = t("soufla.cpu.penaltyForcePicked");
 
@@ -480,13 +399,13 @@
 
       const forcedIntro = t("soufla.cpu.forcedPathIntro");
 
-      const forcedLine = t("soufla.cpu.forcedPathLine", { from: offenderStart, path: pathStr });
+      const forcedLine = t("soufla.cpu.forcedPathLine");
 
       body = `
   <div><b>${t("soufla.cpu.title")}</b></div>
   <div>${reasonLine}</div>
   ${
-    startedFrom && endedAt
+    hasRevertedMove
       ? `<div>${forcePicked}</div>
              <div class="notice">${revertNotice}</div>
              <div>${forcedIntro}</div>
@@ -510,14 +429,12 @@
     const d = buildDeps(deps);
     const Modal = d.Modal;
     const t = d.t;
-    const rcStr = d.rcStr;
     if (!lastMove || !lastMove.decision || !Modal || typeof Modal.alert !== "function") return false;
 
     const decision = lastMove.decision;
     const meta = lastMove.souflaMeta || {};
     const mySide = deps && deps.mySide != null ? Number(deps.mySide) : null;
     const by = Number(lastMove.by);
-    const offenderIdx = decision.offenderIdx != null ? decision.offenderIdx : meta.offenderIdx;
     const startedFrom = meta.startedFrom != null ? meta.startedFrom : null;
     const lastPieceIdx = meta.lastPieceIdx != null ? meta.lastPieceIdx : null;
     const title = t("modals.soufla.header");
@@ -540,11 +457,7 @@
 
     const body = document.createElement("div");
     body.className = "soufla-summary";
-    const fmtCell = (idx) => idx != null ? rcStr(idx) : "?";
-    const offenderCell = fmtCell(offenderIdx);
     const hasUndo = lastPieceIdx != null && startedFrom != null && lastPieceIdx !== startedFrom;
-    const undoFrom = hasUndo ? fmtCell(lastPieceIdx) : null;
-    const undoTo = hasUndo ? fmtCell(startedFrom) : null;
     const parts = [
       `<div style="font-weight:900;margin-bottom:6px;">${t("soufla.summary.title")}</div>`,
       `<div>${t("soufla.summary.reason")}</div>`,
@@ -552,14 +465,12 @@
     ];
 
     if (decision.kind === "force") {
-      const path = Array.isArray(decision.path) ? decision.path.slice() : [];
-      const toIdx = path.length ? path[path.length - 1] : offenderIdx;
-      parts.push(`<div>${t("soufla.summary.force", { from: offenderCell, to: fmtCell(toIdx), len: path.length })}</div>`);
+      parts.push(`<div>${t("soufla.summary.force")}</div>`);
     } else {
-      parts.push(`<div>${t("soufla.summary.remove", { cell: offenderCell })}</div>`);
+      parts.push(`<div>${t("soufla.summary.remove")}</div>`);
     }
-    if (undoFrom && undoTo) {
-      parts.push(`<div class="muted" style="margin-top:8px;">${t("soufla.summary.undo", { from: undoFrom, to: undoTo })}</div>`);
+    if (hasUndo) {
+      parts.push(`<div class="muted" style="margin-top:8px;">${t("soufla.summary.undo")}</div>`);
     }
     body.innerHTML = parts.join("");
     Modal.alert({

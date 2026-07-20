@@ -233,12 +233,6 @@ export function createLobbyRouteHandlers(deps) {
     return !!(ts && at - ts <= PRESENCE_LIST_TTL_MS);
   }
 
-  function gamePresenceFresh(playerPresence) {
-    const ts = Number(playerPresence && (playerPresence.updatedAt || playerPresence.joinedAt)) || 0;
-    const ttl = Number(PresencePolicy.gamePresenceTtlMs || PresencePolicy.gameTtlMs || 0) || 45 * 1000;
-    return !!(ts && now() - ts <= ttl);
-  }
-
   async function internalJson(env, scope, internalPath, body) {
     const res = await getRealtimeStub(env, scope).fetch('https://realtime.internal' + internalPath, {
       method: 'POST',

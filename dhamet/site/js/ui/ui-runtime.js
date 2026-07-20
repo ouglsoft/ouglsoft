@@ -223,7 +223,7 @@ const Visual = (() => {
 
           souflaGreen: themeColor("--mark-move"),
           souflaGreenStrong: themeColor("--mark-move-strong"),
-          removeRing: themeChannels("--rgb-danger", ".95"),
+          removeRing: themeChannels("--rgb-danger-500", ".95"),
         },
         coords: {
           font: "bold 18px Calibri, Carlito, Segoe UI, sans-serif",
@@ -267,7 +267,7 @@ const Visual = (() => {
           ctx.lineWidth = Math.max(6, rad * 0.18);
           ctx.strokeStyle =
             (S._activeStyle && S._activeStyle.colors && S._activeStyle.colors.removeRing) ||
-            themeChannels("--rgb-danger", ".95");
+            themeChannels("--rgb-danger-500", ".95");
           ctx.shadowColor = themeChannels("--rgb-black", ".35");
           ctx.shadowBlur = 10;
           ctx.stroke();
@@ -1313,9 +1313,6 @@ function restoreCaptureContinuationVisualState() {
   return true;
 }
 
-function syncKillTimerVisualState() {
-  CaptureTimerModule.syncVisualState();
-}
 
 function syncEndKillAvailability(active) {
   CaptureTimerModule.syncEndKillAvailability(active);

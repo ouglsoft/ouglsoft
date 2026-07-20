@@ -90,12 +90,6 @@ try {
   });
 } catch (_) {}
 
-if (!document.getElementById("z-mobile-preinit-style")) {
-  var style = document.createElement("style");
-  style.id = "z-mobile-preinit-style";
-  style.textContent = "html.z-mobile-preinit body { visibility: hidden !important; opacity: 0 !important; }\nhtml.z-mobile-preinit body,\nhtml.z-mobile-preinit body * { transition: none !important; animation: none !important; }";
-  (document.head || document.documentElement).appendChild(style);
-}
 if (isPhoneLike()) {
   try { document.documentElement.classList.add("z-mobile-preinit"); } catch (_) {}
   window.__clearMobilePreinit = function () {
