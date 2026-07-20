@@ -3656,3 +3656,33 @@ body.z-mobile-on[data-mobile-orientation="portrait"][data-mobile-page="game"] ca
   max-width: calc(100% + 8px) !important;
   margin-inline: -4px !important;
 }
+
+
+/* ========================================================================== 
+   2.13.14 REFINEMENTS — MOBILE SETTINGS DROPDOWNS
+   ========================================================================== */
+body.z-mobile-on .settings-row {
+  grid-template-columns: 1fr;
+  align-items: stretch;
+  gap: 8px;
+}
+body.z-mobile-on .settings-control {
+  justify-content: stretch;
+}
+body.z-mobile-on .settings-control select,
+body.z-mobile-on .settings-control input[type="number"],
+body.z-mobile-on #aiLevelBox .ai-level-select {
+  width: 100% !important;
+  min-width: 0;
+}
+body.z-mobile-on #aiLevelBox .ai-level-select {
+  min-height: 38px;
+  font-size: var(--m-text) !important;
+  font-weight: 900;
+}
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnSoufla .z-soufla-label {
+  font-size: 12px !important;
+}
+body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="game"] .z-mobile-game-controls-grid #btnSoufla .z-soufla-label {
+  font-size: 11px !important;
+}

@@ -625,6 +625,7 @@
 
   const NICK_KEY = "zamat.nick";
   const NICK_EXPLICIT_KEY = "zamat.nickExplicit";
+  const NICK_SESSION_SEEN_KEY = "zamat.nickSessionSeen.v1";
 
   const MIGRATION_VERSION_KEY = "zamat.migrationVersion";
 
@@ -790,13 +791,20 @@
 
   function getSavedNick() {
     try {
+      const seenKey = typeof NICK_SESSION_SEEN_KEY !== "undefined" ? NICK_SESSION_SEEN_KEY : "zamat.nickSessionSeen.v1";
       const sessionUser = getSessionUser();
       const stored = String(sessionStorage.getItem(NICK_KEY) || "").trim();
       const explicit = String(sessionStorage.getItem(NICK_EXPLICIT_KEY) || "") === "1";
+      const seenThisSession = String(sessionStorage.getItem(seenKey) || "") === "1";
 
       // A nickname chosen in this browser session has first priority. Ignore the
       // historical generated guest value that older builds marked explicit.
       if (explicit && stored && !isGeneratedGuestNickname(sessionUser && sessionUser.uid, stored)) return stored;
+
+      // After the lobby asks once during the current browser session, keep the
+      // resolved nickname (including the default alias) and stop prompting again
+      // until the browser session ends.
+      if (seenThisSession && stored) return stored;
 
       // Registered accounts already have a deliberate profile nickname and do
       // not need the guest nickname prompt.
@@ -810,10 +818,13 @@
     }
   }
 
-  function saveNickSession(nick, explicit) {
+  function saveNickSession(nick, explicit, seen) {
     try {
+      const seenKey = typeof NICK_SESSION_SEEN_KEY !== "undefined" ? NICK_SESSION_SEEN_KEY : "zamat.nickSessionSeen.v1";
       sessionStorage.setItem(NICK_KEY, String(nick || ""));
       if (explicit) sessionStorage.setItem(NICK_EXPLICIT_KEY, "1");
+      else sessionStorage.removeItem(NICK_EXPLICIT_KEY);
+      if (seen) sessionStorage.setItem(seenKey, "1");
     } catch (e) {}
 
     try {
@@ -1182,8 +1193,9 @@
       fallbackValue: () => ({ value: resolveFallbackNick(), submitted: false }),
       cancelClassName: "secondary",
     }).then((result) => {
-      const nick = result && typeof result === "object" ? result.value : result;
-      if (result && typeof result === "object" && result.submitted) saveNickSession(nick, true);
+      const nick = String(result && typeof result === "object" ? result.value : result || "").trim() || resolveFallbackNick();
+      const explicit = !!(result && typeof result === "object" && result.submitted);
+      saveNickSession(nick, explicit, true);
       return nick;
     });
   }
@@ -1255,12 +1267,16 @@
 
   function hasExplicitNick(uid) {
     try {
+      const seenKey = typeof NICK_SESSION_SEEN_KEY !== "undefined" ? NICK_SESSION_SEEN_KEY : "zamat.nickSessionSeen.v1";
       const sessionUser = getSessionUser();
       if (sessionUser && sessionUser.kind === "registered" && String(sessionUser.nickname || "").trim()) return true;
 
+      const stored = String(sessionStorage.getItem(NICK_KEY) || "").trim();
+      const seenThisSession = String(sessionStorage.getItem(seenKey) || "") === "1";
+      if (seenThisSession && stored) return true;
+
       const flag = String(sessionStorage.getItem(NICK_EXPLICIT_KEY) || "") === "1";
       if (!flag) return false;
-      const stored = String(sessionStorage.getItem(NICK_KEY) || "").trim();
       const resolvedUid = String(uid || (sessionUser && sessionUser.uid) || (auth && auth.currentUser && auth.currentUser.uid) || "").trim();
       return !!stored && !isGeneratedGuestNickname(resolvedUid, stored);
     } catch (e) {

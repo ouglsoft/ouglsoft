@@ -2675,3 +2675,65 @@ body.board-depth canvas#board {
   opacity: 1 !important;
   visibility: visible !important;
 }
+
+
+/* ========================================================================== 
+   2.13.14 REFINEMENTS — MOBILE DROPDOWNS, AUTH TITLE, SOUFLA LABEL
+   ========================================================================== */
+body.z-mobile-on select,
+.ai-level-select,
+.settings-control select,
+.modal-body select {
+  -webkit-appearance: none;
+  appearance: none;
+  background-image: linear-gradient(180deg, rgb(var(--rgb-white) / .12), transparent 48%), url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%230b5f78' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-repeat: no-repeat, no-repeat;
+  background-size: auto, 16px 16px;
+  background-position: 0 0, right 12px center;
+  padding-inline-end: 40px !important;
+  border-radius: 16px !important;
+}
+html[dir="rtl"] body.z-mobile-on select,
+html[dir="rtl"] .ai-level-select,
+html[dir="rtl"] .settings-control select,
+html[dir="rtl"] .modal-body select {
+  background-position: 0 0, left 12px center;
+}
+body.z-mobile-on select,
+.ai-level-select,
+.settings-control select {
+  min-height: 42px;
+  font-weight: 800;
+  color: var(--color-text-strong) !important;
+  background-color: rgb(var(--rgb-white) / .96) !important;
+  border: 1px solid var(--color-border-strong) !important;
+  box-shadow: 0 8px 18px rgb(var(--rgb-black) / .08), inset 0 1px 0 rgb(var(--rgb-white) / .72) !important;
+}
+html.dark body.z-mobile-on select,
+html.dark .ai-level-select,
+html.dark .settings-control select,
+html.dark .modal-body select {
+  background-image: linear-gradient(180deg, rgb(var(--rgb-white) / .05), transparent 48%), url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23eaf7fb' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-color: rgb(var(--rgb-primary-900) / .94) !important;
+  color: var(--color-on-dark) !important;
+  border-color: rgb(var(--rgb-primary-300) / .34) !important;
+  box-shadow: 0 8px 18px rgb(var(--rgb-black) / .18), inset 0 1px 0 rgb(var(--rgb-white) / .04) !important;
+}
+body.z-mobile-on[data-mobile-page="auth"] .z-auth-brand h1 {
+  inset-block-start: 50% !important;
+  transform: translateY(-50%);
+  padding: 10px 14px;
+  font-size: clamp(24px, 6vw, 40px) !important;
+  line-height: 1.12;
+}
+body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="auth"] .z-auth-brand h1 {
+  inset-block-start: 50% !important;
+  transform: translateY(-50%);
+  font-size: clamp(22px, 4.2vw, 34px) !important;
+}
+body.z-mobile-on[data-mobile-page="game"] #btnSoufla .z-soufla-label {
+  font-size: 15px !important;
+}
+html[dir="ltr"] body.z-mobile-on[data-mobile-page="game"] #btnSoufla .z-soufla-label {
+  font-size: 14px !important;
+}

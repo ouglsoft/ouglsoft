@@ -477,39 +477,91 @@
 
   function drawDimensionalFallbackPiece(ctx, x, anchorY, width, height, isWhite) {
     var colors = piecePalette();
-    var top = anchorY - height * PIECE_SPRITE_BASE_ANCHOR_Y;
-    var centerY = top + height * 0.48;
-    var baseY = anchorY - height * 0.08;
-    var main = ctx.createLinearGradient(x - width / 2, top, x + width / 2, anchorY);
-    if (isWhite) {
-      main.addColorStop(0, colors.whiteLight);
-      main.addColorStop(0.5, colors.whiteMid);
-      main.addColorStop(1, colors.whiteDark);
-    } else {
-      main.addColorStop(0, colors.blackLight);
-      main.addColorStop(0.46, colors.blackMid);
-      main.addColorStop(1, colors.blackDark);
-    }
+    var radius = width * 0.39;
+    var stackHeight = Math.max(height * 0.34, width * 0.18);
+    var sideHeight = Math.max(height * 0.14, width * 0.09);
+    var topY = anchorY - stackHeight;
+    var bodyTop = anchorY - stackHeight * 0.82;
+    var bodyBottom = anchorY - stackHeight * 0.18;
+    var edge = isWhite ? colors.whiteEdge : colors.blackEdge;
+    var rim = isWhite ? colors.whiteEdgeSoft : colors.blackLight;
+    var coreLight = isWhite ? colors.whiteLight : colors.blackLight;
+    var coreMid = isWhite ? colors.whiteMid : colors.blackMid;
+    var coreDark = isWhite ? colors.whiteDark : colors.blackDark;
+
+    var topGrad = ctx.createRadialGradient(x - radius * 0.35, topY - stackHeight * 0.22, radius * 0.18, x, topY, radius * 1.1);
+    topGrad.addColorStop(0, coreLight);
+    topGrad.addColorStop(0.56, coreMid);
+    topGrad.addColorStop(1, coreDark);
+
+    var sideGrad = ctx.createLinearGradient(x, bodyTop, x, anchorY + sideHeight * 0.3);
+    sideGrad.addColorStop(0, coreMid);
+    sideGrad.addColorStop(0.52, coreDark);
+    sideGrad.addColorStop(1, edge);
+
+    var baseGrad = ctx.createLinearGradient(x - radius, anchorY - sideHeight * 0.3, x + radius, anchorY + sideHeight * 0.15);
+    baseGrad.addColorStop(0, coreDark);
+    baseGrad.addColorStop(0.5, coreMid);
+    baseGrad.addColorStop(1, edge);
+
     ctx.save();
-    ctx.shadowColor = themeChannels("--rgb-neutral-950", ".42");
-    ctx.shadowBlur = Math.max(4, width * 0.1);
+    ctx.shadowColor = themeChannels("--rgb-neutral-950", ".36");
+    ctx.shadowBlur = Math.max(5, width * 0.11);
     ctx.shadowOffsetY = Math.max(2, height * 0.06);
-    ctx.fillStyle = main;
-    ctx.strokeStyle = isWhite ? colors.whiteEdge : colors.blackEdge;
-    ctx.lineWidth = Math.max(2, width * 0.045);
+
+    ctx.fillStyle = themeChannels("--rgb-neutral-950", isWhite ? ".18" : ".32");
     ctx.beginPath();
-    ctx.ellipse(x, baseY, width * 0.40, height * 0.10, 0, 0, Math.PI * 2);
+    ctx.ellipse(x, anchorY + sideHeight * 0.22, radius * 0.98, Math.max(4, sideHeight * 0.62), 0, 0, Math.PI * 2);
     ctx.fill();
-    ctx.stroke();
+
+    ctx.shadowColor = "transparent";
+    ctx.fillStyle = sideGrad;
     ctx.beginPath();
-    ctx.moveTo(x - width * 0.28, baseY - height * 0.02);
-    ctx.quadraticCurveTo(x - width * 0.18, centerY, x - width * 0.12, top + height * 0.30);
-    ctx.quadraticCurveTo(x, top + height * 0.21, x + width * 0.12, top + height * 0.30);
-    ctx.quadraticCurveTo(x + width * 0.18, centerY, x + width * 0.28, baseY - height * 0.02);
+    ctx.moveTo(x - radius * 0.88, bodyTop);
+    ctx.quadraticCurveTo(x - radius * 0.98, anchorY - sideHeight * 0.38, x - radius * 0.82, bodyBottom);
+    ctx.lineTo(x - radius * 0.82, anchorY - sideHeight * 0.08);
+    ctx.quadraticCurveTo(x, anchorY + sideHeight * 0.14, x + radius * 0.82, anchorY - sideHeight * 0.08);
+    ctx.lineTo(x + radius * 0.82, bodyBottom);
+    ctx.quadraticCurveTo(x + radius * 0.98, anchorY - sideHeight * 0.38, x + radius * 0.88, bodyTop);
     ctx.closePath();
     ctx.fill();
+
+    ctx.fillStyle = baseGrad;
+    ctx.strokeStyle = edge;
+    ctx.lineWidth = Math.max(1.5, width * 0.028);
     ctx.beginPath();
-    ctx.arc(x, top + height * 0.19, width * 0.18, 0, Math.PI * 2);
+    ctx.ellipse(x, anchorY - sideHeight * 0.04, radius * 0.84, Math.max(5, sideHeight * 0.72), 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = topGrad;
+    ctx.beginPath();
+    ctx.ellipse(x, topY, radius, stackHeight * 0.52, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.lineWidth = Math.max(2, width * 0.038);
+    ctx.strokeStyle = rim;
+    ctx.beginPath();
+    ctx.ellipse(x, topY, radius * 0.94, stackHeight * 0.47, 0, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.lineWidth = Math.max(1.4, width * 0.024);
+    ctx.strokeStyle = isWhite ? themeChannels("--rgb-white", ".84") : themeChannels("--rgb-white", ".22");
+    ctx.beginPath();
+    ctx.ellipse(x, topY, radius * 0.56, stackHeight * 0.26, 0, 0, Math.PI * 2);
+    ctx.stroke();
+
+    var highlight = ctx.createRadialGradient(x - radius * 0.36, topY - stackHeight * 0.22, radius * 0.05, x - radius * 0.24, topY - stackHeight * 0.14, radius * 0.5);
+    highlight.addColorStop(0, isWhite ? themeChannels("--rgb-white", ".96") : themeChannels("--rgb-white", ".40"));
+    highlight.addColorStop(1, "transparent");
+    ctx.fillStyle = highlight;
+    ctx.beginPath();
+    ctx.ellipse(x - radius * 0.16, topY - stackHeight * 0.10, radius * 0.42, stackHeight * 0.18, -0.32, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = isWhite ? colors.whiteDot : colors.blackDot;
+    ctx.beginPath();
+    ctx.ellipse(x, topY, radius * 0.18, stackHeight * 0.095, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
   }
