@@ -479,9 +479,7 @@
           try {
             const notice = document.getElementById("syncIssueNotice");
             if (notice && !notice.textContent) {
-              notice.textContent =
-                window.I18N.translateArgs("online.syncIssueNotice") ||
-                "يفضل تحديث الصفحة، توجد مشكلة في المزامنة";
+              notice.textContent = window.I18N.translateArgs("online.syncIssueNotice");
             }
           } catch (e) {}
         },
@@ -505,9 +503,7 @@
               notice.hidden = !shouldShow;
               notice.classList.toggle("is-visible", shouldShow);
               if (shouldShow) {
-                notice.textContent =
-                  window.I18N.translateArgs("online.syncIssueNotice") ||
-                  "يفضل تحديث الصفحة، توجد مشكلة في المزامنة";
+                notice.textContent = window.I18N.translateArgs("online.syncIssueNotice");
               }
             }
           } catch (e) {}
@@ -1267,7 +1263,7 @@
               settled = true;
               resolve(!!value);
             };
-            const text = window.I18N.translateArgs("online.invites.leaveActivePrompt", "أنت الآن في مباراة أونلاين نشطة. هل تريد مغادرة المباراة الحالية وإرسال الدعوة؟");
+            const text = window.I18N.translateArgs("online.invites.leaveActivePrompt");
             if (!(typeof Modal !== "undefined" && Modal && typeof Modal.open === "function")) {
               if (confirm(text)) {
                 this._leaveActiveMatchForInvite(gid).then(done).catch(() => done(false));
@@ -1280,13 +1276,13 @@
             body.style.whiteSpace = "pre-wrap";
             body.textContent = text;
             Modal.open({
-              title: window.I18N.translateArgs("online.pvpEndTitle", "نهاية المباراة"),
+              title: window.I18N.translateArgs("online.invites.activeMatchTitle"),
               body,
               allowEsc: true,
               onClose: (reason) => { if (reason !== "action") done(false); },
               buttons: [
                 {
-                  label: window.I18N.translateArgs("online.invites.leaveAndSend", "المغادرة والإرسال"),
+                  label: window.I18N.translateArgs("online.invites.leaveAndSend"),
                   className: "danger",
                   onClick: async () => {
                     try { if (Modal.setButtonsDisabled) Modal.setButtonsDisabled(true); } catch (e) {}
@@ -1296,7 +1292,7 @@
                   },
                 },
                 {
-                  label: window.I18N.translateArgs("online.invites.returnToMatch", "العودة إلى المباراة"),
+                  label: window.I18N.translateArgs("online.invites.returnToMatch"),
                   className: "ok",
                   onClick: async () => {
                     done(false);
@@ -1305,7 +1301,7 @@
                   },
                 },
                 {
-                  label: window.I18N.translateArgs("actions.cancel", "إلغاء"),
+                  label: window.I18N.translateArgs("actions.cancel"),
                   className: "ghost",
                   onClick: () => {
                     done(false);
@@ -3278,15 +3274,6 @@
               service: "pvp.voice.failure.service",
               generic: "pvp.voice.failure.generic",
             };
-            const fallbackByKind = {
-              permission: "تعذر الوصول إلى الميكروفون. اسمح للموقع باستخدامه ثم أعد المحاولة.",
-              "no-device": "لم يعثر المتصفح على ميكروفون متاح.",
-              busy: "تعذر فتح الميكروفون لأنه مستخدم أو غير متاح حاليًا.",
-              unsupported: "الدردشة الصوتية غير مدعومة في هذا المتصفح أو في هذا السياق.",
-              session: "تعذر بدء الدردشة الصوتية لأن جلسة المباراة غير جاهزة. أعد فتح المباراة ثم حاول مجددًا.",
-              service: "تعذر بدء الاتصال الصوتي الآن. تحقق من الاتصال ثم أعد المحاولة.",
-              generic: "تعذر تشغيل الدردشة الصوتية. حاول مرة أخرى.",
-            };
             const resolvedKind = keyByKind[rawKind] ? rawKind : "generic";
             try {
               Logger.warn("voice_start_failed", {
@@ -3297,12 +3284,9 @@
               });
             } catch (_) {}
             showOnlineNotice(
-              window.I18N.translateArgs(
-                keyByKind[resolvedKind],
-                fallbackByKind[resolvedKind],
-              ),
+              window.I18N.translateArgs(keyByKind[resolvedKind]),
               {
-                title: window.I18N.translateArgs("pvp.voice.failedTitle", "فشل الدردشة الصوتية"),
+                title: window.I18N.translateArgs("pvp.voice.failedTitle"),
                 allowSpectator: true,
               },
             );
@@ -6577,7 +6561,7 @@
     }
     if (document.getElementById("roomsList") && document.getElementById("playersList")) {
       Online.initLobbyPage({ roomsListId: "roomsList", playersListId: "playersList" }).catch(function () {
-        var msg = window.I18N.translateArgs("status.onlineInitFail", "تعذر تشغيل اللعب عبر الإنترنت الآن.");
+        var msg = window.I18N.translateArgs("status.onlineInitFail");
         var playersEl = document.getElementById("playersList");
         var roomsEl = document.getElementById("roomsList");
         if (playersEl) playersEl.innerHTML = '<div class="z-empty">' + msg + '</div>';

@@ -3594,13 +3594,13 @@
             location.href = "./loby.html";
             return;
           }
-          var msg = window.I18N.translateArgs("status.onlineInitFail", "تعذر تهيئة اللعب عبر الإنترنت.");
-          var extra = window.I18N.translateArgs("status.onlineInitHelp", "يرجى تسجيل الدخول أو بدء جلسة ضيف عبر Cloudflare.");
+          var msg = window.I18N.translateArgs("status.onlineInitFail");
+          var extra = window.I18N.translateArgs("status.onlineInitHelp");
           if (window.Modal && typeof Modal.open === "function") {
             Modal.alert({
-              title: window.I18N.translateArgs("modals.errorTitle", "خطأ"),
+              title: window.I18N.translateArgs("modals.errorTitle"),
               body: "<div style='line-height:1.7'>" + msg + "<br/>" + extra + "</div>",
-              okLabel: window.I18N.translateArgs("actions.ok", "موافق"),
+              okLabel: window.I18N.translateArgs("actions.ok"),
               okClassName: "ok",
             });
           } else {

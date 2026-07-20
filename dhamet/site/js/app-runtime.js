@@ -622,7 +622,7 @@ function writeSession(s){
   }
 
   function loginErrorKey(code) {
-    return code.includes("timeout") ? "auth.msgNetwork" : "auth.msgInvalid";
+    return code.includes("timeout") ? "auth.msgNetwork" : "auth.msgLoginInvalid";
   }
 
   function googleLoginErrorKey(code) {
@@ -922,7 +922,7 @@ const btnRegister = qs("#btnRegister", root);
       } catch (err) {
         try {
           var msg = window.I18N && typeof window.I18N.translateArgs === "function"
-            ? window.I18N.translateArgs("auth.logoutFailed", "تعذر تسجيل الخروج. تحقق من الاتصال ثم حاول مرة أخرى.")
+            ? window.I18N.translateArgs("auth.logoutFailed")
             : "تعذر تسجيل الخروج. تحقق من الاتصال ثم حاول مرة أخرى.";
           if (window.Modal && typeof window.Modal.alert === "function") window.Modal.alert(msg);
           else window.alert(msg);

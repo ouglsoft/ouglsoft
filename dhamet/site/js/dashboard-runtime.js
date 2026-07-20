@@ -399,8 +399,8 @@
           showDashboardResultKey("auth.msgSaved", "ok");
         } catch (e) {
           showDashboardResultKey(keyForCode(errorCode(e), [
-            ["auth/wrong-password", "auth.msgInvalid"],
-            ["auth/invalid-credential", "auth.msgInvalid"],
+            ["auth/wrong-password", "dashboard.password.oldWrong"],
+            ["auth/invalid-credential", "dashboard.password.oldWrong"],
             ["auth/popup-blocked", "auth.msgPopupBlocked"],
             ["auth/popup-closed-by-user", "auth.msgPopupBlocked"],
             ["auth/requires-recent-login", "dashboard.password.recentLogin"],
