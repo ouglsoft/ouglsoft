@@ -114,6 +114,7 @@ function inside(r, c) {
 
 const AI_LEVEL_ORDER = DhametAIConfig.AI_LEVEL_ORDER;
 const AI_LEVEL_CONFIGS = DhametAIConfig.AI_LEVEL_CONFIGS;
+const DEFAULT_AI_LEVEL = DhametAIConfig.DEFAULT_AI_LEVEL || "hard";
 const normalizeAILevel = DhametAIConfig.normalizeLevel;
 const getAILevelConfig = DhametAIConfig.getLevelConfig;
 
@@ -158,7 +159,7 @@ const Game = {
     showCoords: false,
     boardStyle: "2d",
 
-    advanced: DhametAIConfig.createDefaultAdvancedSettings("medium"),
+    advanced: DhametAIConfig.createDefaultAdvancedSettings(DEFAULT_AI_LEVEL),
   },
 
   pendingAILevel: null,
@@ -789,13 +790,10 @@ const Turn = {
     UI.updateStatus();
 
     if (isForcedOpeningActive() && Game.player === humanSide()) {
-      const openingInfos = getForcedOpeningInfos();
-      if (openingInfos.length > 1 && Visual && typeof Visual.setForcedOpeningArrows === "function") {
-        Visual.setForcedOpeningArrows(openingInfos.map((info) => ({ from: info.from, to: info.toFirst })), true);
-        Visual.setHighlightCells(openingInfos.map((info) => idxToRC(info.from)));
-        Visual.draw();
-      } else if (openingInfos.length === 1) {
-        Visual.setForcedOpeningArrow(openingInfos[0].from, openingInfos[0].toFirst);
+      // Mandatory-opening paths are corrective guidance only. Keep them hidden
+      // until the player taps a wrong piece or an invalid destination.
+      if (Visual && typeof Visual.clearForcedOpeningArrow === "function") {
+        Visual.clearForcedOpeningArrow(true);
       }
     }
   },
@@ -1939,7 +1937,7 @@ const PvCResultRecorder = (() => {
   function currentAiLevel() {
     try {
       return typeof normalizeAILevel === "function"
-        ? normalizeAILevel(Game.settings && Game.settings.advanced && Game.settings.advanced.aiLevel || "medium")
+        ? normalizeAILevel(Game.settings && Game.settings.advanced && Game.settings.advanced.aiLevel || DEFAULT_AI_LEVEL)
         : "medium";
     } catch (_) { return "medium"; }
   }
@@ -2586,43 +2584,30 @@ if (typeof window !== "undefined") window.AI = AI;
           return el;
         };
 
-        let stickToTop = true;
         let userBrowsingLog = false;
-        let browseReleaseTimer = 0;
+        let programmaticLogScroll = false;
+
+        const setLogScrollTop = (log, value) => {
+          programmaticLogScroll = true;
+          try { log.scrollTop = Math.max(0, Number(value) || 0); } catch (_) {}
+          requestAnimationFrame(() => { programmaticLogScroll = false; });
+        };
 
         const render = () => {
           const log = qs("#log");
           if (!log) return;
 
           const prevTop = log.scrollTop || 0;
-          const prevH = log.scrollHeight || 0;
-          const atTop = prevTop <= 2;
-
           log.innerHTML = "";
           for (let i = events.length - 1; i >= 0; i--) {
             log.appendChild(_makeEl(events[i]));
           }
 
-          if (stickToTop && atTop && !userBrowsingLog) {
-            log.scrollTop = 0;
-          } else if (userBrowsingLog) {
-            stickToTop = false;
-            requestAnimationFrame(() => {
-              try {
-                log.scrollTop = prevTop;
-              } catch (_) {}
-            });
-          } else {
-            stickToTop = false;
-            const newH = log.scrollHeight || 0;
-            const delta = newH - prevH;
-            const nextTop = Math.max(0, prevTop + (delta > 0 ? delta : 0));
-            requestAnimationFrame(() => {
-              try {
-                log.scrollTop = nextTop;
-              } catch (_) {}
-            });
-          }
+          requestAnimationFrame(() => {
+            // Keep the newest events at the top only while the user is not
+            // browsing older entries. A re-render must preserve manual scroll.
+            setLogScrollTop(log, userBrowsingLog ? prevTop : 0);
+          });
         };
 
         const addEvent = (ev) => {
@@ -2661,25 +2646,16 @@ if (typeof window !== "undefined") window.AI = AI;
           const log = qs("#log");
           if (!log || log.__zScrollBound) return;
           log.__zScrollBound = true;
-          const markBrowsing = () => {
-            try {
-              userBrowsingLog = true;
-              stickToTop = false;
-              if (browseReleaseTimer) clearTimeout(browseReleaseTimer);
-              browseReleaseTimer = setTimeout(() => {
-                try {
-                  userBrowsingLog = (log.scrollTop || 0) > 2;
-                  stickToTop = !userBrowsingLog;
-                } catch (_) {}
-              }, 420);
-            } catch (_) {}
+          const beginBrowsing = () => { userBrowsingLog = true; };
+          const updateBrowsingPosition = () => {
+            if (programmaticLogScroll) return;
+            userBrowsingLog = (log.scrollTop || 0) > 2;
           };
-          log.addEventListener("touchstart", markBrowsing, { passive: true });
-          log.addEventListener("touchmove", markBrowsing, { passive: true });
-          log.addEventListener("touchend", markBrowsing, { passive: true });
-          log.addEventListener("pointerdown", markBrowsing, { passive: true });
-          log.addEventListener("wheel", markBrowsing, { passive: true });
-          log.addEventListener("scroll", markBrowsing, { passive: true });
+          log.addEventListener("touchstart", beginBrowsing, { passive: true });
+          log.addEventListener("touchmove", beginBrowsing, { passive: true });
+          log.addEventListener("pointerdown", beginBrowsing, { passive: true });
+          log.addEventListener("wheel", beginBrowsing, { passive: true });
+          log.addEventListener("scroll", updateBrowsingPosition, { passive: true });
         });
 
         return { addEvent, addText, setEvents, retranslate, _events: events };

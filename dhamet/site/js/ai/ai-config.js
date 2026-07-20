@@ -10,6 +10,7 @@
 
   const ENGINE_CONFIG_VERSION = 2;
   const AI_LEVEL_ORDER = Object.freeze(['beginner', 'easy', 'medium', 'hard', 'strong', 'expert']);
+  const DEFAULT_AI_LEVEL = 'hard';
 
   const AI_LEVEL_CONFIGS = Object.freeze({
     beginner: Object.freeze({
@@ -82,7 +83,7 @@
 
   function normalizeLevel(level) {
     const key = String(level || '').trim();
-    return Object.prototype.hasOwnProperty.call(AI_LEVEL_CONFIGS, key) ? key : 'medium';
+    return Object.prototype.hasOwnProperty.call(AI_LEVEL_CONFIGS, key) ? key : DEFAULT_AI_LEVEL;
   }
 
   function getLevelConfig(level) {
@@ -115,12 +116,13 @@
   }
 
   function createDefaultAdvancedSettings(level) {
-    return normalizeAdvancedSettings({ aiLevel: level || 'medium' });
+    return normalizeAdvancedSettings({ aiLevel: level || DEFAULT_AI_LEVEL });
   }
 
   root.DhametAIConfig = Object.freeze({
     ENGINE_CONFIG_VERSION,
     AI_LEVEL_ORDER,
+    DEFAULT_AI_LEVEL,
     AI_LEVEL_CONFIGS,
     clampInt,
     normalizeLevel,

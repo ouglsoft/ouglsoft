@@ -131,7 +131,8 @@
     } catch (_) {}
 
     const adv = game.settings && game.settings.advanced ? game.settings.advanced : {};
-    const actualLevel = normalizeLevel(adv.aiLevel || "medium");
+    const defaultLevel = global.DhametAIConfig && global.DhametAIConfig.DEFAULT_AI_LEVEL || "hard";
+    const actualLevel = normalizeLevel(adv.aiLevel || defaultLevel);
     const pendingLevel = game.pendingAILevel ? normalizeLevel(game.pendingAILevel) : null;
     const currentLevel = pendingLevel || actualLevel;
     const levels = Array.isArray(opts.levels)

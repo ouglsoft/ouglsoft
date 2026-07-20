@@ -88,13 +88,14 @@
       "levelDetails": {
         "beginner": "حد العمق: 7؛ زمن أساسي: 180 مللي ثانية؛ حد نهائي: 420 مللي ثانية؛ اختيار آمن من أفضل 4 نقلات متقاربة.",
         "easy": "حد العمق: 10؛ زمن أساسي: 500 مللي ثانية؛ حد نهائي: 1.1 ثانية؛ اختيار آمن من أفضل 3 نقلات متقاربة.",
-        "medium": "حد العمق: 14؛ زمن أساسي: 1.4 ثانية؛ حد نهائي: 3 ثوانٍ؛ أفضل نقلة من آخر عمق مكتمل؛ المستوى الافتراضي.",
-        "hard": "حد العمق: 18؛ زمن أساسي: 3.5 ثوانٍ؛ حد نهائي: 7 ثوانٍ؛ أفضل نقلة من آخر عمق مكتمل.",
+        "medium": "حد العمق: 14؛ زمن أساسي: 1.4 ثانية؛ حد نهائي: 3 ثوانٍ؛ أفضل نقلة من آخر عمق مكتمل.",
+        "hard": "حد العمق: 18؛ زمن أساسي: 3.5 ثوانٍ؛ حد نهائي: 7 ثوانٍ؛ أفضل نقلة من آخر عمق مكتمل؛ المستوى الافتراضي.",
         "strong": "حد العمق: 22؛ زمن أساسي: 7.5 ثوانٍ؛ حد نهائي: 15 ثانية؛ بحث كامل دون إضعاف اختياري.",
         "expert": "حد العمق: 28؛ زمن أساسي: 14 ثانية؛ حد نهائي: 26 ثانية؛ أعلى حدود البحث والذاكرة المتاحة."
       }
     },
     "auth": {
+      "brandSubtitle": "نسخة جديدة أقوى وأكثر ثباتًا",
       "msgPopupBlocked": "تعذر فتح نافذة تسجيل Google. تأكد من السماح بالنوافذ المنبثقة.",
       "loginGoogleOption": "تسجيل الدخول عبر Google",
       "guestNoLogin": "المتابعة دون تسجيل الدخول",
@@ -627,13 +628,14 @@
       "levelDetails": {
         "beginner": "Depth ceiling: 7; base time: 180 ms; hard limit: 420 ms; safe choice among up to 4 close moves.",
         "easy": "Depth ceiling: 10; base time: 500 ms; hard limit: 1.1 s; safe choice among up to 3 close moves.",
-        "medium": "Depth ceiling: 14; base time: 1.4 s; hard limit: 3 s; best move from the last completed iteration; default level.",
-        "hard": "Depth ceiling: 18; base time: 3.5 s; hard limit: 7 s; best move from the last completed iteration.",
+        "medium": "Depth ceiling: 14; base time: 1.4 s; hard limit: 3 s; best move from the last completed iteration.",
+        "hard": "Depth ceiling: 18; base time: 3.5 s; hard limit: 7 s; best move from the last completed iteration; default level.",
         "strong": "Depth ceiling: 22; base time: 7.5 s; hard limit: 15 s; full-strength move selection.",
         "expert": "Depth ceiling: 28; base time: 14 s; hard limit: 26 s; highest search and memory limits."
       }
     },
     "auth": {
+      "brandSubtitle": "A new, stronger and more stable version",
       "msgPopupBlocked": "Couldn't open Google sign-in window. Please allow pop-ups.",
       "loginGoogleOption": "Sign in with Google",
       "guestNoLogin": "Continue without signing in",
@@ -1166,13 +1168,14 @@
       "levelDetails": {
         "beginner": "Plafond de profondeur : 7 ; temps de base : 180 ms ; limite stricte : 420 ms ; choix sûr parmi 4 coups proches au maximum.",
         "easy": "Plafond de profondeur : 10 ; temps de base : 500 ms ; limite stricte : 1,1 s ; choix sûr parmi 3 coups proches au maximum.",
-        "medium": "Plafond de profondeur : 14 ; temps de base : 1,4 s ; limite stricte : 3 s ; meilleur coup de la dernière itération terminée ; niveau par défaut.",
-        "hard": "Plafond de profondeur : 18 ; temps de base : 3,5 s ; limite stricte : 7 s ; meilleur coup de la dernière itération terminée.",
+        "medium": "Plafond de profondeur : 14 ; temps de base : 1,4 s ; limite stricte : 3 s ; meilleur coup de la dernière itération terminée.",
+        "hard": "Plafond de profondeur : 18 ; temps de base : 3,5 s ; limite stricte : 7 s ; meilleur coup de la dernière itération terminée ; niveau par défaut.",
         "strong": "Plafond de profondeur : 22 ; temps de base : 7,5 s ; limite stricte : 15 s ; sélection à pleine puissance.",
         "expert": "Plafond de profondeur : 28 ; temps de base : 14 s ; limite stricte : 26 s ; limites maximales de recherche et de mémoire."
       }
     },
     "auth": {
+      "brandSubtitle": "Une nouvelle version, plus puissante et plus stable",
       "msgPopupBlocked": "Impossible d’ouvrir la fenêtre Google. Autorisez les pop-ups.",
       "loginGoogleOption": "Se connecter avec Google",
       "guestNoLogin": "Continuer sans se connecter",

@@ -472,14 +472,6 @@ const Visual = (() => {
       const __numLabels = [];
       try { S._arrowStacks = new Map(); } catch (_) { S._arrowStacks = null; }
 
-      if (Array.isArray(S.forcedOpeningArrows) && S.forcedOpeningArrows.length) {
-        for (const openingArrow of S.forcedOpeningArrows) {
-          drawArrow(ctx, openingArrow.from, openingArrow.to, themeColor("--mark-danger"));
-        }
-      } else if (S.forcedOpeningArrow) {
-        drawArrow(ctx, S.forcedOpeningArrow.from, S.forcedOpeningArrow.to, themeColor("--mark-danger"));
-      }
-
       if (S.souflaRemove != null) {
         drawX(ctx, S.souflaRemove, themeColor("--mark-danger"));
       }
@@ -593,6 +585,15 @@ const Visual = (() => {
 
       for (const idx of S.crownQueue) {
         drawCrownPulse(ctx, idx);
+      }
+
+      // Mandatory-opening guidance is the highest-priority board effect.
+      if (Array.isArray(S.forcedOpeningArrows) && S.forcedOpeningArrows.length) {
+        for (const openingArrow of S.forcedOpeningArrows) {
+          drawArrow(ctx, openingArrow.from, openingArrow.to, themeColor("--mark-danger"));
+        }
+      } else if (S.forcedOpeningArrow) {
+        drawArrow(ctx, S.forcedOpeningArrow.from, S.forcedOpeningArrow.to, themeColor("--mark-danger"));
       }
     } finally {
       S._activeCanvas = prevCv;
@@ -849,15 +850,15 @@ function formatAiThinkingSeconds(ms) {
 function getAiThinkingContext() {
   const adv = Game && Game.settings && Game.settings.advanced ? Game.settings.advanced : {};
   const level = typeof normalizeAILevel === "function"
-    ? normalizeAILevel(adv.aiLevel || "medium")
-    : String(adv.aiLevel || "medium");
+    ? normalizeAILevel(adv.aiLevel || (window.DhametAIConfig && DhametAIConfig.DEFAULT_AI_LEVEL || "hard"))
+    : String(adv.aiLevel || (window.DhametAIConfig && DhametAIConfig.DEFAULT_AI_LEVEL || "hard"));
   const levelLabel = aiText("settings.levels." + level) || level;
 
   let cfg = null;
   try {
     if (typeof getAILevelConfig === "function") cfg = getAILevelConfig(level);
   } catch (_) {}
-  if (!cfg && window.AI_LEVEL_CONFIGS) cfg = window.AI_LEVEL_CONFIGS[level] || window.AI_LEVEL_CONFIGS.medium || null;
+  if (!cfg && window.AI_LEVEL_CONFIGS) cfg = window.AI_LEVEL_CONFIGS[level] || window.AI_LEVEL_CONFIGS.hard || null;
 
   const baseMs = Math.max(0, Number((cfg && cfg.thinkTimeMs) || adv.thinkTimeMs || 0) || 0);
   const boostMs = Math.max(0, Number((cfg && cfg.timeBoostCriticalMs) || adv.timeBoostCriticalMs || 0) || 0);
@@ -1094,7 +1095,7 @@ const Input = {
           return;
         }
         Input.selected = idx;
-        Visual.setForcedOpeningArrow(info.from, info.toFirst);
+        Visual.clearForcedOpeningArrow(true);
         Visual.setHighlightCells([[r, c]]);
         Visual.draw();
         return;
@@ -1187,6 +1188,7 @@ const Input = {
         syncEndKillAvailability(true);
 
         Visual.setLastMovePath(Game.lastMoveFrom, Game.lastMovePath);
+        Visual.clearForcedOpeningArrow(true);
 
         Input.selected = idx;
         Visual.setHighlightCells([[r, c]]);
@@ -1713,9 +1715,9 @@ const UI = {
       ? window.AI_LEVEL_ORDER
       : ["beginner", "easy", "medium", "hard", "strong", "expert"];
     const normalizeLevel = (value) => typeof normalizeAILevel === "function"
-      ? normalizeAILevel(value || "medium")
-      : String(value || "medium");
-    const selectedLevel = normalizeLevel(adv.aiLevel || Game.pendingAILevel || "medium");
+      ? normalizeAILevel(value || (window.DhametAIConfig && DhametAIConfig.DEFAULT_AI_LEVEL || "hard"))
+      : String(value || (window.DhametAIConfig && DhametAIConfig.DEFAULT_AI_LEVEL || "hard"));
+    const selectedLevel = normalizeLevel(adv.aiLevel || Game.pendingAILevel || (window.DhametAIConfig && DhametAIConfig.DEFAULT_AI_LEVEL || "hard"));
 
     const esc = (value) => String(value == null ? "" : value)
       .replace(/&/g, "&amp;")
@@ -1831,7 +1833,7 @@ const UI = {
       };
 
       const starterBefore = Game.settings.starter;
-      const levelBefore = normalizeLevel(adv.aiLevel || Game.pendingAILevel || "medium");
+      const levelBefore = normalizeLevel(adv.aiLevel || Game.pendingAILevel || (window.DhametAIConfig && DhametAIConfig.DEFAULT_AI_LEVEL || "hard"));
       const themeBefore = Game.settings.theme === "dark" ? "dark" : "light";
       const boardBefore = (Game.settings.boardStyle || "2d") === "3d" ? "3d" : "2d";
       const coordsBefore = !!Game.settings.showCoords;
@@ -1840,7 +1842,7 @@ const UI = {
       let starterDeferred = false;
 
       if (!onlineNow()) {
-        const level = normalizeLevel(qs("#advAILevel", wrap)?.value || "medium");
+        const level = normalizeLevel(qs("#advAILevel", wrap)?.value || (window.DhametAIConfig && DhametAIConfig.DEFAULT_AI_LEVEL || "hard"));
         if (level !== levelBefore) {
           if (!Game.settings) Game.settings = {};
           if (window.DhametAIConfig && typeof DhametAIConfig.createDefaultAdvancedSettings === "function") {

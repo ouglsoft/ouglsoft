@@ -17,6 +17,7 @@
   var MOBILE_PAGES = { auth: 1, mode: 1, lobby: 1, dashboard: 1, game: 1 };
   var ORIENTATION_REQUEST_TARGET = '';
   var ORIENTATION_REQUEST_TIMER = 0;
+  var ORIENTATION_PREF_KEY = 'zamat.mobile.orientation.v1';
 
   /* Page detection */
 
@@ -72,6 +73,56 @@
     try {
       if (typeof Common.isPhoneLike === 'function') return Common.isPhoneLike();
     } catch (_) {}
+    return false;
+  }
+
+
+  function navigationIsBackForward() {
+    try {
+      var entries = performance && typeof performance.getEntriesByType === 'function'
+        ? performance.getEntriesByType('navigation')
+        : [];
+      return !!(entries && entries[0] && entries[0].type === 'back_forward');
+    } catch (_) {}
+    try { return performance && performance.navigation && performance.navigation.type === 2; } catch (_) {}
+    return false;
+  }
+
+  function getPreferredOrientation() {
+    try {
+      var value = String(sessionStorage.getItem(ORIENTATION_PREF_KEY) || '');
+      return value === 'landscape' || value === 'portrait' ? value : '';
+    } catch (_) { return ''; }
+  }
+
+  function setPreferredOrientation(value) {
+    try {
+      if (value === 'landscape' || value === 'portrait') sessionStorage.setItem(ORIENTATION_PREF_KEY, value);
+      else sessionStorage.removeItem(ORIENTATION_PREF_KEY);
+    } catch (_) {}
+  }
+
+  async function restorePreferredOrientation() {
+    if (!isPhone()) return false;
+    if (navigationIsBackForward()) {
+      setPreferredOrientation('');
+      return false;
+    }
+    var target = getPreferredOrientation();
+    if (!target || (target === 'landscape') === isLandscape()) return true;
+
+    ORIENTATION_REQUEST_TARGET = target;
+    expireOrientationRequest(target);
+    try {
+      if (window.screen && screen.orientation && screen.orientation.lock) {
+        try { await screen.orientation.lock(target + '-primary'); }
+        catch (_) { await screen.orientation.lock(target); }
+        return true;
+      }
+    } catch (error) {
+      reportOrientationFailure(error);
+    }
+    clearOrientationRequest(target);
     return false;
   }
 
@@ -359,7 +410,9 @@ function ensureOrientButton() {
   btn.className = 'z-mobile-orient';
   btn.innerHTML = '<span class="z-mobile-orient-ico" aria-hidden="true"></span>';
   btn.addEventListener('click', function () {
-    if (isLandscape()) requestPortrait();
+    var target = isLandscape() ? 'portrait' : 'landscape';
+    setPreferredOrientation(target);
+    if (target === 'portrait') requestPortrait();
     else requestLandscape();
   });
   document.body.appendChild(btn);
@@ -1519,9 +1572,14 @@ function refreshMobileText() {
 
   function init() {
     applyState();
+    void restorePreferredOrientation().then(function () { scheduleResponsiveLayout(); });
     window.addEventListener('resize', scheduleResponsiveLayout, { passive: true });
     window.addEventListener('orientationchange', scheduleResponsiveLayout, { passive: true });
-    window.addEventListener('pageshow', scheduleResponsiveLayout, { passive: true });
+    window.addEventListener('pageshow', function (event) {
+      if ((event && event.persisted) || navigationIsBackForward()) setPreferredOrientation('');
+      else void restorePreferredOrientation();
+      scheduleResponsiveLayout();
+    }, { passive: true });
     try {
       if (window.screen && window.screen.orientation && window.screen.orientation.addEventListener) {
         window.screen.orientation.addEventListener('change', scheduleResponsiveLayout);
