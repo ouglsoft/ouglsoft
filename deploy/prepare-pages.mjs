@@ -26,7 +26,7 @@ function injectBuildToken(dir, build) {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     const file = path.join(dir, entry.name);
     if (entry.isDirectory()) injectBuildToken(file, build);
-    else if (entry.isFile() && /\.(?:html|js)$/.test(entry.name)) {
+    else if (entry.isFile() && /\.(?:html|js|css)$/.test(entry.name)) {
       const text = fs.readFileSync(file, 'utf8');
       if (text.includes('__DHAMET_BUILD__')) fs.writeFileSync(file, text.replaceAll('__DHAMET_BUILD__', build));
     }

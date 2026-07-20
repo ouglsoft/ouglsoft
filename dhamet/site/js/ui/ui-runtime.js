@@ -1335,16 +1335,16 @@ function endKillPressed() {
     }
   } catch (_) {}
 
+  if (!Game.inChain) {
+    showUiNotice(t("chain.notice.inactive"), t("modals.notice"));
+    return;
+  }
   if (Game.player !== humanSide()) {
     try {
       if (window.Online && window.Online.isActive && !window.Online.isSpectator) {
         showUiNotice(t("status.wait"));
       }
     } catch (_) {}
-    return;
-  }
-  if (!Game.inChain) {
-    showUiNotice(t("chain.notice.inactive"), t("modals.notice"));
     return;
   }
 
@@ -2530,14 +2530,19 @@ function bindUI() {
     localRefreshButton.addEventListener("click", () => window.location.reload());
   }
   qs("#btnEndKill").addEventListener("click", endKillPressed);
-  const killClockButton = qs(".timer-row .clock");
-  if (killClockButton) {
-    killClockButton.addEventListener("click", endKillPressed);
-    killClockButton.setAttribute("role", "button");
-    killClockButton.setAttribute("tabindex", "0");
-    killClockButton.addEventListener("keydown", function (ev) {
-      if (!ev) return;
-      const key = ev.key || ev.code;
+  const killTimerTile = qs(".timer-row");
+  if (killTimerTile) {
+    killTimerTile.setAttribute("role", "button");
+    killTimerTile.setAttribute("tabindex", "0");
+    killTimerTile.setAttribute("aria-label", t("buttons.endKill"));
+    killTimerTile.addEventListener("click", function (ev) {
+      if (!document.body || !document.body.classList.contains("z-mobile-on")) return;
+      if (ev) ev.preventDefault();
+      endKillPressed();
+    });
+    killTimerTile.addEventListener("keydown", function (ev) {
+      if (!document.body || !document.body.classList.contains("z-mobile-on")) return;
+      const key = ev && (ev.key || ev.code);
       if (key === "Enter" || key === " " || key === "Spacebar") {
         ev.preventDefault();
         endKillPressed();

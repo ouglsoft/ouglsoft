@@ -314,8 +314,8 @@ body.z-mobile-on .z-mobile-orient .z-mobile-orient-ico {
   height: 20px;
   display: block;
   background-color: currentColor;
-  -webkit-mask: url('../assets/icons/orientation-toggle.svg') center / contain no-repeat;
-  mask: url('../assets/icons/orientation-toggle.svg') center / contain no-repeat;
+  -webkit-mask: url('../assets/icons/orientation-toggle.svg?v=__DHAMET_BUILD__') center / contain no-repeat;
+  mask: url('../assets/icons/orientation-toggle.svg?v=__DHAMET_BUILD__') center / contain no-repeat;
 }
 html.dark body.z-mobile-on .z-mobile-orient,
 html.dark body.z-mobile-on .z-mobile-shell-btn {
@@ -1308,8 +1308,8 @@ body.z-mobile-on[data-mobile-page="lobby"] .z-mobile-lobby-rank-ico {
   width: 18px;
   height: 18px;
   background-color: currentColor;
-  -webkit-mask: url('../assets/icons/leaderboard.svg') center / contain no-repeat;
-  mask: url('../assets/icons/leaderboard.svg') center / contain no-repeat;
+  -webkit-mask: url('../assets/icons/leaderboard.svg?v=__DHAMET_BUILD__') center / contain no-repeat;
+  mask: url('../assets/icons/leaderboard.svg?v=__DHAMET_BUILD__') center / contain no-repeat;
 }
 
 body.z-mobile-on[data-mobile-page="lobby"] .z-invite-receive-row {

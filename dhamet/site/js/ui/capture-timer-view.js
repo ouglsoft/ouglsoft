@@ -25,6 +25,8 @@
       const active = btn.getAttribute("data-chain-active") === "true";
       row.classList.toggle("is-live", active);
       row.classList.toggle("is-disabled", !active);
+      row.setAttribute("data-chain-active", active ? "true" : "false");
+      row.setAttribute("aria-disabled", active ? "false" : "true");
       if (clock) {
         clock.setAttribute("data-chain-active", active ? "true" : "false");
         clock.setAttribute("aria-disabled", active ? "false" : "true");

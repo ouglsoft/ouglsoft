@@ -138,7 +138,7 @@ body::before {
   background-repeat: no-repeat;
   pointer-events: none;
   z-index: -1;
-  background-image: radial-gradient(circle at 18% 12%, rgb(var(--rgb-white) / .92), rgb(var(--rgb-white) / 0) 26%), radial-gradient(circle at 84% 16%, rgb(var(--rgb-secondary-400) / .12), rgb(var(--rgb-secondary-400) / 0) 24%), radial-gradient(circle at 50% 100%, rgb(var(--rgb-primary-500) / .08), rgb(var(--rgb-primary-500) / 0) 34%), url("../assets/icons/icon.webp");
+  background-image: radial-gradient(circle at 18% 12%, rgb(var(--rgb-white) / .92), rgb(var(--rgb-white) / 0) 26%), radial-gradient(circle at 84% 16%, rgb(var(--rgb-secondary-400) / .12), rgb(var(--rgb-secondary-400) / 0) 24%), radial-gradient(circle at 50% 100%, rgb(var(--rgb-primary-500) / .08), rgb(var(--rgb-primary-500) / 0) 34%), url("../assets/icons/icon.webp?v=__DHAMET_BUILD__");
   opacity: 0.28;
 }
 
