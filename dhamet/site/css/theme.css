@@ -2270,3 +2270,192 @@ html.dark body.z-mobile-on[data-mobile-page="mode"] .z-mode-card p {
   --piece-black-edge-soft: rgb(96 226 207);
   --piece-black-dot: rgb(96 226 207);
 }
+
+
+/* ========================================================================== 
+   2.13.7 UNIFIED LOBBY HEADERS, PLAYER STATES AND SOUFLA WORDMARK
+   ========================================================================== */
+
+/* The Soufla control is represented by its unique name rather than an
+   ambiguous pictogram. It inherits the current game-control color language. */
+body.z-game-page .z-soufla-word,
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid .z-soufla-word {
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  width: auto !important;
+  min-width: 42px;
+  height: auto !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  color: rgb(var(--rgb-white)) !important;
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  filter: none !important;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 950;
+  line-height: 1;
+  letter-spacing: 0;
+  white-space: nowrap;
+  text-shadow: 0 1px 2px rgb(var(--rgb-black) / .34);
+}
+body.z-mobile-on[data-mobile-orientation="portrait"][data-mobile-page="game"] .z-mobile-game-controls-grid .z-soufla-word {
+  min-width: 48px;
+  font-size: 15px;
+}
+body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="game"] .z-mobile-game-controls-grid .z-soufla-word {
+  min-width: 44px;
+  font-size: 13px;
+}
+
+/* A single structural header model applies to desktop and mobile. */
+.z-lobby-panel {
+  padding: 0 14px 14px !important;
+  gap: 0 !important;
+}
+.z-lobby-h2 {
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  width: calc(100% + 28px) !important;
+  min-height: 52px;
+  margin: 0 -14px 14px !important;
+  padding: 12px 16px !important;
+  border-radius: 24px 24px 0 0 !important;
+  color: rgb(var(--rgb-white)) !important;
+  font-size: 1rem !important;
+  font-weight: 900 !important;
+  line-height: 1.25;
+  text-align: center;
+  box-sizing: border-box;
+}
+.z-lobby-h2::before,
+.z-lobby-h2::after {
+  content: none !important;
+  display: none !important;
+}
+body.z-mobile-on[data-mobile-page="lobby"] .z-lobby-panel {
+  padding: 0 12px 12px !important;
+  gap: 0 !important;
+}
+body.z-mobile-on[data-mobile-page="lobby"] .z-lobby-h2 {
+  width: calc(100% + 24px) !important;
+  min-height: 44px;
+  margin: 0 -12px 10px !important;
+  padding: 9px 12px !important;
+  border-radius: 20px 20px 0 0 !important;
+  font-size: var(--fs-body) !important;
+}
+
+/* Player rows stay on one line: avatar, name, status, action. */
+.z-player-row {
+  min-height: 42px;
+  flex-wrap: nowrap !important;
+}
+.z-player-row .z-row-main {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.z-player-row .z-row-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.z-player-row .z-avatar {
+  flex: 0 0 auto;
+}
+.z-player-row .z-player-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 900;
+}
+.z-player-status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  min-height: 22px;
+  padding: 3px 8px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-size: .72rem;
+  font-weight: 850;
+  line-height: 1;
+  white-space: nowrap;
+}
+.z-player-status.is-available {
+  color: rgb(var(--rgb-success-700));
+  background: rgb(var(--rgb-success-500) / .14);
+  border-color: rgb(var(--rgb-success-600) / .22);
+}
+.z-player-status.is-computer {
+  color: rgb(var(--rgb-light-primary-700));
+  background: rgb(var(--rgb-light-primary-500) / .12);
+  border-color: rgb(var(--rgb-light-primary-500) / .22);
+}
+.z-player-status.is-online {
+  color: rgb(var(--rgb-gold-800));
+  background: rgb(var(--rgb-gold-500) / .18);
+  border-color: rgb(var(--rgb-gold-700) / .24);
+}
+.z-player-status.is-no-invites {
+  color: rgb(var(--rgb-danger-700));
+  background: rgb(var(--rgb-danger-500) / .12);
+  border-color: rgb(var(--rgb-danger-500) / .22);
+}
+.z-player-row .z-row-actions {
+  flex: 0 0 auto;
+  margin-inline-start: auto;
+}
+.z-player-row .z-invite-btn.is-invite-disabled,
+.z-player-row .z-invite-btn:disabled {
+  opacity: 1 !important;
+  filter: none !important;
+  color: rgb(var(--rgb-danger-700)) !important;
+  background: linear-gradient(145deg, rgb(var(--rgb-danger-500) / .12), rgb(var(--rgb-danger-400) / .20)) !important;
+  border-color: rgb(var(--rgb-danger-500) / .30) !important;
+  box-shadow: inset 0 1px 0 rgb(var(--rgb-white) / .20) !important;
+}
+html.dark .z-player-status.is-available {
+  color: rgb(var(--rgb-success-100));
+  background: rgb(var(--rgb-success-500) / .18);
+}
+html.dark .z-player-status.is-computer {
+  color: rgb(var(--rgb-light-primary-200));
+  background: rgb(var(--rgb-light-primary-400) / .18);
+}
+html.dark .z-player-status.is-online {
+  color: rgb(var(--rgb-gold-400));
+  background: rgb(var(--rgb-gold-500) / .18);
+}
+html.dark .z-player-status.is-no-invites,
+html.dark .z-player-row .z-invite-btn.is-invite-disabled,
+html.dark .z-player-row .z-invite-btn:disabled {
+  color: rgb(var(--rgb-danger-300)) !important;
+}
+body.z-mobile-on[data-mobile-page="lobby"] .z-player-row {
+  min-height: 40px;
+  padding: 5px 7px;
+}
+body.z-mobile-on[data-mobile-page="lobby"] .z-player-row .z-row-title {
+  gap: 5px;
+}
+body.z-mobile-on[data-mobile-page="lobby"] .z-player-status {
+  min-height: 19px;
+  padding: 2px 6px;
+  font-size: .64rem;
+}
+body.z-mobile-on[data-mobile-page="lobby"] .z-player-row .z-row-actions .btn {
+  min-width: 62px;
+  min-height: 29px;
+  padding: 4px 7px;
+  font-size: .72rem;
+}

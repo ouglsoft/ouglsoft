@@ -997,13 +997,13 @@
           const wrap = document.createElement("div");
           wrap.innerHTML = `
             <div style="display:flex; flex-direction:column; gap:10px;">
-              <div style="font-weight:700;">${window.I18N.translateArgs("online.playersTitle")}</div>
+              <div style="font-weight:700;">${window.I18N.translateArgs("lobby.playersTitle")}</div>
               <div id="playersList" style="display:flex; flex-direction:column; gap:8px;"></div>
             </div>
           `;
     
           Modal.open({
-            title: window.I18N.translateArgs("online.playersTitle"),
+            title: window.I18N.translateArgs("lobby.playersTitle"),
             body: wrap,
             buttons: [
               {
@@ -5557,14 +5557,17 @@
     
               playersEl.innerHTML = rows
                 .map((r) => {
-                  const playerStateClass = (r.st === "available" || r.st === "vsComputer")
+                  const playerStatusClass = r.st === "available"
                     ? "is-available"
-                    : "is-busy";
+                    : (r.st === "vsComputer"
+                        ? "is-computer"
+                        : (r.st === "inPvP" ? "is-online" : "is-no-invites"));
+                  const statusMarkup = `<span class="z-player-status ${playerStatusClass}">${escapeHtml(r.stLabel)}</span>`;
                   if (r.isSelf) {
                     return `
-                      <div class="z-row z-player-row ${playerStateClass} is-self" data-uid="${r.uid}">
+                      <div class="z-row z-player-row ${playerStatusClass} is-self" data-uid="${r.uid}">
                         <div class="z-row-main">
-                          <div class="z-row-title"><span class="z-row-status-dot ${playerStateClass}" aria-hidden="true"></span><img class="z-avatar" src="${r.icon}" alt="" /><span class="z-player-name">${escapeHtml(r.nick)}</span></div>
+                          <div class="z-row-title"><img class="z-avatar" src="${r.icon}" alt="" /><span class="z-player-name">${escapeHtml(r.nick)}</span>${statusMarkup}</div>
                         </div>
                         <div class="z-row-actions">
                           <span class="z-self">${window.I18N.translateArgs("players.you")}</span>
@@ -5574,15 +5577,16 @@
                   }
 
                   const dis = r.canInvite ? "" : 'disabled aria-disabled="true"';
+                  const disabledClass = r.canInvite ? "" : " is-invite-disabled";
                   const title = r.canInvite ? "" : `title="${window.I18N.translateArgs(r.st === "inPvP" ? "lobby.inviteDisabled" : "lobby.invitesDisabled")}"`;
                   const inviteLabel = window.I18N.translateArgs("actions.invite");
                   return `
-                    <div class="z-row z-player-row ${playerStateClass}" data-uid="${r.uid}">
+                    <div class="z-row z-player-row ${playerStatusClass}" data-uid="${r.uid}">
                       <div class="z-row-main">
-                        <div class="z-row-title"><span class="z-row-status-dot ${playerStateClass}" aria-hidden="true"></span><img class="z-avatar" src="${r.icon}" alt="" /><span class="z-player-name">${escapeHtml(r.nick)}</span></div>
+                        <div class="z-row-title"><img class="z-avatar" src="${r.icon}" alt="" /><span class="z-player-name">${escapeHtml(r.nick)}</span>${statusMarkup}</div>
                       </div>
                       <div class="z-row-actions">
-                        <button class="btn small ok" data-action="invite" ${dis} ${title}>
+                        <button class="btn small ok z-invite-btn${disabledClass}" data-action="invite" ${dis} ${title}>
                           <span>${inviteLabel}</span>
                         </button>
                       </div>

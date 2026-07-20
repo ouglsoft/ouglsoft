@@ -357,7 +357,7 @@
       "title": "اختر نمط اللعب",
       "pvpTitle": "اللعب عبر الإنترنت",
       "backToAccount": "العودة إلى الحساب",
-      "pvpDesc": "ابحث عن لاعبين آخرين والعب ضدهم ، أو قم بمشاهدة مباريات جارية بشكل مباشر",
+      "pvpDesc": "ابدأ مباراة مباشرة وتنافسية مع لاعب آخر متصل عبر الإنترنت.",
       "pvcTitle": "اللعب ضد الحاسوب"
     },
     "lobby": {
@@ -365,15 +365,15 @@
       "refresh": "تحديث اللوبي",
       "emptyRooms": "لا توجد غرف جارية.",
       "emptyPlayers": "لا يوجد لاعبون متصلون.",
-      "loadingPlayers": "جاري تحميل قائمة اللاعبين المتصلين.....",
-      "loadingRooms": "جاري تحميل قائمة الغرف المباشرة...",
+      "loadingPlayers": "جاري تحميل قائمة اللاعبين المتصلين...",
+      "loadingRooms": "جاري تحميل قائمة الغرف النشطة...",
       "loadFailed": "تعذر تحميل اللوبي مؤقتًا. ستتم إعادة المحاولة تلقائيًا، ويمكنك الضغط على زر «تحديث» للمحاولة الآن.",
-      "rooms": "قائمة الغرف النشطة",
+      "roomsTitle": "قائمة الغرف النشطة",
+      "playersTitle": "قائمة اللاعبين المتصلين",
       "subtitle": "شاهد المباريات الجارية أو اختر لاعبًا متصلًا وادعه إلى مباراة مباشرة.",
-      "title": "قائمة الغرف واللاعبين المتصلين",
+      "title": "الغرف النشطة واللاعبون المتصلون",
       "inviteDisabled": "لا يمكن دعوته الآن",
-      "invitesDisabled": "معطل الدعوات",
-      "noInvites": "لا يقبل الدعوات",
+      "invitesDisabled": "لا يقبل الدعوات",
       "join": "دخول",
       "returnToMatch": "العودة إلى المباراة",
       "yourActiveMatch": "مباراتك النشطة",
@@ -416,8 +416,6 @@
       "controls": "عناصر التحكم",
       "mobileStats": "إحصاءات الهاتف",
       "pvpActions": "إجراءات اللعب ضد لاعب",
-      "lobbyRooms": "الغرف",
-      "lobbyPlayers": "اللاعبون",
       "dashboard": "لوحة التحكم",
       "stats": "الإحصاءات",
       "matchDetails": "تفاصيل المباراة",
@@ -524,7 +522,7 @@
       },
       "status": {
         "available": "متاح",
-        "vsComputer": "يلعب ضد الحاسوب",
+        "vsComputer": "في مباراة ضد الحاسوب",
         "inPvP": "في مباراة أونلاين",
         "spectating": "يشاهد مباراة"
       },
@@ -533,7 +531,6 @@
       "waitingAcceptance": "لم يتم قبول الدعوة بعد.",
       "disabledButton": "لا يمكن تنفيذ هذا الإجراء لهذا اللاعب الآن.",
       "playersLoadFail": "تعذر تحميل قائمة اللاعبين المتصلين.",
-      "playersTitle": "قائمة اللاعبين المتصلين"
     },
     "stats": {
       "left": "القطع المتبقية",
@@ -962,12 +959,12 @@
       "turnCaptureFmt": "${side}: Capture ${from}-${to} (${n})."
     },
     "mode": {
-      "subtitle": "Choose to play vs the computer, or online to face other players or watch matches live.",
+      "subtitle": "Choose how you want to play: a solo match against the computer or a live match with another player.",
       "pvcDesc": "Start a solo match against an intelligent game engine and choose the difficulty that suits you.",
       "title": "Choose game mode",
       "pvpTitle": "Play Online",
       "backToAccount": "Back to account",
-      "pvpDesc": "Enter the lobby and play with others.",
+      "pvpDesc": "Start a live competitive match against another online player.",
       "pvcTitle": "Play vs Computer"
     },
     "lobby": {
@@ -978,12 +975,12 @@
       "loadingPlayers": "Loading online players...",
       "loadingRooms": "Loading live rooms...",
       "loadFailed": "The lobby could not be loaded temporarily. It will retry automatically, or press Refresh to try now.",
-      "rooms": "Active rooms list",
+      "roomsTitle": "Active rooms list",
+      "playersTitle": "Connected players list",
       "subtitle": "Choose a room to watch, or invite a player to start a match.",
-      "title": "Rooms & online players",
+      "title": "Active rooms and connected players",
       "inviteDisabled": "Can't invite right now",
-      "invitesDisabled": "Invites disabled",
-      "noInvites": "Doesn't accept invites",
+      "invitesDisabled": "Not accepting invites",
       "join": "Join",
       "returnToMatch": "Return to match",
       "yourActiveMatch": "Your active match",
@@ -1026,8 +1023,6 @@
       "controls": "Controls",
       "mobileStats": "Mobile stats",
       "pvpActions": "PvP actions",
-      "lobbyRooms": "Rooms",
-      "lobbyPlayers": "Players",
       "dashboard": "Dashboard",
       "stats": "Stats",
       "matchDetails": "Match details",
@@ -1134,7 +1129,7 @@
       },
       "status": {
         "available": "Available",
-        "vsComputer": "Playing vs computer",
+        "vsComputer": "In a match vs computer",
         "inPvP": "In online match",
         "spectating": "Watching a match"
       },
@@ -1143,7 +1138,6 @@
       "waitingAcceptance": "Invite hasn't been accepted yet.",
       "disabledButton": "This action is not available for this player right now.",
       "playersLoadFail": "Could not load the online players list.",
-      "playersTitle": "Connected players list"
     },
     "stats": {
       "left": "Pieces left",
@@ -1572,12 +1566,12 @@
       "turnCaptureFmt": "${side} : Prise ${from}-${to} (${n})."
     },
     "mode": {
-      "subtitle": "Jouez contre l’ordinateur, ou en ligne pour affronter d’autres joueurs ou regarder des parties en direct.",
-      "pvcDesc": "Jouer contre l’ordinateur avec des niveaux de difficulté clairs.",
+      "subtitle": "Choisissez votre façon de jouer : une partie en solo contre l’ordinateur ou une partie en direct avec un autre joueur.",
+      "pvcDesc": "Commencez une partie en solo contre un moteur de jeu intelligent et choisissez le niveau de difficulté adapté.",
       "title": "Choisir le mode",
       "pvpTitle": "En ligne",
       "backToAccount": "Retour au compte",
-      "pvpDesc": "Entrer dans le lobby et jouer avec d’autres.",
+      "pvpDesc": "Commencez une partie directe et compétitive contre un autre joueur connecté.",
       "pvcTitle": "Contre l’ordinateur"
     },
     "lobby": {
@@ -1588,12 +1582,12 @@
       "loadingPlayers": "Chargement des joueurs en ligne...",
       "loadingRooms": "Chargement des parties en cours...",
       "loadFailed": "Le lobby est temporairement indisponible. Une nouvelle tentative sera effectuée automatiquement, ou appuyez sur Actualiser pour réessayer maintenant.",
-      "rooms": "Liste des salles actives",
+      "roomsTitle": "Liste des salles actives",
+      "playersTitle": "Liste des joueurs connectés",
       "subtitle": "Choisissez une salle à regarder, ou invitez un joueur pour démarrer une partie.",
-      "title": "Salles et joueurs en ligne",
+      "title": "Salles actives et joueurs connectés",
       "inviteDisabled": "Invitation impossible pour le moment",
-      "invitesDisabled": "Invitations désactivées",
-      "noInvites": "N’accepte pas les invitations",
+      "invitesDisabled": "N’accepte pas les invitations",
       "join": "Rejoindre",
       "returnToMatch": "Revenir à la partie",
       "yourActiveMatch": "Votre partie active",
@@ -1636,8 +1630,6 @@
       "controls": "Commandes",
       "mobileStats": "Statistiques mobile",
       "pvpActions": "Actions PvP",
-      "lobbyRooms": "Salles",
-      "lobbyPlayers": "Joueurs",
       "dashboard": "Tableau de bord",
       "stats": "Statistiques",
       "matchDetails": "Détails du match",
@@ -1747,13 +1739,12 @@
       "waitingAcceptance": "L’invitation n’a pas encore été acceptée.",
       "status": {
         "available": "Disponible",
-        "vsComputer": "Joue contre l’ordinateur",
+        "vsComputer": "Dans une partie contre l’ordinateur",
         "inPvP": "Dans une partie en ligne",
         "spectating": "Observe une partie"
       },
       "disabledButton": "Cette action n’est pas disponible pour ce joueur pour le moment.",
       "playersLoadFail": "Impossible de charger la liste des joueurs en ligne.",
-      "playersTitle": "Liste des joueurs connectés"
     },
     "stats": {
       "left": "Pièces restantes",
