@@ -584,8 +584,7 @@ button.success {
 
 .btn.warn,
 .btn.warning,
-button.warning,
-#btnSoufla {
+button.warning {
   color: var(--color-on-warning) !important;
   background: var(--gradient-warning) !important;
   border-color: rgb(var(--rgb-gold-500) / .44) !important;
@@ -1644,7 +1643,6 @@ body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnEndKi
 body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid .soufla-row .btn,
 body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnSync,
 body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnRefreshLocal,
-body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnSoufla,
 body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnUndo,
 body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnSettings,
 body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnSave,
@@ -1755,7 +1753,6 @@ body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid .timer-ro
 /* Desktop game controls use the same restrained ocean family as mobile. */
 body.z-game-page:not(.z-mobile-on) .side .btn,
 body.z-game-page:not(.z-mobile-on) .controls-box .btn,
-body.z-game-page:not(.z-mobile-on) #btnSoufla,
 body.z-game-page:not(.z-mobile-on) #btnUndo,
 body.z-game-page:not(.z-mobile-on) #btnSettings,
 body.z-game-page:not(.z-mobile-on) #btnSave,
@@ -1822,7 +1819,6 @@ body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnEndKi
 body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid .soufla-row .btn,
 body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnSync,
 body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnRefreshLocal,
-body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnSoufla,
 body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnUndo,
 body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnSettings,
 body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnSave,
@@ -1971,24 +1967,6 @@ html.dark .z-lobby-subtitle {
   --game-board-end: rgb(var(--rgb-board-light-alt));
 }
 
-/* Soufla icon: no white tile, visible glyph in both themes and orientations. */
-body.z-mobile-on[data-mobile-page="game"] #btnSoufla .btn-ico,
-body.z-game-page:not(.z-mobile-on) #btnSoufla .btn-ico {
-  display: block !important;
-  width: 88% !important;
-  height: 88% !important;
-  max-width: none !important;
-  max-height: none !important;
-  margin: auto !important;
-  padding: 0 !important;
-  border: 0 !important;
-  border-radius: 0 !important;
-  background: transparent !important;
-  box-shadow: none !important;
-  object-fit: contain !important;
-  filter: brightness(0) invert(1) drop-shadow(0 1px 1px rgb(var(--rgb-black) / .28)) !important;
-  opacity: 1 !important;
-}
 
 /* Active capture timer: explicit red outline and 20% height increase only while live. */
 body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid .timer-row.is-live {
@@ -2029,4 +2007,117 @@ html.dark body.z-mobile-on[data-mobile-page="auth"] .btn,
 html.dark body.z-mobile-on[data-mobile-page="lobby"] .btn,
 html.dark body.z-mobile-on[data-mobile-page="dashboard"] .btn {
   overflow: visible;
+}
+
+
+/* ========================================================================== 
+   2.13.5 CONFLICT CLEANUP — ICONS, FOOTER AND BOARD CONTRAST
+   ========================================================================== */
+
+/* Mode icons retain their real SVG silhouette in dark mode. The surrounding
+   tile is translucent, never an opaque white square. */
+html.dark .z-mode-ico {
+  color: rgb(var(--rgb-white)) !important;
+  background: rgb(8 37 51 / .44) !important;
+  border-color: rgb(var(--rgb-secondary-300) / .34) !important;
+  box-shadow: inset 0 1px 0 rgb(var(--rgb-white) / .10), 0 10px 24px rgb(var(--rgb-black) / .24) !important;
+}
+html.dark .z-mode-ico img {
+  display: block !important;
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  filter: brightness(0) invert(1) drop-shadow(0 1px 1px rgb(var(--rgb-black) / .42)) !important;
+  opacity: 1 !important;
+}
+
+/* Login footer content and external links remain readable over dark surfaces. */
+html.dark .z-auth-foot,
+html.dark .z-auth-foot a,
+html.dark body.z-mobile-on .z-mobile-footer,
+html.dark body.z-mobile-on .z-mobile-footer-rights,
+html.dark body.z-mobile-on .z-mobile-footer-nav,
+html.dark body.z-mobile-on .z-mobile-footer-nav a {
+  color: rgb(var(--rgb-white)) !important;
+}
+html.dark body.z-mobile-on .z-mobile-footer-nav a {
+  background: rgb(8 37 51 / .76) !important;
+  border-color: rgb(var(--rgb-secondary-300) / .22) !important;
+}
+html.dark body.z-mobile-on .z-mobile-footer-rights {
+  background: rgb(8 37 51 / .88) !important;
+}
+
+/* Brighter light board with explicit contrast roles for lines, routes, markers
+   and pieces. Hue identity stays in the existing blue/teal/ocher family. */
+:root:not(.dark) {
+  --rgb-board-light: 236 242 243;
+  --rgb-board-light-alt: 166 194 205;
+  --rgb-board-grid-light: 22 58 78;
+  --rgb-board-diag-light: 132 62 18;
+  --game-board-start: rgb(var(--rgb-board-light));
+  --game-board-end: rgb(var(--rgb-board-light-alt));
+  --game-board-grid: rgb(var(--rgb-board-grid-light));
+  --game-board-diag: rgb(var(--rgb-board-diag-light));
+  --board-point: rgb(13 76 94);
+  --board-highlight: rgb(var(--rgb-white) / .72);
+  --board-shadow: rgb(13 48 65 / .30);
+  --mark-move: rgb(0 111 112);
+  --mark-move-strong: rgb(0 77 82);
+  --mark-danger: rgb(211 47 60);
+  --mark-danger-strong: rgb(145 22 34);
+  --mark-undo: rgb(166 94 0);
+  --mark-label-bg: rgb(var(--rgb-white) / .94);
+  --mark-overlay-light: rgb(var(--rgb-white) / .88);
+  --piece-white-light: rgb(var(--rgb-white));
+  --piece-white-mid: rgb(244 249 248);
+  --piece-white-dark: rgb(211 226 230);
+  --piece-white-edge: rgb(17 68 91);
+  --piece-white-edge-soft: rgb(36 108 132);
+  --piece-white-dot: rgb(17 68 91);
+  --piece-black-light: rgb(48 82 98);
+  --piece-black-mid: rgb(20 48 64);
+  --piece-black-dark: rgb(6 24 35);
+  --piece-black-edge: rgb(55 196 177);
+  --piece-black-edge-soft: rgb(91 220 201);
+  --piece-black-dot: rgb(91 220 201);
+}
+
+:root.dark {
+  --rgb-board-dark: 20 42 58;
+  --rgb-board-dark-alt: 58 96 112;
+  --rgb-board-grid-dark: 222 238 242;
+  --rgb-board-diag-dark: 255 202 114;
+  --game-board-start: rgb(var(--rgb-board-dark));
+  --game-board-end: rgb(var(--rgb-board-dark-alt));
+  --game-board-grid: rgb(var(--rgb-board-grid-dark));
+  --game-board-diag: rgb(var(--rgb-board-diag-dark));
+  --board-point: rgb(98 229 216);
+  --board-highlight: rgb(var(--rgb-white) / .28);
+  --board-shadow: rgb(var(--rgb-black) / .54);
+  --mark-move: rgb(72 228 205);
+  --mark-move-strong: rgb(133 255 235);
+  --mark-danger: rgb(255 107 120);
+  --mark-danger-strong: rgb(255 160 168);
+  --mark-undo: rgb(255 202 114);
+  --mark-label-bg: rgb(8 31 44 / .94);
+  --mark-overlay-dark: rgb(var(--rgb-black) / .72);
+  --piece-white-light: rgb(255 255 255);
+  --piece-white-mid: rgb(239 248 248);
+  --piece-white-dark: rgb(194 224 229);
+  --piece-white-edge: rgb(83 211 196);
+  --piece-white-edge-soft: rgb(133 255 235);
+  --piece-white-dot: rgb(83 211 196);
+  --piece-black-light: rgb(34 68 84);
+  --piece-black-mid: rgb(13 38 52);
+  --piece-black-dark: rgb(4 21 31);
+  --piece-black-edge: rgb(255 202 114);
+  --piece-black-edge-soft: rgb(255 221 155);
+  --piece-black-dot: rgb(255 202 114);
+}
+
+canvas#board {
+  border-color: var(--game-board-grid) !important;
+  box-shadow: inset 0 0 0 1px rgb(var(--rgb-white) / .18), 0 14px 34px rgb(var(--rgb-primary-900) / .20) !important;
 }

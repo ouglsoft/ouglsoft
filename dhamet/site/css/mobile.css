@@ -3148,10 +3148,6 @@ body.z-mobile-on[data-mobile-page="game"]
   .btn-ico,
 body.z-mobile-on[data-mobile-page="game"]
   .z-mobile-game-controls-grid
-  #btnSoufla
-  .btn-ico,
-body.z-mobile-on[data-mobile-page="game"]
-  .z-mobile-game-controls-grid
   #btnEndKill
   .btn-ico {
   background: rgb(var(--rgb-white)) !important;
@@ -3164,9 +3160,6 @@ body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnSync.
   border-color: rgb(var(--rgb-danger-700) / .55) !important;
 }
 body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnSync,
-body.z-mobile-on[data-mobile-page="game"]
-  .z-mobile-game-controls-grid
-  #btnSoufla,
 body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnUndo,
 body.z-mobile-on[data-mobile-page="game"]
   .z-mobile-game-controls-grid
@@ -3462,7 +3455,6 @@ body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid .timer-ro
 
 body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnSync,
 body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnRefreshLocal { background: var(--gradient-action-sync) !important; }
-body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnSoufla { background: var(--gradient-action-soufla) !important; color: var(--color-on-warning) !important; }
 body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnUndo { background: var(--gradient-action-undo) !important; color: var(--color-on-warning) !important; }
 body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnSettings { background: var(--gradient-action-settings) !important; }
 body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnSave { background: var(--gradient-action-save) !important; }
@@ -3601,7 +3593,6 @@ body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnEndKi
 }
 body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnSync,
 body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnRefreshLocal,
-body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnSoufla,
 body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnUndo,
 body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnSettings,
 body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnSave,
@@ -3664,9 +3655,4 @@ body.z-mobile-on[data-mobile-orientation="portrait"][data-mobile-page="game"] ca
   width: calc(100% + 8px) !important;
   max-width: calc(100% + 8px) !important;
   margin-inline: -4px !important;
-}
-body.z-mobile-on[data-mobile-page="game"] #btnSoufla .btn-ico {
-  width: 90% !important;
-  height: 90% !important;
-  transform: none !important;
 }

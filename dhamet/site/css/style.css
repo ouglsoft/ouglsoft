@@ -1742,17 +1742,6 @@ body[dir="rtl"] #aiLevelValue {
   gap: 8px;
 }
 
-#btnSoufla {
-  width: 100%;
-  background: rgb(var(--rgb-danger-700)) !important;
-  border-color: rgb(var(--rgb-black) / .35) !important;
-  color: rgb(var(--rgb-white)) !important;
-  font-weight: 900;
-}
-
-#btnSoufla:hover:not(:disabled) {
-  background: rgb(var(--rgb-danger-600)) !important;
-}
 
 #btnChat[data-badge] {
   position: relative;

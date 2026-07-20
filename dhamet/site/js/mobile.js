@@ -15,6 +15,8 @@
   var AI_LEVEL_INTERACTION_UNTIL = 0;
   var LAST_GAME_MODE = null;
   var MOBILE_PAGES = { auth: 1, mode: 1, lobby: 1, dashboard: 1, game: 1 };
+  var ORIENTATION_REQUEST_TARGET = '';
+  var ORIENTATION_REQUEST_TIMER = 0;
 
   /* Page detection */
 
@@ -267,14 +269,47 @@
     try { console.warn('[Dhamet mobile orientation]', error || 'unsupported'); } catch (_) {}
   }
 
-  async function requestOrientation(kind) {
-    var target = kind === 'portrait' ? 'portrait' : 'landscape';
+  function clearOrientationRequest(target) {
+    if (target && ORIENTATION_REQUEST_TARGET !== target) return;
+    ORIENTATION_REQUEST_TARGET = '';
+    if (ORIENTATION_REQUEST_TIMER) {
+      clearTimeout(ORIENTATION_REQUEST_TIMER);
+      ORIENTATION_REQUEST_TIMER = 0;
+    }
+  }
+
+  function expireOrientationRequest(target) {
+    if (ORIENTATION_REQUEST_TIMER) clearTimeout(ORIENTATION_REQUEST_TIMER);
+    ORIENTATION_REQUEST_TIMER = setTimeout(function () {
+      clearOrientationRequest(target);
+    }, 2600);
+  }
+
+  async function exitMobileFullscreen() {
     try {
-      var el = document.documentElement;
-      if (!document.fullscreenElement && el.requestFullscreen) await el.requestFullscreen();
+      if (document.fullscreenElement && document.exitFullscreen) await document.exitFullscreen();
     } catch (error) {
       reportOrientationFailure(error);
     }
+  }
+
+  async function requestOrientation(kind) {
+    var target = kind === 'portrait' ? 'portrait' : 'landscape';
+    ORIENTATION_REQUEST_TARGET = target;
+    expireOrientationRequest(target);
+
+    // Orientation lock commonly requires fullscreen. Marking the requested
+    // target before entering fullscreen prevents the fullscreenchange layout
+    // pass from immediately exiting again while landscape lock is pending.
+    try {
+      var el = document.documentElement;
+      if (!document.fullscreenElement && el.requestFullscreen) {
+        await el.requestFullscreen({ navigationUI: 'hide' });
+      }
+    } catch (error) {
+      reportOrientationFailure(error);
+    }
+
     try {
       if (screen.orientation && screen.orientation.lock) {
         try {
@@ -290,24 +325,31 @@
     return false;
   }
 
-  function requestLandscape() {
-    return requestOrientation('landscape');
+  async function requestLandscape() {
+    var locked = await requestOrientation('landscape');
+    if (!locked && !isLandscape()) {
+      clearOrientationRequest('landscape');
+      await exitMobileFullscreen();
+    }
+    return locked;
   }
 
   async function requestPortrait() {
     var locked = await requestOrientation('portrait');
-    if (locked) return true;
-    try {
-      if (screen.orientation && screen.orientation.unlock) screen.orientation.unlock();
-    } catch (error) {
-      reportOrientationFailure(error);
+    if (!locked) {
+      try {
+        if (screen.orientation && screen.orientation.unlock) screen.orientation.unlock();
+      } catch (error) {
+        reportOrientationFailure(error);
+      }
     }
-    try {
-      if (document.fullscreenElement && document.exitFullscreen) await document.exitFullscreen();
-    } catch (error) {
-      reportOrientationFailure(error);
-    }
-    return false;
+    // Portrait must never remain fullscreen. A short delay lets the browser
+    // finish the orientation change before fullscreen exit releases the lock.
+    setTimeout(function () {
+      if (!isLandscape()) void exitMobileFullscreen();
+      clearOrientationRequest('portrait');
+    }, locked ? 180 : 0);
+    return locked;
   }
 
 function ensureOrientButton() {
@@ -1390,20 +1432,26 @@ function refreshMobileText() {
     } catch (_) {}
   }
 
-  async function syncGameFullscreenForOrientation(mobile, orientation) {
+  function reconcileGameFullscreenForOrientation(mobile, orientation) {
     if (!mobile || pageType() !== 'game') return;
-    try {
-      if (orientation === 'landscape') {
-        if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
-          await document.documentElement.requestFullscreen({ navigationUI: 'hide' });
-        }
-        return;
+
+    if (ORIENTATION_REQUEST_TARGET === orientation) {
+      if (orientation === 'portrait') {
+        setTimeout(function () {
+          void exitMobileFullscreen();
+          clearOrientationRequest('portrait');
+        }, 180);
+      } else {
+        clearOrientationRequest('landscape');
       }
-      if (document.fullscreenElement && document.exitFullscreen) {
-        await document.exitFullscreen();
-      }
-    } catch (error) {
-      reportOrientationFailure(error);
+      return;
+    }
+
+    // A fullscreenchange event fires before landscape lock has completed.
+    // Never exit during that pending request, otherwise the browser releases
+    // the lock and snaps back to portrait after a brief landscape flash.
+    if (orientation === 'portrait' && ORIENTATION_REQUEST_TARGET !== 'landscape') {
+      void exitMobileFullscreen();
     }
   }
 
@@ -1421,7 +1469,7 @@ function refreshMobileText() {
     document.body.setAttribute('data-mobile-page', pageType());
     document.body.setAttribute('data-mobile-orientation', orientation);
     document.body.classList.add('z-mobile-layout-ready');
-    void syncGameFullscreenForOrientation(mobile, orientation);
+    reconcileGameFullscreenForOrientation(mobile, orientation);
 
     if (!mobile) {
       restoreModeHead();
