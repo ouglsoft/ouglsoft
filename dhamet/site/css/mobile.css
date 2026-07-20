@@ -1126,8 +1126,6 @@ body.z-mobile-on[data-mobile-page="mode"] .z-mode-card::before {
 body.z-mobile-on[data-mobile-page="mode"] .z-mode-ico {
   width: 68px;
   height: 68px;
-  border: 1px solid var(--surface-stroke);
-  background: transparent;
 }
 
 body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="mode"]
@@ -1155,6 +1153,7 @@ body.z-mobile-on[data-mobile-page="mode"] .z-mode-ico img {
   width: 38px;
   height: 38px;
 }
+
 
 /* ========================================================================== MOBILE LOBBY PAGE ========================================================================== */
 
@@ -2564,14 +2563,7 @@ body.z-mobile-on[data-mobile-orientation="portrait"][data-mobile-page="game"]
   min-height: 44px;
 }
 
-body.z-mobile-on[data-mobile-orientation="portrait"][data-mobile-page="game"]
-  .z-mobile-game-controls-grid
-  .btn
-  .btn-ico {
-  width: 28px;
-  height: 28px;
-  padding: 5px;
-}
+
 
 body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="mode"]
   .z-page-inner,
@@ -2663,20 +2655,7 @@ body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid .sync-iss
   font-size: 10px;
 }
 
-body.z-mobile-on[data-mobile-page="game"]
-  .z-mobile-game-controls-grid
-  .btn
-  .btn-ico {
-  width: 32px;
-  height: 32px;
-  display: block;
-  padding: 6px;
-  border-radius: 12px;
-  background: rgb(var(--rgb-white)) !important;
-  background-image: none !important;
-  border: none !important;
-  box-shadow: var(--shadow-sm) !important;
-}
+
 
 body.z-mobile-on[data-mobile-page="game"]
   .z-mobile-game-controls-grid
@@ -3068,13 +3047,7 @@ body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="game"]
   min-height: 44px;
 }
 
-body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="game"]
-  .z-mobile-game-controls-grid
-  .btn
-  .btn-ico {
-  width: 28px;
-  height: 28px;
-}
+
 
 body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="game"]
   .z-mobile-game-drawer {
@@ -3201,30 +3174,9 @@ body.z-mobile-on[data-mobile-page="game"]
   border-color: transparent !important;
 }
 
-html.dark
-  body.z-mobile-on[data-mobile-page="game"]
-  .z-mobile-game-controls-grid
-  .btn
-  .btn-ico,
-html.dark
-  body.z-mobile-on[data-mobile-page="game"]
-  .z-mobile-game-controls-grid
-  .soufla-row
-  .btn
-  .btn-ico {
-  background: rgb(var(--rgb-white));
-  border: none;
-}
 
-body.z-mobile-on[data-mobile-page="game"]
-  .z-mobile-game-controls-grid
-  #btnSync
-  .btn-ico {
-  background: rgb(var(--rgb-white)) !important;
-  background-image: none !important;
-  border: none !important;
-  box-shadow: var(--shadow-sm) !important;
-}
+
+
 
 body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnSync.z-sync-issue {
   border-color: rgb(var(--rgb-danger-700) / .55) !important;
@@ -3487,9 +3439,7 @@ body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid .btn .btn
   max-width: 100%;
 }
 
-body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid .btn .btn-ico {
-  border-radius: 12px;
-}
+
 
 body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnSync,
 body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnRefreshLocal {
@@ -3558,11 +3508,7 @@ body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="game"] .
   padding-block: 6px !important;
 }
 
-body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="game"] .z-mobile-game-controls-grid .btn .btn-ico {
-  width: 24px;
-  height: 24px;
-  border-radius: 10px;
-}
+
 
 body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="game"] .z-mobile-game-controls-grid .btn .btn-text {
   font-size: 9px;
@@ -3661,13 +3607,7 @@ body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid .soufla-r
   background: linear-gradient(145deg, rgb(var(--rgb-light-primary-700)) 0%, rgb(var(--rgb-light-primary-500)) 58%, rgb(var(--rgb-secondary-500)) 100%) !important;
 }
 
-body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid .btn .btn-ico {
-  width: 32px;
-  height: 32px;
-  padding: 2px;
-  background: transparent !important;
-  box-shadow: none !important;
-}
+
 
 body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid .btn .btn-text {
   font-size: 9px;
@@ -3700,10 +3640,7 @@ body.z-mobile-on[data-mobile-orientation="portrait"][data-mobile-page="game"] .z
   min-height: 52px;
 }
 
-body.z-mobile-on[data-mobile-orientation="portrait"][data-mobile-page="game"] .z-mobile-game-controls-grid .btn .btn-ico {
-  width: 30px;
-  height: 30px;
-}
+
 
 body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="game"] .z-mobile-game-controls-grid .btn,
 body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="game"] .z-mobile-game-controls-grid .soufla-row {
@@ -3858,6 +3795,39 @@ body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="auth"] .
 
 /* Mobile Soufla word control */
 
+
+
+/* Game-control icons: one shared visual treatment for local and online play. */
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid .btn .btn-ico,
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid .soufla-row .btn .btn-ico {
+  display: block;
+  width: 32px;
+  height: 32px;
+  max-width: 100%;
+  max-height: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  object-fit: contain;
+  filter: brightness(0) invert(1) drop-shadow(0 1px 1px rgb(var(--rgb-black) / .32));
+  opacity: 1;
+}
+
+body.z-mobile-on[data-mobile-orientation="portrait"][data-mobile-page="game"] .z-mobile-game-controls-grid .btn .btn-ico,
+body.z-mobile-on[data-mobile-orientation="portrait"][data-mobile-page="game"] .z-mobile-game-controls-grid .soufla-row .btn .btn-ico {
+  width: 30px;
+  height: 30px;
+}
+
+body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="game"] .z-mobile-game-controls-grid .btn .btn-ico,
+body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="game"] .z-mobile-game-controls-grid .soufla-row .btn .btn-ico {
+  width: 36px;
+  height: 36px;
+}
+
 body.z-mobile-on[data-mobile-page="game"] #btnSoufla .z-soufla-icon {
   display: none;
 }
@@ -3989,7 +3959,13 @@ body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="game"] .
 }
 
 body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="game"] .z-mobile-game-controls-grid .timer-row #killClock {
-  font-size: 18px;
+  width: auto;
+  max-width: 100%;
+  font-size: 12px;
+  letter-spacing: -.04em;
+  white-space: nowrap;
+  transform: scaleX(.76);
+  transform-origin: center;
 }
 
 body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="game"] .z-mobile-game-controls-grid .timer-row.is-live {

@@ -890,21 +890,34 @@ html.dark .z-lobby-panel::after {
   border-color: rgb(var(--rgb-primary-500) / .24);
 }
 
+
+
+
+/* Mode-card icons retain the original artwork without an added tile. */
 .z-mode-ico {
   display: grid;
   place-items: center;
   flex: 0 0 auto;
   width: 72px;
   height: 72px;
-  background: transparent;
-  box-shadow: none;
-  border: 1px solid var(--surface-stroke);
+  border: 1px solid var(--mode-icon-border);
   border-radius: 18px;
+  background: var(--mode-icon-bg);
+  box-shadow: none;
 }
 
 .z-mode-ico img {
+  display: block;
   width: 40px;
   height: 40px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  object-fit: contain;
+  filter: var(--mode-icon-filter);
+  opacity: 1;
 }
 
 .z-mode-text {

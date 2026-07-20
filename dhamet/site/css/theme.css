@@ -87,8 +87,8 @@
   --mode-card-muted: rgb(var(--rgb-muted-ink));
   --mode-card-border: rgb(var(--rgb-white) / .74);
   --mode-card-glow: rgb(var(--rgb-white) / .40);
-  --mode-icon-bg: rgb(var(--rgb-white) / .76);
-  --mode-icon-border: rgb(var(--rgb-light-primary-400) / .24);
+  --mode-icon-bg: transparent;
+  --mode-icon-border: var(--surface-stroke);
   --mode-icon-filter: none;
   --mode-badge-bg: rgb(var(--rgb-white) / .84);
   --mode-badge-text: rgb(var(--rgb-light-primary-700));
@@ -293,8 +293,8 @@
   --mode-card-muted: rgb(var(--rgb-white) / .82);
   --mode-card-border: rgb(var(--rgb-white) / .22);
   --mode-card-glow: rgb(var(--rgb-white) / .12);
-  --mode-icon-bg: rgb(var(--rgb-white) / .14);
-  --mode-icon-border: rgb(var(--rgb-white) / .28);
+  --mode-icon-bg: rgb(var(--rgb-primary-900) / .36);
+  --mode-icon-border: rgb(var(--rgb-secondary-300) / .30);
   --mode-icon-filter: brightness(0) invert(1);
   --mode-badge-bg: rgb(var(--rgb-white) / .14);
   --mode-badge-text: rgb(var(--rgb-white));
@@ -715,15 +715,9 @@ button.ghost {
   color: var(--mode-card-text) !important;
 }
 
-.z-mode-ico {
-  background: var(--mode-icon-bg) !important;
-  border-color: var(--mode-icon-border) !important;
-  box-shadow: inset 0 1px 0 rgb(var(--rgb-white) / .22), 0 12px 28px rgb(var(--rgb-black) / .13) !important;
-}
 
-.z-mode-ico img {
-  filter: var(--mode-icon-filter);
-}
+
+
 
 @media (min-width: 900px) {
   .z-mode-card.pvc {
@@ -1382,19 +1376,7 @@ body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnLeave
   background: var(--gradient-game-control-danger) !important;
 }
 
-body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid .btn .btn-ico {
-  display: block !important;
-  margin: 0 !important;
-  padding: 0 !important;
-  border: 0 !important;
-  border-radius: 0 !important;
-  background: transparent !important;
-  box-shadow: none !important;
-  object-fit: contain;
-  transform-origin: center;
-  filter: brightness(0) invert(1) drop-shadow(0 1px 1px rgb(var(--rgb-black) / .30)) !important;
-  opacity: 1 !important;
-}
+
 
 body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid .btn .btn-text {
   display: none !important;
@@ -1446,12 +1428,7 @@ body.z-game-page:not(.z-mobile-on) #btnSync.z-sync-issue {
   background: var(--gradient-game-control-danger) !important;
 }
 
-body.z-game-page:not(.z-mobile-on) .side .btn .btn-ico,
-body.z-game-page:not(.z-mobile-on) .controls-box .btn .btn-ico {
-  filter: brightness(0) invert(1) drop-shadow(0 1px 1px rgb(var(--rgb-black) / .26)) !important;
-  background: transparent !important;
-  box-shadow: none !important;
-}
+
 
 .z-auth-page #btnLogin,
 .z-auth-page #btnRegister,
@@ -1510,28 +1487,11 @@ body.z-mobile-on[data-mobile-orientation="portrait"][data-mobile-page="game"] .z
   border-radius: 10px !important;
 }
 
-body.z-mobile-on[data-mobile-orientation="portrait"][data-mobile-page="game"] .z-mobile-game-controls-grid .btn .btn-ico {
-  width: 30px !important;
-  height: 30px !important;
-  max-width: 94% !important;
-  max-height: 94% !important;
-  padding: 0 !important;
-  margin: 0 !important;
-  transform: none !important;
-}
 
-body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="game"] .z-mobile-game-controls-grid .btn .btn-ico {
-  width: 48px !important;
-  height: 48px !important;
-  max-width: 94% !important;
-  max-height: 94% !important;
-  padding: 0 !important;
-  margin: 0 !important;
-  transform: none !important;
-}
 
-html.dark body.z-mobile-on .z-mobile-shell-btn img,
-html.dark body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid .btn .btn-ico {
+
+
+html.dark body.z-mobile-on .z-mobile-shell-btn img{
   filter: brightness(0) invert(1) drop-shadow(0 1px 2px rgb(var(--rgb-black) / .48)) !important;
   opacity: 1 !important;
 }
@@ -1653,22 +1613,9 @@ html.dark body.z-mobile-on[data-mobile-page="dashboard"] .btn {
 /* Mode icons retain their real SVG silhouette in dark mode. The surrounding
    tile is translucent, never an opaque white square. */
 
-html.dark .z-mode-ico {
-  color: rgb(var(--rgb-white)) !important;
-  background: rgb(8 37 51 / .44) !important;
-  border-color: rgb(var(--rgb-secondary-300) / .34) !important;
-  box-shadow: inset 0 1px 0 rgb(var(--rgb-white) / .10), 0 10px 24px rgb(var(--rgb-black) / .24) !important;
-}
 
-html.dark .z-mode-ico img {
-  display: block !important;
-  background: transparent !important;
-  border: 0 !important;
-  border-radius: 0 !important;
-  box-shadow: none !important;
-  filter: brightness(0) invert(1) drop-shadow(0 1px 1px rgb(var(--rgb-black) / .42)) !important;
-  opacity: 1 !important;
-}
+
+
 
 /* Login footer content and external links remain readable over dark surfaces. */
 
@@ -1734,45 +1681,20 @@ canvas#board {
 /* Soufla must use the same icon treatment as the other game buttons.
    No dedicated white plate, no extra background, no enlarged desktop tile. */
 
-body.z-game-page .soufla-row .btn .btn-ico,
-body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid .soufla-row .btn .btn-ico {
-  display: block !important;
-  width: 32px;
-  height: 32px;
-  padding: 2px !important;
-  background: transparent !important;
-  border: 0 !important;
-  border-radius: 0 !important;
-  box-shadow: none !important;
-  object-fit: contain !important;
-}
 
-body.z-game-page:not(.z-mobile-on) .soufla-row .btn .btn-ico {
-  width: 22px !important;
-  height: 22px !important;
-  padding: 0 !important;
-}
 
-body.z-mobile-on[data-mobile-orientation="portrait"][data-mobile-page="game"] .z-mobile-game-controls-grid .soufla-row .btn .btn-ico {
-  width: 36px !important;
-  height: 36px !important;
-  padding: 0 !important;
-}
 
-body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="game"] .z-mobile-game-controls-grid .soufla-row .btn .btn-ico {
-  width: 28px !important;
-  height: 28px !important;
-  padding: 0 !important;
-}
+
+
+
+
 
 body.z-game-page .soufla-row .btn,
 body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid .soufla-row .btn {
   overflow: hidden !important;
 }
 
-html.dark body.z-game-page .soufla-row .btn .btn-ico {
-  filter: brightness(0) invert(1) drop-shadow(0 1px 2px rgb(var(--rgb-black) / .42)) !important;
-}
+
 
 /* Lobby titles act as real card headers, similar to table heads. */
 
@@ -1835,19 +1757,9 @@ html.dark body.z-mobile-on[data-mobile-page="auth"] .z-mobile-footer-nav a {
 
 /* Dark mode mode-selection icons: keep a visible glyph, not a pale square. */
 
-html.dark .z-mode-card .z-mode-ico {
-  background: rgb(5 32 45 / .58) !important;
-  border-color: rgb(var(--rgb-secondary-300) / .30) !important;
-}
 
-html.dark .z-mode-card .z-mode-ico img {
-  background: transparent !important;
-  border: 0 !important;
-  border-radius: 0 !important;
-  box-shadow: none !important;
-  filter: brightness(0) invert(1) drop-shadow(0 1px 2px rgb(var(--rgb-black) / .45)) !important;
-  opacity: 1 !important;
-}
+
+
 
 html.dark body.z-mobile-on[data-mobile-page="mode"] .z-mode-card p {
   color: rgb(var(--rgb-white) / .88) !important;
@@ -2081,20 +1993,9 @@ html.dark .z-player-row .z-invite-btn:disabled {
 
 /* Online refresh uses the same transparent icon treatment as other controls. */
 
-body.z-mobile-on[data-mobile-page="game"] #btnSync .btn-ico,
-body.z-mobile-on[data-mobile-page="game"] .sync-control-wrap #btnSync .btn-ico {
-  display: block !important;
-  background: transparent !important;
-  border: 0 !important;
-  border-radius: 0 !important;
-  box-shadow: none !important;
-  padding: 0 !important;
-  object-fit: contain !important;
-}
 
-html.dark body.z-mobile-on[data-mobile-page="game"] #btnSync .btn-ico {
-  filter: brightness(0) invert(1) drop-shadow(0 1px 2px rgb(var(--rgb-black) / .42)) !important;
-}
+
+
 
 /* Keep the orientation control above the bottom drawer handle and away from
    the gameplay control grid. */
