@@ -149,6 +149,7 @@
         try { option.textContent = t("settings.levels." + normalizeLevel(option.value)); } catch (_) {}
       });
       if (existingSelect.value !== currentLevel) existingSelect.value = currentLevel;
+      try { if (global.DhametDropdownView) global.DhametDropdownView.refresh(existingSelect); } catch (_) {}
       return;
     }
 
@@ -188,6 +189,7 @@
     });
 
     valEl.appendChild(select);
+    try { if (global.DhametDropdownView) global.DhametDropdownView.enhance(select); } catch (_) {}
   }
 
   global.DhametStatusView = {

@@ -1752,11 +1752,18 @@ const UI = {
       </div>
     `;
 
+    const settingsDropdowns = [];
     try {
       qsa("select", wrap).forEach((selectEl) => {
         selectEl.addEventListener("change", () => {
           setTimeout(() => { try { selectEl.blur(); } catch (_) {} }, 0);
         });
+        try {
+          if (window.DhametDropdownView) {
+            window.DhametDropdownView.enhance(selectEl);
+            settingsDropdowns.push(selectEl);
+          }
+        } catch (_) {}
       });
     } catch (_) {}
 
@@ -1897,7 +1904,12 @@ const UI = {
       body: wrap,
       modalClassName: "z-apply-settings",
       onEnter: applyNow,
-      onClose: () => document.removeEventListener("keydown", keyHandler),
+      onClose: () => {
+        document.removeEventListener("keydown", keyHandler);
+        try {
+          if (window.DhametDropdownView) settingsDropdowns.forEach((selectEl) => window.DhametDropdownView.destroy(selectEl));
+        } catch (_) {}
+      },
       buttons: [
         { label: t("modals.apply"), className: "ok", onClick: applyNow },
         ...(!isOnline ? [{ label: t("advHelp.title"), className: "adv-help", onClick: () => UI.showAdvancedSettingsHelp(prefill) }] : []),

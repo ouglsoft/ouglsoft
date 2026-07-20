@@ -484,7 +484,8 @@
     var bodyTop = anchorY - stackHeight * 0.82;
     var bodyBottom = anchorY - stackHeight * 0.18;
     var edge = isWhite ? colors.whiteEdge : colors.blackEdge;
-    var rim = isWhite ? colors.whiteEdgeSoft : colors.blackLight;
+    var rim = isWhite ? colors.whiteEdgeSoft : colors.blackEdgeSoft;
+    var outerContrast = isWhite ? themeChannels("--rgb-primary-900", ".96") : themeChannels("--rgb-white", ".92");
     var coreLight = isWhite ? colors.whiteLight : colors.blackLight;
     var coreMid = isWhite ? colors.whiteMid : colors.blackMid;
     var coreDark = isWhite ? colors.whiteDark : colors.blackDark;
@@ -527,22 +528,28 @@
     ctx.fill();
 
     ctx.fillStyle = baseGrad;
-    ctx.strokeStyle = edge;
-    ctx.lineWidth = Math.max(1.5, width * 0.028);
+    ctx.strokeStyle = outerContrast;
+    ctx.lineWidth = Math.max(3.2, width * 0.062);
     ctx.beginPath();
-    ctx.ellipse(x, anchorY - sideHeight * 0.04, radius * 0.84, Math.max(5, sideHeight * 0.72), 0, 0, Math.PI * 2);
+    ctx.ellipse(x, anchorY - sideHeight * 0.04, radius * 0.86, Math.max(5, sideHeight * 0.76), 0, 0, Math.PI * 2);
     ctx.fill();
+    ctx.stroke();
+    ctx.strokeStyle = edge;
+    ctx.lineWidth = Math.max(1.6, width * 0.030);
     ctx.stroke();
 
     ctx.fillStyle = topGrad;
+    ctx.strokeStyle = outerContrast;
+    ctx.lineWidth = Math.max(3.4, width * 0.066);
     ctx.beginPath();
     ctx.ellipse(x, topY, radius, stackHeight * 0.52, 0, 0, Math.PI * 2);
     ctx.fill();
+    ctx.stroke();
 
-    ctx.lineWidth = Math.max(2, width * 0.038);
+    ctx.lineWidth = Math.max(2.2, width * 0.040);
     ctx.strokeStyle = rim;
     ctx.beginPath();
-    ctx.ellipse(x, topY, radius * 0.94, stackHeight * 0.47, 0, 0, Math.PI * 2);
+    ctx.ellipse(x, topY, radius * 0.91, stackHeight * 0.44, 0, 0, Math.PI * 2);
     ctx.stroke();
 
     ctx.lineWidth = Math.max(1.4, width * 0.024);

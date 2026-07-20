@@ -6043,6 +6043,7 @@
           const synced = await this._applyEntryOfficialState(gameId, officialGame, "spectator-entry");
           if ((entryRequest && !this._isEntryRequestCurrent(entryRequest)) || !this._isAsyncContextCurrent(asyncContext)) return false;
           if (!synced) return await this._abortOnlineEntry("spectator-sync-failed");
+          try { this._setOnlineEntryLoading(false); } catch (e) {}
           try { this._startPresenceHeartbeat(); } catch (e) {}
           this._setOnlineButtonsState(true);
     
@@ -6063,6 +6064,7 @@
         },
     _abortOnlineEntry: async function (reason, options) {
           const abortOptions = options && typeof options === "object" ? options : {};
+          try { this._setOnlineEntryLoading(false); } catch (e) {}
           const gid = String(this.gameId || this._presenceRoomId || "").trim();
           const uid = String(this.myUid || "").trim();
           const wasSpectator = !!this.isSpectator;
