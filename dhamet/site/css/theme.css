@@ -87,8 +87,8 @@
   --mode-card-muted: rgb(var(--rgb-muted-ink));
   --mode-card-border: rgb(var(--rgb-white) / .74);
   --mode-card-glow: rgb(var(--rgb-white) / .40);
-  --mode-icon-bg: transparent;
-  --mode-icon-border: var(--surface-stroke);
+  --mode-icon-bg: rgb(var(--rgb-white) / .76);
+  --mode-icon-border: rgb(var(--rgb-light-primary-400) / .24);
   --mode-icon-filter: none;
   --mode-badge-bg: rgb(var(--rgb-white) / .84);
   --mode-badge-text: rgb(var(--rgb-light-primary-700));
@@ -293,8 +293,8 @@
   --mode-card-muted: rgb(var(--rgb-white) / .82);
   --mode-card-border: rgb(var(--rgb-white) / .22);
   --mode-card-glow: rgb(var(--rgb-white) / .12);
-  --mode-icon-bg: rgb(var(--rgb-primary-900) / .36);
-  --mode-icon-border: rgb(var(--rgb-secondary-300) / .30);
+  --mode-icon-bg: rgb(var(--rgb-white) / .14);
+  --mode-icon-border: rgb(var(--rgb-white) / .28);
   --mode-icon-filter: brightness(0) invert(1);
   --mode-badge-bg: rgb(var(--rgb-white) / .14);
   --mode-badge-text: rgb(var(--rgb-white));
@@ -1378,7 +1378,7 @@ body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnLeave
 
 
 
-body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid .btn .btn-text {
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid .btn:not(#btnSoufla) .btn-text {
   display: none !important;
 }
 
@@ -1766,43 +1766,6 @@ html.dark body.z-mobile-on[data-mobile-page="mode"] .z-mode-card p {
 }
 
 /* Light board: a little brighter, while lines, diagonals, routes and pieces stay clearer. */
-
-/* The Soufla control is represented by its unique name rather than an
-   ambiguous pictogram. It inherits the current game-control color language. */
-
-body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid .z-soufla-word {
-  display: inline-flex !important;
-  align-items: center;
-  justify-content: center;
-  width: auto !important;
-  min-width: 42px;
-  height: auto !important;
-  padding: 0 !important;
-  margin: 0 !important;
-  color: rgb(var(--rgb-white)) !important;
-  background: transparent !important;
-  border: 0 !important;
-  border-radius: 0 !important;
-  box-shadow: none !important;
-  filter: none !important;
-  font-family: inherit;
-  font-size: 13px;
-  font-weight: 950;
-  line-height: 1;
-  letter-spacing: 0;
-  white-space: nowrap;
-  text-shadow: 0 1px 2px rgb(var(--rgb-black) / .34);
-}
-
-body.z-mobile-on[data-mobile-orientation="portrait"][data-mobile-page="game"] .z-mobile-game-controls-grid .z-soufla-word {
-  min-width: 48px;
-  font-size: 15px;
-}
-
-body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="game"] .z-mobile-game-controls-grid .z-soufla-word {
-  min-width: 44px;
-  font-size: 13px;
-}
 
 /* A single structural header model applies to desktop and mobile. */
 

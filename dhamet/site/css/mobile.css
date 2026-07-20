@@ -3803,8 +3803,8 @@ body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid .soufla-r
   display: block;
   width: 32px;
   height: 32px;
-  max-width: 100%;
-  max-height: 100%;
+  max-width: 94%;
+  max-height: 94%;
   margin: 0;
   padding: 0;
   border: 0;
@@ -3812,7 +3812,7 @@ body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid .soufla-r
   background: transparent;
   box-shadow: none;
   object-fit: contain;
-  filter: brightness(0) invert(1) drop-shadow(0 1px 1px rgb(var(--rgb-black) / .32));
+  filter: brightness(0) invert(1) drop-shadow(0 1px 1px rgb(var(--rgb-black) / .30));
   opacity: 1;
 }
 
@@ -3824,16 +3824,18 @@ body.z-mobile-on[data-mobile-orientation="portrait"][data-mobile-page="game"] .z
 
 body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="game"] .z-mobile-game-controls-grid .btn .btn-ico,
 body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="game"] .z-mobile-game-controls-grid .soufla-row .btn .btn-ico {
-  width: 36px;
-  height: 36px;
+  width: 48px;
+  height: 48px;
+  max-width: 94%;
+  max-height: 94%;
 }
 
 body.z-mobile-on[data-mobile-page="game"] #btnSoufla .z-soufla-icon {
-  display: none;
+  display: none !important;
 }
 
 body.z-mobile-on[data-mobile-page="game"] #btnSoufla .z-soufla-label {
-  display: inline-flex;
+  display: inline-flex !important;
   align-items: center;
   justify-content: center;
   position: static;
@@ -3961,10 +3963,10 @@ body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="game"] .
 body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="game"] .z-mobile-game-controls-grid .timer-row #killClock {
   width: auto;
   max-width: 100%;
-  font-size: 12px;
-  letter-spacing: -.04em;
+  font-size: 14px;
+  letter-spacing: -.03em;
   white-space: nowrap;
-  transform: scaleX(.76);
+  transform: scaleX(.88);
   transform-origin: center;
 }
 

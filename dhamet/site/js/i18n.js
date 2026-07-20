@@ -489,7 +489,7 @@
     },
     "chain": {
       "notice": {
-        "body": "نفّذ الأسر المتتابع خطوةً خطوة، ثم اضغط على مؤقت إنهاء الأسر لإكمال دورك.",
+        "body": "اضغط على مؤقت إنهاء الأسر لإنهاء دورك.\nملاحظة: إذا كان هناك أسر متتابع متاح، أكمل السلسلة أولًا.",
         "inactive": "يعمل مؤقت إنهاء الأسر فقط أثناء وجود أسر جارٍ، وهو الذي ينهي دور اللاعب."
       }
     },
@@ -1030,7 +1030,7 @@
     },
     "chain": {
       "notice": {
-        "body": "Complete the capture chain one step at a time, then press the end-capture timer to finish your turn.",
+        "body": "Press the end-capture timer to finish your turn.\nNote: If another capture is available, complete the chain first.",
         "inactive": "The end-capture timer works only while a capture chain is active, and it is what ends the player’s turn."
       }
     },
@@ -1571,7 +1571,7 @@
     },
     "chain": {
       "notice": {
-        "body": "Effectuez la chaîne de prises étape par étape, puis appuyez sur le minuteur de fin de prise pour terminer votre tour.",
+        "body": "Appuyez sur le minuteur de fin de prise pour terminer votre tour.\nRemarque : si une autre prise est disponible, terminez d’abord la chaîne.",
         "inactive": "Le minuteur de fin de prise fonctionne uniquement lorsqu’une prise est en cours, et c’est lui qui termine le tour du joueur."
       }
     },

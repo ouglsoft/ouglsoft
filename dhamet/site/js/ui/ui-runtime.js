@@ -838,6 +838,18 @@ function showUiNotice(message, title, opts) {
   Modal.alert(cfg);
 }
 
+function showCaptureTimerInstruction() {
+  showUiNotice(t("chain.notice.body"), t("modals.notice"));
+}
+
+function captureTimerOwnsInteraction() {
+  if (!Game || !Game.inChain || !Game.killTimer || !Game.killTimer.running) return false;
+  if (window.Online && window.Online.isActive) {
+    return !window.Online.isSpectator && Game.player === window.Online.mySide;
+  }
+  return Game.player === humanSide();
+}
+
 function formatAiThinkingSeconds(ms) {
   const n = Number(ms);
   if (!Number.isFinite(n) || n < 0) return "0";
@@ -1033,7 +1045,7 @@ const Input = {
 
     const [r, c] = idxToRC(idx);
     if (shouldShowKillTimerAlert(idx)) {
-      showUiNotice(t("chain.notice.body"), t("modals.notice"));
+      showCaptureTimerInstruction();
       return;
     }
 
@@ -2527,6 +2539,20 @@ function bindUI() {
     localRefreshButton.addEventListener("click", () => window.location.reload());
   }
   qs("#btnEndKill").addEventListener("click", endKillPressed);
+
+  document.addEventListener("click", function (ev) {
+    if (!captureTimerOwnsInteraction()) return;
+    const target = ev && ev.target && ev.target.closest
+      ? ev.target.closest("button, .btn, [role='button']")
+      : null;
+    if (!target) return;
+    if (target.closest("#modalBackdrop")) return;
+    if (target.closest(".timer-row") || target.id === "btnEndKill") return;
+    ev.preventDefault();
+    ev.stopImmediatePropagation();
+    showCaptureTimerInstruction();
+  }, true);
+
   const killTimerTile = qs(".timer-row");
   if (killTimerTile) {
     killTimerTile.setAttribute("role", "button");
