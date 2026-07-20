@@ -5577,7 +5577,9 @@
                   }
 
                   const dis = r.canInvite ? "" : 'disabled aria-disabled="true"';
-                  const disabledClass = r.canInvite ? "" : " is-invite-disabled";
+                  const inviteButtonClass = r.canInvite
+                    ? "btn small ok z-invite-btn is-invite-active"
+                    : "btn small z-invite-btn is-invite-disabled";
                   const title = r.canInvite ? "" : `title="${window.I18N.translateArgs(r.st === "inPvP" ? "lobby.inviteDisabled" : "lobby.invitesDisabled")}"`;
                   const inviteLabel = window.I18N.translateArgs("actions.invite");
                   return `
@@ -5586,7 +5588,7 @@
                         <div class="z-row-title"><img class="z-avatar" src="${r.icon}" alt="" /><span class="z-player-name">${escapeHtml(r.nick)}</span>${statusMarkup}</div>
                       </div>
                       <div class="z-row-actions">
-                        <button class="btn small ok z-invite-btn${disabledClass}" data-action="invite" ${dis} ${title}>
+                        <button class="${inviteButtonClass}" data-action="invite" ${dis} ${title}>
                           <span>${inviteLabel}</span>
                         </button>
                       </div>

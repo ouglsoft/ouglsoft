@@ -25,36 +25,36 @@
     },
     "soufla": {
       "pick": {
-        "toastNotOffender": "هذه القطعة ليست مخالِفة. اضغط على القطعة التي تجاهلت الأسر.",
-        "title": "سوفلة على الخصم. اختر القطعة المخالِفة ثم حدِّد العقوبة.",
-        "btnRemove": "إزالة",
-        "btnForcePath": "إجبار على تنفيذ المسار ${n}"
+        "toastNotOffender": "هذه ليست القطعة المخالفة. اختر القطعة التي تجاهلت الأسر.",
+        "title": "لديك حق السوفلة. اختر القطعة التي تجاهلت الأسر، ثم اختر العقوبة.",
+        "btnRemove": "إزالة القطعة",
+        "btnForcePath": "إجبارها على المسار ${n}"
       },
       "cpu": {
-        "reason": "القطعة في ${offender}${startedFromPart} تجاهلت أطول مسار أسر (طوله ${len}).",
+        "reason": "تجاهلت القطعة عند ${offender}${startedFromPart} أطول مسار أسر متاح، وطوله ${len}.",
         "forcedPathLine": "${from} → ${path}",
         "penaltyRemove": "العقوبة: <b>إزالة</b> قطعتك عند ${cell}.",
-        "revertNotice": "تمت إعادة نقلتك الأخيرة (السهم الأصفر).",
-        "title": "سوفلة ضدك",
-        "startedFromPart": " (بدأت من ${startedFrom})",
-        "penaltyForceInline": "العقوبة: <b>إجبار</b> على الأسر: ${from} → ${path}.",
-        "forcedPathIntro": "المسار المفروض للأسر:",
-        "penaltyForcePicked": "العقوبة: <b>إجبار</b>."
+        "revertNotice": "أُلغيت نقلتك الأخيرة، ويظهر مسارها بالسهم الأصفر.",
+        "title": "طُبقت السوفلة عليك",
+        "startedFromPart": " بعد أن بدأت من ${startedFrom}",
+        "penaltyForceInline": "العقوبة: <b>إجبار القطعة</b> على الأسر عبر ${from} ← ${path}.",
+        "forcedPathIntro": "مسار الأسر الإجباري:",
+        "penaltyForcePicked": "العقوبة: <b>إجبار القطعة على الأسر</b>."
       },
       "applied": {
-        "force": "تم إجبار قطعة الخصم على تنفيذ المسار الأطول.",
-        "remove": "تمت إزالة قطعة الخصم المخالفة.",
-        "self": "تم تطبيق السوفلة"
+        "force": "أُجبرت قطعة الخصم على تنفيذ مسار الأسر الصحيح.",
+        "remove": "أُزيلت قطعة الخصم التي تجاهلت الأسر.",
+        "self": "تم تطبيق السوفلة."
       },
-      "notCommitted": "تعذر تطبيق العقوبة (قد لا يكون هذا دورك أو حدث تعارض).",
-      "sendFailed": "تعذر تطبيق العقوبة عبر الإنترنت.",
+      "notCommitted": "لم تُطبَّق السوفلة لأن حالة المباراة تغيّرت. حدّث المباراة ثم حاول مجددًا.",
+      "sendFailed": "تعذر إرسال قرار السوفلة. تحقق من الاتصال ثم أعد المحاولة.",
       "summary": {
-        "force": "إجبارك على تنفيذ المسار من ${from} إلى ${to} بطول ${len}، وهو المسار المحدد بالسهم الأخضر.",
-        "penaltyTitle": "واختار الخصم عقوبة:",
-        "reason": "لقد قام الخصم بالمطالبة بسوفلة ضدك لأنك تجاهلت أسرًا صحيحًا، وهو المحدد بالسهم الأحمر/الأسهم الحمراء .",
-        "remove": "إزالة قطعتك المخالفة عند النقطة ${cell} التي تحتوي علامة حمراء.",
-        "title": "سوفلة :",
-        "undo": "كما تم إرجاع نقلتك الأخيرة من النقطة ${from} إلى النقطة ${to} المحددة بالسهم الأصفر."
+        "force": "إجبار قطعتك على الأسر من ${from} إلى ${to} عبر المسار الأخضر، بطول ${len}.",
+        "penaltyTitle": "العقوبة المختارة:",
+        "reason": "طالب خصمك بالسوفلة لأنك تركت أسرًا صحيحًا. يظهر المسار الذي تُرك بالسهم الأحمر.",
+        "remove": "إزالة قطعتك المخالفة عند النقطة ${cell} المعلَّمة بالأحمر.",
+        "title": "نتيجة السوفلة",
+        "undo": "أُلغيت نقلتك الأخيرة من ${from} إلى ${to}، ويظهر مسارها بالسهم الأصفر."
       }
     },
     "pvp": {
@@ -62,15 +62,15 @@
         "micOn": "كتم الميكروفون",
         "spkOn": "كتم الصوت",
         "failed": "فشل الاتصال",
-        "failedTitle": "فشل الدردشة الصوتية",
+        "failedTitle": "تعذر تشغيل الصوت",
         "failure": {
-          "permission": "تعذر الوصول إلى الميكروفون. اسمح للموقع باستخدامه ثم أعد المحاولة.",
-          "noDevice": "لم يعثر المتصفح على ميكروفون متاح.",
-          "busy": "تعذر فتح الميكروفون لأنه مستخدم أو غير متاح حاليًا.",
-          "unsupported": "الدردشة الصوتية غير مدعومة في هذا المتصفح أو في هذا السياق.",
-          "session": "تعذر بدء الدردشة الصوتية لأن جلسة المباراة غير جاهزة. أعد فتح المباراة ثم حاول مجددًا.",
-          "service": "تعذر بدء الاتصال الصوتي الآن. تحقق من الاتصال ثم أعد المحاولة.",
-          "generic": "تعذر تشغيل الدردشة الصوتية. حاول مرة أخرى."
+          "permission": "اسمح للموقع باستخدام الميكروفون، ثم حاول مرة أخرى.",
+          "noDevice": "لم يُعثر على ميكروفون متاح.",
+          "busy": "الميكروفون مستخدم في تطبيق آخر أو غير متاح الآن.",
+          "unsupported": "المحادثة الصوتية غير مدعومة في هذا المتصفح.",
+          "session": "جلسة المباراة غير جاهزة للصوت. أعد فتح المباراة ثم حاول مرة أخرى.",
+          "service": "تعذر بدء الاتصال الصوتي. تحقق من الاتصال ثم أعد المحاولة.",
+          "generic": "تعذر تشغيل المحادثة الصوتية. حاول مرة أخرى."
         },
         "micOff": "فتح الميكروفون",
         "spkOff": "فتح الصوت",
@@ -80,12 +80,12 @@
       "chat": {
         "open": "الدردشة الكتابية",
         "empty": "لا توجد رسائل حاليًا.",
-        "failed": "تعذر الإرسال. حاول مرة أخرى.",
+        "failed": "تعذر إرسال الرسالة. حاول مرة أخرى.",
         "placeholder": "اكتب رسالة...",
-        "rateLimit": "أرسل رسالة واحدة كل ثانية.",
+        "rateLimit": "انتظر ثانية قبل إرسال رسالة أخرى.",
         "send": "إرسال",
         "title": "الدردشة الكتابية",
-        "tooLong": "الحد الأقصى 200 حرف."
+        "tooLong": "اختصر الرسالة إلى 200 حرف أو أقل."
       },
       "leave": "مغادرة"
     },
@@ -161,7 +161,7 @@
       "save": "حفظ ",
       "endKill": "إنهاء الأسر",
       "undo": "تراجع",
-      "endMatch": "خروج",
+      "endMatch": "خروج"
     },
     "dashboard": {
       "draws": "التعادل",
@@ -188,7 +188,7 @@
       "deleteAccount": "حذف الحساب",
       "logoutConfirm": {
         "title": "تسجيل الخروج",
-        "body": "هل تريد تسجيل الخروج؟"
+        "body": "هل تريد تسجيل الخروج من حسابك؟"
       },
       "delete": {
         "title": "حذف الحساب",
@@ -247,50 +247,50 @@
     },
     "modals": {
       "gameOver": {
-        "title": "نهاية المباراة",
-        "winner": "انتهت المباراة. فاز اللاعب {player}.",
+        "title": "انتهت المباراة",
+        "winner": "فاز اللاعب {player} بالمباراة.",
         "draw": "انتهت المباراة بالتعادل.",
         "reason": {
           "noPieces": "نفدت قطع اللاعب {player}.",
-          "noLegalMoves": "لم يعد اللاعب {player} يملك نقلة قانونية.",
-          "oneKingEach": "تحقق التعادل ببقاء ظائم واحد لكل لاعب."
+          "noLegalMoves": "لا يملك اللاعب {player} أي نقلة قانونية.",
+          "oneKingEach": "تعادل اللاعبان بعد بقاء ظائم واحد لكل منهما."
         }
       },
       "newGame": {
-        "title": "بدء لعبة جديدة",
-        "confirm": "هل أنت متأكد من إنهاء اللعبة الحالية وبدء جديدة؟"
+        "title": "بدء مباراة جديدة",
+        "confirm": "سيؤدي ذلك إلى إنهاء المباراة الحالية. هل تريد بدء مباراة جديدة؟"
       },
       "endMatch": {
-        "confirm": "هل تريد إنهاء المباراة؟"
+        "confirm": "هل تريد إنهاء المباراة الحالية؟"
       },
       "soufla": {
-        "none": "لا توجد سوفلة في النقلة الأخيرة. النقلة قانونية.",
+        "none": "النقلة الأخيرة صحيحة، ولا توجد فيها سوفلة.",
         "header": "السوفلة",
-        "forcedOpeningWarning": "لا يمكن المطالبة بالسوفلة أثناء الافتتاح الإجباري."
+        "forcedOpeningWarning": "السوفلة غير متاحة أثناء الافتتاح الإجباري."
       },
       "apply": "تطبيق",
       "yes": "نعم",
       "no": "لا",
       "forcedOpening": {
         "title": "الافتتاح الإجباري",
-        "body": "في الافتتاح الإجباري تُنفَّذ 5 نقلات إلزامية لكل لاعب بالترتيب. النقلة الحالية موضَّحة بالسهم الأحمر. بعد ذلك يصبح اللعب حرًّا."
+        "body": "تبدأ المباراة بخمس نقلات إجبارية لكل لاعب. اتبع السهم الأحمر لتنفيذ النقلة المطلوبة، ثم ينتقل اللعب إلى الوضع الحر."
       },
       "notice": "تنبيه",
       "undo": {
-        "notAllowedBody": "لا يمكن التراجع أثناء الافتتاح الإجباري.",
-        "notAllowedTitle": "التراجع غير مسموح",
-        "title": "تراجع"
+        "notAllowedBody": "لا يمكن التراجع قبل انتهاء الافتتاح الإجباري.",
+        "notAllowedTitle": "التراجع غير متاح",
+        "title": "التراجع عن نقلة"
       },
-      "errorTitle": "خطأ",
-      "pickOnlineNickTitle": "اختر اسمًا مستعارًا",
+      "errorTitle": "تعذر تنفيذ الإجراء",
+      "pickOnlineNickTitle": "اختر اسمًا للعب عبر الإنترنت",
       "applySettings": {
-        "title": "تطبيق الإعدادات",
-        "noChanges": "لم يتم إجراء اي تغيير في الاعدادات",
-        "applying": "جارٍ تطبيق الإعدادات...",
-        "changedTitle": "الإعدادات التي تغيرت:",
-        "applied": "تم تطبيق الإعدادات"
+        "title": "حفظ الإعدادات",
+        "noChanges": "لم تغيّر أي إعداد.",
+        "applying": "جارٍ حفظ الإعدادات…",
+        "changedTitle": "التغييرات:",
+        "applied": "تم حفظ الإعدادات."
       },
-      "successTitle": "نجاح"
+      "successTitle": "تم بنجاح"
     },
     "log": {
       "gameStarted": "بدأت المباراة.",
@@ -299,11 +299,11 @@
         "openingEnded": "انتهى الافتتاح الإجباري."
       },
       "save": {
-        "none": "لا توجد لعبة محفوظة لاستئنافها",
-        "done": "تم حفظ الوضعية الحالية للعبة",
-        "confirm": "هل تريد إنهاء اللعبة الحالية واستئناف لعبة محفوظة سابقًا؟",
-        "resumed": "تم استئناف اللعبة",
-        "error": "تعذر استئناف اللعبة"
+        "none": "لا توجد مباراة محفوظة لاستئنافها.",
+        "done": "تم حفظ المباراة الحالية.",
+        "confirm": "سيؤدي ذلك إلى إنهاء المباراة الحالية وفتح المباراة المحفوظة. هل تريد المتابعة؟",
+        "resumed": "تم استئناف المباراة المحفوظة.",
+        "error": "تعذر استئناف المباراة المحفوظة."
       },
       "results": {
         "savedOk": "تمت إضافة النتيجة إلى السجل بنجاح",
@@ -385,22 +385,22 @@
       "spectatorFull": "اكتمل عدد المشاهدين لهذه الغرفة."
     },
     "status": {
-      "forcedChainStepByStep": "هذه نقلة افتتاحية بسلسلة أسر. نفّذ الأسر خطوة بخطوة.",
-      "onlineInitFail": "تعذر تشغيل اللعب عبر الإنترنت الآن.",
+      "forcedChainStepByStep": "هذه سلسلة أسر إجبارية. نفّذها خطوةً خطوة.",
+      "onlineInitFail": "تعذر فتح اللعب عبر الإنترنت الآن.",
       "reconnecting": "جارٍ استعادة الاتصال…",
       "loadingMatch": "جارٍ تحميل المباراة الرسمية…",
-      "onlineInitHelp": "يرجى تسجيل الدخول أو بدء جلسة ضيف عبر Cloudflare.",
+      "onlineInitHelp": "تحقق من تسجيل الدخول والاتصال، ثم أعد المحاولة.",
       "loading": "جارٍ التحميل…",
-      "wait": "انتظر دورك...",
-      "aiThinkingMove": "الحاسوب يفكّر…",
-      "aiThinkingSoufla": "الحاسوب يفكر لاختيار عقوبة السوفلة...",
-      "aiThinkingMoveWaitLine": "انتظر... الحاسوب يفكر في اختيار الحركة المناسبة.",
+      "wait": "الدور على اللاعب الآخر. انتظر قليلًا.",
+      "aiThinkingMove": "الحاسوب يختار نقلته…",
+      "aiThinkingSoufla": "الحاسوب يختار عقوبة السوفلة…",
+      "aiThinkingMoveWaitLine": "انتظر قليلًا بينما يختار الحاسوب النقلة المناسبة.",
       "currentLevel": "المستوى الحالي",
       "aiThinkingMoveLevelDuration": "المستوى: ${level} (مدة تفكير الحاسوب من ${min} إلى ${max} ثانية لكل نقلة)",
       "turn": "الدور الآن على:",
-      "forcedChainIncomplete": "أكمل سلسلة الأسر ثم اضغط «إنهاء الأسر».",
-      "forcedMove": "الافتتاح الإجباري: النقلة المسموحة ${from}→${to}",
-      "moveSendFail": "فشل إرسال النقلة، يرجى إعادتها من جديد.",
+      "forcedChainIncomplete": "ما زال هناك أسر متاح. أكمل السلسلة ثم اضغط «إنهاء الأسر».",
+      "forcedMove": "نقلة الافتتاح المطلوبة: من ${from} إلى ${to}",
+      "moveSendFail": "تعذر إرسال النقلة. تحقق من الاتصال ثم أعد تنفيذها.",
       "aiThinkingMoveLevelNote": "ملاحظة: كلما كان المستوى أعلى، قد يستغرق التفكير وقتًا أطول."
     },
     "players": {
@@ -431,23 +431,23 @@
     },
     "ui": {
       "stats": "الإحصائيات",
-      "noUndo": "لا توجد حركة سابقة للتراجع عنها",
-      "undoOwnLastOnly": "لا يمكن التراجع إلا عن آخر نقلة إذا كنت أنت من نفذها.",
+      "noUndo": "لا توجد نقلة يمكن التراجع عنها.",
+      "undoOwnLastOnly": "يمكنك التراجع فقط عن آخر نقلة نفذتها.",
       "language": "اللغة"
     },
     "meta_keywords": "ظامت, زامت, لعبة موريتانية, داما, لعب ضد الحاسوب, لعب عبر الإنترنت",
     "online": {
-      "permissionDenied": "لا يمكن تنفيذ العملية الآن (صلاحيات Cloudflare غير كافية).",
-      "authRestoreFailed": "تعذر استعادة تسجيل الدخول للحساب الآن. الرجاء إعادة تسجيل الدخول ثم المحاولة من جديد.",
+      "permissionDenied": "تعذر تنفيذ الإجراء. أعد تسجيل الدخول ثم حاول مرة أخرى.",
+      "authRestoreFailed": "تعذر استعادة جلسة حسابك. سجّل الدخول من جديد ثم أعد المحاولة.",
       "connLimit": {
-        "title": "الحد الأقصى للاتصالات",
-        "body": "يوجد الآن الحد الأقصى المسموح به من الاتصالات (100 اتصال). نرجو منك الانتظار حتى يخرج أحد اللاعبين المتصلين ثم حاول مرة أخرى."
+        "title": "الخدمة مشغولة",
+        "body": "بلغ عدد الاتصالات الحد المتاح حاليًا. انتظر قليلًا ثم أعد المحاولة."
       },
       "presence": {
         "online": "متصل",
         "disconnected": "انقطع الاتصال"
       },
-      "endFail": "تعذر إنهاء المباراة الآن.",
+      "endFail": "تعذر إنهاء المباراة الآن. تحقق من الاتصال ثم أعد المحاولة.",
       "endPresentation": {
         "winner": "انتهت المباراة. فاز اللاعب {player}.",
         "draw": "انتهت المباراة بالتعادل.",
@@ -463,46 +463,46 @@
         }
       },
       "errors": {
-        "joinFailed": "تعذر الانضمام إلى المباراة عبر الإنترنت. تحقّق من صلاحيات قاعدة البيانات أو أعد المحاولة.",
-        "noGame": "تم إنهاء المباراة أو تنظيف الغرفة.",
-        "authRequired": "انتهت جلسة الدخول. أعد تسجيل الدخول ثم حاول مرة أخرى.",
-        "presenceWriteDenied": "عاد الاتصال، لكن لم يكتمل تسجيل حضورك في الغرفة. تتم إعادة المزامنة.",
-        "moveWriteDenied": "تعذر إرسال النقلة. تحقق من أنك اللاعب صاحب الدور وأن المباراة ما زالت نشطة.",
-        "inviteWriteDenied": "تعذر إرسال الدعوة. قد يكون اللاعب دخل مباراة أو انتهت صلاحية الجلسة.",
-        "chatWriteDenied": "تعذر إرسال الرسالة. يجب أن تكون لاعبا أو مشاهدا مسجلا في هذه الغرفة.",
-        "voiceWriteDenied": "تعذر تحديث بيانات الصوت لهذه المباراة.",
-        "matchEnded": "انتهت هذه المباراة، لذلك لا يمكن إرسال إجراء جديد.",
-        "spectatorAction": "أنت مشاهد في هذه الغرفة ولا يمكنك تحريك القطع.",
-        "spectatorJoinFailed": "تعذر تسجيلك كمشاهد في هذه الغرفة. أعد المحاولة."
+        "joinFailed": "تعذر الانضمام إلى المباراة. تحقق من الاتصال ثم أعد المحاولة.",
+        "noGame": "انتهت المباراة أو لم تعد الغرفة متاحة.",
+        "authRequired": "انتهت جلسة الدخول. سجّل الدخول من جديد ثم أعد المحاولة.",
+        "presenceWriteDenied": "عاد الاتصال، ويجري الآن استعادة وجودك في الغرفة.",
+        "moveWriteDenied": "تعذر إرسال النقلة. تأكد أن الدور لك وأن المباراة ما زالت مستمرة.",
+        "inviteWriteDenied": "تعذر إرسال الدعوة. قد يكون اللاعب دخل مباراة أخرى أو انتهت جلسة الدخول.",
+        "chatWriteDenied": "تعذر إرسال الرسالة لأنك لم تعد مسجلًا في هذه الغرفة.",
+        "voiceWriteDenied": "تعذر تحديث الاتصال الصوتي. حاول مرة أخرى.",
+        "matchEnded": "انتهت المباراة، ولا يمكن تنفيذ إجراء جديد.",
+        "spectatorAction": "أنت تشاهد المباراة فقط، لذلك لا يمكنك تحريك القطع.",
+        "spectatorJoinFailed": "تعذر الانضمام كمشاهد. حاول مرة أخرى."
       },
-      "inviteInvalidated": "هذه الدعوة لم تعد صالحة لأن مرسلها دخل في مباراة أخرى أو لم يعد متصلًا.",
-      "inviteRejected": "تم رفض الدعوة.",
-      "inviteSendFail": "تعذر إرسال الدعوة.",
+      "inviteInvalidated": "لم تعد الدعوة صالحة؛ ربما دخل اللاعب مباراة أخرى أو انقطع اتصاله.",
+      "inviteRejected": "رفض اللاعب الدعوة.",
+      "inviteSendFail": "تعذر إرسال الدعوة. حاول مرة أخرى.",
       "log": {
         "inviteAccepted": "{player} قبل الدعوة.",
         "inviteRejected": "{player} رفض الدعوة.",
         "inviteSent": "{from} أرسل دعوة إلى {to}."
       },
       "logFailed": "تعذر تحديث السجل.",
-      "pvpEndTitle": "نهاية المباراة",
+      "pvpEndTitle": "انتهت المباراة",
       "resultNotCounted": {
         "early": "لم يُحدَّد فائز لأن الانسحاب أو الغياب وقع قبل المرحلة المتقدمة.",
         "unclear": "لم يُحدَّد فائز لأن وضع المباراة لم يكن حاسمًا بما يكفي.",
         "generic": "انتهت المباراة دون اعتماد فائز."
       },
-      "newInviteBody": "يدعوك اللاعب <strong>${fromName}</strong> للعب${roomPart}.",
-      "newInviteRoomPart": " في غرفة <strong>${roomName}</strong>",
-      "newInviteTitle": "دعوة جديدة",
-      "noOpponent": "تعذر تحديد الخصم.",
-      "noPlayers": "لم يتم العثور على لاعبين متصلين.",
+      "newInviteBody": "يدعوك اللاعب <strong>${fromName}</strong> إلى مباراة${roomPart}.",
+      "newInviteRoomPart": " في الغرفة <strong>${roomName}</strong>",
+      "newInviteTitle": "دعوة إلى مباراة",
+      "noOpponent": "تعذر تحديد اللاعب الآخر.",
+      "noPlayers": "لا يوجد لاعب متاح الآن.",
       "offline": "انقطع اتصال الإنترنت… يتم إعادة المحاولة.",
-      "absenceTitle": "غياب الخصم",
-      "absencePrompt": "اللاعب {player} غير متصل منذ دقيقتين ، هل تريد الانتظار ام انهاء المباراة؟",
+      "absenceTitle": "انقطع اتصال الخصم",
+      "absencePrompt": "انقطع اتصال {player} منذ دقيقتين. هل تريد الانتظار أم إنهاء المباراة؟",
       "opponent": "الخصم",
       "player": "لاعب",
       "roomNamePlaceholder": "اسم الغرفة",
-      "roomNamePrompt": "أدخل اسم الغرفة لتمييزها في قائمة الغرف.",
-      "roomNameTitle": "تسمية الغرفة",
+      "roomNamePrompt": "اكتب اسمًا قصيرًا يميّز الغرفة في القائمة.",
+      "roomNameTitle": "اسم الغرفة",
       "roomVisibility": {
         "public": "غرفة عامة (يسمح للمشاهدين بمتابعة المباراة)",
         "private": "غرفة خاصة (لا يسمح للمشاهدين بمتابعة المباراة)"
@@ -514,10 +514,10 @@
         "enableReceiving": "تفعيل استقبال الدعوات",
         "receivingEnabled": "تم تفعيل استقبال الدعوات.",
         "receivingDisabled": "تم تعطيل استقبال الدعوات.",
-        "notAccepting": "هذا اللاعب لا يقبل الدعوات حاليا.",
-        "inActiveMatch": "أنت الآن في مباراة أونلاين نشطة. هل تريد مغادرة المباراة الحالية وإرسال الدعوة؟",
-        "leaveActivePrompt": "أنت الآن في مباراة أونلاين نشطة. هل تريد مغادرة المباراة الحالية وإرسال الدعوة؟",
-        "leaveAndSend": "المغادرة والإرسال",
+        "notAccepting": "هذا اللاعب لا يستقبل الدعوات الآن.",
+        "inActiveMatch": "لديك مباراة أونلاين جارية. هل تريد مغادرتها وإرسال الدعوة؟",
+        "leaveActivePrompt": "لديك مباراة أونلاين جارية. هل تريد مغادرتها وإرسال الدعوة؟",
+        "leaveAndSend": "مغادرة المباراة وإرسال الدعوة",
         "returnToMatch": "العودة إلى المباراة"
       },
       "status": {
@@ -526,11 +526,11 @@
         "inPvP": "في مباراة أونلاين",
         "spectating": "يشاهد مباراة"
       },
-      "syncFail": "فشلت المزامنة الآن، حاول مرة أخرى.",
-      "syncIssueNotice": "يفضل تحديث الصفحة، توجد مشكلة في المزامنة",
-      "waitingAcceptance": "لم يتم قبول الدعوة بعد.",
-      "disabledButton": "لا يمكن تنفيذ هذا الإجراء لهذا اللاعب الآن.",
-      "playersLoadFail": "تعذر تحميل قائمة اللاعبين المتصلين.",
+      "syncFail": "تعذرت مزامنة المباراة. تحقق من الاتصال ثم حاول مرة أخرى.",
+      "syncIssueNotice": "يوجد اختلاف في حالة المباراة. اضغط تحديث لاستعادة الحالة الصحيحة.",
+      "waitingAcceptance": "أُرسلت الدعوة، ولم يرد اللاعب بعد.",
+      "disabledButton": "لا يمكن دعوة هذا اللاعب الآن.",
+      "playersLoadFail": "تعذر تحميل اللاعبين المتصلين. حاول تحديث اللوبي."
     },
     "stats": {
       "left": "القطع المتبقية",
@@ -547,7 +547,7 @@
     },
     "chain": {
       "notice": {
-        "body": "لإنهاء دورك اضغط «إنهاء الأسر/المؤقت». في السلسلة نفّذ الأسر خطوة بخطوة."
+        "body": "نفّذ الأسر المتتابع خطوةً خطوة، ثم اضغط «إنهاء الأسر» لإكمال دورك."
       }
     },
     "actions": {
@@ -576,19 +576,19 @@
     "schema_game_name": "ظامت الموريتانية",
     "schema_game_type": "Game",
     "undo": {
-      "applied": "تم التراجع عن آخر نقلة${movePart}.",
+      "applied": "تم التراجع عن النقلة الأخيرة${movePart}.",
       "appliedMovePart": " من ${from} إلى ${to}",
-      "failed": "فشل تنفيذ التراجع",
-      "notCommitted": "لم يتم تنفيذ التراجع.",
-      "rejected": "اللاعب الآخر رفض التراجع.",
-      "rejectedTitle": "رفض التراجع",
+      "failed": "تعذر التراجع عن النقلة.",
+      "notCommitted": "لم يُنفَّذ التراجع. حدّث المباراة ثم حاول مرة أخرى.",
+      "rejected": "رفض اللاعب الآخر طلب التراجع.",
+      "rejectedTitle": "رُفض طلب التراجع",
       "request": {
-        "body": "{name} يريد التراجع عن النقلة الأخيرة، هل توافق؟",
-        "title": "طلب تراجع"
+        "body": "يريد {name} التراجع عن النقلة الأخيرة. هل توافق؟",
+        "title": "طلب التراجع عن نقلة"
       },
-      "requestFailed": "تعذر إرسال طلب التراجع.",
+      "requestFailed": "تعذر إرسال طلب التراجع. تحقق من الاتصال ثم أعد المحاولة.",
       "wait": {
-        "body": "لابد من موافقة اللاعب الآخر على التراجع عن النقلة السابقة، انتظر موافقته"
+        "body": "أُرسل طلب التراجع. انتظر رد اللاعب الآخر."
       }
     },
     "errors": {
@@ -605,7 +605,6 @@
         "auth": "مشكلة مصادقة"
       }
     }
-
   },
   "en": {
     "pages": {
@@ -632,36 +631,36 @@
     },
     "soufla": {
       "pick": {
-        "toastNotOffender": "This piece isn’t an offender. Tap the piece that skipped a capture.",
-        "title": "Soufla on your opponent. Tap the offending piece, then choose the penalty.",
-        "btnRemove": "Remove",
+        "toastNotOffender": "That is not the offending piece. Select the piece that skipped a capture.",
+        "title": "You may claim Soufla. Select the piece that skipped a capture, then choose the penalty.",
+        "btnRemove": "Remove piece",
         "btnForcePath": "Force path ${n}"
       },
       "cpu": {
-        "reason": "The piece at ${offender}${startedFromPart} skipped the longest capture (length ${len}).",
+        "reason": "The piece at ${offender}${startedFromPart} skipped the longest available capture path, length ${len}.",
         "forcedPathLine": "${from} → ${path}",
         "penaltyRemove": "Penalty: <b>remove</b> your piece at ${cell}.",
-        "revertNotice": "Your last move was rolled back (yellow arrow).",
-        "title": "Soufla against you",
-        "startedFromPart": " (started from ${startedFrom})",
-        "penaltyForceInline": "Penalty: <b>force</b> the capture path: ${from} → ${path}.",
-        "forcedPathIntro": "Forced capture path:",
-        "penaltyForcePicked": "Penalty: <b>force</b>."
+        "revertNotice": "Your last move was undone and is shown by the yellow arrow.",
+        "title": "Soufla was claimed against you",
+        "startedFromPart": " after starting at ${startedFrom}",
+        "penaltyForceInline": "Penalty: <b>force the piece</b> to capture along ${from} → ${path}.",
+        "forcedPathIntro": "Required capture path:",
+        "penaltyForcePicked": "Penalty: <b>force the piece to capture</b>."
       },
       "applied": {
-        "force": "Opponent's piece was forced to take the longer path.",
-        "remove": "Opponent's violating piece was removed.",
+        "force": "The opponent’s piece was forced to follow the valid capture path.",
+        "remove": "The opponent’s piece that skipped the capture was removed.",
         "self": "Soufla applied."
       },
-      "notCommitted": "Couldn't apply the penalty (it may not be your turn or a conflict occurred).",
-      "sendFailed": "Failed to apply the penalty online.",
+      "notCommitted": "Soufla was not applied because the match state changed. Refresh and try again.",
+      "sendFailed": "The Soufla decision could not be sent. Check your connection and try again.",
       "summary": {
-        "force": "Forcing you to take the path from ${from} to ${to} with length ${len}, marked by the green arrow.",
-        "penaltyTitle": "And the opponent chose the penalty:",
-        "reason": "Your opponent claimed Soufla against you because you ignored a valid capture, marked by the red arrow(s) (the red arrow may be hidden under the green arrow when forcing is chosen).",
-        "remove": "Removing your violating piece at ${cell}, marked in red.",
-        "title": "Soufla:",
-        "undo": "Also undoing your last move from ${from} to ${to}, marked by the yellow arrow."
+        "force": "Force your piece to capture from ${from} to ${to} along the green path, length ${len}.",
+        "penaltyTitle": "Selected penalty:",
+        "reason": "Your opponent claimed Soufla because you skipped a valid capture. The skipped path is shown in red.",
+        "remove": "Remove your offending piece at ${cell}, marked in red.",
+        "title": "Soufla result",
+        "undo": "Your last move from ${from} to ${to} was undone and is shown in yellow."
       }
     },
     "pvp": {
@@ -669,14 +668,14 @@
         "micOn": "Mute mic",
         "spkOn": "Mute",
         "failed": "Connection failed",
-        "failedTitle": "Voice chat failed",
+        "failedTitle": "Voice could not start",
         "failure": {
-          "permission": "The microphone could not be accessed. Allow microphone access for this site, then try again.",
+          "permission": "Allow microphone access for this site, then try again.",
           "noDevice": "No available microphone was found.",
-          "busy": "The microphone could not be opened because it is busy or currently unavailable.",
-          "unsupported": "Voice chat is not supported by this browser or in this context.",
-          "session": "Voice chat could not start because the match session is not ready. Reopen the match and try again.",
-          "service": "The voice connection could not start now. Check your connection and try again.",
+          "busy": "The microphone is being used by another app or is unavailable.",
+          "unsupported": "Voice chat is not supported by this browser.",
+          "session": "The match session is not ready for voice. Reopen the match and try again.",
+          "service": "Voice connection could not start. Check your connection and retry.",
           "generic": "Voice chat could not start. Try again."
         },
         "micOff": "Turn on microphone",
@@ -687,12 +686,12 @@
       "chat": {
         "open": "Chat",
         "empty": "No messages yet.",
-        "failed": "Failed to send. Try again.",
+        "failed": "The message could not be sent. Try again.",
         "placeholder": "Type a message…",
-        "rateLimit": "Send one message per second.",
+        "rateLimit": "Wait one second before sending another message.",
         "send": "Send",
         "title": "Chat",
-        "tooLong": "Max 200 characters."
+        "tooLong": "Shorten the message to 200 characters or fewer."
       },
       "leave": "Leave"
     },
@@ -768,7 +767,7 @@
       "save": "Save",
       "endKill": "End capture",
       "undo": "Undo",
-      "endMatch": "Exit",
+      "endMatch": "Exit"
     },
     "dashboard": {
       "draws": "Draws",
@@ -795,7 +794,7 @@
       "deleteAccount": "Delete account",
       "logoutConfirm": {
         "title": "Sign out",
-        "body": "Do you want to sign out?"
+        "body": "Sign out of your account?"
       },
       "delete": {
         "title": "Delete account",
@@ -854,50 +853,50 @@
     },
     "modals": {
       "gameOver": {
-        "title": "Match result",
-        "winner": "The match ended. Player {player} won.",
+        "title": "Match over",
+        "winner": "{player} won the match.",
         "draw": "The match ended in a draw.",
         "reason": {
-          "noPieces": "Player {player} ran out of pieces.",
-          "noLegalMoves": "Player {player} had no legal move left.",
-          "oneKingEach": "The draw was reached with one king remaining for each player."
+          "noPieces": "{player} has no pieces left.",
+          "noLegalMoves": "{player} has no legal move left.",
+          "oneKingEach": "The match is a draw with one king left for each player."
         }
       },
       "newGame": {
-        "title": "New game",
-        "confirm": "Start a new game and end the current one?"
+        "title": "Start a new match",
+        "confirm": "This will end the current match. Start a new one?"
       },
       "endMatch": {
-        "confirm": "Do you want to end the match?"
+        "confirm": "End the current match?"
       },
       "soufla": {
-        "none": "No soufla on the last move. It was legal.",
+        "none": "The last move was valid. There is no Soufla.",
         "header": "Soufla",
-        "forcedOpeningWarning": "No soufla during the forced opening."
+        "forcedOpeningWarning": "Soufla is unavailable during the forced opening."
       },
       "apply": "Apply",
       "yes": "Yes",
       "no": "No",
       "forcedOpening": {
         "title": "Forced opening",
-        "body": "Forced opening: each player must play 5 mandatory moves in order. The current move is marked with the red arrow. After that, play is free."
+        "body": "The match begins with five forced moves for each player. Follow the red arrow for the required move; free play starts afterward."
       },
       "notice": "Notice",
       "undo": {
-        "notAllowedBody": "You can’t undo during the forced opening.",
-        "notAllowedTitle": "Undo not allowed",
-        "title": "Undo"
+        "notAllowedBody": "You cannot undo until the forced opening is complete.",
+        "notAllowedTitle": "Undo unavailable",
+        "title": "Undo a move"
       },
-      "errorTitle": "Error",
-      "pickOnlineNickTitle": "Choose a nickname",
+      "errorTitle": "Action could not be completed",
+      "pickOnlineNickTitle": "Choose an online name",
       "applySettings": {
-        "title": "Apply settings",
+        "title": "Save settings",
         "noChanges": "No settings were changed.",
-        "applying": "Applying settings...",
-        "changedTitle": "Changed settings:",
-        "applied": "Settings applied"
+        "applying": "Saving settings…",
+        "changedTitle": "Changes:",
+        "applied": "Settings saved."
       },
-      "successTitle": "Success"
+      "successTitle": "Done"
     },
     "log": {
       "gameStarted": "The match started.",
@@ -906,11 +905,11 @@
         "openingEnded": "Forced opening ended."
       },
       "save": {
-        "none": "No saved game to resume.",
-        "done": "Game state saved.",
-        "confirm": "Do you want to end the current game and resume a previously saved one?",
-        "resumed": "Game resumed.",
-        "error": "Could not resume the game."
+        "none": "There is no saved match to resume.",
+        "done": "The current match was saved.",
+        "confirm": "This will end the current match and open the saved one. Continue?",
+        "resumed": "The saved match was resumed.",
+        "error": "The saved match could not be resumed."
       },
       "results": {
         "savedOk": "Result added to history successfully.",
@@ -992,22 +991,22 @@
       "spectatorFull": "Spectator slots are full for this room."
     },
     "status": {
-      "forcedChainStepByStep": "Forced-opening chain capture: take step by step.",
-      "onlineInitFail": "Online play could not be initialized right now.",
+      "forcedChainStepByStep": "This is a forced capture chain. Complete it one step at a time.",
+      "onlineInitFail": "Online play could not be opened right now.",
       "reconnecting": "Restoring the connection…",
       "loadingMatch": "Loading the official match…",
-      "onlineInitHelp": "Please sign in or start a Cloudflare guest session.",
+      "onlineInitHelp": "Check your sign-in and connection, then try again.",
       "loading": "Loading…",
-      "wait": "Wait for your turn...",
-      "aiThinkingMove": "Computer is thinking…",
-      "aiThinkingSoufla": "Computer is choosing a Soufla penalty…",
-      "aiThinkingMoveWaitLine": "Please wait… The computer is thinking about the appropriate move.",
+      "wait": "It is the other player’s turn. Please wait.",
+      "aiThinkingMove": "The computer is choosing a move…",
+      "aiThinkingSoufla": "The computer is choosing a Soufla penalty…",
+      "aiThinkingMoveWaitLine": "Please wait while the computer chooses its move.",
       "currentLevel": "Current level",
       "aiThinkingMoveLevelDuration": "Level: ${level} (computer thinking time from ${min} to ${max} seconds per move)",
       "turn": "Turn:",
-      "forcedChainIncomplete": "Finish the capture chain, then press “End capture”.",
-      "forcedMove": "Forced opening: the allowed move is ${from}→${to}",
-      "moveSendFail": "Failed to send the move. Please retry it again.",
+      "forcedChainIncomplete": "Another capture is available. Finish the chain, then press “End capture”.",
+      "forcedMove": "Required opening move: ${from} → ${to}",
+      "moveSendFail": "The move could not be sent. Check your connection and play it again.",
       "aiThinkingMoveLevelNote": "Note: higher levels may take longer to think."
     },
     "players": {
@@ -1038,23 +1037,23 @@
     },
     "ui": {
       "stats": "Stats",
-      "noUndo": "Nothing to undo.",
-      "undoOwnLastOnly": "You can undo the last move only if you made it.",
+      "noUndo": "There is no move to undo.",
+      "undoOwnLastOnly": "You can only undo the latest move that you made.",
       "language": "Language"
     },
     "meta_keywords": "zamat, zamet, mauritanian game, board game, checkers, draughts, computer play, online multiplayer",
     "online": {
-      "permissionDenied": "Cannot perform this action now (insufficient Cloudflare permissions).",
-      "authRestoreFailed": "Could not restore account sign-in right now. Please sign in again and try once more.",
+      "permissionDenied": "The action could not be completed. Sign in again and retry.",
+      "authRestoreFailed": "Your account session could not be restored. Sign in again and retry.",
       "connLimit": {
-        "title": "Maximum connections",
-        "body": "The maximum allowed number of connections (100) has been reached. Please wait until one of the connected players leaves, then try again."
+        "title": "Service busy",
+        "body": "The current connection limit has been reached. Wait a moment and try again."
       },
       "presence": {
         "online": "Online",
         "disconnected": "Disconnected"
       },
-      "endFail": "Couldn't end the match right now.",
+      "endFail": "The match could not be ended. Check your connection and try again.",
       "endPresentation": {
         "winner": "The match ended. Player {player} won.",
         "draw": "The match ended in a draw.",
@@ -1070,46 +1069,46 @@
         }
       },
       "errors": {
-        "joinFailed": "Couldn't join the online match. Check Cloudflare backend permissions or try again.",
-        "noGame": "The match has ended or the room was cleaned.",
-        "authRequired": "Your sign-in session ended. Sign in again, then try once more.",
-        "presenceWriteDenied": "Connection is back, but your room presence was not restored yet. Resyncing now.",
-        "moveWriteDenied": "Couldn't send the move. Make sure you are the player to move and the match is still active.",
-        "inviteWriteDenied": "Couldn't send the invite. The player may have entered a match, or your session expired.",
-        "chatWriteDenied": "Couldn't send the message. You must be registered as a player or spectator in this room.",
-        "voiceWriteDenied": "Couldn't update voice data for this match.",
-        "matchEnded": "This match has ended, so no new action can be sent.",
-        "spectatorAction": "You are a spectator in this room and cannot move the pieces.",
-        "spectatorJoinFailed": "Couldn't register you as a spectator in this room. Try again."
+        "joinFailed": "The match could not be joined. Check your connection and try again.",
+        "noGame": "The match ended or the room is no longer available.",
+        "authRequired": "Your sign-in session expired. Sign in again and retry.",
+        "presenceWriteDenied": "Connection restored. Your room presence is being restored now.",
+        "moveWriteDenied": "The move could not be sent. Make sure it is your turn and the match is still active.",
+        "inviteWriteDenied": "The invite could not be sent. The player may have joined another match or your session expired.",
+        "chatWriteDenied": "The message could not be sent because you are no longer registered in this room.",
+        "voiceWriteDenied": "Voice connection could not be updated. Try again.",
+        "matchEnded": "The match has ended, so no new action can be taken.",
+        "spectatorAction": "You are watching this match and cannot move the pieces.",
+        "spectatorJoinFailed": "You could not join as a spectator. Try again."
       },
-      "inviteInvalidated": "This action could not be completed because the other player joined another match or is no longer online.",
-      "inviteRejected": "The invite was rejected.",
-      "inviteSendFail": "Couldn't send the invite.",
+      "inviteInvalidated": "The invite is no longer valid. The player may have joined another match or gone offline.",
+      "inviteRejected": "The player declined the invite.",
+      "inviteSendFail": "The invite could not be sent. Try again.",
       "log": {
         "inviteAccepted": "{player} accepted the invite.",
         "inviteRejected": "{player} rejected the invite.",
         "inviteSent": "{from} sent an invite to {to}."
       },
       "logFailed": "Failed to update the log.",
-      "pvpEndTitle": "Match ended",
+      "pvpEndTitle": "Match over",
       "resultNotCounted": {
         "early": "No winner was declared because the withdrawal or absence occurred before the advanced stage.",
         "unclear": "No winner was declared because the position was not decisive enough.",
         "generic": "The match ended without an official winner."
       },
-      "newInviteBody": "Player <strong>${fromName}</strong> invited you to play${roomPart}.",
+      "newInviteBody": "<strong>${fromName}</strong> invited you to a match${roomPart}.",
       "newInviteRoomPart": " in room <strong>${roomName}</strong>",
-      "newInviteTitle": "New invite",
-      "noOpponent": "Couldn't identify the opponent.",
-      "noPlayers": "No online players found.",
+      "newInviteTitle": "Match invitation",
+      "noOpponent": "The other player could not be identified.",
+      "noPlayers": "No player is available right now.",
       "offline": "Internet connection lost… retrying.",
-      "absenceTitle": "Opponent absent",
-      "absencePrompt": "Player {player} has been offline for two minutes. Do you want to wait or end the match?",
+      "absenceTitle": "Opponent disconnected",
+      "absencePrompt": "{player} has been offline for two minutes. Wait or end the match?",
       "opponent": "Opponent",
       "player": "Player",
       "roomNamePlaceholder": "Room name",
-      "roomNamePrompt": "Enter a room name to distinguish it in the rooms list.",
-      "roomNameTitle": "Name the room",
+      "roomNamePrompt": "Enter a short name that identifies this room in the list.",
+      "roomNameTitle": "Room name",
       "roomVisibility": {
         "public": "Public room (spectators can watch the match)",
         "private": "Private room (spectators cannot watch the match)"
@@ -1122,9 +1121,9 @@
         "receivingEnabled": "Invite receiving enabled.",
         "receivingDisabled": "Invite receiving disabled.",
         "notAccepting": "This player is not accepting invites right now.",
-        "inActiveMatch": "You are currently in an active online match. Do you want to leave the current match and send the invite?",
-        "leaveActivePrompt": "You are currently in an active online match. Do you want to leave the current match and send the invite?",
-        "leaveAndSend": "Leave and send",
+        "inActiveMatch": "You already have an active online match. Leave it and send this invite?",
+        "leaveActivePrompt": "You already have an active online match. Leave it and send this invite?",
+        "leaveAndSend": "Leave match and send invite",
         "returnToMatch": "Return to match"
       },
       "status": {
@@ -1133,11 +1132,11 @@
         "inPvP": "In online match",
         "spectating": "Watching a match"
       },
-      "syncFail": "Sync failed. Try again.",
-      "syncIssueNotice": "It is better to refresh the page. There is a synchronization problem.",
-      "waitingAcceptance": "Invite hasn't been accepted yet.",
-      "disabledButton": "This action is not available for this player right now.",
-      "playersLoadFail": "Could not load the online players list.",
+      "syncFail": "The match could not be synchronized. Check your connection and try again.",
+      "syncIssueNotice": "The match state is out of sync. Press Refresh to restore the correct state.",
+      "waitingAcceptance": "Invite sent. Waiting for the player’s response.",
+      "disabledButton": "This player cannot be invited right now.",
+      "playersLoadFail": "Online players could not be loaded. Refresh the lobby and try again."
     },
     "stats": {
       "left": "Pieces left",
@@ -1154,7 +1153,7 @@
     },
     "chain": {
       "notice": {
-        "body": "To end your turn, press “End capture / Timer”. In a capture chain, capture step by step."
+        "body": "Complete the capture chain one step at a time, then press “End capture” to finish your turn."
       }
     },
     "actions": {
@@ -1183,19 +1182,19 @@
     "schema_game_genre": "Strategy game",
     "schema_game_type": "Game",
     "undo": {
-      "applied": "Last move was undone${movePart}.",
+      "applied": "The last move was undone${movePart}.",
       "appliedMovePart": " from ${from} to ${to}",
-      "failed": "Undo failed",
-      "notCommitted": "Undo was not applied.",
-      "rejected": "The other player declined the undo.",
-      "rejectedTitle": "Undo declined",
+      "failed": "The move could not be undone.",
+      "notCommitted": "Undo was not completed. Refresh the match and try again.",
+      "rejected": "The other player declined the undo request.",
+      "rejectedTitle": "Undo request declined",
       "request": {
-        "body": "{name} wants to undo the last move. Do you agree?",
+        "body": "{name} wants to undo the last move. Allow it?",
         "title": "Undo request"
       },
-      "requestFailed": "Failed to send the undo request.",
+      "requestFailed": "The undo request could not be sent. Check your connection and try again.",
       "wait": {
-        "body": "The other player must approve undoing the previous move. Please wait."
+        "body": "Undo request sent. Waiting for the other player’s response."
       }
     },
     "errors": {
@@ -1212,7 +1211,6 @@
         "auth": "Authentication issue"
       }
     }
-
   },
   "fr": {
     "pages": {
@@ -1239,36 +1237,36 @@
     },
     "soufla": {
       "pick": {
-        "toastNotOffender": "Cette pièce n’est pas fautive. Touchez la pièce qui a ignoré une prise.",
-        "title": "Soufla sur votre adversaire. Touchez la pièce fautive, puis choisissez la sanction.",
-        "btnRemove": "Supprimer",
-        "btnForcePath": "Forcer le chemin ${n}"
+        "toastNotOffender": "Ce n’est pas la pièce fautive. Sélectionnez celle qui a ignoré une prise.",
+        "title": "Vous pouvez réclamer Soufla. Sélectionnez la pièce qui a ignoré une prise, puis choisissez la sanction.",
+        "btnRemove": "Retirer la pièce",
+        "btnForcePath": "Imposer le chemin ${n}"
       },
       "cpu": {
-        "reason": "La pièce en ${offender}${startedFromPart} a ignoré la prise la plus longue (longueur ${len}).",
+        "reason": "La pièce en ${offender}${startedFromPart} a ignoré le plus long chemin de prise disponible, de longueur ${len}.",
         "forcedPathLine": "${from} → ${path}",
-        "penaltyRemove": "Sanction : <b>suppression</b> de votre pièce en ${cell}.",
-        "revertNotice": "Votre dernier coup a été annulé (flèche jaune).",
-        "title": "Soufla contre vous",
-        "startedFromPart": " (départ : ${startedFrom})",
-        "penaltyForceInline": "Sanction : <b>forçage</b> du chemin : ${from} → ${path}.",
-        "forcedPathIntro": "Chemin imposé :",
-        "penaltyForcePicked": "Sanction : <b>forçage</b>."
+        "penaltyRemove": "Sanction : <b>retirer</b> votre pièce en ${cell}.",
+        "revertNotice": "Votre dernier coup a été annulé et apparaît avec la flèche jaune.",
+        "title": "Soufla réclamée contre vous",
+        "startedFromPart": " après un départ en ${startedFrom}",
+        "penaltyForceInline": "Sanction : <b>forcer la pièce</b> à prendre selon ${from} → ${path}.",
+        "forcedPathIntro": "Chemin de prise obligatoire :",
+        "penaltyForcePicked": "Sanction : <b>forcer la pièce à prendre</b>."
       },
       "applied": {
-        "force": "La pièce de l’adversaire a été forcée à suivre le chemin le plus long.",
-        "remove": "La pièce fautive de l’adversaire a été retirée.",
+        "force": "La pièce adverse a été forcée à suivre le chemin de prise valide.",
+        "remove": "La pièce adverse qui a ignoré la prise a été retirée.",
         "self": "Soufla appliquée."
       },
-      "notCommitted": "Impossible d’appliquer la pénalité (ce n’est peut-être pas votre tour ou il y a eu un conflit).",
-      "sendFailed": "Impossible d’appliquer la pénalité en ligne.",
+      "notCommitted": "La Soufla n’a pas été appliquée car l’état de la partie a changé. Actualisez puis réessayez.",
+      "sendFailed": "La décision de Soufla n’a pas pu être envoyée. Vérifiez votre connexion et réessayez.",
       "summary": {
-        "force": "Vous forcer à suivre le chemin de ${from} à ${to} de longueur ${len}, indiqué par la flèche verte.",
-        "penaltyTitle": "Et l’adversaire a choisi la pénalité :",
-        "reason": "Votre adversaire a réclamé Soufla contre vous car vous avez ignoré une capture valide, indiquée par la/les flèche(s) rouge(s) (la flèche rouge peut être masquée sous la flèche verte si l’option de forçage est choisie).",
-        "remove": "Retrait de votre pièce fautive à ${cell}, marquée en rouge.",
-        "title": "Soufla :",
-        "undo": "Annulation de votre dernier coup de ${from} à ${to}, indiqué par la flèche jaune."
+        "force": "Forcer votre pièce à prendre de ${from} à ${to} en suivant le chemin vert, de longueur ${len}.",
+        "penaltyTitle": "Sanction choisie :",
+        "reason": "Votre adversaire a réclamé Soufla parce que vous avez ignoré une prise valide. Le chemin ignoré apparaît en rouge.",
+        "remove": "Retirer votre pièce fautive en ${cell}, marquée en rouge.",
+        "title": "Résultat de la Soufla",
+        "undo": "Votre dernier coup de ${from} à ${to} a été annulé et apparaît en jaune."
       }
     },
     "pvp": {
@@ -1276,15 +1274,15 @@
         "micOn": "Couper le micro",
         "spkOn": "Couper le son",
         "failed": "Échec de connexion",
-        "failedTitle": "Échec du chat vocal",
+        "failedTitle": "Impossible de démarrer l’audio",
         "failure": {
-          "permission": "Impossible d’accéder au microphone. Autorisez ce site à l’utiliser, puis réessayez.",
+          "permission": "Autorisez ce site à utiliser le microphone, puis réessayez.",
           "noDevice": "Aucun microphone disponible n’a été trouvé.",
-          "busy": "Impossible d’ouvrir le microphone, car il est occupé ou indisponible.",
-          "unsupported": "Le chat vocal n’est pas pris en charge par ce navigateur ou dans ce contexte.",
-          "session": "Impossible de démarrer le chat vocal, car la session de la partie n’est pas prête. Rouvrez la partie puis réessayez.",
-          "service": "Impossible de démarrer la connexion vocale pour le moment. Vérifiez votre connexion puis réessayez.",
-          "generic": "Impossible de démarrer le chat vocal. Réessayez."
+          "busy": "Le microphone est utilisé par une autre application ou indisponible.",
+          "unsupported": "Le chat vocal n’est pas pris en charge par ce navigateur.",
+          "session": "La session de la partie n’est pas prête pour l’audio. Rouvrez la partie puis réessayez.",
+          "service": "La connexion vocale n’a pas pu démarrer. Vérifiez votre connexion et réessayez.",
+          "generic": "Le chat vocal n’a pas pu démarrer. Réessayez."
         },
         "micOff": "Activer le micro",
         "spkOff": "Activer le son",
@@ -1294,12 +1292,12 @@
       "chat": {
         "open": "Chat",
         "empty": "Aucun message pour le moment.",
-        "failed": "Échec de l’envoi. Réessayez.",
+        "failed": "Le message n’a pas pu être envoyé. Réessayez.",
         "placeholder": "Écrivez un message…",
-        "rateLimit": "Un message par seconde.",
+        "rateLimit": "Attendez une seconde avant d’envoyer un autre message.",
         "send": "Envoyer",
         "title": "Chat",
-        "tooLong": "200 caractères max."
+        "tooLong": "Réduisez le message à 200 caractères ou moins."
       },
       "leave": "Quitter"
     },
@@ -1375,7 +1373,7 @@
       "save": "Enregistrer",
       "endKill": "Terminer la prise",
       "undo": "Annuler",
-      "endMatch": "Quitter",
+      "endMatch": "Quitter"
     },
     "dashboard": {
       "draws": "Nuls",
@@ -1402,7 +1400,7 @@
       "deleteAccount": "Supprimer le compte",
       "logoutConfirm": {
         "title": "Déconnexion",
-        "body": "Voulez-vous vous déconnecter ?"
+        "body": "Voulez-vous vous déconnecter de votre compte ?"
       },
       "delete": {
         "title": "Supprimer le compte",
@@ -1461,50 +1459,50 @@
     },
     "modals": {
       "gameOver": {
-        "title": "Résultat de la partie",
-        "winner": "La partie est terminée. Le joueur {player} a gagné.",
+        "title": "Partie terminée",
+        "winner": "{player} a gagné la partie.",
         "draw": "La partie s’est terminée par un match nul.",
         "reason": {
-          "noPieces": "Le joueur {player} n’avait plus de pièces.",
-          "noLegalMoves": "Le joueur {player} n’avait plus de coup légal.",
-          "oneKingEach": "Le match nul a été atteint avec un roi restant pour chaque joueur."
+          "noPieces": "{player} n’a plus de pièces.",
+          "noLegalMoves": "{player} n’a plus de coup légal.",
+          "oneKingEach": "La partie est nulle avec un roi restant pour chaque joueur."
         }
       },
       "newGame": {
-        "title": "Nouvelle partie",
-        "confirm": "Démarrer une nouvelle partie et terminer la partie en cours ?"
+        "title": "Démarrer une nouvelle partie",
+        "confirm": "La partie en cours sera terminée. Voulez-vous en démarrer une nouvelle ?"
       },
       "endMatch": {
-        "confirm": "Voulez-vous terminer la partie ?"
+        "confirm": "Voulez-vous terminer la partie en cours ?"
       },
       "soufla": {
-        "none": "Aucune soufla sur le dernier coup. Coup légal.",
+        "none": "Le dernier coup est valide. Il n’y a pas de Soufla.",
         "header": "Soufla",
-        "forcedOpeningWarning": "Pas de soufla pendant l’ouverture obligatoire."
+        "forcedOpeningWarning": "La Soufla n’est pas disponible pendant l’ouverture obligatoire."
       },
       "apply": "Appliquer",
       "yes": "Oui",
       "no": "Non",
       "forcedOpening": {
         "title": "Ouverture obligatoire",
-        "body": "Ouverture obligatoire : 5 coups imposés par joueur, dans l’ordre. Le coup actuel est indiqué par la flèche rouge. Ensuite, jeu libre."
+        "body": "La partie commence par cinq coups obligatoires pour chaque joueur. Suivez la flèche rouge pour jouer le coup demandé ; le jeu devient ensuite libre."
       },
-      "notice": "Avis",
+      "notice": "Information",
       "undo": {
-        "notAllowedBody": "Vous ne pouvez pas annuler pendant l’ouverture obligatoire.",
-        "notAllowedTitle": "Annulation impossible",
-        "title": "Annuler"
+        "notAllowedBody": "Vous ne pouvez pas annuler avant la fin de l’ouverture obligatoire.",
+        "notAllowedTitle": "Annulation indisponible",
+        "title": "Annuler un coup"
       },
-      "errorTitle": "Erreur",
-      "pickOnlineNickTitle": "Choisissez un pseudo",
+      "errorTitle": "Action impossible",
+      "pickOnlineNickTitle": "Choisissez un nom en ligne",
       "applySettings": {
-        "title": "Appliquer les paramètres",
+        "title": "Enregistrer les paramètres",
         "noChanges": "Aucun paramètre n’a été modifié.",
-        "applying": "Application des paramètres...",
-        "changedTitle": "Paramètres modifiés :",
-        "applied": "Paramètres appliqués"
+        "applying": "Enregistrement des paramètres…",
+        "changedTitle": "Modifications :",
+        "applied": "Paramètres enregistrés."
       },
-      "successTitle": "Succès"
+      "successTitle": "Terminé"
     },
     "log": {
       "gameStarted": "La partie a commencé.",
@@ -1513,11 +1511,11 @@
         "openingEnded": "Ouverture obligatoire terminée."
       },
       "save": {
-        "none": "Aucune partie enregistrée à reprendre.",
-        "done": "État de la partie enregistré.",
-        "confirm": "Voulez-vous terminer la partie en cours et reprendre une partie enregistrée précédemment ?",
-        "resumed": "Partie reprise.",
-        "error": "Impossible de reprendre la partie."
+        "none": "Aucune partie enregistrée ne peut être reprise.",
+        "done": "La partie en cours a été enregistrée.",
+        "confirm": "La partie en cours sera terminée et la partie enregistrée sera ouverte. Continuer ?",
+        "resumed": "La partie enregistrée a été reprise.",
+        "error": "La partie enregistrée n’a pas pu être reprise."
       },
       "results": {
         "savedOk": "Résultat ajouté à l’historique avec succès.",
@@ -1599,22 +1597,22 @@
       "spectatorFull": "Nombre de spectateurs complet pour cette salle."
     },
     "status": {
-      "forcedChainStepByStep": "Prise en chaîne (ouverture) : prenez étape par étape.",
-      "onlineInitFail": "Impossible d’initialiser le jeu en ligne pour le moment.",
+      "forcedChainStepByStep": "Cette chaîne de prises est obligatoire. Effectuez-la étape par étape.",
+      "onlineInitFail": "Le jeu en ligne ne peut pas être ouvert pour le moment.",
       "reconnecting": "Rétablissement de la connexion…",
       "loadingMatch": "Chargement de la partie officielle…",
-      "onlineInitHelp": "Veuillez vous connecter ou démarrer une session invité Cloudflare.",
+      "onlineInitHelp": "Vérifiez votre connexion et votre session, puis réessayez.",
       "loading": "Chargement…",
-      "wait": "Attendez votre tour…",
-      "aiThinkingMove": "L’ordinateur réfléchit…",
-      "aiThinkingSoufla": "L’ordinateur choisit une pénalité de Soufla…",
-      "aiThinkingMoveWaitLine": "Veuillez patienter… L’ordinateur réfléchit au coup approprié.",
+      "wait": "C’est au tour de l’autre joueur. Veuillez patienter.",
+      "aiThinkingMove": "L’ordinateur choisit son coup…",
+      "aiThinkingSoufla": "L’ordinateur choisit la sanction de Soufla…",
+      "aiThinkingMoveWaitLine": "Veuillez patienter pendant que l’ordinateur choisit son coup.",
       "currentLevel": "Niveau actuel",
       "aiThinkingMoveLevelDuration": "Niveau : ${level} (temps de réflexion de l’ordinateur de ${min} à ${max} secondes par coup)",
       "turn": "Au tour de :",
-      "forcedChainIncomplete": "Terminez la chaîne de prises, puis appuyez sur « Terminer la prise ».",
-      "forcedMove": "Ouverture obligatoire : le coup autorisé est ${from}→${to}",
-      "moveSendFail": "Échec de l’envoi du coup. Veuillez le refaire.",
+      "forcedChainIncomplete": "Une autre prise est disponible. Terminez la chaîne, puis appuyez sur « Terminer la prise ».",
+      "forcedMove": "Coup d’ouverture requis : ${from} → ${to}",
+      "moveSendFail": "Le coup n’a pas pu être envoyé. Vérifiez votre connexion et rejouez-le.",
       "aiThinkingMoveLevelNote": "Remarque : plus le niveau est élevé, plus la réflexion peut durer."
     },
     "players": {
@@ -1645,23 +1643,23 @@
     },
     "ui": {
       "stats": "Statistiques",
-      "noUndo": "Rien à annuler.",
-      "undoOwnLastOnly": "Vous ne pouvez annuler le dernier coup que si vous l’avez joué.",
+      "noUndo": "Aucun coup ne peut être annulé.",
+      "undoOwnLastOnly": "Vous pouvez uniquement annuler le dernier coup que vous avez joué.",
       "language": "Langue"
     },
     "meta_keywords": "zamat, zamet, jeu mauritanien, jeu de plateau, dames, jeu contre ordinateur, multijoueur en ligne",
     "online": {
-      "permissionDenied": "Impossible d'effectuer l'action (autorisations Cloudflare insuffisantes).",
-      "authRestoreFailed": "Impossible de restaurer la connexion du compte pour le moment. Veuillez vous reconnecter puis réessayer.",
+      "permissionDenied": "L’action n’a pas pu être effectuée. Reconnectez-vous puis réessayez.",
+      "authRestoreFailed": "Votre session n’a pas pu être restaurée. Reconnectez-vous puis réessayez.",
       "connLimit": {
-        "title": "Nombre maximal de connexions",
-        "body": "Le nombre maximal de connexions autorisées (100) est atteint. Veuillez attendre qu’un des joueurs connectés parte, puis réessayez."
+        "title": "Service occupé",
+        "body": "La limite actuelle de connexions est atteinte. Patientez un instant puis réessayez."
       },
       "presence": {
         "online": "En ligne",
         "disconnected": "Connexion coupée"
       },
-      "endFail": "Impossible de terminer la partie pour le moment.",
+      "endFail": "La partie n’a pas pu être terminée. Vérifiez votre connexion et réessayez.",
       "endPresentation": {
         "winner": "La partie est terminée. Le joueur {player} a gagné.",
         "draw": "La partie s’est terminée par un match nul.",
@@ -1677,21 +1675,21 @@
         }
       },
       "errors": {
-        "joinFailed": "Impossible de rejoindre la partie en ligne. Vérifiez les règles/autorisations de la base de données ou réessayez.",
-        "noGame": "La partie est terminée ou la salle a été nettoyée.",
-        "authRequired": "La session de connexion a expiré. Reconnectez-vous puis réessayez.",
-        "presenceWriteDenied": "La connexion est revenue, mais votre présence dans la salle n’est pas encore restaurée. Resynchronisation en cours.",
-        "moveWriteDenied": "Impossible d’envoyer le coup. Vérifiez que c’est votre tour et que la partie est encore active.",
-        "inviteWriteDenied": "Impossible d’envoyer l’invitation. Le joueur a peut-être rejoint une partie ou votre session a expiré.",
-        "chatWriteDenied": "Impossible d’envoyer le message. Vous devez être enregistré comme joueur ou spectateur dans cette salle.",
-        "voiceWriteDenied": "Impossible de mettre à jour les données audio de cette partie.",
-        "matchEnded": "Cette partie est terminée ; aucune nouvelle action ne peut être envoyée.",
-        "spectatorAction": "Vous êtes spectateur dans cette salle et ne pouvez pas déplacer les pièces.",
-        "spectatorJoinFailed": "Impossible de vous enregistrer comme spectateur dans cette salle. Réessayez."
+        "joinFailed": "Impossible de rejoindre la partie. Vérifiez votre connexion et réessayez.",
+        "noGame": "La partie est terminée ou la salle n’est plus disponible.",
+        "authRequired": "Votre session a expiré. Reconnectez-vous puis réessayez.",
+        "presenceWriteDenied": "Connexion rétablie. Votre présence dans la salle est en cours de restauration.",
+        "moveWriteDenied": "Le coup n’a pas pu être envoyé. Vérifiez que c’est votre tour et que la partie est toujours active.",
+        "inviteWriteDenied": "L’invitation n’a pas pu être envoyée. Le joueur a peut-être rejoint une autre partie ou votre session a expiré.",
+        "chatWriteDenied": "Le message n’a pas pu être envoyé, car vous n’êtes plus inscrit dans cette salle.",
+        "voiceWriteDenied": "La connexion vocale n’a pas pu être mise à jour. Réessayez.",
+        "matchEnded": "La partie est terminée ; aucune nouvelle action ne peut être effectuée.",
+        "spectatorAction": "Vous regardez cette partie et ne pouvez pas déplacer les pièces.",
+        "spectatorJoinFailed": "Impossible de rejoindre comme spectateur. Réessayez."
       },
-      "inviteInvalidated": "Cette action n’a pas pu être finalisée car l’autre joueur a rejoint une autre partie ou n’est plus connecté.",
-      "inviteRejected": "L’invitation a été refusée.",
-      "inviteSendFail": "Impossible d’envoyer l’invitation.",
+      "inviteInvalidated": "L’invitation n’est plus valable. Le joueur a peut-être rejoint une autre partie ou s’est déconnecté.",
+      "inviteRejected": "Le joueur a refusé l’invitation.",
+      "inviteSendFail": "L’invitation n’a pas pu être envoyée. Réessayez.",
       "log": {
         "inviteAccepted": "{player} a accepté l’invitation.",
         "inviteRejected": "{player} a refusé l’invitation.",
@@ -1704,19 +1702,19 @@
         "unclear": "Aucun gagnant n’a été déclaré, car la position n’était pas assez décisive.",
         "generic": "La partie s’est terminée sans gagnant officiel."
       },
-      "newInviteBody": "Le joueur <strong>${fromName}</strong> vous invite à jouer${roomPart}.",
+      "newInviteBody": "<strong>${fromName}</strong> vous invite à une partie${roomPart}.",
       "newInviteRoomPart": " dans la salle <strong>${roomName}</strong>",
-      "newInviteTitle": "Nouvelle invitation",
-      "noOpponent": "Impossible d’identifier l’adversaire.",
-      "noPlayers": "Aucun joueur en ligne trouvé.",
+      "newInviteTitle": "Invitation à une partie",
+      "noOpponent": "L’autre joueur n’a pas pu être identifié.",
+      "noPlayers": "Aucun joueur n’est disponible pour le moment.",
       "offline": "Connexion Internet perdue… nouvelle tentative.",
-      "absenceTitle": "Adversaire absent",
-      "absencePrompt": "Le joueur {player} est hors ligne depuis deux minutes. Voulez-vous attendre ou terminer la partie ?",
+      "absenceTitle": "Adversaire déconnecté",
+      "absencePrompt": "{player} est hors ligne depuis deux minutes. Attendre ou terminer la partie ?",
       "opponent": "Adversaire",
       "player": "Joueur",
       "roomNamePlaceholder": "Nom de la salle",
-      "roomNamePrompt": "Entrez un nom de salle pour la distinguer dans la liste.",
-      "roomNameTitle": "Nommer la salle",
+      "roomNamePrompt": "Saisissez un nom court pour identifier cette salle dans la liste.",
+      "roomNameTitle": "Nom de la salle",
       "roomVisibility": {
         "public": "Salle publique (les spectateurs peuvent observer la partie)",
         "private": "Salle privée (les spectateurs ne peuvent pas observer la partie)"
@@ -1729,22 +1727,22 @@
         "receivingEnabled": "Réception des invitations activée.",
         "receivingDisabled": "Réception des invitations désactivée.",
         "notAccepting": "Ce joueur n’accepte pas les invitations pour le moment.",
-        "inActiveMatch": "Vous êtes actuellement dans une partie en ligne active. Voulez-vous quitter la partie actuelle et envoyer l’invitation ?",
-        "leaveActivePrompt": "Vous êtes actuellement dans une partie en ligne active. Voulez-vous quitter la partie actuelle et envoyer l’invitation ?",
-        "leaveAndSend": "Quitter et envoyer",
+        "inActiveMatch": "Vous avez déjà une partie en ligne active. La quitter et envoyer cette invitation ?",
+        "leaveActivePrompt": "Vous avez déjà une partie en ligne active. La quitter et envoyer cette invitation ?",
+        "leaveAndSend": "Quitter et envoyer l’invitation",
         "returnToMatch": "Retour à la partie"
       },
-      "syncFail": "Échec de synchronisation. Réessayez.",
-      "syncIssueNotice": "Il est préférable d’actualiser la page. Un problème de synchronisation est détecté.",
-      "waitingAcceptance": "L’invitation n’a pas encore été acceptée.",
+      "syncFail": "La partie n’a pas pu être synchronisée. Vérifiez votre connexion et réessayez.",
+      "syncIssueNotice": "L’état de la partie est désynchronisé. Appuyez sur Actualiser pour restaurer l’état correct.",
+      "waitingAcceptance": "Invitation envoyée. En attente de la réponse du joueur.",
       "status": {
         "available": "Disponible",
         "vsComputer": "Dans une partie contre l’ordinateur",
         "inPvP": "Dans une partie en ligne",
         "spectating": "Observe une partie"
       },
-      "disabledButton": "Cette action n’est pas disponible pour ce joueur pour le moment.",
-      "playersLoadFail": "Impossible de charger la liste des joueurs en ligne.",
+      "disabledButton": "Ce joueur ne peut pas être invité pour le moment.",
+      "playersLoadFail": "Impossible de charger les joueurs connectés. Actualisez le lobby et réessayez."
     },
     "stats": {
       "left": "Pièces restantes",
@@ -1761,7 +1759,7 @@
     },
     "chain": {
       "notice": {
-        "body": "Pour terminer votre tour, appuyez sur « Terminer la prise / Minuteur ». En chaîne de prises, effectuez les prises étape par étape."
+        "body": "Effectuez la chaîne de prises étape par étape, puis appuyez sur « Terminer la prise » pour finir votre tour."
       }
     },
     "actions": {
@@ -1790,19 +1788,19 @@
     "schema_game_genre": "Jeu de stratégie",
     "schema_game_type": "Game",
     "undo": {
-      "applied": "Dernier coup annulé${movePart}.",
+      "applied": "Le dernier coup a été annulé${movePart}.",
       "appliedMovePart": " de ${from} à ${to}",
-      "failed": "Échec de l’annulation",
-      "notCommitted": "Annulation non effectuée.",
-      "rejected": "L’autre joueur a refusé l’annulation.",
-      "rejectedTitle": "Annulation refusée",
+      "failed": "Le coup n’a pas pu être annulé.",
+      "notCommitted": "L’annulation n’a pas abouti. Actualisez la partie et réessayez.",
+      "rejected": "L’autre joueur a refusé la demande d’annulation.",
+      "rejectedTitle": "Demande d’annulation refusée",
       "request": {
-        "body": "{name} veut annuler le dernier coup. Acceptez-vous ?",
+        "body": "{name} souhaite annuler le dernier coup. Acceptez-vous ?",
         "title": "Demande d’annulation"
       },
-      "requestFailed": "Impossible d’envoyer la demande d’annulation.",
+      "requestFailed": "La demande d’annulation n’a pas pu être envoyée. Vérifiez votre connexion et réessayez.",
       "wait": {
-        "body": "L’autre joueur doit approuver l’annulation du coup précédent. Veuillez patienter."
+        "body": "Demande envoyée. En attente de la réponse de l’autre joueur."
       }
     },
     "errors": {
@@ -1819,7 +1817,6 @@
         "auth": "Problème d’authentification"
       }
     }
-
   }
 };
   window.translations = translations;
