@@ -1182,8 +1182,57 @@
     };
   }
 
+  const FORCED_OPENING_EXCHANGE_PLY = 3;
+  const FORCED_OPENING_REMAINDER_PLY = 5;
+
   function forcedOpeningSeqForStarterSide(side) {
     return side === TOP ? FORCED_OPENING_TOP : FORCED_OPENING_BOT;
+  }
+
+  function forcedOpeningExchangeChoice(snapshot) {
+    const snap = snapshot && typeof snapshot === 'object' ? snapshot : {};
+    const opening = snap.opening && typeof snap.opening === 'object' ? snap.opening : {};
+    const raw = opening.exchangeFourthChoice != null
+      ? Number(opening.exchangeFourthChoice)
+      : snap.openingExchangeFourthChoice != null
+        ? Number(snap.openingExchangeFourthChoice)
+        : null;
+    return raw === 0 || raw === 1 ? raw : null;
+  }
+
+  function forcedOpeningStepOptions(snapshot) {
+    const snap = snapshot && typeof snapshot === 'object' ? snapshot : {};
+    const ply = Math.max(0, Number(snap.forcedPly != null ? snap.forcedPly : snap.openingPly) || 0);
+    if (!snap.forcedEnabled || ply >= 10) return [];
+    const starter = openingStarterSide(snap);
+    const seq = forcedOpeningSeqForStarterSide(starter);
+    if (ply === FORCED_OPENING_EXCHANGE_PLY) return [seq[3], seq[5]].filter(Boolean);
+    if (ply === FORCED_OPENING_REMAINDER_PLY) {
+      const chosen = forcedOpeningExchangeChoice(snap);
+      const remaining = chosen === 1 ? seq[3] : seq[5];
+      return remaining ? [remaining] : [];
+    }
+    return seq[ply] ? [seq[ply]] : [];
+  }
+
+  function forcedOpeningExpectedOptions(snapshot) {
+    const snap = snapshot && typeof snapshot === 'object' ? snapshot : {};
+    const ply = Math.max(0, Number(snap.forcedPly != null ? snap.forcedPly : snap.openingPly) || 0);
+    const starterSide = openingStarterSide(snap);
+    const mover = ply % 2 === 0 ? starterSide : opponent(starterSide);
+    return forcedOpeningStepOptions(snap).map((step, optionIndex) => {
+      const path = step.map(([r, c]) => idx(r, c));
+      return {
+        starterSide,
+        mover,
+        ply,
+        optionIndex,
+        exchangeChoice: ply === FORCED_OPENING_EXCHANGE_PLY ? optionIndex : forcedOpeningExchangeChoice(snap),
+        from: path[0],
+        path: path.slice(1),
+        fullPath: path,
+      };
+    });
   }
 
   function openingStarterSide(snapshot) {
@@ -1206,23 +1255,29 @@
     return BOT;
   }
 
-  function forcedOpeningPath(snapshot) {
-    const ply = Number(snapshot && snapshot.forcedPly || 0);
-    if (!(snapshot && snapshot.forcedEnabled) || ply < 0 || ply >= 10) return null;
-    const starter = openingStarterSide(snapshot);
-    const seq = forcedOpeningSeqForStarterSide(starter);
-    const step = seq[ply];
-    if (!step) return null;
-    return step.map(([r, c]) => idx(r, c));
+  function forcedOpeningPaths(snapshot) {
+    return forcedOpeningExpectedOptions(snapshot).map((item) => item.fullPath.slice());
   }
 
-  function forcedOpeningExpected(starterSide, ply) {
-    ply = Number(ply || 0);
-    const seq = forcedOpeningSeqForStarterSide(starterSide);
-    const step = seq[ply];
-    if (!step) return null;
-    const path = step.map(([r, c]) => idx(r, c));
-    return { starterSide, mover: ply % 2 === 0 ? starterSide : opponent(starterSide), ply, from: path[0], path: path.slice(1), fullPath: path };
+  function forcedOpeningPath(snapshot) {
+    const options = forcedOpeningPaths(snapshot);
+    return options.length ? options[0] : null;
+  }
+
+  function forcedOpeningExpected(starterSide, ply, exchangeChoice) {
+    ply = Math.max(0, Number(ply || 0));
+    const opening = { starter: starterSide };
+    if (exchangeChoice === 0 || exchangeChoice === 1) opening.exchangeFourthChoice = exchangeChoice;
+    else if (ply === FORCED_OPENING_REMAINDER_PLY) opening.exchangeFourthChoice = 0;
+    const options = forcedOpeningExpectedOptions({
+      forcedEnabled: true,
+      forcedPly: ply,
+      openingPly: ply,
+      opening,
+      openingStarter: starterSide,
+      player: ply % 2 === 0 ? starterSide : opponent(starterSide),
+    });
+    return options.length ? options[0] : null;
   }
 
   function samePath(a, b) {
@@ -1473,7 +1528,11 @@
     promoteAt,
     finalizeTurnBoard,
     forcedOpeningSeqForStarterSide,
+    forcedOpeningExchangeChoice,
+    forcedOpeningStepOptions,
+    forcedOpeningExpectedOptions,
     openingStarterSide,
+    forcedOpeningPaths,
     forcedOpeningPath,
     forcedOpeningExpected,
     samePath,

@@ -1019,7 +1019,12 @@ const Input = {
     if (Game.forcedEnabled && Game.forcedPly < 10) {
       if (Game.player !== humanSide()) return;
 
-      const expected = getForcedOpeningExpectedAction();
+      const openingOptions = getForcedOpeningInfos();
+      if (!openingOptions.length) return;
+      const selectedOption = Input.selected == null
+        ? openingOptions.find((item) => Number(item.from) === Number(idx)) || null
+        : null;
+      const expected = getForcedOpeningExpectedAction(Input.selected != null ? Input.selected : selectedOption && selectedOption.from);
       if (!expected) return;
 
       const info = expected.info;
@@ -1039,14 +1044,17 @@ const Input = {
 
       if (Input.selected == null) {
         const v = valueAt(idx);
-        const allowedStart = Game.inChain && Game.chainPos != null ? Game.chainPos : frExp;
+        const allowedStart = Game.inChain && Game.chainPos != null ? Game.chainPos : selectedOption && selectedOption.from;
+        const hintInfo = selectedOption || openingOptions[0];
+        const hintFrom = Game.inChain && Game.chainPos != null ? Game.chainPos : hintInfo.from;
+        const hintTo = hintInfo.toFirst;
 
-        if (idx !== allowedStart || pieceOwner(v) !== Game.player) {
-          Visual.setForcedOpeningArrow(frExp, toExp);
+        if (allowedStart == null || idx !== allowedStart || pieceOwner(v) !== Game.player) {
+          Visual.setForcedOpeningArrow(hintFrom, hintTo);
           UI.status(
             t("status.forcedMove", {
-              from: rcStr(frExp),
-              to: rcStr(toExp),
+              from: rcStr(hintFrom),
+              to: rcStr(hintTo),
             }),
           );
 
@@ -1311,15 +1319,15 @@ function endKillPressed() {
   Game.killTimer.stop();
 
   if (isForcedOpeningActive()) {
-    const info = getForcedOpeningInfo();
-    if (!info) return;
-
     const startedFrom =
       Turn.ctx && Turn.ctx.startedFrom != null
         ? Turn.ctx.startedFrom
         : Game.lastMoveFrom != null
           ? Game.lastMoveFrom
           : null;
+    const info = getForcedOpeningInfo(Game.forcedPly, startedFrom);
+    if (!info) return;
+
     const endedAt = Game.chainPos ?? Game.lastMovedTo;
 
     if (info.isChain && startedFrom === info.from && endedAt !== info.toFinal) {
@@ -1358,6 +1366,7 @@ function endKillPressed() {
       return;
     }
 
+    rememberForcedOpeningExchange(info);
     completeForcedOpeningPly();
   }
 

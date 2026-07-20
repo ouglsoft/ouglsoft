@@ -477,98 +477,101 @@
 
   function drawDimensionalFallbackPiece(ctx, x, anchorY, width, height, isWhite) {
     var colors = piecePalette();
-    var radius = width * 0.39;
-    var stackHeight = Math.max(height * 0.34, width * 0.18);
-    var sideHeight = Math.max(height * 0.14, width * 0.09);
-    var topY = anchorY - stackHeight;
-    var bodyTop = anchorY - stackHeight * 0.82;
-    var bodyBottom = anchorY - stackHeight * 0.18;
     var edge = isWhite ? colors.whiteEdge : colors.blackEdge;
-    var rim = isWhite ? colors.whiteEdgeSoft : colors.blackEdgeSoft;
-    var outerContrast = isWhite ? themeChannels("--rgb-primary-900", ".96") : themeChannels("--rgb-white", ".92");
-    var coreLight = isWhite ? colors.whiteLight : colors.blackLight;
-    var coreMid = isWhite ? colors.whiteMid : colors.blackMid;
-    var coreDark = isWhite ? colors.whiteDark : colors.blackDark;
+    var edgeSoft = isWhite ? colors.whiteEdgeSoft : colors.blackEdgeSoft;
+    var outerContrast = isWhite
+      ? themeChannels("--rgb-primary-900", "1")
+      : themeChannels("--rgb-white", "1");
+    var light = isWhite ? colors.whiteLight : colors.blackLight;
+    var mid = isWhite ? colors.whiteMid : colors.blackMid;
+    var dark = isWhite ? colors.whiteDark : colors.blackDark;
+    var baseY = anchorY - height * 0.03;
+    var topY = anchorY - height * 0.84;
+    var headR = width * 0.17;
+    var collarY = topY + headR * 1.62;
+    var stemTop = collarY + height * 0.05;
+    var stemBottom = anchorY - height * 0.25;
 
-    var topGrad = ctx.createRadialGradient(x - radius * 0.35, topY - stackHeight * 0.22, radius * 0.18, x, topY, radius * 1.1);
-    topGrad.addColorStop(0, coreLight);
-    topGrad.addColorStop(0.56, coreMid);
-    topGrad.addColorStop(1, coreDark);
-
-    var sideGrad = ctx.createLinearGradient(x, bodyTop, x, anchorY + sideHeight * 0.3);
-    sideGrad.addColorStop(0, coreMid);
-    sideGrad.addColorStop(0.52, coreDark);
-    sideGrad.addColorStop(1, edge);
-
-    var baseGrad = ctx.createLinearGradient(x - radius, anchorY - sideHeight * 0.3, x + radius, anchorY + sideHeight * 0.15);
-    baseGrad.addColorStop(0, coreDark);
-    baseGrad.addColorStop(0.5, coreMid);
-    baseGrad.addColorStop(1, edge);
+    var bodyGrad = ctx.createLinearGradient(x - width * 0.38, topY, x + width * 0.38, baseY);
+    bodyGrad.addColorStop(0, light);
+    bodyGrad.addColorStop(0.46, mid);
+    bodyGrad.addColorStop(1, dark);
+    var headGrad = ctx.createRadialGradient(x - headR * 0.38, topY - headR * 0.34, headR * 0.12, x, topY, headR * 1.12);
+    headGrad.addColorStop(0, light);
+    headGrad.addColorStop(0.56, mid);
+    headGrad.addColorStop(1, dark);
+    var baseGrad = ctx.createLinearGradient(x, anchorY - height * 0.22, x, baseY + height * 0.04);
+    baseGrad.addColorStop(0, light);
+    baseGrad.addColorStop(0.38, mid);
+    baseGrad.addColorStop(1, dark);
 
     ctx.save();
-    ctx.shadowColor = themeChannels("--rgb-neutral-950", ".36");
-    ctx.shadowBlur = Math.max(5, width * 0.11);
-    ctx.shadowOffsetY = Math.max(2, height * 0.06);
-
-    ctx.fillStyle = themeChannels("--rgb-neutral-950", isWhite ? ".18" : ".32");
+    ctx.shadowColor = themeChannels("--rgb-neutral-950", ".46");
+    ctx.shadowBlur = Math.max(5, width * 0.12);
+    ctx.shadowOffsetY = Math.max(3, height * 0.07);
+    ctx.fillStyle = themeChannels("--rgb-neutral-950", isWhite ? ".20" : ".34");
     ctx.beginPath();
-    ctx.ellipse(x, anchorY + sideHeight * 0.22, radius * 0.98, Math.max(4, sideHeight * 0.62), 0, 0, Math.PI * 2);
+    ctx.ellipse(x, baseY + height * 0.035, width * 0.43, height * 0.075, 0, 0, Math.PI * 2);
     ctx.fill();
 
     ctx.shadowColor = "transparent";
-    ctx.fillStyle = sideGrad;
+    ctx.fillStyle = bodyGrad;
+    ctx.strokeStyle = outerContrast;
+    ctx.lineJoin = "round";
+    ctx.lineWidth = Math.max(2.2, width * 0.045);
+
+    // Broad double base, similar to a classical chess pawn.
     ctx.beginPath();
-    ctx.moveTo(x - radius * 0.88, bodyTop);
-    ctx.quadraticCurveTo(x - radius * 0.98, anchorY - sideHeight * 0.38, x - radius * 0.82, bodyBottom);
-    ctx.lineTo(x - radius * 0.82, anchorY - sideHeight * 0.08);
-    ctx.quadraticCurveTo(x, anchorY + sideHeight * 0.14, x + radius * 0.82, anchorY - sideHeight * 0.08);
-    ctx.lineTo(x + radius * 0.82, bodyBottom);
-    ctx.quadraticCurveTo(x + radius * 0.98, anchorY - sideHeight * 0.38, x + radius * 0.88, bodyTop);
+    ctx.moveTo(x - width * 0.39, baseY);
+    ctx.quadraticCurveTo(x - width * 0.43, baseY - height * 0.08, x - width * 0.31, anchorY - height * 0.18);
+    ctx.quadraticCurveTo(x, anchorY - height * 0.23, x + width * 0.31, anchorY - height * 0.18);
+    ctx.quadraticCurveTo(x + width * 0.43, baseY - height * 0.08, x + width * 0.39, baseY);
     ctx.closePath();
-    ctx.fill();
-
     ctx.fillStyle = baseGrad;
-    ctx.strokeStyle = outerContrast;
-    ctx.lineWidth = Math.max(3.2, width * 0.062);
-    ctx.beginPath();
-    ctx.ellipse(x, anchorY - sideHeight * 0.04, radius * 0.86, Math.max(5, sideHeight * 0.76), 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
+
+    ctx.beginPath();
+    ctx.ellipse(x, anchorY - height * 0.21, width * 0.30, height * 0.075, 0, 0, Math.PI * 2);
+    ctx.fillStyle = bodyGrad;
+    ctx.fill();
+    ctx.strokeStyle = edgeSoft;
+    ctx.lineWidth = Math.max(1.6, width * 0.03);
+    ctx.stroke();
+
+    // Curved pawn stem.
+    ctx.beginPath();
+    ctx.moveTo(x - width * 0.12, stemTop);
+    ctx.bezierCurveTo(x - width * 0.11, stemTop + height * 0.12, x - width * 0.23, stemBottom - height * 0.07, x - width * 0.27, stemBottom);
+    ctx.quadraticCurveTo(x, stemBottom + height * 0.055, x + width * 0.27, stemBottom);
+    ctx.bezierCurveTo(x + width * 0.23, stemBottom - height * 0.07, x + width * 0.11, stemTop + height * 0.12, x + width * 0.12, stemTop);
+    ctx.closePath();
+    ctx.fillStyle = bodyGrad;
+    ctx.fill();
     ctx.strokeStyle = edge;
-    ctx.lineWidth = Math.max(1.6, width * 0.030);
+    ctx.lineWidth = Math.max(2, width * 0.04);
     ctx.stroke();
 
-    ctx.fillStyle = topGrad;
-    ctx.strokeStyle = outerContrast;
-    ctx.lineWidth = Math.max(3.4, width * 0.066);
+    // Collar and spherical head.
     ctx.beginPath();
-    ctx.ellipse(x, topY, radius, stackHeight * 0.52, 0, 0, Math.PI * 2);
+    ctx.ellipse(x, collarY, width * 0.22, height * 0.075, 0, 0, Math.PI * 2);
+    ctx.fillStyle = bodyGrad;
     ctx.fill();
+    ctx.strokeStyle = edgeSoft;
+    ctx.lineWidth = Math.max(1.5, width * 0.028);
     ctx.stroke();
 
-    ctx.lineWidth = Math.max(2.2, width * 0.040);
-    ctx.strokeStyle = rim;
     ctx.beginPath();
-    ctx.ellipse(x, topY, radius * 0.91, stackHeight * 0.44, 0, 0, Math.PI * 2);
-    ctx.stroke();
-
-    ctx.lineWidth = Math.max(1.4, width * 0.024);
-    ctx.strokeStyle = isWhite ? themeChannels("--rgb-white", ".84") : themeChannels("--rgb-white", ".22");
-    ctx.beginPath();
-    ctx.ellipse(x, topY, radius * 0.56, stackHeight * 0.26, 0, 0, Math.PI * 2);
-    ctx.stroke();
-
-    var highlight = ctx.createRadialGradient(x - radius * 0.36, topY - stackHeight * 0.22, radius * 0.05, x - radius * 0.24, topY - stackHeight * 0.14, radius * 0.5);
-    highlight.addColorStop(0, isWhite ? themeChannels("--rgb-white", ".96") : themeChannels("--rgb-white", ".40"));
-    highlight.addColorStop(1, "transparent");
-    ctx.fillStyle = highlight;
-    ctx.beginPath();
-    ctx.ellipse(x - radius * 0.16, topY - stackHeight * 0.10, radius * 0.42, stackHeight * 0.18, -0.32, 0, Math.PI * 2);
+    ctx.arc(x, topY, headR, 0, Math.PI * 2);
+    ctx.fillStyle = headGrad;
     ctx.fill();
+    ctx.strokeStyle = edge;
+    ctx.lineWidth = Math.max(2.2, width * 0.042);
+    ctx.stroke();
 
-    ctx.fillStyle = isWhite ? colors.whiteDot : colors.blackDot;
     ctx.beginPath();
-    ctx.ellipse(x, topY, radius * 0.18, stackHeight * 0.095, 0, 0, Math.PI * 2);
+    ctx.arc(x - headR * 0.34, topY - headR * 0.34, headR * 0.25, 0, Math.PI * 2);
+    ctx.fillStyle = isWhite ? themeChannels("--rgb-white", ".72") : themeChannels("--rgb-white", ".26");
     ctx.fill();
     ctx.restore();
   }
@@ -679,18 +682,28 @@
         var view = toViewRC(r, c, opts);
         var x = view[1] * stepX + stepX / 2;
         var y = view[0] * stepY + stepY / 2;
-        var rad = Math.max(1, Math.min(stepX, stepY) / 2 - 25);
+        var rad = Math.max(1, Math.min(stepX, stepY) / 2 - 26);
         var fill = pieceFill(v, opts);
+        var isWhitePiece = !!(ownerFn && ownerFn(v) === bot);
         var grad = ctx.createRadialGradient(x - rad * 0.3, y - rad * 0.3, rad * 0.2, x, y, rad);
         grad.addColorStop(0, fill[0]);
         grad.addColorStop(1, fill[1]);
         ctx.save();
+        ctx.shadowColor = themeChannels("--rgb-neutral-950", ".34");
+        ctx.shadowBlur = Math.max(3, rad * 0.22);
+        ctx.shadowOffsetY = Math.max(1, rad * 0.08);
         ctx.beginPath();
         ctx.arc(x, y, rad, 0, Math.PI * 2);
         ctx.fillStyle = grad;
         ctx.fill();
-        ctx.lineWidth = 3;
-        ctx.strokeStyle = ownerFn && ownerFn(v) === bot ? colors.whiteEdge : colors.blackEdge;
+        ctx.shadowColor = "transparent";
+        ctx.lineWidth = Math.max(4, rad * 0.20);
+        ctx.strokeStyle = isWhitePiece ? colors.whiteEdge : colors.blackEdge;
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(x, y, Math.max(1, rad - Math.max(2, rad * 0.11)), 0, Math.PI * 2);
+        ctx.lineWidth = Math.max(2, rad * 0.09);
+        ctx.strokeStyle = isWhitePiece ? colors.whiteEdgeSoft : colors.blackEdgeSoft;
         ctx.stroke();
         var kind = kindFn ? kindFn(v) : Math.abs(Number(v));
         if (kind === 2 || Math.abs(Number(v)) === 2) {
@@ -703,7 +716,7 @@
         var dotR = rad * 0.3;
         ctx.beginPath();
         ctx.arc(x, y, dotR, 0, Math.PI * 2);
-        ctx.fillStyle = ownerFn && ownerFn(v) === bot ? colors.whiteDot : colors.blackDot;
+        ctx.fillStyle = isWhitePiece ? colors.whiteDot : colors.blackDot;
         ctx.fill();
         ctx.restore();
       }

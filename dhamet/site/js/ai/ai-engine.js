@@ -203,6 +203,11 @@
       forcedEnabled: !!src.forcedEnabled,
       forcedPly: Math.max(0, Math.min(10, Number(src.forcedPly || 0) | 0)),
       openingStarter: Number(src.openingStarter) === TOP ? TOP : Number(src.openingStarter) === BOT ? BOT : null,
+      openingExchangeFourthChoice: Number(src.openingExchangeFourthChoice) === 0 || Number(src.openingExchangeFourthChoice) === 1
+        ? Number(src.openingExchangeFourthChoice)
+        : src.opening && (Number(src.opening.exchangeFourthChoice) === 0 || Number(src.opening.exchangeFourthChoice) === 1)
+          ? Number(src.opening.exchangeFourthChoice)
+          : null,
       moveCount: Math.max(0, Number(src.moveCount || 0) | 0),
     };
     return attachHashes(activateStartOfTurnPromotion(pos));
@@ -301,7 +306,7 @@
 
   function forcedOpeningMove(pos) {
     if (!pos.forcedEnabled || pos.forcedPly >= 10) return null;
-    const expected = R.forcedOpeningExpected(openingStarter(pos), pos.forcedPly);
+    const expected = R.forcedOpeningExpected(openingStarter(pos), pos.forcedPly, pos.openingExchangeFourthChoice);
     if (!expected || expected.mover !== pos.side) return null;
     const applied = R.compact.applyMove(pos.board, { from: expected.from, path: expected.path }, pos.side);
     return applied && applied.ok ? canonicalMove(applied) : null;
@@ -328,6 +333,18 @@
     const applied = R.compact.applyMove(pos.board, move, pos.side);
     if (!applied || !applied.ok) throw new Error(applied && applied.error ? applied.error : 'computer/illegal-generated-move');
     const forcedPly = pos.forcedEnabled && pos.forcedPly < 10 ? Math.min(10, pos.forcedPly + 1) : pos.forcedPly;
+    let openingExchangeFourthChoice = pos.openingExchangeFourthChoice;
+    if (pos.forcedEnabled && pos.forcedPly === 3 && R && typeof R.forcedOpeningExpectedOptions === "function") {
+      const options = R.forcedOpeningExpectedOptions({
+        forcedEnabled: true,
+        forcedPly: 3,
+        opening: { starter: openingStarter(pos) },
+        openingStarter: openingStarter(pos),
+        player: pos.side,
+      });
+      const matched = options.find((option) => Number(option.from) === Number(move.from) && R.samePath(option.path || [], move.path || []));
+      if (matched && (matched.exchangeChoice === 0 || matched.exchangeChoice === 1)) openingExchangeFourthChoice = matched.exchangeChoice;
+    }
     const pending = (Array.isArray(pos.deferredPromotions) ? pos.deferredPromotions : [])
       .filter((dp) => dp.side !== pos.side)
       .map((dp) => ({ ...dp }));
@@ -339,6 +356,7 @@
       forcedEnabled: pos.forcedEnabled,
       forcedPly,
       openingStarter: openingStarter(pos),
+      openingExchangeFourthChoice,
       moveCount: pos.moveCount + 1,
     });
 
@@ -2161,6 +2179,7 @@
         forcedEnabled: !!Game.forcedEnabled,
         forcedPly: Number(Game.forcedPly || 0) | 0,
         openingStarter: starter,
+        openingExchangeFourthChoice: Game.forcedOpeningExchangeChoice,
         moveCount: Number(Game.moveCount || 0) | 0,
         settings: Game.settings,
       };

@@ -83,19 +83,23 @@
   }
 
   function validateForcedOpening(startSnapshot, move, mover) {
-    const forced = Rules.forcedOpeningPath(startSnapshot);
-    if (!forced) return { ok: true, forced: null };
-    const starter = Rules.openingStarterSide(startSnapshot);
-    const expected = Rules.forcedOpeningExpected(starter, Number(startSnapshot.forcedPly || 0));
-    if (!expected || Number(expected.mover) !== Number(mover)) {
-      return { ok: false, error: 'game/forced-opening-turn-mismatch', expected };
+    const options = Rules.forcedOpeningExpectedOptions(startSnapshot);
+    if (!options.length) return { ok: true, forced: null, expected: null };
+    const expectedMover = options[0] && options[0].mover;
+    if (Number(expectedMover) !== Number(mover)) {
+      return { ok: false, error: 'game/forced-opening-turn-mismatch', expected: options[0] || null };
     }
-    const expectedFrom = forced[0];
-    const expectedPath = forced.slice(1);
-    if (Number(move.from) !== expectedFrom || !Rules.samePath(move.path || [], expectedPath)) {
-      return { ok: false, error: 'game/forced-opening-mismatch', expected: { from: expectedFrom, path: expectedPath, mover: expected.mover } };
+    const matched = options.find((option) =>
+      Number(move.from) === Number(option.from) && Rules.samePath(move.path || [], option.path || [])
+    );
+    if (!matched) {
+      return {
+        ok: false,
+        error: 'game/forced-opening-mismatch',
+        expected: options.map((option) => ({ from: option.from, path: option.path.slice(), mover: option.mover })),
+      };
     }
-    return { ok: true, forced, expected };
+    return { ok: true, forced: matched.fullPath.slice(), expected: matched, exchangeChoice: matched.exchangeChoice };
   }
 
   function validateJumps(move, applied) {
@@ -106,10 +110,18 @@
     return valid ? { ok: true } : { ok: false, error: 'game/jumps-mismatch', expected: exp, got };
   }
 
-  function buildNextSnapshot(startSnapshot, applied, nextTurn, forcedMatched) {
+  function buildNextSnapshot(startSnapshot, applied, nextTurn, forcedCheck) {
     const forcedEnabled = !!startSnapshot.forcedEnabled;
     const prevForcedPly = Math.max(0, Number(startSnapshot.forcedPly || 0) || 0);
+    const forcedMatched = !!(forcedCheck && forcedCheck.forced);
     const nextForcedPly = forcedMatched ? Math.min(10, prevForcedPly + 1) : prevForcedPly;
+    const opening = Object.assign({}, startSnapshot.opening && typeof startSnapshot.opening === 'object' ? startSnapshot.opening : {}, {
+      starter: Rules.openingStarterSide(startSnapshot),
+    });
+    if (prevForcedPly === 3 && (forcedCheck.exchangeChoice === 0 || forcedCheck.exchangeChoice === 1)) {
+      opening.exchangeFourthChoice = forcedCheck.exchangeChoice;
+    }
+    if (prevForcedPly === 5 && forcedMatched) opening.exchangeCompleted = true;
     return State.normalizeSnapshot(Object.assign({}, startSnapshot, {
       board: applied.board,
       player: nextTurn,
@@ -123,12 +135,15 @@
       forcedEnabled,
       forcedPly: nextForcedPly,
       openingPly: nextForcedPly,
+      opening,
+      openingStarter: opening.starter,
+      openingExchangeFourthChoice: opening.exchangeFourthChoice,
       soufla: null,
     }), { defaultPlayer: nextTurn });
   }
 
-  function createOfficialState(startSnapshot, applied, nextTurn, forcedMatched, carriedPromotions) {
-    let snap = buildNextSnapshot(startSnapshot, applied, nextTurn, forcedMatched);
+  function createOfficialState(startSnapshot, applied, nextTurn, forcedCheck, carriedPromotions) {
+    let snap = buildNextSnapshot(startSnapshot, applied, nextTurn, forcedCheck);
     if (!snap) return null;
     const pending = State.normalizeDeferredPromotions(carriedPromotions);
     if (applied.promotionPending) pending.push(clone(applied.promotionPending));
@@ -703,7 +718,7 @@
     if (!jumpCheck.ok) return jumpCheck;
 
     const nextTurn = Rules.opponent(mover);
-    const statePayload = createOfficialState(startSnapshot, applied, nextTurn, !!forcedCheck.forced, promotionStart.deferredPromotions);
+    const statePayload = createOfficialState(startSnapshot, applied, nextTurn, forcedCheck, promotionStart.deferredPromotions);
     if (!statePayload) return { ok: false, error: 'authority/state-build-failed' };
 
     const mi = Number(record.moveIndex || 0) + 1;

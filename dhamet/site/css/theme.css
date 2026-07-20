@@ -2820,3 +2820,78 @@ html[dir="ltr"] body.z-mobile-on[data-mobile-orientation="portrait"][data-mobile
 html[dir="ltr"] body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="game"] #btnSoufla .z-soufla-label {
   font-size: 14px !important;
 }
+
+/* ========================================================================== 
+   2.13.16 — DOWNWARD MENUS, MODE TITLES, PIECE CONTRAST, ORIENTATION CONTROL
+   ========================================================================== */
+.z-select-trigger-arrow,
+.z-select-dropdown.is-open .z-select-trigger-arrow {
+  width: 10px;
+  height: 10px;
+  border-inline-end: 2.5px solid currentColor;
+  border-block-end: 2.5px solid currentColor;
+  transform: rotate(45deg) translate(-1px, -1px) !important;
+  transform-origin: center;
+  opacity: .94;
+}
+
+.z-mode-card h2 {
+  font-size: clamp(1.28rem, 2.1vw, 1.62rem) !important;
+  line-height: 1.3 !important;
+  font-weight: 950 !important;
+  margin-block: 0 7px !important;
+}
+.z-mode-card p {
+  font-size: clamp(.94rem, 1.45vw, 1.06rem) !important;
+  line-height: 1.65 !important;
+}
+
+/* Strong, opposing outlines keep the flat pieces separate from every board line. */
+:root:not(.dark) {
+  --piece-white-edge: rgb(var(--rgb-primary-900));
+  --piece-white-edge-soft: rgb(var(--rgb-light-primary-600));
+  --piece-black-edge: rgb(var(--rgb-white));
+  --piece-black-edge-soft: rgb(var(--rgb-secondary-500));
+}
+html.dark {
+  --piece-white-edge: rgb(var(--rgb-primary-900));
+  --piece-white-edge-soft: rgb(var(--rgb-secondary-300));
+  --piece-black-edge: rgb(var(--rgb-white));
+  --piece-black-edge-soft: rgb(var(--rgb-secondary-300));
+}
+
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-orient,
+body.z-mobile-on[data-mobile-orientation="portrait"][data-mobile-page="game"] .z-mobile-orient,
+body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="game"] .z-mobile-orient {
+  width: 58px !important;
+  height: 50px !important;
+  color: rgb(var(--rgb-white)) !important;
+  background: linear-gradient(145deg, rgb(var(--rgb-light-primary-800)) 0%, rgb(var(--rgb-light-primary-600)) 48%, rgb(var(--rgb-secondary-500)) 100%) !important;
+  border: 2px solid rgb(var(--rgb-white) / .82) !important;
+  border-bottom: 0 !important;
+  border-radius: 18px 18px 0 0 !important;
+  box-shadow: 0 -8px 24px rgb(var(--rgb-black) / .30), inset 0 1px 0 rgb(var(--rgb-white) / .34) !important;
+  opacity: 1 !important;
+}
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-orient .z-mobile-orient-ico {
+  width: 31px !important;
+  height: 31px !important;
+  background-color: rgb(var(--rgb-white)) !important;
+  filter: drop-shadow(0 2px 2px rgb(var(--rgb-black) / .34));
+}
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-orient:active {
+  transform: translateY(1px) scale(.98);
+}
+
+body.z-mobile-on[data-mobile-orientation="portrait"][data-mobile-page="game"] #btnSoufla .z-soufla-label {
+  font-size: 20px !important;
+}
+body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="game"] #btnSoufla .z-soufla-label {
+  font-size: 18px !important;
+}
+html[dir="ltr"] body.z-mobile-on[data-mobile-orientation="portrait"][data-mobile-page="game"] #btnSoufla .z-soufla-label {
+  font-size: 18px !important;
+}
+html[dir="ltr"] body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="game"] #btnSoufla .z-soufla-label {
+  font-size: 16px !important;
+}

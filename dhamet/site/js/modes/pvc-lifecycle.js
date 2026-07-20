@@ -61,6 +61,7 @@
       forcedEnabled: true,
       forcedPly: 0,
       forcedSeq: forcedSeqForStarter(player),
+      forcedOpeningExchangeChoice: null,
       history: [],
     };
   }
@@ -92,6 +93,7 @@
     game.forcedEnabled = state.forcedEnabled;
     game.forcedPly = state.forcedPly;
     game.forcedSeq = state.forcedSeq;
+    game.forcedOpeningExchangeChoice = state.forcedOpeningExchangeChoice;
     game.history = [];
     return true;
   }

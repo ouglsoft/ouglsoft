@@ -136,6 +136,7 @@ const Game = {
   forcedEnabled: true,
   forcedPly: 0,
   forcedSeq: null,
+  forcedOpeningExchangeChoice: null,
 
   awaitingPenalty: false,
   _souflaApplying: false,
@@ -273,29 +274,79 @@ function isForcedOpeningActive() {
   return !!(Game.forcedEnabled && Game.forcedPly < 10);
 }
 
-function getForcedOpeningInfo(ply = Game.forcedPly) {
-  if (!Game.forcedEnabled || ply < 0 || ply >= 10) return null;
+function forcedOpeningRuntimeSnapshot(ply = Game.forcedPly) {
   const seq = Game.forcedSeq || forcedOpeningSeqForStarterSide(Game.player);
-  const step = seq && seq[ply];
-  if (!step || step.length < 2) return null;
-  const path = step.map(([r, c]) => rcToIdx(r, c));
   const base = forcedOpeningBaseSide(seq);
+  const opening = { starter: base };
+  if (Game.forcedOpeningExchangeChoice === 0 || Game.forcedOpeningExchangeChoice === 1) {
+    opening.exchangeFourthChoice = Game.forcedOpeningExchangeChoice;
+  }
   return {
-    seq,
-    step,
-    path,
-    from: path[0],
-    toFirst: path[1],
-    toFinal: path[path.length - 1],
-    isChain: path.length > 2,
-    base,
-    mover: ply % 2 === 0 ? base : -base,
-    ply,
+    forcedEnabled: !!Game.forcedEnabled,
+    forcedPly: Math.max(0, Number(ply) || 0),
+    openingPly: Math.max(0, Number(ply) || 0),
+    opening,
+    openingStarter: base,
+    player: Math.max(0, Number(ply) || 0) % 2 === 0 ? base : -base,
   };
 }
 
-function getForcedOpeningExpectedAction() {
-  const info = getForcedOpeningInfo();
+function getForcedOpeningInfos(ply = Game.forcedPly) {
+  if (!Game.forcedEnabled || ply < 0 || ply >= 10) return [];
+  const seq = Game.forcedSeq || forcedOpeningSeqForStarterSide(Game.player);
+  const base = forcedOpeningBaseSide(seq);
+  let expected = [];
+  try {
+    if (DhametRulesShared && typeof DhametRulesShared.forcedOpeningExpectedOptions === "function") {
+      expected = DhametRulesShared.forcedOpeningExpectedOptions(forcedOpeningRuntimeSnapshot(ply));
+    }
+  } catch (_) { expected = []; }
+  if (!expected.length) {
+    const step = seq && seq[ply];
+    if (step) {
+      const path = step.map(([r, c]) => rcToIdx(r, c));
+      expected = [{ fullPath: path, exchangeChoice: null }];
+    }
+  }
+  return expected.map((item, optionIndex) => {
+    const path = Array.isArray(item.fullPath) ? item.fullPath.slice() : [item.from].concat(item.path || []);
+    const step = path.map((idx) => idxToRC(idx));
+    return {
+      seq,
+      step,
+      path,
+      from: path[0],
+      toFirst: path[1],
+      toFinal: path[path.length - 1],
+      isChain: path.length > 2,
+      base,
+      mover: ply % 2 === 0 ? base : -base,
+      ply,
+      optionIndex,
+      exchangeChoice: item.exchangeChoice === 0 || item.exchangeChoice === 1 ? item.exchangeChoice : null,
+    };
+  }).filter((info) => info.path.length >= 2);
+}
+
+function getForcedOpeningInfo(ply = Game.forcedPly, preferredFrom = null) {
+  const infos = getForcedOpeningInfos(ply);
+  if (!infos.length) return null;
+  if (preferredFrom != null) {
+    const matched = infos.find((info) => Number(info.from) === Number(preferredFrom));
+    if (matched) return matched;
+  }
+  return infos[0];
+}
+
+function rememberForcedOpeningExchange(info) {
+  if (!info || info.ply !== 3) return;
+  if (info.exchangeChoice === 0 || info.exchangeChoice === 1) {
+    Game.forcedOpeningExchangeChoice = info.exchangeChoice;
+  }
+}
+
+function getForcedOpeningExpectedAction(preferredFrom = null) {
+  const info = getForcedOpeningInfo(Game.forcedPly, preferredFrom);
   if (!info) return null;
 
   if (
@@ -382,6 +433,7 @@ function applyForcedOpeningInfo(info) {
 function finishForcedOpeningAppliedTurn(mover, info) {
   Visual.setLastMovePath(Game.lastMoveFrom, Game.lastMovePath);
   logForcedOpeningTurn(mover, info);
+  rememberForcedOpeningExchange(info);
   completeForcedOpeningPly();
 
   switchPlayer();
@@ -435,6 +487,7 @@ function setupInitialBoard() {
     Game.forcedEnabled = true;
     Game.forcedPly = 0;
     Game.forcedSeq = forcedOpeningSeqForStarterSide(Game.player);
+    Game.forcedOpeningExchangeChoice = null;
     Game.history = [];
   }
 
@@ -961,8 +1014,14 @@ function snapshotState(options) {
     forcedEnabled: Game.forcedEnabled,
     forcedPly: Game.forcedPly,
     openingPly: Game.forcedPly,
-    opening: { starter: forcedOpeningBaseSide(Game.forcedSeq) },
+    opening: {
+      starter: forcedOpeningBaseSide(Game.forcedSeq),
+      ...(Game.forcedOpeningExchangeChoice === 0 || Game.forcedOpeningExchangeChoice === 1
+        ? { exchangeFourthChoice: Game.forcedOpeningExchangeChoice }
+        : {}),
+    },
     openingStarter: forcedOpeningBaseSide(Game.forcedSeq),
+    openingExchangeFourthChoice: Game.forcedOpeningExchangeChoice,
     awaitingPenalty: !!Game.awaitingPenalty,
     souflaPending: serializeSouflaPending(Game.souflaPending),
     availableSouflaForHuman: serializeSouflaPending(Game.availableSouflaForHuman),
@@ -994,8 +1053,14 @@ function snapshotState(options) {
           forcedEnabled: !!ctx.snapshot.forcedEnabled,
           forcedPly: Number(ctx.snapshot.forcedPly != null ? ctx.snapshot.forcedPly : ctx.snapshot.openingPly) || 0,
           openingPly: Number(ctx.snapshot.openingPly != null ? ctx.snapshot.openingPly : ctx.snapshot.forcedPly) || 0,
-          opening: { starter: forcedOpeningStarterFromSnapshot(ctx.snapshot) },
+          opening: {
+            starter: forcedOpeningStarterFromSnapshot(ctx.snapshot),
+            ...(ctx.snapshot.opening && (ctx.snapshot.opening.exchangeFourthChoice === 0 || ctx.snapshot.opening.exchangeFourthChoice === 1)
+              ? { exchangeFourthChoice: ctx.snapshot.opening.exchangeFourthChoice }
+              : {}),
+          },
           openingStarter: forcedOpeningStarterFromSnapshot(ctx.snapshot),
+          openingExchangeFourthChoice: ctx.snapshot.opening && ctx.snapshot.opening.exchangeFourthChoice,
         } : null,
         longestByPiece: ctx.longestByPiece && typeof ctx.longestByPiece.forEach === "function"
           ? Array.from(ctx.longestByPiece.entries())
@@ -1058,6 +1123,10 @@ function restoreSnapshot(snap, opts) {
   if (typeof snap.forcedPly === "number") Game.forcedPly = snap.forcedPly;
   else if (typeof snap.openingPly === "number") Game.forcedPly = snap.openingPly;
   Game.forcedSeq = forcedOpeningSeqForStarterSide(forcedOpeningStarterFromSnapshot(snap));
+  const openingChoice = snap && snap.opening && snap.opening.exchangeFourthChoice != null
+    ? Number(snap.opening.exchangeFourthChoice)
+    : Number(snap && snap.openingExchangeFourthChoice);
+  Game.forcedOpeningExchangeChoice = openingChoice === 0 || openingChoice === 1 ? openingChoice : null;
   Game.awaitingPenalty = !!snap.awaitingPenalty;
   Game._souflaApplying = false;
   Game.souflaPending = restoreSouflaPending(snap.souflaPending);
@@ -1090,8 +1159,14 @@ function restoreSnapshot(snap, opts) {
           forcedEnabled: !!tc.snapshot.forcedEnabled,
           forcedPly: Number(tc.snapshot.forcedPly != null ? tc.snapshot.forcedPly : tc.snapshot.openingPly) || 0,
           openingPly: Number(tc.snapshot.openingPly != null ? tc.snapshot.openingPly : tc.snapshot.forcedPly) || 0,
-          opening: { starter: forcedOpeningStarterFromSnapshot(tc.snapshot) },
+          opening: {
+            starter: forcedOpeningStarterFromSnapshot(tc.snapshot),
+            ...(tc.snapshot.opening && (tc.snapshot.opening.exchangeFourthChoice === 0 || tc.snapshot.opening.exchangeFourthChoice === 1)
+              ? { exchangeFourthChoice: tc.snapshot.opening.exchangeFourthChoice }
+              : {}),
+          },
           openingStarter: forcedOpeningStarterFromSnapshot(tc.snapshot),
+          openingExchangeFourthChoice: tc.snapshot.opening && tc.snapshot.opening.exchangeFourthChoice,
         } : snapshotState({ includeTurnCtx: false }),
       };
     }
