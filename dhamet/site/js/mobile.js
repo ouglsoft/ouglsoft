@@ -1390,6 +1390,23 @@ function refreshMobileText() {
     } catch (_) {}
   }
 
+  async function syncGameFullscreenForOrientation(mobile, orientation) {
+    if (!mobile || pageType() !== 'game') return;
+    try {
+      if (orientation === 'landscape') {
+        if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
+          await document.documentElement.requestFullscreen({ navigationUI: 'hide' });
+        }
+        return;
+      }
+      if (document.fullscreenElement && document.exitFullscreen) {
+        await document.exitFullscreen();
+      }
+    } catch (error) {
+      reportOrientationFailure(error);
+    }
+  }
+
   /* Mobile state lifecycle */
 
   function applyState() {
@@ -1404,6 +1421,7 @@ function refreshMobileText() {
     document.body.setAttribute('data-mobile-page', pageType());
     document.body.setAttribute('data-mobile-orientation', orientation);
     document.body.classList.add('z-mobile-layout-ready');
+    void syncGameFullscreenForOrientation(mobile, orientation);
 
     if (!mobile) {
       restoreModeHead();

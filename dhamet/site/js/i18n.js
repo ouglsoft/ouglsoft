@@ -352,8 +352,8 @@
       "turnCaptureFmt": "${side}: أسر ${from}-${to} (${n})."
     },
     "mode": {
-      "subtitle": "اختر اللعب ضد الحاسوب أو عبر الإنترنت لمواجهة لاعبين أو مشاهدة المباريات مباشرة.",
-      "pvcDesc": "العب ضد الحاسوب عبر مستويات واضحة للصعوبة.",
+      "subtitle": "اختر الطريقة التي تفضّل أن تلعب بها: مواجهة فردية مع الحاسوب أو مباراة مباشرة مع لاعب آخر.",
+      "pvcDesc": "ابدأ مباراة فردية في مواجهة محرك لعب ذكي، واختر مستوى الصعوبة المناسب لك.",
       "title": "اختر نمط اللعب",
       "pvpTitle": "اللعب عبر الإنترنت",
       "backToAccount": "العودة إلى الحساب",
@@ -369,7 +369,7 @@
       "loadingRooms": "جاري تحميل قائمة الغرف المباشرة...",
       "loadFailed": "تعذر تحميل اللوبي مؤقتًا. ستتم إعادة المحاولة تلقائيًا، ويمكنك الضغط على زر «تحديث» للمحاولة الآن.",
       "rooms": "الغرف",
-      "subtitle": "اختر غرفة للمشاهدة أو دعوة لاعب لبدء مباراة.",
+      "subtitle": "شاهد المباريات الجارية أو اختر لاعبًا متصلًا وادعه إلى مباراة مباشرة.",
       "title": "قائمة الغرف واللاعبين المتصلين",
       "inviteDisabled": "لا يمكن دعوته الآن",
       "invitesDisabled": "معطل الدعوات",
@@ -963,7 +963,7 @@
     },
     "mode": {
       "subtitle": "Choose to play vs the computer, or online to face other players or watch matches live.",
-      "pvcDesc": "Play against the computer with clear difficulty levels.",
+      "pvcDesc": "Start a solo match against an intelligent game engine and choose the difficulty that suits you.",
       "title": "Choose game mode",
       "pvpTitle": "Play Online",
       "backToAccount": "Back to account",

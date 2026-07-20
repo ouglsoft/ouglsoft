@@ -1,17 +1,107 @@
 /* ========================================================================== STYLE.CSS ========================================================================== */
 /* ========================================================================== THEME TOKENS & GLOBAL FOUNDATIONS ========================================================================== */
-
 :root {
+  --primary-green: rgb(var(--rgb-success-600));
+  --primary-gold: rgb(var(--rgb-gold-600));
+  --primary-red: rgb(var(--rgb-danger-500));
+  --sand-beige: rgb(var(--rgb-primary-200));
+  --desert-orange: rgb(var(--rgb-primary-500));
+  --desert-brown: rgb(var(--rgb-primary-500));
+  --sky-blue: rgb(var(--rgb-secondary-400));
+  --dark-blue: rgb(var(--rgb-primary-900));
+  --light-sand: rgb(var(--rgb-primary-200));
+  --bg: rgb(var(--rgb-primary-200));
+  --bg-soft: rgb(var(--rgb-primary-200));
+  --panel: rgb(var(--rgb-white) / .92);
+  --panel-weak: rgb(var(--rgb-primary-200));
+  --panel-strong: rgb(var(--rgb-white));
+  --text: rgb(var(--rgb-primary-900));
+  --text-strong: rgb(var(--rgb-primary-900));
+  --muted: rgb(var(--rgb-primary-500));
+  --accent: rgb(var(--rgb-primary-500));
+  --accent-2: rgb(var(--rgb-secondary-500));
+  --accent-soft: rgb(var(--rgb-primary-500) / .12);
+  --danger: rgb(var(--rgb-danger-500));
+  --warn: rgb(var(--rgb-gold-600));
+  --ok: rgb(var(--rgb-success-600));
+  --grid: rgb(var(--rgb-primary-200));
+  --diag: rgb(var(--rgb-primary-700));
+  --border: rgb(var(--rgb-primary-200));
+  --border-strong: rgb(var(--rgb-primary-300));
+  --arrow-green: rgb(var(--rgb-success-600));
+  --arrow-yellow: rgb(var(--rgb-gold-500));
+  --arrow-red: rgb(var(--rgb-danger-400));
+  --shadow-sm: 0 10px 24px rgb(var(--rgb-primary-900) / .06);
+  --shadow: 0 18px 44px rgb(var(--rgb-primary-900) / .08);
+  --shadow-lg: 0 24px 60px rgb(var(--rgb-primary-900) / .12);
+  --radius: 18px;
+  --radius-sm: 14px;
   --gap: 12px;
   --font: "Calibri", "Carlito", "Segoe UI", Tahoma, Arial, sans-serif;
   --font-arabic: "Calibri", "Carlito", "Segoe UI", Tahoma, Arial, sans-serif;
+  --btn-start: rgb(var(--rgb-primary-500));
+  --btn-end: rgb(var(--rgb-secondary-500));
+  --btn-text: rgb(var(--rgb-primary-200));
+  --btn-border: rgb(var(--rgb-white) / .18);
+  --btn-shadow: 0 14px 28px rgb(var(--rgb-primary-500) / .22);
   --fs-title: 22px;
   --fs-body: 16px;
   --fs-footer: 12px;
+  --board-grid: rgb(var(--rgb-primary-900));
+  --board-diag: rgb(var(--rgb-primary-900));
+  --board-bg-start: rgb(var(--rgb-secondary-100));
+  --board-bg-end: rgb(var(--rgb-primary-200));
+  --board-depth-shadow: rgb(var(--rgb-primary-900) / .18);
+  --surface-elev-1: rgb(var(--rgb-white) / .78);
+  --surface-elev-2: rgb(var(--rgb-white) / .92);
+  --surface-stroke: rgb(var(--rgb-primary-400) / .24);
+  --surface-stroke-strong: rgb(var(--rgb-primary-500) / .34);
   --z-modal-backdrop: 2147483646;
   --z-modal: 2147483647;
   --z-game-drawer-backdrop: 2147483644;
   --z-game-drawer: 2147483645;
+  --icon-dark-bg: rgb(var(--rgb-white));
+}
+
+:root.dark {
+  --bg: rgb(var(--rgb-primary-900));
+  --bg-soft: rgb(var(--rgb-primary-900));
+  --panel: rgb(var(--rgb-primary-900) / .92);
+  --panel-weak: rgb(var(--rgb-primary-900));
+  --panel-strong: rgb(var(--rgb-primary-900));
+  --text: rgb(var(--rgb-primary-200));
+  --text-strong: rgb(var(--rgb-primary-200));
+  --muted: rgb(var(--rgb-primary-400));
+  --accent: rgb(var(--rgb-primary-400));
+  --accent-2: rgb(var(--rgb-secondary-400));
+  --accent-soft: rgb(var(--rgb-primary-400) / .18);
+  --danger: rgb(var(--rgb-danger-400));
+  --warn: rgb(var(--rgb-gold-500));
+  --ok: rgb(var(--rgb-success-500));
+  --grid: rgb(var(--rgb-primary-800));
+  --diag: rgb(var(--rgb-primary-200));
+  --border: rgb(var(--rgb-primary-800));
+  --border-strong: rgb(var(--rgb-primary-700));
+  --arrow-green: rgb(var(--rgb-success-500));
+  --arrow-yellow: rgb(var(--rgb-gold-500));
+  --arrow-red: rgb(var(--rgb-danger-400));
+  --shadow-sm: 0 14px 28px rgb(var(--rgb-black) / .28);
+  --shadow: 0 24px 58px rgb(var(--rgb-black) / .42);
+  --shadow-lg: 0 32px 72px rgb(var(--rgb-black) / .52);
+  --btn-start: rgb(var(--rgb-primary-400));
+  --btn-end: rgb(var(--rgb-secondary-600));
+  --btn-text: rgb(var(--rgb-primary-200));
+  --btn-border: rgb(var(--rgb-primary-400) / .14);
+  --btn-shadow: 0 16px 34px rgb(var(--rgb-primary-900) / .48);
+  --board-grid: rgb(var(--rgb-primary-300));
+  --board-diag: rgb(var(--rgb-primary-200));
+  --board-bg-start: rgb(var(--rgb-primary-900));
+  --board-bg-end: rgb(var(--rgb-primary-900));
+  --board-depth-shadow: rgb(var(--rgb-black) / .42);
+  --surface-elev-1: rgb(var(--rgb-primary-900) / .82);
+  --surface-elev-2: rgb(var(--rgb-primary-900) / .94);
+  --surface-stroke: rgb(var(--rgb-primary-400) / .18);
+  --surface-stroke-strong: rgb(var(--rgb-primary-400) / .28);
 }
 
 html {
@@ -48,6 +138,8 @@ body::before {
   background-repeat: no-repeat;
   pointer-events: none;
   z-index: -1;
+  background-image: radial-gradient(circle at 18% 12%, rgb(var(--rgb-white) / .92), rgb(var(--rgb-white) / 0) 26%), radial-gradient(circle at 84% 16%, rgb(var(--rgb-secondary-400) / .12), rgb(var(--rgb-secondary-400) / 0) 24%), radial-gradient(circle at 50% 100%, rgb(var(--rgb-primary-500) / .08), rgb(var(--rgb-primary-500) / 0) 34%), url("../assets/icons/icon.webp");
+  opacity: 0.28;
 }
 
 * {
@@ -2252,3 +2344,12 @@ body.z-game-page:not(.z-mobile-on) .side::-webkit-scrollbar-thumb:hover {
   box-shadow: var(--shadow);
 }
 
+
+/* Prevent desktop-side panels from flashing before mobile layout ownership is known. */
+html.ui-hold body.z-game-page .app {
+  visibility: hidden;
+}
+html.ui-ready body.z-game-page .app,
+html:not(.ui-hold) body.z-game-page .app {
+  visibility: visible;
+}

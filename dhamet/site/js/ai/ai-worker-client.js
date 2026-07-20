@@ -104,7 +104,7 @@
           ? thinkTime + Math.max(0, criticalBoost)
           : 0,
       );
-      const timeoutMs = Math.max(3000, Math.min(60000, effectiveHardTime + 3000));
+      const timeoutMs = Math.max(5000, Math.min(70000, effectiveHardTime + 8000));
       const p = new Promise((resolve, reject) => {
         const timer = setTimeout(() => {
           if (!pending.has(id)) return;

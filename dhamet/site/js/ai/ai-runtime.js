@@ -57,10 +57,15 @@
     try { return await runWorkerOnce(); }
     catch (error) {
       const code = String(error && error.message || '');
-      // Explicit cancellation means the position changed. Retrying here would
-      // start an obsolete second search. A hard timeout likewise must not
-      // silently double the configured maximum thinking time.
-      if (code === 'ai_worker_cancelled' || code === 'ai_worker_timeout') throw error;
+      // Explicit cancellation means the position changed and must remain final.
+      // A worker timeout, however, may be caused by a suspended/backgrounded
+      // worker on mobile. Terminate that worker and use the bounded local
+      // fallback supplied by the engine so the match can continue.
+      if (code === 'ai_worker_cancelled') throw error;
+      if (code === 'ai_worker_timeout') {
+        cancelWorker(bridge);
+        return await fallbackFn.apply(null, params);
+      }
       cancelWorker(bridge);
       try { return await runWorkerOnce(); }
       catch (retryError) {

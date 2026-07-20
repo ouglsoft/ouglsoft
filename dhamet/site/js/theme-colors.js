@@ -1,9 +1,10 @@
 (function (global) {
   "use strict";
 
-  var EMERGENCY_FALLBACK = "#5b2be0";
-
-
+  /*
+   * JavaScript has no independent palette. It reads the same semantic CSS
+   * tokens used by every screen, including Canvas and generated SVG pieces.
+   */
   var TOKEN_MAP = Object.freeze({
     primary: "--color-primary",
     secondary: "--color-secondary",
@@ -26,13 +27,7 @@
       var value = global.getComputedStyle(root).getPropertyValue(token).trim();
       if (value) return value;
     }
-    return fallback || EMERGENCY_FALLBACK;
-  }
-
-  function snapshot() {
-    var result = {};
-    Object.keys(TOKEN_MAP).forEach(function (key) { result[key] = read(key); });
-    return Object.freeze(result);
+    return fallback || "";
   }
 
   function get(token) {
@@ -46,6 +41,14 @@
       return alpha == null ? "rgb(" + value + ")" : "rgb(" + value + " / " + alpha + ")";
     }
     return value;
+  }
+
+  function snapshot() {
+    var result = {};
+    Object.keys(TOKEN_MAP).forEach(function (key) {
+      result[key] = read(key);
+    });
+    return Object.freeze(result);
   }
 
   var api = Object.freeze({ read: read, get: get, channels: channels, snapshot: snapshot });

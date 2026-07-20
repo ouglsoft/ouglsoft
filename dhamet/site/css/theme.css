@@ -1904,3 +1904,129 @@ html.dark .dialog {
 }
 .modal-header { background: var(--gradient-modal-header) !important; }
 .modal-body { color: var(--color-text) !important; }
+
+/* ========================================================================== 
+   2.13.4 REFINEMENTS — LANGUAGE, COPY, BOARD, TIMER, DARK ICONS
+   ========================================================================== */
+/* Language controls: readable native select and mobile language menu. */
+#authLangSel,
+#langSel,
+#zLangSel,
+.z-auth-lang select,
+.z-topbar select,
+.z-mobile-shell-menu,
+.z-mobile-game-shell-menu {
+  color: rgb(var(--rgb-white)) !important;
+  background: linear-gradient(145deg, rgb(var(--rgb-primary-800)), rgb(var(--rgb-primary-600))) !important;
+  border-color: rgb(var(--rgb-primary-300) / .38) !important;
+}
+#authLangSel option,
+#langSel option,
+#zLangSel option,
+.z-auth-lang select option,
+.z-topbar select option {
+  color: rgb(var(--rgb-white)) !important;
+  background: rgb(var(--rgb-primary-800)) !important;
+}
+.z-mobile-shell-menu [data-lang],
+.z-mobile-game-shell-menu [data-lang] {
+  color: rgb(var(--rgb-white)) !important;
+  background: transparent !important;
+}
+.z-mobile-shell-menu [data-lang].is-active,
+.z-mobile-game-shell-menu [data-lang].is-active {
+  background: rgb(var(--rgb-white) / .15) !important;
+}
+
+/* Stronger page guidance text. */
+.z-mode-sub,
+.z-lobby-subtitle {
+  color: var(--color-text-strong) !important;
+  opacity: .96 !important;
+  font-weight: 700 !important;
+  line-height: 1.65;
+}
+.z-mode-badge { display: none !important; }
+.z-mode-card h2 {
+  color: var(--color-text-strong) !important;
+  font-weight: 900 !important;
+}
+.z-mode-card p {
+  color: var(--color-text) !important;
+  opacity: .96 !important;
+  font-weight: 650 !important;
+}
+html.dark .z-mode-card h2,
+html.dark .z-mode-card p,
+html.dark .z-mode-sub,
+html.dark .z-lobby-subtitle {
+  color: rgb(var(--rgb-white)) !important;
+}
+
+/* Light board: same hue family, slightly brighter only. */
+:root:not(.dark) {
+  --rgb-board-light: 218 229 232;
+  --rgb-board-light-alt: 132 164 181;
+  --game-board-start: rgb(var(--rgb-board-light));
+  --game-board-end: rgb(var(--rgb-board-light-alt));
+}
+
+/* Soufla icon: no white tile, visible glyph in both themes and orientations. */
+body.z-mobile-on[data-mobile-page="game"] #btnSoufla .btn-ico,
+body.z-game-page:not(.z-mobile-on) #btnSoufla .btn-ico {
+  display: block !important;
+  width: 88% !important;
+  height: 88% !important;
+  max-width: none !important;
+  max-height: none !important;
+  margin: auto !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  object-fit: contain !important;
+  filter: brightness(0) invert(1) drop-shadow(0 1px 1px rgb(var(--rgb-black) / .28)) !important;
+  opacity: 1 !important;
+}
+
+/* Active capture timer: explicit red outline and 20% height increase only while live. */
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid .timer-row.is-live {
+  border: 2px solid rgb(var(--rgb-danger-300)) !important;
+  box-shadow: 0 0 0 2px rgb(var(--rgb-danger-500) / .20), 0 10px 24px rgb(var(--rgb-danger-700) / .24) !important;
+}
+body.z-mobile-on[data-mobile-orientation="portrait"][data-mobile-page="game"] .z-mobile-game-controls-grid .timer-row.is-live,
+body.z-mobile-on[data-mobile-orientation="portrait"][data-mobile-page="game"] .z-mobile-game-controls-grid .timer-row.is-live #btnEndKill {
+  height: 38px !important;
+  min-height: 38px !important;
+}
+body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="game"] .z-mobile-game-controls-grid .timer-row.is-live,
+body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="game"] .z-mobile-game-controls-grid .timer-row.is-live #btnEndKill {
+  height: 60px !important;
+  min-height: 60px !important;
+}
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid .timer-row:not(.is-live) {
+  border-color: rgb(var(--rgb-white) / .18) !important;
+}
+
+/* Dark mode icon treatment outside game controls: preserve glyph, remove white discs. */
+html.dark body.z-mobile-on .z-mobile-shell-btn img,
+html.dark body.z-mobile-on .z-mobile-orient img,
+html.dark body.z-mobile-on[data-mobile-page="auth"] .btn-ico,
+html.dark body.z-mobile-on[data-mobile-page="lobby"] .btn-ico,
+html.dark body.z-mobile-on[data-mobile-page="dashboard"] .btn-ico,
+html.dark body:not(.z-game-page) .btn-ico {
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  filter: brightness(0) invert(1) drop-shadow(0 1px 1px rgb(var(--rgb-black) / .30)) !important;
+  opacity: 1 !important;
+}
+html.dark body.z-mobile-on .z-mobile-shell-btn,
+html.dark body.z-mobile-on .z-mobile-orient,
+html.dark body.z-mobile-on[data-mobile-page="auth"] .btn,
+html.dark body.z-mobile-on[data-mobile-page="lobby"] .btn,
+html.dark body.z-mobile-on[data-mobile-page="dashboard"] .btn {
+  overflow: visible;
+}

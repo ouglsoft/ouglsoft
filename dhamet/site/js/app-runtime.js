@@ -59,12 +59,7 @@ function readStoredTheme() {
   if (theme !== "dark" && theme !== "light") {
     try { theme = localStorage.getItem("zamat.theme"); } catch (_) { theme = null; }
   }
-  if (theme === "dark" || theme === "light") return theme;
-  try {
-    return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-  } catch (_) {
-    return "light";
-  }
+  return theme === "dark" ? "dark" : "light";
 }
 
 function isPhoneLike() {

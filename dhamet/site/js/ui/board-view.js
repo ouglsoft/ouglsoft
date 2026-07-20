@@ -530,7 +530,11 @@
     var ownerFn = opts.pieceOwner || global.pieceOwner;
     var kindFn = opts.pieceKind || global.pieceKind;
     var bot = opts.BOT != null ? opts.BOT : global.BOT;
-    var sprite = ensurePieceSprite(opts);
+    // Canvas-native pieces are deterministic across browsers and themes.
+    // The generated SVG sprite remains available for compatibility tests, but
+    // is not used at runtime because some mobile engines briefly decode it as
+    // an empty image after switching to the dimensional board.
+    var sprite = null;
 
     for (var r = 0; r < n; r++) {
       for (var c = 0; c < n; c++) {
