@@ -368,7 +368,7 @@
       "loadingPlayers": "جاري تحميل قائمة اللاعبين المتصلين.....",
       "loadingRooms": "جاري تحميل قائمة الغرف المباشرة...",
       "loadFailed": "تعذر تحميل اللوبي مؤقتًا. ستتم إعادة المحاولة تلقائيًا، ويمكنك الضغط على زر «تحديث» للمحاولة الآن.",
-      "rooms": "الغرف",
+      "rooms": "قائمة الغرف النشطة",
       "subtitle": "شاهد المباريات الجارية أو اختر لاعبًا متصلًا وادعه إلى مباراة مباشرة.",
       "title": "قائمة الغرف واللاعبين المتصلين",
       "inviteDisabled": "لا يمكن دعوته الآن",
@@ -533,7 +533,7 @@
       "waitingAcceptance": "لم يتم قبول الدعوة بعد.",
       "disabledButton": "لا يمكن تنفيذ هذا الإجراء لهذا اللاعب الآن.",
       "playersLoadFail": "تعذر تحميل قائمة اللاعبين المتصلين.",
-      "playersTitle": "اللاعبون المتصلون"
+      "playersTitle": "قائمة اللاعبين المتصلين"
     },
     "stats": {
       "left": "القطع المتبقية",
@@ -978,7 +978,7 @@
       "loadingPlayers": "Loading online players...",
       "loadingRooms": "Loading live rooms...",
       "loadFailed": "The lobby could not be loaded temporarily. It will retry automatically, or press Refresh to try now.",
-      "rooms": "Rooms",
+      "rooms": "Active rooms list",
       "subtitle": "Choose a room to watch, or invite a player to start a match.",
       "title": "Rooms & online players",
       "inviteDisabled": "Can't invite right now",
@@ -1143,7 +1143,7 @@
       "waitingAcceptance": "Invite hasn't been accepted yet.",
       "disabledButton": "This action is not available for this player right now.",
       "playersLoadFail": "Could not load the online players list.",
-      "playersTitle": "Online players"
+      "playersTitle": "Connected players list"
     },
     "stats": {
       "left": "Pieces left",
@@ -1588,7 +1588,7 @@
       "loadingPlayers": "Chargement des joueurs en ligne...",
       "loadingRooms": "Chargement des parties en cours...",
       "loadFailed": "Le lobby est temporairement indisponible. Une nouvelle tentative sera effectuée automatiquement, ou appuyez sur Actualiser pour réessayer maintenant.",
-      "rooms": "Salles",
+      "rooms": "Liste des salles actives",
       "subtitle": "Choisissez une salle à regarder, ou invitez un joueur pour démarrer une partie.",
       "title": "Salles et joueurs en ligne",
       "inviteDisabled": "Invitation impossible pour le moment",
@@ -1753,7 +1753,7 @@
       },
       "disabledButton": "Cette action n’est pas disponible pour ce joueur pour le moment.",
       "playersLoadFail": "Impossible de charger la liste des joueurs en ligne.",
-      "playersTitle": "Joueurs en ligne"
+      "playersTitle": "Liste des joueurs connectés"
     },
     "stats": {
       "left": "Pièces restantes",

@@ -2121,3 +2121,152 @@ canvas#board {
   border-color: var(--game-board-grid) !important;
   box-shadow: inset 0 0 0 1px rgb(var(--rgb-white) / .18), 0 14px 34px rgb(var(--rgb-primary-900) / .20) !important;
 }
+
+/* ========================================================================== 
+   2.13.6 TARGETED FIXES — SOUFLA ICON, LOBBY HEADERS, AUTH DARK, MODE DARK
+   ========================================================================== */
+
+/* Soufla must use the same icon treatment as the other game buttons.
+   No dedicated white plate, no extra background, no enlarged desktop tile. */
+body.z-game-page .soufla-row .btn .btn-ico,
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid .soufla-row .btn .btn-ico {
+  display: block !important;
+  width: 32px;
+  height: 32px;
+  padding: 2px !important;
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  object-fit: contain !important;
+}
+body.z-game-page:not(.z-mobile-on) .soufla-row .btn .btn-ico {
+  width: 22px !important;
+  height: 22px !important;
+  padding: 0 !important;
+}
+body.z-mobile-on[data-mobile-orientation="portrait"][data-mobile-page="game"] .z-mobile-game-controls-grid .soufla-row .btn .btn-ico {
+  width: 36px !important;
+  height: 36px !important;
+  padding: 0 !important;
+}
+body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="game"] .z-mobile-game-controls-grid .soufla-row .btn .btn-ico {
+  width: 28px !important;
+  height: 28px !important;
+  padding: 0 !important;
+}
+body.z-game-page .soufla-row .btn,
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid .soufla-row .btn {
+  overflow: hidden !important;
+}
+html.dark body.z-game-page .soufla-row .btn .btn-ico {
+  filter: brightness(0) invert(1) drop-shadow(0 1px 2px rgb(var(--rgb-black) / .42)) !important;
+}
+
+/* Lobby titles act as real card headers, similar to table heads. */
+.z-lobby-panel {
+  padding-top: 0 !important;
+}
+.z-lobby-h2 {
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  width: calc(100% + 28px);
+  min-height: 52px;
+  margin: -14px -14px 14px !important;
+  padding: 12px 18px !important;
+  border-radius: 24px 24px 16px 16px !important;
+  font-size: 1rem !important;
+  font-weight: 900 !important;
+  letter-spacing: -.01em;
+  text-align: center;
+  box-shadow: inset 0 1px 0 rgb(var(--rgb-white) / .22), 0 8px 18px rgb(var(--rgb-black) / .08) !important;
+}
+.z-lobby-panel:first-child .z-lobby-h2 {
+  background: linear-gradient(135deg, rgb(var(--rgb-light-primary-700)) 0%, rgb(var(--rgb-light-primary-500)) 60%, rgb(var(--rgb-secondary-500)) 100%) !important;
+  color: rgb(var(--rgb-white)) !important;
+}
+.z-lobby-panel:nth-child(2) .z-lobby-h2 {
+  background: linear-gradient(135deg, rgb(var(--rgb-secondary-700)) 0%, rgb(var(--rgb-secondary-500)) 60%, rgb(var(--rgb-light-primary-500)) 100%) !important;
+  color: rgb(var(--rgb-white)) !important;
+}
+html.dark .z-lobby-panel:first-child .z-lobby-h2,
+html.dark .z-lobby-panel:nth-child(2) .z-lobby-h2 {
+  border-bottom: 1px solid rgb(var(--rgb-white) / .12);
+}
+
+/* Auth page in dark mode: keep every entry and footer link readable and on-brand. */
+html.dark .z-auth-page #btnLogin,
+html.dark .z-auth-page #btnRegister,
+html.dark .z-auth-page #btnRecover,
+html.dark .z-auth-page #btnLoginGoogle,
+html.dark body.z-mobile-on[data-mobile-page="auth"] #btnLogin,
+html.dark body.z-mobile-on[data-mobile-page="auth"] #btnRegister,
+html.dark body.z-mobile-on[data-mobile-page="auth"] #btnRecover,
+html.dark body.z-mobile-on[data-mobile-page="auth"] #btnLoginGoogle {
+  background: var(--gradient-primary) !important;
+  color: rgb(var(--rgb-white)) !important;
+  border-color: rgb(var(--rgb-white) / .18) !important;
+  box-shadow: 0 10px 24px rgb(var(--rgb-black) / .24), inset 0 1px 0 rgb(var(--rgb-white) / .16) !important;
+}
+html.dark .z-auth-page #btnGuest,
+html.dark body.z-mobile-on[data-mobile-page="auth"] #btnGuest {
+  background: linear-gradient(145deg, rgb(22 43 58), rgb(29 75 91)) !important;
+  color: rgb(var(--rgb-white)) !important;
+}
+html.dark .z-auth-links a,
+html.dark .z-auth-links button,
+html.dark .z-auth-foot,
+html.dark .z-auth-foot a,
+html.dark body.z-mobile-on[data-mobile-page="auth"] .z-mobile-auth-links a,
+html.dark body.z-mobile-on[data-mobile-page="auth"] .z-mobile-footer-rights,
+html.dark body.z-mobile-on[data-mobile-page="auth"] .z-mobile-footer-rights a,
+html.dark body.z-mobile-on[data-mobile-page="auth"] .z-mobile-footer-nav a {
+  color: rgb(var(--rgb-white)) !important;
+}
+
+/* Dark mode mode-selection icons: keep a visible glyph, not a pale square. */
+html.dark .z-mode-card .z-mode-ico {
+  background: rgb(5 32 45 / .58) !important;
+  border-color: rgb(var(--rgb-secondary-300) / .30) !important;
+}
+html.dark .z-mode-card .z-mode-ico img {
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  filter: brightness(0) invert(1) drop-shadow(0 1px 2px rgb(var(--rgb-black) / .45)) !important;
+  opacity: 1 !important;
+}
+html.dark body.z-mobile-on[data-mobile-page="mode"] .z-mode-card p {
+  color: rgb(var(--rgb-white) / .88) !important;
+}
+
+/* Light board: a little brighter, while lines, diagonals, routes and pieces stay clearer. */
+:root:not(.dark) {
+  --rgb-board-light: 242 247 248;
+  --rgb-board-light-alt: 185 211 219;
+  --rgb-board-grid-light: 18 62 82;
+  --rgb-board-diag-light: 138 71 25;
+  --game-board-start: rgb(var(--rgb-board-light));
+  --game-board-end: rgb(var(--rgb-board-light-alt));
+  --game-board-grid: rgb(var(--rgb-board-grid-light));
+  --game-board-diag: rgb(var(--rgb-board-diag-light));
+  --board-point: rgb(12 88 105);
+  --board-highlight: rgb(var(--rgb-white) / .78);
+  --board-shadow: rgb(15 45 61 / .24);
+  --mark-move: rgb(0 123 122);
+  --mark-move-strong: rgb(0 89 92);
+  --mark-danger: rgb(212 49 61);
+  --mark-danger-strong: rgb(148 20 31);
+  --mark-undo: rgb(174 101 8);
+  --piece-white-edge: rgb(20 73 95);
+  --piece-white-edge-soft: rgb(41 117 141);
+  --piece-white-dot: rgb(20 73 95);
+  --piece-black-light: rgb(48 88 102);
+  --piece-black-mid: rgb(18 53 68);
+  --piece-black-dark: rgb(6 26 38);
+  --piece-black-edge: rgb(58 202 182);
+  --piece-black-edge-soft: rgb(96 226 207);
+  --piece-black-dot: rgb(96 226 207);
+}
