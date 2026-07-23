@@ -648,9 +648,7 @@ body.lightbox-open{
   filter: drop-shadow(0 20px 24px rgba(15, 23, 42, 0.18));
 }
 
-
-.hero-phone-duo .phone-mockup img[src$="/zad-al-muslim/icon.webp"],
-.hero-phone-duo .phone-mockup img[src$="/chinguetti-muezzin/icon.webp"] {
+.phone-mockup.phone-mockup-muezzin img[src$="/chinguetti-muezzin/icon.webp"] {
   object-fit: contain;
   padding: 14%;
   border-radius: 28%;
@@ -719,50 +717,48 @@ body.lightbox-open{
 }
 
 
-/* Homepage product showcase: Dhamet above three vertical app screenshots */
-.hero-product-showcase{
-  min-height:0;
+/* Homepage hero layout: keep the original intro look with Dhamet on top and three app screens below */
+.hero-visual-stack{
+  width:min(100%, 560px);
   display:flex;
   flex-direction:column;
   gap:18px;
-  align-items:stretch;
+  margin-inline:auto;
 }
-.hero-product-showcase>.browser-mockup{
+.hero-visual-stack > .browser-mockup{
+  position:relative;
   width:100%;
+  max-width:560px;
+  margin-inline:auto;
 }
 .hero-phone-trio{
-  position:relative;
   display:grid;
-  grid-template-columns:repeat(3,minmax(0,1fr));
+  grid-template-columns:repeat(3, minmax(0, 1fr));
   gap:14px;
   align-items:start;
-  width:100%;
-  z-index:2;
 }
-.hero-phone-trio .phone-mockup,
-html[dir=rtl] .hero-phone-trio .phone-mockup{
+.hero-phone-trio .hero-phone-card{
   position:relative;
-  inset:auto;
+  right:auto;
+  left:auto;
+  bottom:auto;
   width:100%;
   padding:8px;
-  border-radius:28px;
+  border-radius:30px;
   transform:none;
 }
-.hero-phone-trio .phone-mockup img{
-  display:block;
+.hero-phone-trio .hero-phone-card img{
   width:100%;
-  height:300px;
-  object-fit:contain;
-  border-radius:20px;
-  background:#f4f8f5;
+  height:250px;
+  object-fit:cover;
+  border-radius:22px;
 }
-@media(max-width:980px){
-  .hero-phone-trio .phone-mockup img{height:270px}
+@media (max-width:980px){
+  .hero-phone-trio .hero-phone-card img{height:220px;}
 }
-@media(max-width:640px){
-  .hero-product-showcase{gap:12px}
-  .hero-phone-trio{gap:7px}
-  .hero-phone-trio .phone-mockup,
-  html[dir=rtl] .hero-phone-trio .phone-mockup{padding:5px;border-radius:18px}
-  .hero-phone-trio .phone-mockup img{height:230px;border-radius:14px}
+@media (max-width:640px){
+  .hero-visual-stack{width:min(100%, 460px);}
+  .hero-phone-trio{grid-template-columns:1fr;gap:12px;}
+  .hero-phone-trio .hero-phone-card{padding:6px;border-radius:24px;max-width:220px;margin-inline:auto;}
+  .hero-phone-trio .hero-phone-card img{height:280px;border-radius:18px;}
 }
