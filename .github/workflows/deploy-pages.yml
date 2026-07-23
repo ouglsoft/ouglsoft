@@ -2,46 +2,46 @@ name: Deploy OuglSoft Pages
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
     paths:
       - "site/**"
       - "functions/**"
       - "dhamet/site/**"
       - "dhamet/shared/**"
-      - "deploy/prepare-pages.mjs"
-      - "deploy/deploy-pages.mjs"
+      - "deploy/**"
       - "package.json"
       - "package-lock.json"
-      - ".github/workflows/deploy-pages.yml"
+      - ".github/workflows/deploy-ouglsoft-pages.yml"
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: deploy-ouglsoft-pages-${{ github.ref }}
+  group: ouglsoft-pages-production
   cancel-in-progress: true
 
 jobs:
-  deploy-pages:
-    name: Deploy main site with Dhamet pages
+  deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
-
+    timeout-minutes: 30
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
+      - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
 
-      - name: Install dependencies
-        run: npm ci --no-audit --no-fund
+      - name: Install deployment dependency
+        run: npm ci
 
-      - name: Deploy Pages
+      - name: Prepare and deploy Pages
         run: npm run deploy:pages
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
