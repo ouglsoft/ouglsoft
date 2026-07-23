@@ -43,6 +43,12 @@
 /ar/products/dhamet.html /ar/products/dhamet/ 301
 /fr/products/dhamet /fr/products/dhamet/ 301
 /fr/products/dhamet.html /fr/products/dhamet/ 301
+/products/zad-al-muslim /en/products/zad-al-muslim/ 301
+/products/zad-al-muslim.html /en/products/zad-al-muslim/ 301
+/ar/products/zad-al-muslim /ar/products/zad-al-muslim/ 301
+/ar/products/zad-al-muslim.html /ar/products/zad-al-muslim/ 301
+/fr/products/zad-al-muslim /fr/products/zad-al-muslim/ 301
+/fr/products/zad-al-muslim.html /fr/products/zad-al-muslim/ 301
 /products/chinguetti-muezzin /en/products/chinguetti-muezzin/ 301
 /products/chinguetti-muezzin.html /en/products/chinguetti-muezzin/ 301
 /ar/products/chinguetti-muezzin /ar/products/chinguetti-muezzin/ 301
@@ -79,6 +85,18 @@
 /legal/dhamet/ar/rules.html /ar/legal/dhamet/rules/ 301
 /legal/dhamet/fr/rules /fr/legal/dhamet/rules/ 301
 /legal/dhamet/fr/rules.html /fr/legal/dhamet/rules/ 301
+/legal/zad-al-muslim/privacy-policy /en/legal/zad-al-muslim/privacy-policy/ 301
+/legal/zad-al-muslim/privacy-policy.html /en/legal/zad-al-muslim/privacy-policy/ 301
+/legal/zad-al-muslim/ar/privacy-policy /ar/legal/zad-al-muslim/privacy-policy/ 301
+/legal/zad-al-muslim/ar/privacy-policy.html /ar/legal/zad-al-muslim/privacy-policy/ 301
+/legal/zad-al-muslim/fr/privacy-policy /fr/legal/zad-al-muslim/privacy-policy/ 301
+/legal/zad-al-muslim/fr/privacy-policy.html /fr/legal/zad-al-muslim/privacy-policy/ 301
+/legal/zad-al-muslim/terms-of-use /en/legal/zad-al-muslim/terms-of-use/ 301
+/legal/zad-al-muslim/terms-of-use.html /en/legal/zad-al-muslim/terms-of-use/ 301
+/legal/zad-al-muslim/ar/terms-of-use /ar/legal/zad-al-muslim/terms-of-use/ 301
+/legal/zad-al-muslim/ar/terms-of-use.html /ar/legal/zad-al-muslim/terms-of-use/ 301
+/legal/zad-al-muslim/fr/terms-of-use /fr/legal/zad-al-muslim/terms-of-use/ 301
+/legal/zad-al-muslim/fr/terms-of-use.html /fr/legal/zad-al-muslim/terms-of-use/ 301
 /legal/chinguetti-muezzin/privacy-policy /en/legal/chinguetti-muezzin/privacy-policy/ 301
 /legal/chinguetti-muezzin/privacy-policy.html /en/legal/chinguetti-muezzin/privacy-policy/ 301
 /legal/chinguetti-muezzin/ar/privacy-policy /ar/legal/chinguetti-muezzin/privacy-policy/ 301
@@ -117,4 +135,5 @@
 /legal/ /en/products/ 301
 /download/ougl-budget /download/safe-to-spend 301
 /download/safe-to-spend /assets/downloads/apps/safe-to-spend.apk 302
+/download/zad-al-muslim /assets/downloads/apps/zad-al-muslim.apk 302
 /download/almoathen-shinqiti /assets/downloads/apps/almoathen-shinqiti.apk 302

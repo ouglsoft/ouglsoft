@@ -1,12 +1,20 @@
 {
   "apps": {
+    "zad-al-muslim": {
+      "url": "/assets/downloads/apps/zad-al-muslim.apk",
+      "file": "assets/downloads/apps/zad-al-muslim.apk",
+      "version": "1.1.0",
+      "updated": "2026-07-23",
+      "size": "—",
+      "sha256": ""
+    },
     "almoathen-shinqiti": {
       "url": "/assets/downloads/apps/almoathen-shinqiti.apk",
       "file": "assets/downloads/apps/almoathen-shinqiti.apk",
-      "version": "1.0.0",
-      "updated": "2026-06-29",
-      "size": "14.1 MB",
-      "sha256": "3ef6058882c778c5e209ed11e48240534acd1a21562565d84cab7ec91d910f5f"
+      "version": "2.3.1",
+      "updated": "2026-07-21",
+      "size": "—",
+      "sha256": ""
     },
     "safe-to-spend": {
       "url": "/assets/downloads/apps/safe-to-spend.apk",

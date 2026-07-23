@@ -610,3 +610,108 @@ html[dir=rtl] .hero-phone-duo .phone-mockup-budget{
 body.lightbox-open{
   overflow:hidden;
 }
+.app-icon-showcase {
+  display: grid;
+  min-height: 420px;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 36px;
+  background:
+    radial-gradient(circle at 24% 20%, rgba(16, 185, 129, 0.2), transparent 34%),
+    radial-gradient(circle at 82% 78%, rgba(245, 158, 11, 0.22), transparent 35%),
+    linear-gradient(145deg, rgba(255, 255, 255, 0.92), rgba(236, 253, 245, 0.78));
+  box-shadow: 0 26px 70px rgba(15, 23, 42, 0.13);
+}
+
+.app-icon-showcase img {
+  width: min(78%, 330px);
+  height: auto;
+  border-radius: 28%;
+  filter: drop-shadow(0 24px 26px rgba(15, 23, 42, 0.2));
+}
+
+.device-frame.app-icon-device {
+  display: grid;
+  min-height: 360px;
+  place-items: center;
+  background:
+    radial-gradient(circle at 20% 15%, rgba(16, 185, 129, 0.18), transparent 34%),
+    linear-gradient(160deg, #fffdf7, #ecfdf5);
+}
+
+.device-frame.app-icon-device img {
+  width: min(76%, 310px);
+  height: auto;
+  object-fit: contain;
+  border-radius: 28%;
+  filter: drop-shadow(0 20px 24px rgba(15, 23, 42, 0.18));
+}
+
+.phone-mockup.phone-mockup-muezzin img[src$="/chinguetti-muezzin/icon.webp"] {
+  object-fit: contain;
+  padding: 14%;
+  border-radius: 28%;
+  background: linear-gradient(160deg, #fffdf7, #ecfdf5);
+}
+
+@media (max-width: 760px) {
+  .app-icon-showcase {
+    min-height: 300px;
+  }
+}
+
+/* Zad Al-Muslim product page and six-shot mobile galleries */
+.page-product-zad .product-hero-visual .device-frame {
+  max-width: 240px;
+  max-height: 440px;
+  margin-inline: auto;
+  padding: 10px;
+  border-radius: 34px;
+}
+
+.page-product-zad .product-hero-visual .device-frame img {
+  width: auto;
+  max-height: 420px;
+  border-radius: 26px;
+}
+
+.gallery-grid.folder-zad {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.gallery-grid.folder-zad .gallery-item img {
+  height: 560px;
+  object-fit: contain;
+}
+
+@media (max-width: 980px) {
+  .gallery-grid.folder-zad .gallery-item img {
+    height: 500px;
+  }
+}
+
+@media (max-width: 720px) {
+  .gallery-grid.folder-zad {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .gallery-grid.folder-zad .gallery-item {
+    padding: 7px;
+    border-radius: 18px;
+  }
+
+  .gallery-grid.folder-zad .gallery-item img {
+    height: 260px;
+    max-height: 260px;
+    border-radius: 14px;
+  }
+}
+
+@media (max-width: 420px) {
+  .gallery-grid.folder-zad .gallery-item img {
+    height: 220px;
+    max-height: 220px;
+  }
+}

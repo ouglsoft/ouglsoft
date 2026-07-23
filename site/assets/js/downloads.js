@@ -1,6 +1,7 @@
 (function(){
   const manifestUrl = '/assets/downloads/releases.json';
   const appByHref = {
+    '/assets/downloads/apps/zad-al-muslim.apk': 'zad-al-muslim',
     '/assets/downloads/apps/almoathen-shinqiti.apk': 'almoathen-shinqiti',
     '/assets/downloads/apps/safe-to-spend.apk': 'safe-to-spend'
   };
