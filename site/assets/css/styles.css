@@ -648,7 +648,9 @@ body.lightbox-open{
   filter: drop-shadow(0 20px 24px rgba(15, 23, 42, 0.18));
 }
 
-.phone-mockup.phone-mockup-muezzin img[src$="/chinguetti-muezzin/icon.webp"] {
+
+.hero-phone-duo .phone-mockup img[src$="/zad-al-muslim/icon.webp"],
+.hero-phone-duo .phone-mockup img[src$="/chinguetti-muezzin/icon.webp"] {
   object-fit: contain;
   padding: 14%;
   border-radius: 28%;
