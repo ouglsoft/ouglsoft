@@ -2,43 +2,44 @@ name: Deploy Dhamet Worker
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
     paths:
       - "dhamet/worker/**"
       - "dhamet/shared/**"
-      - "deploy/deploy-worker.mjs"
+      - "deploy/**"
       - "package.json"
       - "package-lock.json"
-      - ".github/workflows/deploy-worker.yml"
+      - ".github/workflows/deploy-dhamet-worker.yml"
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: deploy-dhamet-worker-${{ github.ref }}
+  group: dhamet-worker-production
   cancel-in-progress: true
 
 jobs:
-  deploy-worker:
-    name: Deploy Dhamet API Worker
+  deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
-
+    timeout-minutes: 30
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
+      - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
 
-      - name: Install dependencies
-        run: npm ci --no-audit --no-fund
+      - name: Install deployment dependency
+        run: npm ci
 
-      - name: Deploy Worker
+      - name: Apply migrations and deploy Worker
         run: npm run deploy:worker
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
