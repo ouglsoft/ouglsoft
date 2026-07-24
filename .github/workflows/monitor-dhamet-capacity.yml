@@ -24,21 +24,19 @@ concurrency:
 
 jobs:
   monitor:
-    # Scheduled monitoring is opt-in. Test the restricted Cloudflare Usage API
-    # manually first, then set repository variable DHAMET_AUTO_MONITOR_ENABLED=true.
+    # Enable scheduled monitoring only after a successful manual auto run.
     if: github.event_name == 'workflow_dispatch' || vars.DHAMET_AUTO_MONITOR_ENABLED == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
       FORCE_MODE: ${{ inputs.force_mode || 'auto' }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_BILLING_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
-      CLOUDFLARE_USAGE_METRICS_JSON: ${{ vars.CLOUDFLARE_USAGE_METRICS_JSON || secrets.CLOUDFLARE_USAGE_METRICS_JSON }}
+      CLOUDFLARE_ANALYTICS_API_TOKEN: ${{ secrets.CLOUDFLARE_ANALYTICS_API_TOKEN }}
       DHAMET_BACKUP_CONTROL_SECRET: ${{ secrets.DHAMET_BACKUP_CONTROL_SECRET }}
       DHAMET_BACKUP_URL: ${{ vars.DHAMET_BACKUP_URL }}
       DHAMET_ROUTE_STATUS_ENDPOINT: ${{ vars.DHAMET_ROUTE_STATUS_ENDPOINT }}
       DHAMET_ROUTE_CONTROL_ENDPOINT: ${{ vars.DHAMET_ROUTE_CONTROL_ENDPOINT }}
-      DHAMET_ACTIVATION_THRESHOLD: "90"
+      DHAMET_ACTIVATION_THRESHOLD: ${{ vars.DHAMET_ACTIVATION_THRESHOLD || '90' }}
       DHAMET_RESET_GRACE_MINUTES: "2"
     steps:
       - name: Checkout repository
@@ -49,5 +47,5 @@ jobs:
         with:
           node-version: 22
 
-      - name: Read Cloudflare usage and update online routing
+      - name: Read Cloudflare GraphQL analytics and update online routing
         run: node monitor/cloudflare-backup-router.mjs
