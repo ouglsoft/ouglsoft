@@ -5,6 +5,7 @@ const statusEndpoint = String(process.env.DHAMET_ROUTE_STATUS_ENDPOINT || 'https
 const controlEndpoint = String(process.env.DHAMET_ROUTE_CONTROL_ENDPOINT || 'https://ouglsoft.com/dhamet/api/backend-route/control').trim();
 const controlSecret = required('DHAMET_BACKUP_CONTROL_SECRET');
 const backupUrl = String(process.env.DHAMET_BACKUP_URL || 'https://dhamet2.ouglsoft.com/pages/loby.html?emergency=1').trim();
+const graphqlEndpoint = 'https://api.cloudflare.com/client/v4/graphql';
 
 function required(name) {
   const value = String(process.env[name] || '').trim();
@@ -18,73 +19,35 @@ function clampNumber(value, fallback, min, max) {
   return Math.max(min, Math.min(max, number));
 }
 
-function parseJson(raw, name) {
-  try {
-    const parsed = JSON.parse(String(raw || ''));
-    if (!parsed || typeof parsed !== 'object') throw new Error('not an object');
-    return parsed;
-  } catch (error) {
-    throw new Error(`${name} is not valid JSON: ${error.message}`);
-  }
-}
-
-function normalizeSearchText(value) {
-  return String(value || '').toLowerCase().replace(/[_\-]+/g, ' ').replace(/\s+/g, ' ').trim();
-}
-
-function normalizeDefinition(value) {
-  const src = value && typeof value === 'object' ? value : {};
-  const metricIds = Array.isArray(src.metricIds) ? src.metricIds.map(normalizeSearchText).filter(Boolean) : [];
-  const patterns = Array.isArray(src.patterns) ? src.patterns.map(normalizeSearchText).filter(Boolean) : [];
-  const limit = Number(src.limit);
-  if (!src.key || !Number.isFinite(limit) || limit <= 0 || (!metricIds.length && !patterns.length)) {
-    throw new Error(`Invalid usage metric definition: ${JSON.stringify(value)}`);
-  }
-  return { key: String(src.key), label: String(src.label || src.key), limit, metricIds, patterns };
-}
-
-function metricDefinitions() {
-  if (process.env.CLOUDFLARE_USAGE_METRICS_JSON) {
-    const custom = parseJson(process.env.CLOUDFLARE_USAGE_METRICS_JSON, 'CLOUDFLARE_USAGE_METRICS_JSON');
-    if (!Array.isArray(custom)) throw new Error('CLOUDFLARE_USAGE_METRICS_JSON must be a JSON array');
-    return custom.map(normalizeDefinition);
-  }
-  return [
-    normalizeDefinition({ key: 'workers_requests', label: 'Workers requests', limit: 100000, metricIds: ['workers_standard_requests'], patterns: ['workers standard requests', 'workers requests'] }),
-    normalizeDefinition({ key: 'durable_objects_requests', label: 'Durable Objects requests', limit: 100000, patterns: ['durable objects requests', 'durable object requests'] }),
-    normalizeDefinition({ key: 'durable_objects_duration', label: 'Durable Objects duration', limit: 13000, patterns: ['durable objects duration', 'durable object duration', 'durable objects gb s'] }),
-    normalizeDefinition({ key: 'durable_objects_rows_read', label: 'Durable Objects rows read', limit: 5000000, patterns: ['durable objects rows read', 'durable object rows read'] }),
-    normalizeDefinition({ key: 'durable_objects_rows_written', label: 'Durable Objects rows written', limit: 100000, patterns: ['durable objects rows written', 'durable object rows written'] }),
-    normalizeDefinition({ key: 'd1_rows_read', label: 'D1 rows read', limit: 5000000, patterns: ['d1 rows read'] }),
-    normalizeDefinition({ key: 'd1_rows_written', label: 'D1 rows written', limit: 100000, patterns: ['d1 rows written'] }),
-  ];
-}
-
-function recordText(record) {
-  return normalizeSearchText([
-    record.x_BillableMetricId,
-    record.x_BillableMetricName,
-    record.ChargeDescription,
-    record.x_ProductFamilyName,
-    record.ConsumedUnit,
-  ].filter(Boolean).join(' '));
-}
-
-function recordMatches(record, definition) {
-  const metricId = normalizeSearchText(record.x_BillableMetricId);
-  if (definition.metricIds.includes(metricId)) return true;
-  const text = recordText(record);
-  return definition.patterns.some((pattern) => text.includes(pattern));
-}
-
 function utcDate(ms = Date.now()) {
   return new Date(ms).toISOString().slice(0, 10);
+}
+
+function utcDayStartIso(ms = Date.now()) {
+  const date = new Date(ms);
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), 0, 0, 0, 0)).toISOString();
 }
 
 function nextUtcResetMs() {
   const date = new Date();
   const graceMinutes = clampNumber(process.env.DHAMET_RESET_GRACE_MINUTES, 2, 0, 30);
   return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate() + 1, 0, graceMinutes, 0, 0);
+}
+
+function sumField(rows, field) {
+  return (Array.isArray(rows) ? rows : []).reduce((total, row) => total + (Number(row && row.sum && row.sum[field]) || 0), 0);
+}
+
+function makeMetric(label, consumed, limit, note = '') {
+  const safeConsumed = Math.max(0, Number(consumed) || 0);
+  return {
+    label,
+    consumed: safeConsumed,
+    limit,
+    percent: limit > 0 ? safeConsumed / limit * 100 : 0,
+    source: 'cloudflare-graphql-analytics',
+    note,
+  };
 }
 
 async function readPreviousControl() {
@@ -99,67 +62,101 @@ async function readPreviousControl() {
   }
 }
 
-async function cloudflareUsage() {
-  const accountId = required('CLOUDFLARE_ACCOUNT_ID');
-  const apiToken = required('CLOUDFLARE_API_TOKEN');
-  const today = utcDate();
-  const url = new URL(`https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(accountId)}/billable/usage`);
-  url.searchParams.set('from', today);
-  url.searchParams.set('to', today);
-  const response = await fetch(url, { headers: { authorization: `Bearer ${apiToken}` } });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok || payload.success === false || !Array.isArray(payload.result)) {
-    throw new Error(`Cloudflare billable usage API failed (${response.status}). Verify account eligibility and Billing Read permission. ${JSON.stringify(payload.errors || payload)}`);
-  }
-
-  const records = payload.result.filter((record) => {
-    const start = String(record.ChargePeriodStart || '');
-    return !start || start.slice(0, 10) === today;
+async function graphqlRequest(query, variables) {
+  const apiToken = required('CLOUDFLARE_ANALYTICS_API_TOKEN');
+  const response = await fetch(graphqlEndpoint, {
+    method: 'POST',
+    headers: {
+      authorization: `Bearer ${apiToken}`,
+      accept: 'application/json',
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({ query, variables }),
   });
-  const metrics = {};
-  for (const definition of metricDefinitions()) {
-    const matched = records.filter((record) => recordMatches(record, definition));
-    const consumed = matched.reduce((sum, record) => sum + (Number(record.ConsumedQuantity) || 0), 0);
-    metrics[definition.key] = {
-      label: definition.label,
-      consumed,
-      limit: definition.limit,
-      percent: definition.limit ? consumed / definition.limit * 100 : 0,
-      matchedRecords: matched.map((record) => ({
-        metricId: record.x_BillableMetricId || '',
-        metricName: record.x_BillableMetricName || '',
-        description: record.ChargeDescription || '',
-        quantity: Number(record.ConsumedQuantity) || 0,
-        unit: record.ConsumedUnit || '',
-      })),
-    };
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok || (Array.isArray(payload.errors) && payload.errors.length)) {
+    throw new Error(`Cloudflare GraphQL Analytics API failed (${response.status}): ${JSON.stringify(payload.errors || payload)}`);
   }
+  const account = payload && payload.data && payload.data.viewer && Array.isArray(payload.data.viewer.accounts)
+    ? payload.data.viewer.accounts[0]
+    : null;
+  if (!account) throw new Error('Cloudflare GraphQL Analytics returned no matching account. Verify CLOUDFLARE_ACCOUNT_ID and token scope.');
+  return account;
+}
 
-  const recognized = Object.values(metrics).filter((metric) => metric.matchedRecords.length > 0);
-  if (!recognized.length) {
-    const available = records.map((record) => ({
-      metricId: record.x_BillableMetricId || '',
-      metricName: record.x_BillableMetricName || '',
-      description: record.ChargeDescription || '',
-      quantity: Number(record.ConsumedQuantity) || 0,
-      unit: record.ConsumedUnit || '',
-    }));
-    throw new Error(`No configured metrics matched today's records. Configure CLOUDFLARE_USAGE_METRICS_JSON. Available records: ${JSON.stringify(available)}`);
-  }
-  return metrics;
+async function cloudflareGraphqlUsage() {
+  const accountTag = required('CLOUDFLARE_ACCOUNT_ID');
+  const date = utcDate(now);
+  const datetimeStart = utcDayStartIso(now);
+  const datetimeEnd = new Date(now + 60_000).toISOString();
+
+  // These datasets and fields are documented by Cloudflare. They are queried
+  // account-wide because Workers Free quotas are account-wide, not script-only.
+  const query = `
+    query DhametDailyCapacity(
+      $accountTag: string!
+      $datetimeStart: string!
+      $datetimeEnd: string!
+      $date: Date!
+    ) {
+      viewer {
+        accounts(filter: { accountTag: $accountTag }) {
+          workersInvocationsAdaptive(
+            limit: 10000
+            filter: { datetime_geq: $datetimeStart, datetime_lt: $datetimeEnd }
+          ) {
+            sum { requests }
+          }
+          d1AnalyticsAdaptiveGroups(
+            limit: 10000
+            filter: { date_geq: $date, date_leq: $date }
+          ) {
+            sum { rowsRead rowsWritten }
+          }
+          durableObjectsInvocationsAdaptiveGroups(
+            limit: 10000
+            filter: { date_geq: $date, date_leq: $date }
+          ) {
+            sum { requests }
+          }
+        }
+      }
+    }
+  `;
+
+  const account = await graphqlRequest(query, { accountTag, datetimeStart, datetimeEnd, date });
+  const workersRequests = sumField(account.workersInvocationsAdaptive, 'requests');
+  const d1RowsRead = sumField(account.d1AnalyticsAdaptiveGroups, 'rowsRead');
+  const d1RowsWritten = sumField(account.d1AnalyticsAdaptiveGroups, 'rowsWritten');
+  const durableObjectRequests = sumField(account.durableObjectsInvocationsAdaptiveGroups, 'requests');
+
+  return {
+    workers_requests: makeMetric('Workers requests', workersRequests, 100000),
+    d1_rows_read: makeMetric('D1 rows read', d1RowsRead, 5000000),
+    d1_rows_written: makeMetric('D1 rows written', d1RowsWritten, 100000),
+    durable_objects_requests_raw: makeMetric(
+      'Durable Objects requests (raw analytics)',
+      durableObjectRequests,
+      100000,
+      'Conservative: GraphQL reports actual WebSocket messages; Cloudflare may apply a billing ratio to some messages.'
+    ),
+  };
 }
 
 function highestMetric(metrics) {
-  return Object.entries(metrics || {}).map(([key, value]) => ({ key, ...value })).sort((a, b) => b.percent - a.percent)[0] || null;
+  return Object.entries(metrics || {})
+    .map(([key, value]) => ({ key, ...value }))
+    .filter((value) => Number.isFinite(Number(value.percent)))
+    .sort((a, b) => b.percent - a.percent)[0] || null;
 }
 
-function decide(previous, metrics) {
+function decide(metrics) {
   const highest = highestMetric(metrics);
   if (forceMode === 'backup-emergency' || forceMode === 'backup') return { backup: true, reason: 'manual-workflow', highest };
   if (forceMode === 'cloudflare' || forceMode === 'off') return { backup: false, reason: 'manual-workflow-off', highest };
   if (forceMode !== 'auto' && forceMode) throw new Error(`Unsupported FORCE_MODE: ${forceMode}`);
   if (highest && highest.percent >= activationThreshold) return { backup: true, reason: 'capacity-threshold', highest };
-  return { backup: false, reason: highest ? 'capacity-available' : 'metrics-unavailable', highest };
+  return { backup: false, reason: 'capacity-available', highest };
 }
 
 async function writeControl(control) {
@@ -179,9 +176,8 @@ async function writeControl(control) {
 const previous = await readPreviousControl();
 const previousBackupActive = previous && previous.enabled === true && String(previous.mode || '') === 'backup-emergency' && Number(previous.validUntil || 0) > now;
 
-// The threshold decision is sticky for the rest of the quota day. Scheduled
-// runs still start, but they stop here and do not call Cloudflare Usage API.
-// Manual workflow modes remain able to override the recorded state.
+// Once emergency routing has been recorded, scheduled runs do not query
+// GraphQL again until the recorded UTC reset. Manual runs can still override it.
 if (forceMode === 'auto' && previousBackupActive) {
   console.log(JSON.stringify({
     ok: true,
@@ -194,14 +190,10 @@ if (forceMode === 'auto' && previousBackupActive) {
   process.exit(0);
 }
 
-let metrics = {};
-if (forceMode === 'backup-emergency' || forceMode === 'backup' || forceMode === 'cloudflare' || forceMode === 'off') {
-  try { metrics = await cloudflareUsage(); } catch (error) { console.warn(`Usage read skipped during forced run: ${error.message}`); }
-} else {
-  metrics = await cloudflareUsage();
-}
-
-const decision = decide(previous, metrics);
+// Forced changes do not spend an Analytics API query. Only auto mode reads
+// GraphQL usage before making a threshold decision.
+const metrics = forceMode === 'auto' ? await cloudflareGraphqlUsage() : {};
+const decision = decide(metrics);
 const highest = decision.highest || { key: '', percent: 0, consumed: 0, limit: 0, label: '' };
 const generation = Math.max(0, Number(previous && previous.generation || 0) || 0) + 1;
 const resetAt = nextUtcResetMs();
@@ -210,7 +202,7 @@ const control = {
   mode: decision.backup ? 'backup-emergency' : 'cloudflare',
   backupUrl,
   reason: decision.reason,
-  source: 'github-cloudflare-usage-monitor',
+  source: 'github-cloudflare-graphql-monitor',
   threshold: activationThreshold,
   observedPercent: Number(highest.percent.toFixed(4)),
   metricKey: highest.key,
