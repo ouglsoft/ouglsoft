@@ -1,0 +1,53 @@
+name: Monitor Dhamet Cloudflare Capacity
+
+on:
+  schedule:
+    - cron: "2-59/5 * * * *"
+  workflow_dispatch:
+    inputs:
+      force_mode:
+        description: "auto, cloudflare, or backup-emergency"
+        required: false
+        default: "auto"
+        type: choice
+        options:
+          - auto
+          - cloudflare
+          - backup-emergency
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dhamet-capacity-monitor
+  cancel-in-progress: true
+
+jobs:
+  monitor:
+    # Scheduled monitoring is opt-in. Test the restricted Cloudflare Usage API
+    # manually first, then set repository variable DHAMET_AUTO_MONITOR_ENABLED=true.
+    if: github.event_name == 'workflow_dispatch' || vars.DHAMET_AUTO_MONITOR_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      FORCE_MODE: ${{ inputs.force_mode || 'auto' }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_BILLING_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_USAGE_METRICS_JSON: ${{ vars.CLOUDFLARE_USAGE_METRICS_JSON || secrets.CLOUDFLARE_USAGE_METRICS_JSON }}
+      DHAMET_BACKUP_CONTROL_SECRET: ${{ secrets.DHAMET_BACKUP_CONTROL_SECRET }}
+      DHAMET_BACKUP_URL: ${{ vars.DHAMET_BACKUP_URL }}
+      DHAMET_ROUTE_STATUS_ENDPOINT: ${{ vars.DHAMET_ROUTE_STATUS_ENDPOINT }}
+      DHAMET_ROUTE_CONTROL_ENDPOINT: ${{ vars.DHAMET_ROUTE_CONTROL_ENDPOINT }}
+      DHAMET_ACTIVATION_THRESHOLD: "90"
+      DHAMET_RESET_GRACE_MINUTES: "2"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Read Cloudflare usage and update online routing
+        run: node monitor/cloudflare-backup-router.mjs
