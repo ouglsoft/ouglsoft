@@ -32,6 +32,11 @@
       return res.text().then(function (txt) {
         var data = txt ? safeJson(txt) : {};
         if (!res.ok || (data && data.ok === false)) {
+          try {
+            if (window.DhametBackupRoute && typeof window.DhametBackupRoute.handleDirective === 'function') {
+              window.DhametBackupRoute.handleDirective(data || {});
+            }
+          } catch (_) {}
           var err = new Error((data && (data.error || data.code)) || ('http-' + res.status));
           err.code = (data && (data.code || data.error)) || ('http-' + res.status);
           err.status = res.status;

@@ -4,6 +4,7 @@ import { json, bad, requestBody, now, jsonHeaders, redirect } from './lib/http.j
 import { base64url, fromBase64url, randomToken } from './lib/security.js';
 import { createGameRouteHandlers } from './routes/game.js';
 import { createLobbyRouteHandlers } from './routes/lobby.js';
+import { authorizeBackupControl, maybeBlockNewOfficialOnlineWork, readBackupControl, writeBackupControl } from './lib/backup-route.js';
 import '../shared/dhamet-privacy.js';
 import '../shared/dhamet-stats.js';
 export { RealtimeObject } from './durable/realtime-object.js';
@@ -171,8 +172,8 @@ function requireDb(env) {
 
 async function schemaStatus(env) {
   const db = requireDb(env);
-  const required = ['users', 'sessions', 'password_reset_tokens', 'oauth_states'];
-  const res = await db.prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('users','sessions','password_reset_tokens','oauth_states')`).all();
+  const required = ['users', 'sessions', 'password_reset_tokens', 'oauth_states', 'backup_route_control'];
+  const res = await db.prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('users','sessions','password_reset_tokens','oauth_states','backup_route_control')`).all();
   const found = new Set((res.results || []).map((r) => String(r.name)));
   const missing = required.filter((name) => !found.has(name));
   return { ok: missing.length === 0, missing };
@@ -1104,6 +1105,51 @@ async function turnEndpoint(request, env) {
 }
 
 
+function publicBackendRouteControl(control) {
+  const value = control && typeof control === 'object' ? control : {};
+  return {
+    enabled: value.enabled === true,
+    mode: value.enabled === true ? 'backup-emergency' : 'cloudflare',
+    backupUrl: value.backupUrl || 'https://dhamet2.ouglsoft.com/pages/loby.html?emergency=1',
+    reason: value.reason || '',
+    generation: Number(value.generation || 0) || 0,
+    updatedAt: Number(value.updatedAt || 0) || 0,
+    validUntil: Number(value.validUntil || 0) || 0,
+  };
+}
+
+async function onlineEntryEndpoint(request, env) {
+  const url = new URL(request.url);
+  const forced = String(url.searchParams.get('backend') || '').trim().toLowerCase();
+  const officialUrl = new URL('/dhamet/pages/loby.html', url.origin).toString();
+  if (forced === 'backup' || forced === 'backup-test' || forced === 'dhamet2') {
+    const configured = await readBackupControl(env);
+    const target = new URL(configured.backupUrl || 'https://dhamet2.ouglsoft.com/pages/loby.html?emergency=1');
+    target.searchParams.set('emergency', 'test');
+    return Response.redirect(target.toString(), 302);
+  }
+  if (forced === 'cloudflare' || forced === 'official') return Response.redirect(officialUrl, 302);
+  const control = await readBackupControl(env);
+  return Response.redirect(control.enabled ? control.backupUrl : officialUrl, 302);
+}
+
+async function backendRouteStatusEndpoint(env) {
+  // Use the short in-isolate cache. This endpoint is consulted only when a
+  // player enters online mode and must not add an avoidable D1 read per click.
+  const control = await readBackupControl(env);
+  return json({ ok: true, control: publicBackendRouteControl(control) }, 200, { 'cache-control': 'no-store' });
+}
+
+async function backendRouteControlEndpoint(request, env) {
+  if (!await authorizeBackupControl(request, env)) {
+    return json({ ok: false, error: 'backup-route/unauthorized' }, 401, { 'cache-control': 'no-store' });
+  }
+  const body = await requestBody(request);
+  const control = await writeBackupControl(env, body || {});
+  return json({ ok: true, control }, 200, { 'cache-control': 'no-store' });
+}
+
+
 async function healthEndpoint(env) {
   const result = {
     ok: true,
@@ -1132,6 +1178,11 @@ export default {
     try {
       const url = normalizePublicUrl(request, env);
       if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: jsonHeaders });
+      if (url.pathname === '/api/online-entry' && request.method === 'GET') return onlineEntryEndpoint(request, env);
+      if (url.pathname === '/api/backend-route' && request.method === 'GET') return backendRouteStatusEndpoint(env);
+      if (url.pathname === '/api/backend-route/control' && request.method === 'POST') return backendRouteControlEndpoint(request, env);
+      const backupBlock = await maybeBlockNewOfficialOnlineWork(request, url, env, json);
+      if (backupBlock) return backupBlock;
       const authLimitedPaths = new Set(['/api/auth/guest', '/api/auth/register', '/api/auth/login', '/api/auth/request-reset', '/api/auth/reset-password']);
       if (authLimitedPaths.has(url.pathname)) {
         const limited = await durableRateLimitResponse(request, env, 'auth:' + url.pathname, 12, 60 * 1000);

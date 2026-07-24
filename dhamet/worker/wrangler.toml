@@ -29,12 +29,14 @@ APP_ORIGIN = "https://ouglsoft.com/dhamet"
 RESEND_FROM_EMAIL = "Dhamet <noreply@ouglsoft.com>"
 EXPRESS_TURN_HOST = "relay1.expressturn.com:3478"
 TURN_TTL_SECONDS = "3600"
+DHAMET_BACKUP_URL = "https://dhamet2.ouglsoft.com/pages/loby.html?emergency=1"
 
 # Required secrets; set them from Cloudflare Dashboard as Worker Secrets:
 # RESEND_API_KEY
 # GOOGLE_CLIENT_ID
 # GOOGLE_CLIENT_SECRET
 # INTERNAL_API_SECRET (any long random string; also used for internal writes)
+# DHAMET_BACKUP_CONTROL_SECRET (must match the GitHub Actions secret used by the capacity monitor)
 # Optional ExpressTURN secrets. Prefer EXPRESS_TURN_SECRET for time-limited credentials.
 # EXPRESS_TURN_SECRET
 # EXPRESS_TURN_USERNAME
