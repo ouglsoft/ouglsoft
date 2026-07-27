@@ -22,7 +22,7 @@
     },
     "soufla": {
       "pick": {
-        "toastNotOffender": "هذه ليست القطعة المعلّمة بعلامة X الحمراء. اختر القطعة المخالفة الظاهرة على الرقعة.",
+        "toastNotOffender": "هذه القطعة ليست مسوفلة/مخالفة، اختر القطعة التي تجاهلت الأسر.",
         "title": "لديك حق السوفلة. اختر القطعة التي تجاهلت الأسر والمعلّمة بعلامة X الحمراء، ثم اختر العقوبة.",
         "btnRemove": "إزالة القطعة",
         "btnForcePath": "إجبارها على المسار ${n}"
@@ -50,6 +50,14 @@
         "remove": "أُزيلت قطعتك المخالفة من الموضع المعلّم بعلامة X حمراء.",
         "title": "نتيجة السوفلة",
         "undo": "أُلغيت نقلتك الأخيرة، ويظهر مسارها باللون الأصفر."
+      },
+      "spectator": {
+        "force": "أُجبرت القطعة المخالفة على تنفيذ الأسر المحدد بالمسار الأخضر.",
+        "penaltyTitle": "العقوبة المختارة:",
+        "reason": "طُلبت السوفلة لأن إحدى القطع تجاهلت الأسر المحدد بالمسار الأحمر.",
+        "remove": "أُزيلت القطعة المخالفة من الموضع المعلّم بعلامة X حمراء.",
+        "title": "نتيجة السوفلة",
+        "undo": "أُلغيت النقلة المخالفة، ويظهر مسارها باللون الأصفر."
       }
     },
     "pvp": {
@@ -315,9 +323,13 @@
       "matchEndedByActor": "${actor}: أنهى المباراة.",
       "matchEndedBySelf": "${actor}: أنهيت المباراة.",
       "gameWinner": "انتهت المباراة. الفائز: ${winner}.",
+      "gameWinnerSelf": "لقد فزت بالمباراة.",
+      "gameLoserSelf": "لقد خسرت المباراة.",
       "gameDraw": "انتهت المباراة دون فائز.",
       "turnMoveFmt": "${side}: حركة ${from}-${to}.",
-      "turnCaptureFmt": "${side}: أسر ${from}-${to} (${n})."
+      "turnMoveSelf": "أنت: حرّكت القطعة من ${from} إلى ${to}.",
+      "turnCaptureFmt": "${side}: أسر ${from}-${to} (${n}).",
+      "turnCaptureSelf": "أنت: أسرت من ${from} إلى ${to} (${n})."
     },
     "mode": {
       "subtitle": "اختر الطريقة التي تفضّل أن تلعب بها: مواجهة فردية مع الحاسوب أو مباراة مباشرة مع لاعب آخر.",
@@ -366,7 +378,7 @@
       "turn": "الدور الآن على:",
       "forcedChainIncomplete": "ما زال هناك أسر متاح. أكمل السلسلة ثم اضغط مؤقت إنهاء الأسر.",
       "forcedMove": "نقلة الافتتاح المطلوبة: من ${from} إلى ${to}",
-      "moveSendFail": "تعذر إرسال النقلة. تحقق من الاتصال ثم أعد تنفيذها.",
+      "moveSendFail": "فشل إرسال النقلة، يرجى الضغط على زر التحديث ثم إعادة النقلة.",
       "aiThinkingMoveLevelNote": "ملاحظة: كلما كان المستوى أعلى، قد يستغرق التفكير وقتًا أطول."
     },
     "players": {
@@ -410,12 +422,18 @@
       "endFail": "تعذر إنهاء المباراة الآن. تحقق من الاتصال ثم أعد المحاولة.",
       "endPresentation": {
         "winner": "انتهت المباراة. فاز اللاعب {player}.",
+        "selfWinner": "لقد فزت بالمباراة.",
+        "selfLoser": "لقد خسرت المباراة.",
         "endedBy": "اللاعب {player} أنهى المباراة.",
+        "selfEndedBy": "أنهيت المباراة.",
+        "selfEndedByAbsence": "أنهيت المباراة بعد استمرار غياب اللاعب {opponent}.",
         "endedByAbsence": "طلب اللاعب {player} إنهاء المباراة بعد استمرار غياب اللاعب {opponent}.",
         "noRecordedResult": "انتهت المباراة دون نتيجة محفوظة.",
         "roomUnavailable": "لم تعد الغرفة متاحة، لذلك تعذر عرض نتيجة المباراة.",
         "reason": {
           "noLegalMoves": "لم يعد اللاعب {player} يملك نقلة قانونية.",
+          "selfNoPieces": "نفدت قطعك.",
+          "selfNoLegalMoves": "لم تعد تملك نقلة قانونية.",
           "oneKingEach": "تحقق التعادل ببقاء ظائم واحد لكل لاعب.",
           "positionDecisive": "اعتمدت النتيجة لأن اللاعب الفائز كان متقدمًا بوضوح عند إنهاء المباراة."
         }
@@ -523,6 +541,9 @@
       "notCommitted": "لم يتم التراجع لأن المباراة تقدمت قبل اكتمال الطلب. اضغط «تحديث» ثم حاول مرة أخرى.",
       "rejected": "رفض اللاعب الآخر طلب التراجع.",
       "rejectedTitle": "رُفض طلب التراجع",
+      "spectatorRequested": "طلب اللاعب {player} التراجع عن النقلة الأخيرة.",
+      "spectatorAccepted": "قُبل طلب التراجع عن النقلة الأخيرة.",
+      "spectatorRejected": "رُفض طلب التراجع عن النقلة الأخيرة.",
       "request": {
         "body": "يريد {name} التراجع عن النقلة الأخيرة. هل توافق؟",
         "title": "طلب التراجع عن نقلة"
@@ -563,7 +584,7 @@
     },
     "soufla": {
       "pick": {
-        "toastNotOffender": "That piece is not marked with the red X. Select the offending piece shown on the board.",
+        "toastNotOffender": "This piece is not the offending Soufla piece. Select the piece that ignored the capture.",
         "title": "You may claim Soufla. Select the piece that skipped the capture and is marked with a red X, then choose the penalty.",
         "btnRemove": "Remove piece",
         "btnForcePath": "Force path ${n}"
@@ -591,6 +612,14 @@
         "remove": "Your offending piece was removed from the position marked with a red X.",
         "title": "Soufla result",
         "undo": "Your last move was undone and its path is shown in yellow."
+      },
+      "spectator": {
+        "force": "The offending piece was forced to complete the capture shown by the green path.",
+        "penaltyTitle": "Selected penalty:",
+        "reason": "Soufla was claimed because a piece skipped the capture shown by the red path.",
+        "remove": "The offending piece was removed from the position marked with a red X.",
+        "title": "Soufla result",
+        "undo": "The offending move was undone and its path is shown in yellow."
       }
     },
     "pvp": {
@@ -856,9 +885,13 @@
       "matchEndedByActor": "${actor}: Ended the match.",
       "matchEndedBySelf": "${actor}: Ended the match.",
       "gameWinner": "The match ended. Winner: ${winner}.",
+      "gameWinnerSelf": "You won the match.",
+      "gameLoserSelf": "You lost the match.",
       "gameDraw": "The match ended without a winner.",
       "turnMoveFmt": "${side}: Move ${from}-${to}.",
-      "turnCaptureFmt": "${side}: Capture ${from}-${to} (${n})."
+      "turnMoveSelf": "You: moved from ${from} to ${to}.",
+      "turnCaptureFmt": "${side}: Capture ${from}-${to} (${n}).",
+      "turnCaptureSelf": "You: captured from ${from} to ${to} (${n})."
     },
     "mode": {
       "subtitle": "Choose how you want to play: a solo match against the computer or a live match with another player.",
@@ -907,7 +940,7 @@
       "turn": "Turn:",
       "forcedChainIncomplete": "Another capture is available. Finish the chain, then press the end-capture timer.",
       "forcedMove": "Required opening move: ${from} → ${to}",
-      "moveSendFail": "The move could not be sent. Check your connection and play it again.",
+      "moveSendFail": "The move could not be sent. Press Refresh, then make the move again.",
       "aiThinkingMoveLevelNote": "Note: higher levels may take longer to think."
     },
     "players": {
@@ -951,12 +984,18 @@
       "endFail": "The match could not be ended. Check your connection and try again.",
       "endPresentation": {
         "winner": "The match ended. Player {player} won.",
+        "selfWinner": "You won the match.",
+        "selfLoser": "You lost the match.",
         "endedBy": "Player {player} ended the match.",
+        "selfEndedBy": "You ended the match.",
+        "selfEndedByAbsence": "You ended the match after player {opponent} remained absent.",
         "endedByAbsence": "Player {player} requested to end the match after player {opponent} remained absent.",
         "noRecordedResult": "The match ended without a saved result.",
         "roomUnavailable": "The room is no longer available, so the match result cannot be shown.",
         "reason": {
           "noLegalMoves": "Player {player} had no legal move left.",
+          "selfNoPieces": "You have no pieces left.",
+          "selfNoLegalMoves": "You have no legal move left.",
           "oneKingEach": "The draw was reached with one king remaining for each player.",
           "positionDecisive": "The result was confirmed because the winner had a clear advantage when the match ended."
         }
@@ -1064,6 +1103,9 @@
       "notCommitted": "The move was not undone because the match continued before the request finished. Press Refresh and try again.",
       "rejected": "The other player declined the undo request.",
       "rejectedTitle": "Undo request declined",
+      "spectatorRequested": "{player} requested to undo the last move.",
+      "spectatorAccepted": "The request to undo the last move was accepted.",
+      "spectatorRejected": "The request to undo the last move was declined.",
       "request": {
         "body": "{name} wants to undo the last move. Allow it?",
         "title": "Undo request"
@@ -1104,7 +1146,7 @@
     },
     "soufla": {
       "pick": {
-        "toastNotOffender": "Cette pièce n’est pas marquée d’une croix rouge. Sélectionnez la pièce fautive affichée sur le plateau.",
+        "toastNotOffender": "Cette pièce n’est pas la pièce fautive de la soufla. Sélectionnez la pièce qui a ignoré la prise.",
         "title": "Vous pouvez réclamer Soufla. Sélectionnez la pièce qui a ignoré la prise et qui est marquée d’une croix rouge, puis choisissez la sanction.",
         "btnRemove": "Retirer la pièce",
         "btnForcePath": "Imposer le chemin ${n}"
@@ -1132,6 +1174,14 @@
         "remove": "Votre pièce fautive a été retirée de la position marquée d’une croix rouge.",
         "title": "Résultat de la Soufla",
         "undo": "Votre dernier coup a été annulé et son chemin apparaît en jaune."
+      },
+      "spectator": {
+        "force": "La pièce fautive a été forcée à effectuer la prise indiquée par le chemin vert.",
+        "penaltyTitle": "Sanction choisie :",
+        "reason": "La Soufla a été réclamée parce qu’une pièce a ignoré la prise indiquée par le chemin rouge.",
+        "remove": "La pièce fautive a été retirée de la position marquée d’une croix rouge.",
+        "title": "Résultat de la Soufla",
+        "undo": "Le coup fautif a été annulé et son chemin apparaît en jaune."
       }
     },
     "pvp": {
@@ -1397,9 +1447,13 @@
       "matchEndedByActor": "${actor} : a terminé la partie.",
       "matchEndedBySelf": "${actor} : avez terminé la partie.",
       "gameWinner": "La partie est terminée. Vainqueur : ${winner}.",
+      "gameWinnerSelf": "Vous avez gagné la partie.",
+      "gameLoserSelf": "Vous avez perdu la partie.",
       "gameDraw": "La partie est terminée sans vainqueur.",
       "turnMoveFmt": "${side} : Déplacement ${from}-${to}.",
-      "turnCaptureFmt": "${side} : Prise ${from}-${to} (${n})."
+      "turnMoveSelf": "Vous : déplacement de ${from} à ${to}.",
+      "turnCaptureFmt": "${side} : Prise ${from}-${to} (${n}).",
+      "turnCaptureSelf": "Vous : prise de ${from} à ${to} (${n})."
     },
     "mode": {
       "subtitle": "Choisissez votre façon de jouer : une partie en solo contre l’ordinateur ou une partie en direct avec un autre joueur.",
@@ -1448,7 +1502,7 @@
       "turn": "Au tour de :",
       "forcedChainIncomplete": "Une autre prise est disponible. Terminez la chaîne, puis appuyez sur le minuteur de fin de prise.",
       "forcedMove": "Coup d’ouverture requis : ${from} → ${to}",
-      "moveSendFail": "Le coup n’a pas pu être envoyé. Vérifiez votre connexion et rejouez-le.",
+      "moveSendFail": "Échec de l’envoi du coup. Appuyez sur Actualiser, puis rejouez-le.",
       "aiThinkingMoveLevelNote": "Remarque : plus le niveau est élevé, plus la réflexion peut durer."
     },
     "players": {
@@ -1492,12 +1546,18 @@
       "endFail": "La partie n’a pas pu être terminée. Vérifiez votre connexion et réessayez.",
       "endPresentation": {
         "winner": "La partie est terminée. Le joueur {player} a gagné.",
+        "selfWinner": "Vous avez gagné la partie.",
+        "selfLoser": "Vous avez perdu la partie.",
         "endedBy": "Le joueur {player} a terminé la partie.",
+        "selfEndedBy": "Vous avez terminé la partie.",
+        "selfEndedByAbsence": "Vous avez terminé la partie après l’absence prolongée du joueur {opponent}.",
         "endedByAbsence": "Le joueur {player} a demandé la fin de la partie après l’absence prolongée du joueur {opponent}.",
         "noRecordedResult": "La partie s’est terminée sans résultat enregistré.",
         "roomUnavailable": "La salle n’est plus disponible ; le résultat de la partie ne peut donc pas être affiché.",
         "reason": {
           "noLegalMoves": "Le joueur {player} n’avait plus de coup légal.",
+          "selfNoPieces": "Vous n’avez plus de pièces.",
+          "selfNoLegalMoves": "Vous n’avez plus de coup légal.",
           "oneKingEach": "Le match nul a été atteint avec un roi restant pour chaque joueur.",
           "positionDecisive": "Le résultat a été confirmé, car le gagnant avait un avantage clair à la fin de la partie."
         }
@@ -1605,6 +1665,9 @@
       "notCommitted": "Le coup n’a pas été annulé, car la partie a continué avant la fin de la demande. Appuyez sur Actualiser puis réessayez.",
       "rejected": "L’autre joueur a refusé la demande d’annulation.",
       "rejectedTitle": "Demande d’annulation refusée",
+      "spectatorRequested": "{player} a demandé l’annulation du dernier coup.",
+      "spectatorAccepted": "La demande d’annulation du dernier coup a été acceptée.",
+      "spectatorRejected": "La demande d’annulation du dernier coup a été refusée.",
       "request": {
         "body": "{name} souhaite annuler le dernier coup. Acceptez-vous ?",
         "title": "Demande d’annulation"

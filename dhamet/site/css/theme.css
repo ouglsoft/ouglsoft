@@ -371,8 +371,8 @@
   --piece-black-dot: rgb(255 202 114);
   --piece-white-edge: rgb(8 57 80);
   --piece-white-edge-soft: rgb(52 157 184);
-  --piece-black-edge: rgb(var(--rgb-white));
-  --piece-black-edge-soft: rgb(var(--rgb-secondary-300));
+  --piece-black-edge: rgb(154 52 18);
+  --piece-black-edge-soft: rgb(194 65 12);
 }
 
 /* ========================================================================== 
@@ -1669,8 +1669,8 @@ html.dark body.z-mobile-on .z-mobile-footer-rights {
   --board-bg-end: var(--game-board-end);
   --piece-white-edge: rgb(var(--rgb-primary-900));
   --piece-white-edge-soft: rgb(var(--rgb-light-primary-600));
-  --piece-black-edge: rgb(255 221 145);
-  --piece-black-edge-soft: rgb(255 242 204);
+  --piece-black-edge: rgb(154 52 18);
+  --piece-black-edge-soft: rgb(194 65 12);
 }
 
 canvas#board {

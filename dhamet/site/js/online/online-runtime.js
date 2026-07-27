@@ -190,6 +190,7 @@
         },
 
     _beginEntryRequest: function (gameId) {
+          this._spectatorLeaving = false;
           this._entryRequestSeq = Number(this._entryRequestSeq || 0) + 1;
           return Object.freeze({ id: this._entryRequestSeq, gameId: String(gameId || "") });
         },
@@ -211,6 +212,11 @@
 
     _displayNameForGameUid: function (uid, fallback) {
           try {
+            if (uid && this.myUid && String(uid) === String(this.myUid) && !this.isSpectator) {
+              return window.I18N.translateArgs("players.you") || "You";
+            }
+          } catch (e) {}
+          try {
             const want = String(uid || "").trim();
             const players = this._lastGameData && this._lastGameData.players ? this._lastGameData.players : null;
             if (want && players) {
@@ -220,11 +226,6 @@
               const blackUid = black.uid ? String(black.uid) : "";
               if (want === blackUid) return displayPlayerName(black.uid, black.nickname);
               if (want === whiteUid) return displayPlayerName(white.uid, white.nickname);
-            }
-          } catch (e) {}
-          try {
-            if (uid && this.myUid && String(uid) === String(this.myUid)) {
-              return window.I18N.translateArgs("players.you") || "You";
             }
           } catch (e) {}
           return String(fallback || "").trim();
@@ -1572,11 +1573,21 @@
           const countsAsResult = resultMeta.countsAsResult !== false;
           const rejectionReason = String(resultMeta.rejectionReason || "").trim();
           const missingOfficial = info.missingOfficial === true || reason === "room_unavailable";
+          const isSpectator = !!this.isSpectator;
+          const mySide = !isSpectator && (Number(this.mySide) === TOP || Number(this.mySide) === BOT)
+            ? Number(this.mySide)
+            : null;
+          const isSelfSide = (side) => mySide != null && Number(side) === mySide;
+          const isSelfUid = (uid) => !isSpectator && !!uid && !!this.myUid && String(uid) === String(this.myUid);
 
           const rowForSide = (side) => side === BOT ? players.white : side === TOP ? players.black : null;
-          const nameForSide = (side) => {
+          const actualNameForSide = (side) => {
             const row = rowForSide(side);
-            const name = row ? displayPlayerName(row.uid, row.nickname) : "";
+            let name = "";
+            try {
+              if (row && typeof displayPlayerName === "function") name = displayPlayerName(row.uid, row.nickname);
+            } catch (e) {}
+            if (!name && row) name = String(row.nickname || "").trim();
             if (name) return name;
             try {
               if (typeof Game !== "undefined" && Game && Game.names) {
@@ -1586,20 +1597,35 @@
             } catch (e) {}
             return window.I18N.translateArgs("players.player");
           };
-          const actorName = (() => {
+          const actorActualName = (() => {
             if (endedBy) {
-              const direct = displayPlayerName(endedBy.uid, endedBy.nickname);
-              if (direct) return direct;
+              try {
+                if (typeof displayPlayerName === "function") {
+                  const direct = displayPlayerName(endedBy.uid, endedBy.nickname);
+                  if (direct) return direct;
+                }
+              } catch (e) {}
+              if (String(endedBy.nickname || "").trim()) return String(endedBy.nickname).trim();
             }
-            if (endedBySide != null) return nameForSide(endedBySide);
-            const direct = displayPlayerName(info.byUid, info.byNick);
-            return direct || "";
+            if (endedBySide != null) return actualNameForSide(endedBySide);
+            try {
+              if (typeof displayPlayerName === "function") {
+                const direct = displayPlayerName(info.byUid, info.byNick);
+                if (direct) return direct;
+              }
+            } catch (e) {}
+            return String(info.byNick || "").trim();
           })();
+          const actorIsSelf = !isSpectator && (
+            (endedBySide != null && isSelfSide(endedBySide)) ||
+            (endedBy && isSelfUid(endedBy.uid)) ||
+            isSelfUid(info.byUid)
+          );
           const otherSide = endedBySide === TOP ? BOT : endedBySide === BOT ? TOP : null;
-          const otherName = otherSide != null ? nameForSide(otherSide) : window.I18N.translateArgs("online.opponent");
-          const winnerName = winner != null ? nameForSide(winner) : "";
+          const otherName = otherSide != null ? actualNameForSide(otherSide) : window.I18N.translateArgs("online.opponent");
+          const winnerName = winner != null ? actualNameForSide(winner) : "";
           const loserSide = winner === TOP ? BOT : winner === BOT ? TOP : null;
-          const loserName = loserSide != null ? nameForSide(loserSide) : window.I18N.translateArgs("players.player");
+          const loserName = loserSide != null ? actualNameForSide(loserSide) : window.I18N.translateArgs("players.player");
           const isDraw = resultStatus === "draw" || reason === "draw" || reason === "one_king_each";
           const isAbsence = reason === "opponent_absent" || reason === "opponent_absent_late" || actionKind === "opponent-absent";
           const isManual = isAbsence || reason === "ended_by_player" || reason === "late_exit" || ["leave", "resign"].includes(actionKind);
@@ -1614,30 +1640,48 @@
           if (missingOfficial) {
             add(window.I18N.translateArgs("online.endPresentation.roomUnavailable"));
           } else if (winner != null) {
-            add(formatTpl(window.I18N.translateArgs("online.endPresentation.winner"), { player: winnerName }));
+            if (isSelfSide(winner)) add(window.I18N.translateArgs("online.endPresentation.selfWinner"));
+            else if (mySide != null) add(window.I18N.translateArgs("online.endPresentation.selfLoser"));
+            else add(formatTpl(window.I18N.translateArgs("online.endPresentation.winner"), { player: winnerName }));
           } else if (isDraw) {
             add(window.I18N.translateArgs("modals.gameOver.draw"));
-          } else if (isManual && actorName) {
-            add(isAbsence
-              ? formatTpl(window.I18N.translateArgs("online.endPresentation.endedByAbsence"), { player: actorName, opponent: otherName })
-              : formatTpl(window.I18N.translateArgs("online.endPresentation.endedBy"), { player: actorName }));
+          } else if (isManual && actorActualName) {
+            if (actorIsSelf) {
+              add(isAbsence
+                ? formatTpl(window.I18N.translateArgs("online.endPresentation.selfEndedByAbsence"), { opponent: otherName })
+                : window.I18N.translateArgs("online.endPresentation.selfEndedBy"));
+            } else {
+              add(isAbsence
+                ? formatTpl(window.I18N.translateArgs("online.endPresentation.endedByAbsence"), { player: actorActualName, opponent: otherName })
+                : formatTpl(window.I18N.translateArgs("online.endPresentation.endedBy"), { player: actorActualName }));
+            }
           } else {
             add(window.I18N.translateArgs("online.endPresentation.noRecordedResult"));
           }
 
           if (!missingOfficial) {
             if (reason === "no_pieces") {
-              add(formatTpl(window.I18N.translateArgs("modals.gameOver.reason.noPieces"), { player: loserName }));
+              add(isSelfSide(loserSide)
+                ? window.I18N.translateArgs("online.endPresentation.reason.selfNoPieces")
+                : formatTpl(window.I18N.translateArgs("modals.gameOver.reason.noPieces"), { player: loserName }));
             } else if (reason === "no_legal_moves") {
-              add(formatTpl(window.I18N.translateArgs("online.endPresentation.reason.noLegalMoves"), { player: loserName }));
+              add(isSelfSide(loserSide)
+                ? window.I18N.translateArgs("online.endPresentation.reason.selfNoLegalMoves")
+                : formatTpl(window.I18N.translateArgs("online.endPresentation.reason.noLegalMoves"), { player: loserName }));
             } else if (reason === "one_king_each") {
               add(window.I18N.translateArgs("online.endPresentation.reason.oneKingEach"));
             }
 
             if (winner != null && isManual) {
-              add(isAbsence
-                ? formatTpl(window.I18N.translateArgs("online.endPresentation.endedByAbsence"), { player: actorName || window.I18N.translateArgs("players.player"), opponent: otherName })
-                : formatTpl(window.I18N.translateArgs("online.endPresentation.endedBy"), { player: actorName || window.I18N.translateArgs("players.player") }));
+              if (actorIsSelf) {
+                add(isAbsence
+                  ? formatTpl(window.I18N.translateArgs("online.endPresentation.selfEndedByAbsence"), { opponent: otherName })
+                  : window.I18N.translateArgs("online.endPresentation.selfEndedBy"));
+              } else {
+                add(isAbsence
+                  ? formatTpl(window.I18N.translateArgs("online.endPresentation.endedByAbsence"), { player: actorActualName || window.I18N.translateArgs("players.player"), opponent: otherName })
+                  : formatTpl(window.I18N.translateArgs("online.endPresentation.endedBy"), { player: actorActualName || window.I18N.translateArgs("players.player") }));
+              }
             }
 
             if (countsAsResult === false) {
@@ -1747,6 +1791,7 @@
           const gid = this.gameId || this._presenceRoomId;
           const uid = this.myUid;
           const wasSpectator = !!this.isSpectator;
+          if (wasSpectator) this._spectatorLeaving = true;
           try { if (gid && uid && wasSpectator) await this._removeSpectatorRegistration(gid, uid); } catch (e) {}
           try { this._unbindGameLiveSubscription && this._unbindGameLiveSubscription(); } catch (e) {}
           try { this._teardownRoomComms && this._teardownRoomComms(); } catch (e) {}
@@ -1829,6 +1874,7 @@
             }
     
             if (this.isSpectator) {
+              this._spectatorLeaving = true;
               try { await this._removeSpectatorRegistration(gid, uid); } catch (e) {}
               if (!this._isAsyncContextCurrent(asyncContext, { ignorePostMatch: true })) return;
               try { await this.exitToLobby(); } catch (e) {}
@@ -2332,7 +2378,7 @@
               if (moveFxIndex && moveFxIndex > (this._lastSeenMoveModal || 0)) {
                 this._lastSeenMoveModal = moveFxIndex;
                 if (lm.kind === "soufla" && lm.decision) this._showSouflaModalFromLastMove(lm);
-                else if (lm.kind === "undo") showOnlineNotice(window.I18N.translateArgs("undo.applied"));
+                else if (lm.kind === "undo") showOnlineNotice(window.I18N.translateArgs("undo.applied"), { allowSpectator: true });
               }
             } catch (error) {
               try { Logger.warn("official_move_notice_ignored", { gameId: this.gameId, error: String(error && (error.message || error)) }); } catch (_) {}
@@ -4534,6 +4580,7 @@
             }
             return DhametSouflaView.showAppliedSummary(lastMove, {
               mySide: this.mySide,
+              isSpectator: !!this.isSpectator,
               t: (key, vars) => window.I18N.translateArgs(key, vars && typeof vars === "object" ? vars : {}),
               rcStr: typeof rcStr === "function" ? rcStr : undefined,
               Modal: typeof Modal !== "undefined" ? Modal : null,
@@ -5349,6 +5396,34 @@
             this._closeUndoWaitModal();
             return;
           }
+
+          // A spectator follows every match event, but never receives player
+          // controls or wording that makes the spectator a party to the request.
+          if (this.isSpectator) {
+            const state = String(ur.status || "").toLowerCase();
+            const noticeKey = [state, ur.requesterUid || "", ur.requestedAt || "", ur.respondedAt || ur.acceptedAt || ""].join("|");
+            if (noticeKey && noticeKey !== this._lastSpectatorUndoNoticeKey) {
+              this._lastSpectatorUndoNoticeKey = noticeKey;
+              const player = String(ur.requesterNick || "").trim() || window.I18N.translateArgs("players.player");
+              const key = state === "accepted"
+                ? "undo.spectatorAccepted"
+                : state === "rejected"
+                  ? "undo.spectatorRejected"
+                  : (state === "pending" || state === "active")
+                    ? "undo.spectatorRequested"
+                    : "";
+              if (key) {
+                showOnlineNotice(formatTpl(window.I18N.translateArgs(key), { player }), {
+                  allowSpectator: true,
+                  title: window.I18N.translateArgs("modals.undo.title"),
+                });
+              }
+            }
+            if (state === "accepted") {
+              try { this._forceResync && this._forceResync(); } catch (e) {}
+            }
+            return;
+          }
     
           if ((ur.status === "pending" || ur.status === "active") && ur.requesterUid === this.myUid) {
             this._openUndoWaitModal(ur);
@@ -5671,7 +5746,7 @@
                   const spectateBtn = !isMePlayer
                     ? `<button class="btn small secondary" data-action="spectate" data-gid="${r.gid}" ${spectatorDisabled} ${spectatorTitle}>
                          <img class="btn-ico" src="${ASSET_PREFIX}assets/icons/watch.svg" alt="" aria-hidden="true" />
-                         <span>${spectatorLabel}</span>
+                         <span>${spectatorLabel}${!isPrivateRoom ? ` (${Number(r.spectatorCount || 0)})` : ""}</span>
                        </button>`
                     : "";
                   const roomStateLabel = r.reconnecting ? window.I18N.translateArgs("lobby.reconnectingRoom") : "";
@@ -5772,9 +5847,18 @@
         },
 
     _showUnavailableGameAndLeave: async function () {
+          const silentSpectatorLeave = !!this._spectatorLeaving;
           try { this._setOnlineEntryLoading(false); } catch (e) {}
           try { this._clearPersistedActiveGame && this._clearPersistedActiveGame(); } catch (e) {}
           await this._abortOnlineEntry("official-game-unavailable", { redirect: false });
+          if (silentSpectatorLeave) {
+            try {
+              const back = (location.pathname || "").includes("/pages/") ? "./loby.html" : "pages/loby.html";
+              if (typeof location.replace === "function") location.replace(back);
+              else location.href = back;
+            } catch (e) {}
+            return false;
+          }
           let redirected = false;
           const goToLobby = () => {
             if (redirected) return;

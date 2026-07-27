@@ -1615,13 +1615,21 @@ const UI = {
       if (clean && !lines.includes(clean)) lines.push(clean);
     };
 
-    if (validWinner != null) add(formatTpl(t("modals.gameOver.winner"), { player: winnerName }));
-    else add(t("modals.gameOver.draw"));
+    const humanSide = -aiSide();
+    if (validWinner != null) {
+      add(validWinner === humanSide
+        ? t("online.endPresentation.selfWinner")
+        : t("online.endPresentation.selfLoser"));
+    } else add(t("modals.gameOver.draw"));
 
     if (reason === "no_pieces") {
-      add(formatTpl(t("modals.gameOver.reason.noPieces"), { player: loserName }));
+      add(loserSide === humanSide
+        ? t("online.endPresentation.reason.selfNoPieces")
+        : formatTpl(t("modals.gameOver.reason.noPieces"), { player: loserName }));
     } else if (reason === "no_legal_moves") {
-      add(formatTpl(t("modals.gameOver.reason.noLegalMoves"), { player: loserName }));
+      add(loserSide === humanSide
+        ? t("online.endPresentation.reason.selfNoLegalMoves")
+        : formatTpl(t("modals.gameOver.reason.noLegalMoves"), { player: loserName }));
     } else if (reason === "one_king_each") {
       add(t("modals.gameOver.reason.oneKingEach"));
     }

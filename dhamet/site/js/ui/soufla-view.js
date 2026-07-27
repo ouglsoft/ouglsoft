@@ -224,15 +224,26 @@
     }
 
     function pickOffenderForClickedIdx(clickedIdx) {
-      if (offenderSet.has(clickedIdx)) return { offenderIdx: clickedIdx, ringIdx: clickedIdx };
-
-      if (
-        pending.startedFrom != null &&
-        pending.lastPieceIdx != null &&
-        offenderSet.has(pending.startedFrom) &&
-        clickedIdx === pending.lastPieceIdx
-      ) {
-        return { offenderIdx: pending.startedFrom, ringIdx: clickedIdx };
+      // The violation belongs to the piece, not to the square it occupied when
+      // the capture was ignored. Resolve every recorded offender to the cell
+      // currently occupied by that same piece after the offending move.
+      for (const offenderIdx of offenderSet) {
+        let currentIdx = offenderIdx;
+        try {
+          if (Rules && typeof Rules.resolveOffenderCurrentCell === "function") {
+            const resolved = Rules.resolveOffenderCurrentCell(pending, offenderIdx);
+            if (resolved != null) currentIdx = Number(resolved);
+          } else if (
+            pending.lastPieceIdx != null &&
+            (Number(pending.startedFrom) === Number(offenderIdx) ||
+              Number(pending.lastMoveFrom) === Number(offenderIdx))
+          ) {
+            currentIdx = Number(pending.lastPieceIdx);
+          }
+        } catch {}
+        if (Number(clickedIdx) === Number(currentIdx)) {
+          return { offenderIdx, ringIdx: currentIdx };
+        }
       }
       return null;
     }
@@ -436,7 +447,9 @@
     const mySide = deps && deps.mySide != null ? Number(deps.mySide) : null;
     const by = Number(lastMove.by);
     const startedFrom = meta.startedFrom != null ? meta.startedFrom : null;
+    const lastMoveFrom = meta.lastMoveFrom != null ? meta.lastMoveFrom : null;
     const lastPieceIdx = meta.lastPieceIdx != null ? meta.lastPieceIdx : null;
+    const isSpectator = !!(deps && deps.isSpectator);
     const title = t("modals.soufla.header");
 
     if (mySide != null && mySide === by) {
@@ -457,20 +470,22 @@
 
     const body = document.createElement("div");
     body.className = "soufla-summary";
-    const hasUndo = lastPieceIdx != null && startedFrom != null && lastPieceIdx !== startedFrom;
+    const origin = startedFrom != null ? startedFrom : lastMoveFrom;
+    const hasUndo = lastPieceIdx != null && origin != null && Number(lastPieceIdx) !== Number(origin);
+    const keyBase = isSpectator ? "soufla.spectator" : "soufla.summary";
     const parts = [
-      `<div style="font-weight:900;margin-bottom:6px;">${t("soufla.summary.title")}</div>`,
-      `<div>${t("soufla.summary.reason")}</div>`,
-      `<div style="margin-top:10px;font-weight:800;">${t("soufla.summary.penaltyTitle")}</div>`,
+      `<div style="font-weight:900;margin-bottom:6px;">${t(`${keyBase}.title`)}</div>`,
+      `<div>${t(`${keyBase}.reason`)}</div>`,
+      `<div style="margin-top:10px;font-weight:800;">${t(`${keyBase}.penaltyTitle`)}</div>`,
     ];
 
     if (decision.kind === "force") {
-      parts.push(`<div>${t("soufla.summary.force")}</div>`);
+      parts.push(`<div>${t(`${keyBase}.force`)}</div>`);
     } else {
-      parts.push(`<div>${t("soufla.summary.remove")}</div>`);
+      parts.push(`<div>${t(`${keyBase}.remove`)}</div>`);
     }
     if (hasUndo) {
-      parts.push(`<div class="muted" style="margin-top:8px;">${t("soufla.summary.undo")}</div>`);
+      parts.push(`<div class="muted" style="margin-top:8px;">${t(`${keyBase}.undo`)}</div>`);
     }
     body.innerHTML = parts.join("");
     Modal.alert({
