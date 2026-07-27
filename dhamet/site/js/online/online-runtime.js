@@ -2378,7 +2378,21 @@
               if (moveFxIndex && moveFxIndex > (this._lastSeenMoveModal || 0)) {
                 this._lastSeenMoveModal = moveFxIndex;
                 if (lm.kind === "soufla" && lm.decision) this._showSouflaModalFromLastMove(lm);
-                else if (lm.kind === "undo") showOnlineNotice(window.I18N.translateArgs("undo.applied"), { allowSpectator: true });
+                else if (lm.kind === "undo" && this.isSpectator) {
+                  const gameData = this._lastGameData || data || {};
+                  const players = gameData.players || {};
+                  const nameForUid = (uid) => {
+                    const want = String(uid || "");
+                    const rows = [players.white || {}, players.black || {}];
+                    const row = rows.find((item) => want && String(item.uid || "") === want) || {};
+                    try { return displayPlayerName(row.uid, row.nickname) || window.I18N.translateArgs("players.player"); }
+                    catch (_) { return String(row.nickname || "").trim() || window.I18N.translateArgs("players.player"); }
+                  };
+                  showOnlineNotice(formatTpl(window.I18N.translateArgs("undo.spectatorAccepted"), {
+                    responder: nameForUid(lm.responderUid),
+                    requester: nameForUid(lm.requesterUid),
+                  }), { allowSpectator: true, title: window.I18N.translateArgs("modals.undo.title") });
+                }
               }
             } catch (error) {
               try { Logger.warn("official_move_notice_ignored", { gameId: this.gameId, error: String(error && (error.message || error)) }); } catch (_) {}
@@ -4584,6 +4598,8 @@
               t: (key, vars) => window.I18N.translateArgs(key, vars && typeof vars === "object" ? vars : {}),
               rcStr: typeof rcStr === "function" ? rcStr : undefined,
               Modal: typeof Modal !== "undefined" ? Modal : null,
+              actorName: this._onlineDisplayNameForSide(Number(lastMove.by), this._lastGameData || {}),
+              victimName: this._onlineDisplayNameForSide(-Number(lastMove.by), this._lastGameData || {}),
             });
           } catch (e) {
             try { Logger.warn("shared_soufla_summary_failed", { err: String(e && (e.message || e)) }); } catch (_) {}
@@ -5401,26 +5417,19 @@
           // controls or wording that makes the spectator a party to the request.
           if (this.isSpectator) {
             const state = String(ur.status || "").toLowerCase();
-            const noticeKey = [state, ur.requesterUid || "", ur.requestedAt || "", ur.respondedAt || ur.acceptedAt || ""].join("|");
-            if (noticeKey && noticeKey !== this._lastSpectatorUndoNoticeKey) {
-              this._lastSpectatorUndoNoticeKey = noticeKey;
-              const player = String(ur.requesterNick || "").trim() || window.I18N.translateArgs("players.player");
-              const key = state === "accepted"
-                ? "undo.spectatorAccepted"
-                : state === "rejected"
-                  ? "undo.spectatorRejected"
-                  : (state === "pending" || state === "active")
-                    ? "undo.spectatorRequested"
-                    : "";
-              if (key) {
-                showOnlineNotice(formatTpl(window.I18N.translateArgs(key), { player }), {
+            // Do not expose the pending request to spectators. They receive only
+            // the final accepted or rejected result.
+            if (state === "rejected") {
+              const noticeKey = [state, ur.requesterUid || "", ur.responderUid || "", ur.respondedAt || ur.requestedAt || ""].join("|");
+              if (noticeKey && noticeKey !== this._lastSpectatorUndoNoticeKey) {
+                this._lastSpectatorUndoNoticeKey = noticeKey;
+                const requester = String(ur.requesterNick || "").trim() || window.I18N.translateArgs("players.player");
+                const responder = String(ur.responderNick || "").trim() || window.I18N.translateArgs("players.player");
+                showOnlineNotice(formatTpl(window.I18N.translateArgs("undo.spectatorRejected"), { requester, responder }), {
                   allowSpectator: true,
                   title: window.I18N.translateArgs("modals.undo.title"),
                 });
               }
-            }
-            if (state === "accepted") {
-              try { this._forceResync && this._forceResync(); } catch (e) {}
             }
             return;
           }

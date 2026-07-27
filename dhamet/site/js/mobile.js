@@ -115,8 +115,9 @@
     expireOrientationRequest(target);
     try {
       if (window.screen && screen.orientation && screen.orientation.lock) {
-        try { await screen.orientation.lock(target + '-primary'); }
-        catch (_) { await screen.orientation.lock(target); }
+        // A generic landscape lock follows either physical landscape direction.
+        // A primary-only landscape lock would pin the interface to one side.
+        await screen.orientation.lock(target);
         return true;
       }
     } catch (error) {
@@ -363,11 +364,8 @@
 
     try {
       if (screen.orientation && screen.orientation.lock) {
-        try {
-          await screen.orientation.lock(target + '-primary');
-        } catch (_) {
-          await screen.orientation.lock(target);
-        }
+        // Keep fullscreen limited to landscape, but permit both landscape sides.
+        await screen.orientation.lock(target);
         return true;
       }
     } catch (error) {

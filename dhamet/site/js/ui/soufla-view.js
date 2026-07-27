@@ -443,53 +443,25 @@
     if (!lastMove || !lastMove.decision || !Modal || typeof Modal.alert !== "function") return false;
 
     const decision = lastMove.decision;
-    const meta = lastMove.souflaMeta || {};
     const mySide = deps && deps.mySide != null ? Number(deps.mySide) : null;
     const by = Number(lastMove.by);
-    const startedFrom = meta.startedFrom != null ? meta.startedFrom : null;
-    const lastMoveFrom = meta.lastMoveFrom != null ? meta.lastMoveFrom : null;
-    const lastPieceIdx = meta.lastPieceIdx != null ? meta.lastPieceIdx : null;
     const isSpectator = !!(deps && deps.isSpectator);
-    const title = t("modals.soufla.header");
 
-    if (mySide != null && mySide === by) {
-      const body = document.createElement("div");
-      body.innerHTML = `
-        <div style="font-weight:700;margin-bottom:6px;">${t("soufla.applied.self")}</div>
-        <div class="muted">${decision.kind === "remove" ? t("soufla.applied.remove") : t("soufla.applied.force")}</div>
-      `;
-      Modal.alert({
-        title,
-        body,
-        okLabel: t("actions.close"),
-        allowSpectator: true,
-        priority: 70,
-      });
-      return true;
-    }
+    // The player who selected the penalty already saw and confirmed it in the
+    // selection dialog. Do not show that player a second confirmation message.
+    if (!isSpectator && mySide != null && mySide === by) return false;
 
+    const kind = decision.kind === "remove" ? "remove" : "force";
+    const key = isSpectator ? `soufla.spectator.${kind}` : `soufla.summary.${kind}`;
+    const message = t(key, {
+      actor: String((deps && deps.actorName) || "").trim(),
+      victim: String((deps && deps.victimName) || "").trim(),
+    });
     const body = document.createElement("div");
     body.className = "soufla-summary";
-    const origin = startedFrom != null ? startedFrom : lastMoveFrom;
-    const hasUndo = lastPieceIdx != null && origin != null && Number(lastPieceIdx) !== Number(origin);
-    const keyBase = isSpectator ? "soufla.spectator" : "soufla.summary";
-    const parts = [
-      `<div style="font-weight:900;margin-bottom:6px;">${t(`${keyBase}.title`)}</div>`,
-      `<div>${t(`${keyBase}.reason`)}</div>`,
-      `<div style="margin-top:10px;font-weight:800;">${t(`${keyBase}.penaltyTitle`)}</div>`,
-    ];
-
-    if (decision.kind === "force") {
-      parts.push(`<div>${t(`${keyBase}.force`)}</div>`);
-    } else {
-      parts.push(`<div>${t(`${keyBase}.remove`)}</div>`);
-    }
-    if (hasUndo) {
-      parts.push(`<div class="muted" style="margin-top:8px;">${t(`${keyBase}.undo`)}</div>`);
-    }
-    body.innerHTML = parts.join("");
+    body.textContent = message;
     Modal.alert({
-      title,
+      title: t("soufla.summary.title"),
       body,
       okLabel: t("actions.close"),
       allowSpectator: true,

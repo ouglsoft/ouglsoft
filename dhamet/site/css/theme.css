@@ -2074,3 +2074,31 @@ body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-drawer .log {
 
 /* On phones the timer row itself is the one end-capture control. There is no
    small white clock layered over a hidden button. */
+
+
+/* Unified capture timer colors: white glyphs everywhere; desktop timer uses the shared game-control green. */
+.timer-row,
+.timer-row .clock,
+.timer-row #killClock,
+.timer-row .clock .muted {
+  color: rgb(var(--rgb-white)) !important;
+}
+
+body.z-game-page:not(.z-mobile-on) .timer-row {
+  background: var(--gradient-game-control) !important;
+  border-color: rgb(var(--rgb-white) / .18) !important;
+  box-shadow: 0 10px 24px rgb(var(--rgb-primary-900) / .22), inset 0 1px 0 rgb(var(--rgb-white) / .20) !important;
+}
+
+body.z-game-page:not(.z-mobile-on) .timer-row .clock {
+  background: transparent !important;
+  border-color: transparent !important;
+  color: rgb(var(--rgb-white)) !important;
+  text-shadow: 0 1px 2px rgb(var(--rgb-black) / .42) !important;
+}
+
+body.z-game-page:not(.z-mobile-on) .timer-row #btnEndKill {
+  color: rgb(var(--rgb-white)) !important;
+  background: var(--gradient-game-control-danger) !important;
+  border-color: rgb(var(--rgb-white) / .18) !important;
+}

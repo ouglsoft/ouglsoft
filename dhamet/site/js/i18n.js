@@ -44,18 +44,18 @@
       },
       "sendFailed": "تعذر تطبيق السوفلة بسبب مشكلة في الاتصال. تحقق من الإنترنت ثم حاول مرة أخرى.",
       "summary": {
-        "force": "أُجبرت قطعتك على تنفيذ الأسر المحدد بالمسار الأخضر.",
+        "force": "اختار اللاعب عقوبة السوفلة ضدك، وأجبرك على تنفيذ المسار المحدد على الرقعة باللون الأخضر.",
         "penaltyTitle": "العقوبة المختارة:",
         "reason": "طالب خصمك بالسوفلة لأن قطعتك تجاهلت الأسر المحدد بالمسار الأحمر.",
-        "remove": "أُزيلت قطعتك المخالفة من الموضع المعلّم بعلامة X حمراء.",
+        "remove": "اختار اللاعب عقوبة السوفلة ضدك، وأزال قطعتك الموجودة في الموضع المحدد بعلامة X الحمراء.",
         "title": "نتيجة السوفلة",
         "undo": "أُلغيت نقلتك الأخيرة، ويظهر مسارها باللون الأصفر."
       },
       "spectator": {
-        "force": "أُجبرت القطعة المخالفة على تنفيذ الأسر المحدد بالمسار الأخضر.",
+        "force": "اختار اللاعب {actor} عقوبة السوفلة ضد اللاعب {victim}، وأجبره على تنفيذ المسار المحدد على الرقعة باللون الأخضر.",
         "penaltyTitle": "العقوبة المختارة:",
         "reason": "طُلبت السوفلة لأن إحدى القطع تجاهلت الأسر المحدد بالمسار الأحمر.",
-        "remove": "أُزيلت القطعة المخالفة من الموضع المعلّم بعلامة X حمراء.",
+        "remove": "اختار اللاعب {actor} عقوبة السوفلة ضد اللاعب {victim}، وأزال قطعته الموجودة في الموضع المحدد بعلامة X الحمراء.",
         "title": "نتيجة السوفلة",
         "undo": "أُلغيت النقلة المخالفة، ويظهر مسارها باللون الأصفر."
       }
@@ -536,14 +536,14 @@
     "schema_game_name": "ظامت الموريتانية",
     "schema_game_type": "Game",
     "undo": {
-      "applied": "تم التراجع عن النقلة الأخيرة${movePart}.",
+      "applied": "تم التراجع عن النقلة الأخيرة.",
       "failed": "تعذر التراجع عن النقلة.",
       "notCommitted": "لم يتم التراجع لأن المباراة تقدمت قبل اكتمال الطلب. اضغط «تحديث» ثم حاول مرة أخرى.",
       "rejected": "رفض اللاعب الآخر طلب التراجع.",
       "rejectedTitle": "رُفض طلب التراجع",
       "spectatorRequested": "طلب اللاعب {player} التراجع عن النقلة الأخيرة.",
-      "spectatorAccepted": "قُبل طلب التراجع عن النقلة الأخيرة.",
-      "spectatorRejected": "رُفض طلب التراجع عن النقلة الأخيرة.",
+      "spectatorAccepted": "وافق اللاعب {responder} على تراجع اللاعب {requester} عن النقلة الأخيرة.",
+      "spectatorRejected": "رفض اللاعب {responder} طلب اللاعب {requester} التراجع عن النقلة الأخيرة.",
       "request": {
         "body": "يريد {name} التراجع عن النقلة الأخيرة. هل توافق؟",
         "title": "طلب التراجع عن نقلة"
@@ -606,18 +606,18 @@
       },
       "sendFailed": "Soufla could not be applied because of a connection problem. Check your internet connection and try again.",
       "summary": {
-        "force": "Your piece was forced to complete the capture shown by the green path.",
+        "force": "The player chose a Soufla penalty against you and forced you to follow the path marked in green on the board.",
         "penaltyTitle": "Selected penalty:",
         "reason": "Your opponent claimed Soufla because your piece skipped the capture shown by the red path.",
-        "remove": "Your offending piece was removed from the position marked with a red X.",
+        "remove": "The player chose a Soufla penalty against you and removed your piece from the position marked with a red X.",
         "title": "Soufla result",
         "undo": "Your last move was undone and its path is shown in yellow."
       },
       "spectator": {
-        "force": "The offending piece was forced to complete the capture shown by the green path.",
+        "force": "{actor} chose a Soufla penalty against {victim} and forced them to follow the path marked in green on the board.",
         "penaltyTitle": "Selected penalty:",
         "reason": "Soufla was claimed because a piece skipped the capture shown by the red path.",
-        "remove": "The offending piece was removed from the position marked with a red X.",
+        "remove": "{actor} chose a Soufla penalty against {victim} and removed their piece from the position marked with a red X.",
         "title": "Soufla result",
         "undo": "The offending move was undone and its path is shown in yellow."
       }
@@ -1098,14 +1098,14 @@
     "schema_game_genre": "Strategy game",
     "schema_game_type": "Game",
     "undo": {
-      "applied": "The last move was undone${movePart}.",
+      "applied": "The last move was undone.",
       "failed": "The move could not be undone.",
       "notCommitted": "The move was not undone because the match continued before the request finished. Press Refresh and try again.",
       "rejected": "The other player declined the undo request.",
       "rejectedTitle": "Undo request declined",
       "spectatorRequested": "{player} requested to undo the last move.",
-      "spectatorAccepted": "The request to undo the last move was accepted.",
-      "spectatorRejected": "The request to undo the last move was declined.",
+      "spectatorAccepted": "{responder} accepted {requester}’s request to undo the last move.",
+      "spectatorRejected": "{responder} declined {requester}’s request to undo the last move.",
       "request": {
         "body": "{name} wants to undo the last move. Allow it?",
         "title": "Undo request"
@@ -1168,18 +1168,18 @@
       },
       "sendFailed": "La Soufla n’a pas pu être appliquée à cause d’un problème de connexion. Vérifiez votre accès à Internet puis réessayez.",
       "summary": {
-        "force": "Votre pièce a été forcée à effectuer la prise indiquée par le chemin vert.",
+        "force": "Le joueur a choisi une sanction de Soufla contre vous et vous a imposé le chemin indiqué en vert sur le plateau.",
         "penaltyTitle": "Sanction choisie :",
         "reason": "Votre adversaire a réclamé Soufla parce que votre pièce a ignoré la prise indiquée par le chemin rouge.",
-        "remove": "Votre pièce fautive a été retirée de la position marquée d’une croix rouge.",
+        "remove": "Le joueur a choisi une sanction de Soufla contre vous et a retiré votre pièce de la position marquée d’une croix rouge.",
         "title": "Résultat de la Soufla",
         "undo": "Votre dernier coup a été annulé et son chemin apparaît en jaune."
       },
       "spectator": {
-        "force": "La pièce fautive a été forcée à effectuer la prise indiquée par le chemin vert.",
+        "force": "{actor} a choisi une sanction de Soufla contre {victim} et lui a imposé le chemin indiqué en vert sur le plateau.",
         "penaltyTitle": "Sanction choisie :",
         "reason": "La Soufla a été réclamée parce qu’une pièce a ignoré la prise indiquée par le chemin rouge.",
-        "remove": "La pièce fautive a été retirée de la position marquée d’une croix rouge.",
+        "remove": "{actor} a choisi une sanction de Soufla contre {victim} et a retiré sa pièce de la position marquée d’une croix rouge.",
         "title": "Résultat de la Soufla",
         "undo": "Le coup fautif a été annulé et son chemin apparaît en jaune."
       }
@@ -1660,14 +1660,14 @@
     "schema_game_genre": "Jeu de stratégie",
     "schema_game_type": "Game",
     "undo": {
-      "applied": "Le dernier coup a été annulé${movePart}.",
+      "applied": "Le dernier coup a été annulé.",
       "failed": "Le coup n’a pas pu être annulé.",
       "notCommitted": "Le coup n’a pas été annulé, car la partie a continué avant la fin de la demande. Appuyez sur Actualiser puis réessayez.",
       "rejected": "L’autre joueur a refusé la demande d’annulation.",
       "rejectedTitle": "Demande d’annulation refusée",
       "spectatorRequested": "{player} a demandé l’annulation du dernier coup.",
-      "spectatorAccepted": "La demande d’annulation du dernier coup a été acceptée.",
-      "spectatorRejected": "La demande d’annulation du dernier coup a été refusée.",
+      "spectatorAccepted": "{responder} a accepté la demande de {requester} d’annuler le dernier coup.",
+      "spectatorRejected": "{responder} a refusé la demande de {requester} d’annuler le dernier coup.",
       "request": {
         "body": "{name} souhaite annuler le dernier coup. Acceptez-vous ?",
         "title": "Demande d’annulation"

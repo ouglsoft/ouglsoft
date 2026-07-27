@@ -38,10 +38,12 @@ test('requested Arabic Soufla and move-failure messages are exact', () => {
   assert.equal(tr.ar.status.moveSendFail, 'فشل إرسال النقلة، يرجى الضغط على زر التحديث ثم إعادة النقلة.');
 });
 
-test('spectators receive neutral match wording and player-only errors remain suppressed', () => {
-  for (const key of ['reason', 'force', 'remove', 'undo']) assert.ok(tr.ar.soufla.spectator[key]);
-  for (const key of ['spectatorRequested', 'spectatorAccepted', 'spectatorRejected']) assert.ok(tr.ar.undo[key]);
-  assert.match(online, /if \(this\.isSpectator\)[\s\S]*undo\.spectatorRequested/);
+test('spectators receive only neutral final match decisions and player-only errors remain suppressed', () => {
+  for (const key of ['force', 'remove']) assert.ok(tr.ar.soufla.spectator[key]);
+  for (const key of ['spectatorAccepted', 'spectatorRejected']) assert.ok(tr.ar.undo[key]);
+  assert.doesNotMatch(online, /showOnlineNotice[\s\S]{0,240}undo\.spectatorRequested/);
+  assert.match(online, /state === "rejected"[\s\S]*undo\.spectatorRejected/);
+  assert.match(online, /lm\.kind === "undo" && this\.isSpectator[\s\S]*undo\.spectatorAccepted/);
   assert.match(online, /isSpectator:\s*!!this\.isSpectator/);
   assert.match(lobby, /!cfg\.allowSpectator[\s\S]*contains\("z-spectator"\)[\s\S]*return/);
   assert.doesNotMatch(online, /status\.moveSendFail"\),\s*\{\s*allowSpectator:\s*true/);
@@ -109,4 +111,32 @@ test('online and computer modes share the same board effects renderer', () => {
 test('the original application does not depend on a persisted Firebase session', () => {
   assert.doesNotMatch(gamePage, /firebase(?:-app|-auth|-database)?-compat|firebase\.initializeApp/i);
   assert.doesNotMatch(read('dhamet/site/pages/loby.html'), /firebase(?:-app|-auth|-database)?-compat|firebase\.initializeApp/i);
+});
+
+
+test('Soufla and undo result wording is simplified without duplicate player confirmations', () => {
+  assert.equal(tr.ar.soufla.summary.remove, 'اختار اللاعب عقوبة السوفلة ضدك، وأزال قطعتك الموجودة في الموضع المحدد بعلامة X الحمراء.');
+  assert.equal(tr.ar.soufla.summary.force, 'اختار اللاعب عقوبة السوفلة ضدك، وأجبرك على تنفيذ المسار المحدد على الرقعة باللون الأخضر.');
+  assert.equal(tr.ar.soufla.spectator.remove, 'اختار اللاعب {actor} عقوبة السوفلة ضد اللاعب {victim}، وأزال قطعته الموجودة في الموضع المحدد بعلامة X الحمراء.');
+  assert.equal(tr.ar.soufla.spectator.force, 'اختار اللاعب {actor} عقوبة السوفلة ضد اللاعب {victim}، وأجبره على تنفيذ المسار المحدد على الرقعة باللون الأخضر.');
+  assert.match(souflaView, /mySide === by\) return false/);
+  assert.doesNotMatch(online, /showOnlineNotice\(window\.I18N\.translateArgs\("undo\.applied"/);
+  assert.equal(tr.ar.undo.applied, 'تم التراجع عن النقلة الأخيرة.');
+  assert.doesNotMatch(tr.ar.undo.applied, /movePart|\$\{/);
+});
+
+test('mobile landscape follows either physical landscape direction without reload', () => {
+  const mobile = read('dhamet/site/js/mobile.js');
+  assert.match(mobile, /screen\.orientation\.lock\(target\)/);
+  assert.doesNotMatch(mobile, /landscape-primary|target \+ '-primary'/);
+  assert.match(mobile, /orientationchange/);
+  assert.match(mobile, /exitMobileFullscreen/);
+  assert.doesNotMatch(mobile, /location\.reload|location\.replace/);
+});
+
+test('capture timer uses white text and the shared desktop control colors', () => {
+  assert.match(theme, /Unified capture timer colors/);
+  assert.match(theme, /timer-row #killClock[\s\S]*rgb\(var\(--rgb-white\)\)/);
+  assert.match(theme, /body\.z-game-page:not\(\.z-mobile-on\) \.timer-row[\s\S]*var\(--gradient-game-control\)/);
+  assert.match(theme, /timer-row #btnEndKill[\s\S]*var\(--gradient-game-control-danger\)/);
 });
