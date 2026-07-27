@@ -17,6 +17,7 @@ on:
 
 permissions:
   contents: read
+  issues: write
 
 concurrency:
   group: dhamet-capacity-monitor
@@ -38,6 +39,9 @@ jobs:
       DHAMET_ROUTE_CONTROL_ENDPOINT: ${{ vars.DHAMET_ROUTE_CONTROL_ENDPOINT }}
       DHAMET_ACTIVATION_THRESHOLD: ${{ vars.DHAMET_ACTIVATION_THRESHOLD || '90' }}
       DHAMET_RESET_GRACE_MINUTES: "2"
+      FIREBASE_ROUTE_CONTROL_URL: ${{ vars.FIREBASE_ROUTE_CONTROL_URL || 'https://dhamet2-default-rtdb.firebaseio.com/system/backupRoute.json' }}
+      FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+      FIREBASE_ROUTE_CONTROL_TOKEN: ${{ secrets.FIREBASE_ROUTE_CONTROL_TOKEN }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -49,3 +53,34 @@ jobs:
 
       - name: Read Cloudflare GraphQL analytics and update online routing
         run: node monitor/cloudflare-backup-router.mjs
+
+      - name: Report monitor failure
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const title = 'Dhamet capacity monitor failure';
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const body = `The Dhamet capacity monitor failed on ${new Date().toISOString()}.\n\nRun: ${runUrl}`;
+            const issues = await github.paginate(github.rest.issues.listForRepo, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              per_page: 100,
+            });
+            const existing = issues.find((issue) => !issue.pull_request && issue.title === title);
+            if (existing) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existing.number,
+                body,
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body,
+              });
+            }
