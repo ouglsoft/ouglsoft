@@ -147,6 +147,9 @@ test('workflow disables the monitor and a separate UTC wake workflow enables and
   assert.match(monitor, /monitor-dhamet-capacity\.yml/);
   assert.match(wake, /cron: "3 0 \* \* \*"/);
   assert.match(wake, /cron: "8 0 \* \* \*"/);
+  assert.match(wake, /if: vars\.DHAMET_AUTO_MONITOR_ENABLED == 'true'/);
+  assert.match(wake, /GET \/repos\/\{owner\}\/\{repo\}\/actions\/workflows\/\{workflow_id\}/);
+  assert.match(wake, /state === 'active'/);
   assert.match(wake, /\/enable/);
   assert.match(wake, /\/dispatches/);
   assert.match(wake, /force_mode: 'auto'/);
