@@ -1,0 +1,41 @@
+name: Wake Dhamet Capacity Monitor
+
+on:
+  schedule:
+    # The confirmed emergency decision expires at 00:02 UTC. The second run is
+    # a fallback in case GitHub delays or misses the first scheduled wake-up.
+    - cron: "3 0 * * *"
+    - cron: "8 0 * * *"
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: dhamet-capacity-monitor-wakeup
+  cancel-in-progress: true
+
+jobs:
+  wake:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Enable the capacity monitor
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const workflowId = 'monitor-dhamet-capacity.yml';
+            await github.request('PUT /repos/{owner}/{repo}/actions/workflows/{workflow_id}/enable', {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: workflowId,
+            });
+            await github.request('POST /repos/{owner}/{repo}/actions/workflows/{workflow_id}/dispatches', {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: workflowId,
+              ref: context.payload.repository.default_branch,
+              inputs: { force_mode: 'auto' },
+            });
+            core.info('Dhamet capacity monitor enabled and started for the new UTC quota day.');
