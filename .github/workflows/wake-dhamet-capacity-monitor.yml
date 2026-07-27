@@ -18,6 +18,7 @@ concurrency:
 
 jobs:
   wake:
+    if: vars.DHAMET_AUTO_MONITOR_ENABLED == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -26,15 +27,25 @@ jobs:
         with:
           script: |
             const workflowId = 'monitor-dhamet-capacity.yml';
-            await github.request('PUT /repos/{owner}/{repo}/actions/workflows/{workflow_id}/enable', {
+            const common = {
               owner: context.repo.owner,
               repo: context.repo.repo,
               workflow_id: workflowId,
-            });
+            };
+            const current = await github.request(
+              'GET /repos/{owner}/{repo}/actions/workflows/{workflow_id}',
+              common,
+            );
+            if (current.data && current.data.state === 'active') {
+              core.info('Dhamet capacity monitor is already active; no wake-up dispatch is needed.');
+              return;
+            }
+            await github.request(
+              'PUT /repos/{owner}/{repo}/actions/workflows/{workflow_id}/enable',
+              common,
+            );
             await github.request('POST /repos/{owner}/{repo}/actions/workflows/{workflow_id}/dispatches', {
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              workflow_id: workflowId,
+              ...common,
               ref: context.payload.repository.default_branch,
               inputs: { force_mode: 'auto' },
             });
