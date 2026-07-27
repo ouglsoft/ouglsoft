@@ -16,6 +16,7 @@ on:
           - backup-emergency
 
 permissions:
+  actions: write
   contents: read
   issues: write
 
@@ -39,6 +40,11 @@ jobs:
       DHAMET_ROUTE_CONTROL_ENDPOINT: ${{ vars.DHAMET_ROUTE_CONTROL_ENDPOINT }}
       DHAMET_ACTIVATION_THRESHOLD: ${{ vars.DHAMET_ACTIVATION_THRESHOLD || '90' }}
       DHAMET_RESET_GRACE_MINUTES: "2"
+      # Three separate scheduled runs are required. A duplicate/manual run
+      # arriving too soon is not counted as another confirmation.
+      DHAMET_CONFIRMATION_REQUIRED_RUNS: ${{ vars.DHAMET_CONFIRMATION_REQUIRED_RUNS || '3' }}
+      DHAMET_CONFIRMATION_MIN_GAP_MS: ${{ vars.DHAMET_CONFIRMATION_MIN_GAP_MS || '240000' }}
+      DHAMET_CONFIRMATION_MAX_GAP_MS: ${{ vars.DHAMET_CONFIRMATION_MAX_GAP_MS || '720000' }}
       FIREBASE_ROUTE_CONTROL_URL: ${{ vars.FIREBASE_ROUTE_CONTROL_URL || 'https://dhamet2-default-rtdb.firebaseio.com/system/backupRoute.json' }}
       FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
       FIREBASE_ROUTE_CONTROL_TOKEN: ${{ secrets.FIREBASE_ROUTE_CONTROL_TOKEN }}
@@ -52,7 +58,20 @@ jobs:
           node-version: 22
 
       - name: Read Cloudflare GraphQL analytics and update online routing
+        id: capacity
         run: node monitor/cloudflare-backup-router.mjs
+
+      - name: Disable capacity monitor until the next quota reset
+        if: steps.capacity.outputs.disable_monitor == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.request('PUT /repos/{owner}/{repo}/actions/workflows/{workflow_id}/disable', {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'monitor-dhamet-capacity.yml',
+            });
+            core.info(`Capacity monitor disabled: ${{ steps.capacity.outputs.disable_reason }}`);
 
       - name: Report monitor failure
         if: failure()
