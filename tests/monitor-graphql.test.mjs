@@ -16,6 +16,9 @@ async function runMonitor(mockBody, env = {}) {
       ...process.env,
       DHAMET_BACKUP_CONTROL_SECRET: 'test-secret',
       FIREBASE_ROUTE_CONTROL_TOKEN: 'test-firebase-token',
+      DHAMET_CONFIRMATION_REQUIRED_RUNS: '3',
+      DHAMET_CONFIRMATION_MIN_GAP_MS: '240000',
+      DHAMET_CONFIRMATION_MAX_GAP_MS: '720000',
       ...env,
     },
   });
@@ -35,7 +38,7 @@ function firebaseMockSource() {
   `;
 }
 
-test('GraphQL metrics trigger backup and mirror the confirmed decision', async () => {
+test('first GraphQL threshold reading starts spaced confirmation without immediate backup', async () => {
   const result = await runMonitor(`
     globalThis.fetch = async (url, init = {}) => {
       const value = String(url);
@@ -53,7 +56,8 @@ test('GraphQL metrics trigger backup and mirror the confirmed decision', async (
       }
       if (value === 'https://ouglsoft.com/dhamet/api/backend-route/control') {
         const body = JSON.parse(init.body);
-        if (body.mode !== 'backup-emergency') throw new Error('expected backup decision');
+        if (body.mode !== 'cloudflare') throw new Error('first reading must keep Cloudflare active');
+        if (body.reason !== 'capacity-confirmation-pending') throw new Error('expected pending confirmation');
         if (body.metricKey !== 'workers_requests') throw new Error('wrong highest metric');
         return new Response(JSON.stringify({ok:true,applied:true,control:{...body,generation:3,status:'backup-confirmed',available:true}}), {status:200,headers:{'content-type':'application/json'}});
       }
@@ -67,7 +71,8 @@ test('GraphQL metrics trigger backup and mirror the confirmed decision', async (
     DHAMET_ACTIVATION_THRESHOLD: '90',
   });
   assert.equal(result.status, 0, result.stderr || result.stdout);
-  assert.match(result.stdout, /backup-emergency/);
+  assert.match(result.stdout, /capacity-confirmation-pending/);
+  assert.match(result.stdout, /\"count\": 1/);
   assert.match(result.stdout, /firebaseApplied/);
   assert.doesNotMatch(result.stderr, /billable\/usage/);
 });
@@ -124,7 +129,7 @@ test('forced mode skips GraphQL and writes both control stores', async () => {
   assert.match(result.stdout, /backup-emergency/);
 });
 
-test('Firebase mirror still records confirmed backup if Worker control write fails', async () => {
+test('Firebase mirror is still attempted if Worker control write fails during confirmation', async () => {
   const result = await runMonitor(`
     globalThis.fetch = async (url, init = {}) => {
       const value = String(url);

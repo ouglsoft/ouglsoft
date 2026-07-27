@@ -1109,6 +1109,24 @@ function publicBackendRouteControl(control) {
   const value = control && typeof control === 'object' ? control : {};
   const available = value.available !== false;
   const enabled = available && value.enabled === true;
+  const rawConfirmation = value.metrics && value.metrics._confirmation && typeof value.metrics._confirmation === 'object'
+    ? value.metrics._confirmation
+    : null;
+  const confirmation = rawConfirmation ? {
+    state: String(rawConfirmation.state || ''),
+    utcDate: String(rawConfirmation.utcDate || ''),
+    count: Math.max(0, Math.floor(Number(rawConfirmation.count || 0) || 0)),
+    required: Math.max(0, Math.floor(Number(rawConfirmation.required || 0) || 0)),
+    confirmed: rawConfirmation.confirmed === true,
+    firstObservedAt: Math.max(0, Number(rawConfirmation.firstObservedAt || 0) || 0),
+    lastObservedAt: Math.max(0, Number(rawConfirmation.lastObservedAt || 0) || 0),
+    readings: (Array.isArray(rawConfirmation.readings) ? rawConfirmation.readings : []).slice(-3).map((entry) => ({
+      checkedAt: Math.max(0, Number(entry && entry.checkedAt || 0) || 0),
+      backup: !!(entry && entry.backup),
+      metricKey: String(entry && entry.metricKey || '').slice(0, 160),
+      observedPercent: Math.max(0, Number(entry && entry.observedPercent || 0) || 0),
+    })),
+  } : null;
   return {
     available,
     status: available ? (enabled ? 'backup-confirmed' : 'cloudflare') : 'unknown',
@@ -1124,6 +1142,7 @@ function publicBackendRouteControl(control) {
     updatedAt: Number(value.updatedAt || 0) || 0,
     validUntil: Number(value.validUntil || 0) || 0,
     resetAt: Number(value.resetAt || 0) || 0,
+    confirmation,
   };
 }
 

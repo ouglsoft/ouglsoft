@@ -1,4 +1,5 @@
 import { createSign } from 'node:crypto';
+import { appendFileSync } from 'node:fs';
 
 const now = Date.now();
 const activationThreshold = clampNumber(process.env.DHAMET_ACTIVATION_THRESHOLD, 90, 1, 100);
@@ -9,6 +10,9 @@ const controlSecret = required('DHAMET_BACKUP_CONTROL_SECRET');
 const backupUrl = String(process.env.DHAMET_BACKUP_URL || 'https://dhamet2.ouglsoft.com/pages/loby.html?emergency=1').trim();
 const firebaseRouteControlUrl = String(process.env.FIREBASE_ROUTE_CONTROL_URL || 'https://dhamet2-default-rtdb.firebaseio.com/system/backupRoute.json').trim();
 const graphqlEndpoint = 'https://api.cloudflare.com/client/v4/graphql';
+const confirmationRequiredRuns = Math.max(2, Math.min(3, Math.floor(clampNumber(process.env.DHAMET_CONFIRMATION_REQUIRED_RUNS, 3, 2, 3))));
+const confirmationMinGapMs = clampNumber(process.env.DHAMET_CONFIRMATION_MIN_GAP_MS, 240000, 60000, 600000);
+const confirmationMaxGapMs = Math.max(confirmationMinGapMs, clampNumber(process.env.DHAMET_CONFIRMATION_MAX_GAP_MS, 720000, confirmationMinGapMs, 1800000));
 let cachedFirebaseAccessToken = null;
 
 function required(name) {
@@ -21,6 +25,12 @@ function clampNumber(value, fallback, min, max) {
   const number = Number(value);
   if (!Number.isFinite(number)) return fallback;
   return Math.max(min, Math.min(max, number));
+}
+
+function setGithubOutput(name, value) {
+  const outputFile = String(process.env.GITHUB_OUTPUT || '').trim();
+  if (!outputFile) return;
+  appendFileSync(outputFile, `${name}=${String(value)}\n`, 'utf8');
 }
 
 function utcDate(ms = Date.now()) {
@@ -167,6 +177,123 @@ function decide(metrics) {
   if (forceMode !== 'auto' && forceMode) throw new Error(`Unsupported FORCE_MODE: ${forceMode}`);
   if (highest && highest.percent >= activationThreshold) return { backup: true, reason: 'capacity-threshold', highest };
   return { backup: false, reason: 'capacity-available', highest };
+}
+
+function cleanConfirmationReading(entry) {
+  const value = entry && typeof entry === 'object' ? entry : {};
+  return {
+    checkedAt: Math.max(0, Number(value.checkedAt || 0) || 0),
+    backup: value.backup === true,
+    metricKey: String(value.metricKey || '').slice(0, 160),
+    observedPercent: Math.max(0, Number(value.observedPercent || 0) || 0),
+  };
+}
+
+function previousConfirmationState(previousControl) {
+  const value = previousControl && typeof previousControl === 'object' ? previousControl : {};
+  const src = value.confirmation && typeof value.confirmation === 'object'
+    ? value.confirmation
+    : (value.metrics && value.metrics._confirmation && typeof value.metrics._confirmation === 'object'
+      ? value.metrics._confirmation
+      : {});
+  return {
+    state: String(src.state || ''),
+    utcDate: String(src.utcDate || ''),
+    count: Math.max(0, Math.floor(Number(src.count || src.positive || 0) || 0)),
+    required: Math.max(2, Math.floor(Number(src.required || confirmationRequiredRuns) || confirmationRequiredRuns)),
+    firstObservedAt: Math.max(0, Number(src.firstObservedAt || 0) || 0),
+    lastObservedAt: Math.max(0, Number(src.lastObservedAt || 0) || 0),
+    readings: (Array.isArray(src.readings) ? src.readings : []).map(cleanConfirmationReading).filter((entry) => entry.checkedAt > 0),
+  };
+}
+
+function confirmedAutoDecision(initialMetrics, previousControl = {}) {
+  const checkedAt = Date.now();
+  const initialDecision = decide(initialMetrics);
+  const highest = initialDecision.highest || { key: '', percent: 0 };
+  const currentReading = {
+    checkedAt,
+    backup: initialDecision.backup,
+    metricKey: String(highest.key || ''),
+    observedPercent: Number(highest.percent || 0),
+  };
+
+  if (!initialDecision.backup) {
+    return {
+      metrics: initialMetrics,
+      decision: initialDecision,
+      confirmation: {
+        state: 'reset',
+        attempted: false,
+        utcDate: utcDate(checkedAt),
+        count: 0,
+        required: confirmationRequiredRuns,
+        confirmed: false,
+        resetReason: 'reading-below-threshold',
+        readings: [currentReading],
+      },
+    };
+  }
+
+  const previous = previousConfirmationState(previousControl);
+  const today = utcDate(checkedAt);
+  const gapMs = previous.lastObservedAt > 0 ? checkedAt - previous.lastObservedAt : 0;
+  const sameDay = previous.utcDate === today;
+  const pending = previous.state === 'pending' && previous.count > 0;
+  const spacedEnough = gapMs >= confirmationMinGapMs;
+  const recentEnough = gapMs <= confirmationMaxGapMs;
+
+  let count = 1;
+  let firstObservedAt = checkedAt;
+  let lastObservedAt = checkedAt;
+  let readings = [currentReading];
+  let spacing = 'first-reading';
+
+  if (pending && sameDay && recentEnough) {
+    if (spacedEnough) {
+      count = Math.min(confirmationRequiredRuns, previous.count + 1);
+      firstObservedAt = previous.firstObservedAt || checkedAt;
+      lastObservedAt = checkedAt;
+      readings = [...previous.readings, currentReading].slice(-confirmationRequiredRuns);
+      spacing = 'scheduled-follow-up';
+    } else {
+      // Manual re-runs or duplicate schedule delivery must not be counted as a
+      // separate confirmation. Keep the prior timestamp so the next normal
+      // five-minute run can advance the sequence.
+      count = previous.count;
+      firstObservedAt = previous.firstObservedAt || previous.lastObservedAt || checkedAt;
+      lastObservedAt = previous.lastObservedAt || checkedAt;
+      readings = previous.readings.length ? previous.readings.slice(-confirmationRequiredRuns) : [currentReading];
+      spacing = 'too-soon-not-counted';
+    }
+  } else if (pending && (!sameDay || !recentEnough)) {
+    spacing = sameDay ? 'sequence-expired-restarted' : 'new-utc-day-restarted';
+  }
+
+  const confirmed = count >= confirmationRequiredRuns;
+  return {
+    metrics: initialMetrics,
+    decision: {
+      backup: confirmed,
+      reason: confirmed ? 'capacity-threshold-confirmed' : 'capacity-confirmation-pending',
+      highest: initialDecision.highest,
+    },
+    confirmation: {
+      state: confirmed ? 'confirmed' : 'pending',
+      attempted: true,
+      utcDate: today,
+      count,
+      required: confirmationRequiredRuns,
+      confirmed,
+      firstObservedAt,
+      lastObservedAt,
+      gapMs,
+      minimumGapMs: confirmationMinGapMs,
+      maximumGapMs: confirmationMaxGapMs,
+      spacing,
+      readings,
+    },
+  };
 }
 
 async function writeWorkerControl(control) {
@@ -327,10 +454,12 @@ async function persistControl(control) {
 const previous = await readPreviousControl();
 const previousBackupActive = previous && previous.enabled === true && String(previous.mode || '') === 'backup-emergency' && Number(previous.validUntil || 0) > now;
 
-// Once emergency routing has been confirmed, scheduled runs stop spending a
-// GraphQL query until reset. They still repair/synchronize the Firebase mirror.
+// If a confirmed emergency decision is already active, repair the Firebase
+// mirror once and ask the workflow to disable itself until the daily wake-up.
 if (forceMode === 'auto' && previousBackupActive) {
   const mirror = await writeFirebaseControl(previous);
+  setGithubOutput('disable_monitor', 'true');
+  setGithubOutput('disable_reason', 'backup-recorded-until-reset');
   console.log(JSON.stringify({
     ok: true,
     skipped: true,
@@ -339,12 +468,22 @@ if (forceMode === 'auto' && previousBackupActive) {
     generation: Number(previous.generation || 0) || 0,
     validUntil: new Date(Number(previous.validUntil)).toISOString(),
     firebaseMirrorApplied: mirror.applied,
+    disableMonitor: true,
   }, null, 2));
   process.exit(0);
 }
 
-const metrics = forceMode === 'auto' ? await cloudflareGraphqlUsage() : {};
-const decision = decide(metrics);
+let metrics = {};
+let decision = null;
+let confirmation = null;
+if (forceMode === 'auto') {
+  const confirmed = confirmedAutoDecision(await cloudflareGraphqlUsage(), previous);
+  metrics = confirmed.metrics;
+  decision = confirmed.decision;
+  confirmation = confirmed.confirmation;
+} else {
+  decision = decide(metrics);
+}
 const highest = decision.highest || { key: '', percent: 0, consumed: 0, limit: 0, label: '' };
 const generation = Math.max(0, Number(previous && previous.generation || 0) || 0) + 1;
 const resetAt = nextUtcResetMs();
@@ -362,19 +501,30 @@ const control = {
   updatedAt: now,
   validUntil: decision.backup ? resetAt : 0,
   resetAt,
-  metrics,
+  metrics: confirmation ? { ...metrics, _confirmation: confirmation } : metrics,
 };
 
 const persisted = await persistControl(control);
 const finalControl = persisted.worker && persisted.worker.control ? persisted.worker.control : control;
+const shouldDisableMonitor = forceMode === 'auto'
+  && decision.backup === true
+  && confirmation && confirmation.confirmed === true
+  && String(finalControl.mode || control.mode) === 'backup-emergency'
+  && Number(finalControl.validUntil || control.validUntil || 0) > Date.now();
+if (shouldDisableMonitor) {
+  setGithubOutput('disable_monitor', 'true');
+  setGithubOutput('disable_reason', 'capacity-threshold-confirmed');
+}
 console.log(JSON.stringify({
   ok: true,
   decision: finalControl.mode || control.mode,
   reason: finalControl.reason || control.reason,
   highestMetric: highest,
   highestRawMetric: highestMetric(metrics, false),
+  confirmation,
   generation: Number(finalControl.generation || generation) || generation,
   validUntil: Number(finalControl.validUntil || control.validUntil) ? new Date(Number(finalControl.validUntil || control.validUntil)).toISOString() : null,
   workerApplied: persisted.worker.applied !== false,
   firebaseApplied: persisted.firebase.applied !== false,
+  disableMonitor: shouldDisableMonitor,
 }, null, 2));
