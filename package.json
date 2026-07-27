@@ -18,5 +18,5 @@
     "dhametPublicPath": "/dhamet",
     "dhametWorkerRoute": "ouglsoft.com/dhamet/api/*"
   },
-  "dhametBuild": "computer-pvs-2.13.24"
+  "dhametBuild": "computer-pvs-2.13.25-silent-fallback"
 }

@@ -1,3 +1,5 @@
+import { createSign } from 'node:crypto';
+
 const now = Date.now();
 const activationThreshold = clampNumber(process.env.DHAMET_ACTIVATION_THRESHOLD, 90, 1, 100);
 const forceMode = String(process.env.FORCE_MODE || 'auto').trim().toLowerCase();
@@ -5,7 +7,9 @@ const statusEndpoint = String(process.env.DHAMET_ROUTE_STATUS_ENDPOINT || 'https
 const controlEndpoint = String(process.env.DHAMET_ROUTE_CONTROL_ENDPOINT || 'https://ouglsoft.com/dhamet/api/backend-route/control').trim();
 const controlSecret = required('DHAMET_BACKUP_CONTROL_SECRET');
 const backupUrl = String(process.env.DHAMET_BACKUP_URL || 'https://dhamet2.ouglsoft.com/pages/loby.html?emergency=1').trim();
+const firebaseRouteControlUrl = String(process.env.FIREBASE_ROUTE_CONTROL_URL || 'https://dhamet2-default-rtdb.firebaseio.com/system/backupRoute.json').trim();
 const graphqlEndpoint = 'https://api.cloudflare.com/client/v4/graphql';
+let cachedFirebaseAccessToken = null;
 
 function required(name) {
   const value = String(process.env[name] || '').trim();
@@ -38,7 +42,7 @@ function sumField(rows, field) {
   return (Array.isArray(rows) ? rows : []).reduce((total, row) => total + (Number(row && row.sum && row.sum[field]) || 0), 0);
 }
 
-function makeMetric(label, consumed, limit, note = '') {
+function makeMetric(label, consumed, limit, note = '', activatesBackup = true) {
   const safeConsumed = Math.max(0, Number(consumed) || 0);
   return {
     label,
@@ -47,12 +51,19 @@ function makeMetric(label, consumed, limit, note = '') {
     percent: limit > 0 ? safeConsumed / limit * 100 : 0,
     source: 'cloudflare-graphql-analytics',
     note,
+    activatesBackup,
   };
+}
+
+function fetchWithTimeout(url, init = {}, timeoutMs = 6000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...init, signal: controller.signal }).finally(() => clearTimeout(timer));
 }
 
 async function readPreviousControl() {
   try {
-    const response = await fetch(statusEndpoint, { headers: { accept: 'application/json' } });
+    const response = await fetchWithTimeout(statusEndpoint, { headers: { accept: 'application/json' } }, 4000);
     const data = await response.json().catch(() => ({}));
     if (!response.ok || data.ok === false) throw new Error(`status ${response.status}`);
     return data.control || {};
@@ -64,7 +75,7 @@ async function readPreviousControl() {
 
 async function graphqlRequest(query, variables) {
   const apiToken = required('CLOUDFLARE_ANALYTICS_API_TOKEN');
-  const response = await fetch(graphqlEndpoint, {
+  const response = await fetchWithTimeout(graphqlEndpoint, {
     method: 'POST',
     headers: {
       authorization: `Bearer ${apiToken}`,
@@ -72,7 +83,7 @@ async function graphqlRequest(query, variables) {
       'content-type': 'application/json',
     },
     body: JSON.stringify({ query, variables }),
-  });
+  }, 12_000);
   const payload = await response.json().catch(() => ({}));
   if (!response.ok || (Array.isArray(payload.errors) && payload.errors.length)) {
     throw new Error(`Cloudflare GraphQL Analytics API failed (${response.status}): ${JSON.stringify(payload.errors || payload)}`);
@@ -90,8 +101,6 @@ async function cloudflareGraphqlUsage() {
   const datetimeStart = utcDayStartIso(now);
   const datetimeEnd = new Date(now + 60_000).toISOString();
 
-  // These datasets and fields are documented by Cloudflare. They are queried
-  // account-wide because Workers Free quotas are account-wide, not script-only.
   const query = `
     query DhametDailyCapacity(
       $accountTag: string!
@@ -138,20 +147,21 @@ async function cloudflareGraphqlUsage() {
       'Durable Objects requests (raw analytics)',
       durableObjectRequests,
       100000,
-      'Conservative: GraphQL reports actual WebSocket messages; Cloudflare may apply a billing ratio to some messages.'
+      'Warning only: raw WebSocket messages are not equivalent to quota-counted requests.',
+      false,
     ),
   };
 }
 
-function highestMetric(metrics) {
+function highestMetric(metrics, decisionOnly = false) {
   return Object.entries(metrics || {})
     .map(([key, value]) => ({ key, ...value }))
-    .filter((value) => Number.isFinite(Number(value.percent)))
+    .filter((value) => Number.isFinite(Number(value.percent)) && (!decisionOnly || value.activatesBackup !== false))
     .sort((a, b) => b.percent - a.percent)[0] || null;
 }
 
 function decide(metrics) {
-  const highest = highestMetric(metrics);
+  const highest = highestMetric(metrics, true);
   if (forceMode === 'backup-emergency' || forceMode === 'backup') return { backup: true, reason: 'manual-workflow', highest };
   if (forceMode === 'cloudflare' || forceMode === 'off') return { backup: false, reason: 'manual-workflow-off', highest };
   if (forceMode !== 'auto' && forceMode) throw new Error(`Unsupported FORCE_MODE: ${forceMode}`);
@@ -159,26 +169,168 @@ function decide(metrics) {
   return { backup: false, reason: 'capacity-available', highest };
 }
 
-async function writeControl(control) {
-  const response = await fetch(controlEndpoint, {
+async function writeWorkerControl(control) {
+  const response = await fetchWithTimeout(controlEndpoint, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
       'x-dhamet-backup-control-secret': controlSecret,
     },
     body: JSON.stringify(control),
-  });
+  }, 6000);
   const data = await response.json().catch(() => ({}));
   if (!response.ok || data.ok === false) throw new Error(`Worker route control failed (${response.status}): ${JSON.stringify(data)}`);
   return data;
 }
 
+function base64url(value) {
+  const buffer = Buffer.isBuffer(value) ? value : Buffer.from(String(value));
+  return buffer.toString('base64').replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
+}
+
+function parseServiceAccount() {
+  const raw = required('FIREBASE_SERVICE_ACCOUNT_JSON');
+  try {
+    return JSON.parse(raw);
+  } catch (_) {
+    try { return JSON.parse(Buffer.from(raw, 'base64').toString('utf8')); }
+    catch (error) { throw new Error(`FIREBASE_SERVICE_ACCOUNT_JSON is invalid: ${error.message}`); }
+  }
+}
+
+async function firebaseAccessToken() {
+  const direct = String(process.env.FIREBASE_ROUTE_CONTROL_TOKEN || '').trim();
+  if (direct) return direct;
+  if (cachedFirebaseAccessToken && cachedFirebaseAccessToken.expiresAt > Date.now() + 60_000) return cachedFirebaseAccessToken.token;
+
+  const account = parseServiceAccount();
+  if (!account.client_email || !account.private_key) throw new Error('Firebase service account must contain client_email and private_key');
+  const issuedAt = Math.floor(Date.now() / 1000);
+  const header = base64url(JSON.stringify({ alg: 'RS256', typ: 'JWT' }));
+  const payload = base64url(JSON.stringify({
+    iss: account.client_email,
+    scope: 'https://www.googleapis.com/auth/firebase.database https://www.googleapis.com/auth/userinfo.email',
+    aud: 'https://oauth2.googleapis.com/token',
+    iat: issuedAt,
+    exp: issuedAt + 3600,
+  }));
+  const unsigned = `${header}.${payload}`;
+  const signer = createSign('RSA-SHA256');
+  signer.update(unsigned);
+  signer.end();
+  const assertion = `${unsigned}.${base64url(signer.sign(account.private_key))}`;
+  const response = await fetchWithTimeout('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+      assertion,
+    }),
+  }, 8000);
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data.access_token) throw new Error(`Firebase OAuth failed (${response.status}): ${JSON.stringify(data)}`);
+  cachedFirebaseAccessToken = {
+    token: data.access_token,
+    expiresAt: Date.now() + (Number(data.expires_in || 3600) * 1000),
+  };
+  return cachedFirebaseAccessToken.token;
+}
+
+function publicMirrorControl(control) {
+  const enabled = control && (control.enabled === true || control.mode === 'backup-emergency');
+  return {
+    available: true,
+    status: enabled ? 'backup-confirmed' : 'cloudflare',
+    enabled,
+    mode: enabled ? 'backup-emergency' : 'cloudflare',
+    backupUrl: String(control && control.backupUrl || backupUrl),
+    reason: String(control && control.reason || ''),
+    source: 'github-cloudflare-graphql-monitor',
+    threshold: Number(control && control.threshold || activationThreshold) || activationThreshold,
+    observedPercent: Number(control && control.observedPercent || 0) || 0,
+    metricKey: String(control && control.metricKey || ''),
+    generation: Number(control && control.generation || 0) || 0,
+    updatedAt: Number(control && control.updatedAt || now) || now,
+    validUntil: enabled ? Number(control && control.validUntil || 0) || 0 : 0,
+    resetAt: Number(control && control.resetAt || 0) || 0,
+  };
+}
+
+async function writeFirebaseControl(control) {
+  const token = await firebaseAccessToken();
+  const headers = { authorization: `Bearer ${token}`, accept: 'application/json' };
+  const incoming = publicMirrorControl(control);
+
+  // Conditional writes prevent an older delayed workflow from replacing a
+  // newer routing decision in Firebase.
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const currentResponse = await fetchWithTimeout(firebaseRouteControlUrl, {
+      method: 'GET',
+      headers: { ...headers, 'x-firebase-etag': 'true' },
+    }, 6000);
+    const current = await currentResponse.json().catch(() => ({}));
+    if (!currentResponse.ok) throw new Error(`Firebase route read failed (${currentResponse.status}): ${JSON.stringify(current)}`);
+    if (Number(current && current.updatedAt || 0) >= incoming.updatedAt) {
+      return { applied: false, control: current, reason: 'stale-decision' };
+    }
+    const etag = currentResponse.headers.get('etag') || '*';
+    const writeResponse = await fetchWithTimeout(firebaseRouteControlUrl, {
+      method: 'PUT',
+      headers: {
+        ...headers,
+        'content-type': 'application/json',
+        'if-match': etag,
+      },
+      body: JSON.stringify(incoming),
+    }, 6000);
+    if (writeResponse.status === 412) continue;
+    const data = await writeResponse.json().catch(() => ({}));
+    if (!writeResponse.ok) throw new Error(`Firebase route write failed (${writeResponse.status}): ${JSON.stringify(data)}`);
+    return { applied: true, control: incoming };
+  }
+  throw new Error('Firebase route write failed after concurrent-update retries');
+}
+
+async function persistControl(control) {
+  let workerResult = null;
+  let workerError = null;
+  try {
+    workerResult = await writeWorkerControl(control);
+  } catch (error) {
+    workerError = error;
+    console.error(`Worker control write failed; Firebase mirror will still be attempted: ${error.message}`);
+  }
+
+  const workerControl = workerResult && workerResult.control && typeof workerResult.control === 'object'
+    ? workerResult.control
+    : null;
+  const mirrorInput = workerResult && workerResult.applied === false && workerControl
+    ? workerControl
+    : { ...control, ...(workerControl || {}) };
+
+  let firebaseResult = null;
+  let firebaseError = null;
+  try {
+    firebaseResult = await writeFirebaseControl(mirrorInput);
+  } catch (error) {
+    firebaseError = error;
+    console.error(`Firebase control mirror failed: ${error.message}`);
+  }
+
+  if (workerError || firebaseError) {
+    const messages = [workerError && workerError.message, firebaseError && firebaseError.message].filter(Boolean);
+    throw new Error(`Route control persistence incomplete: ${messages.join(' | ')}`);
+  }
+  return { worker: workerResult, firebase: firebaseResult };
+}
+
 const previous = await readPreviousControl();
 const previousBackupActive = previous && previous.enabled === true && String(previous.mode || '') === 'backup-emergency' && Number(previous.validUntil || 0) > now;
 
-// Once emergency routing has been recorded, scheduled runs do not query
-// GraphQL again until the recorded UTC reset. Manual runs can still override it.
+// Once emergency routing has been confirmed, scheduled runs stop spending a
+// GraphQL query until reset. They still repair/synchronize the Firebase mirror.
 if (forceMode === 'auto' && previousBackupActive) {
+  const mirror = await writeFirebaseControl(previous);
   console.log(JSON.stringify({
     ok: true,
     skipped: true,
@@ -186,12 +338,11 @@ if (forceMode === 'auto' && previousBackupActive) {
     mode: previous.mode,
     generation: Number(previous.generation || 0) || 0,
     validUntil: new Date(Number(previous.validUntil)).toISOString(),
+    firebaseMirrorApplied: mirror.applied,
   }, null, 2));
   process.exit(0);
 }
 
-// Forced changes do not spend an Analytics API query. Only auto mode reads
-// GraphQL usage before making a threshold decision.
 const metrics = forceMode === 'auto' ? await cloudflareGraphqlUsage() : {};
 const decision = decide(metrics);
 const highest = decision.highest || { key: '', percent: 0, consumed: 0, limit: 0, label: '' };
@@ -214,12 +365,16 @@ const control = {
   metrics,
 };
 
-await writeControl(control);
+const persisted = await persistControl(control);
+const finalControl = persisted.worker && persisted.worker.control ? persisted.worker.control : control;
 console.log(JSON.stringify({
   ok: true,
-  decision: control.mode,
-  reason: control.reason,
+  decision: finalControl.mode || control.mode,
+  reason: finalControl.reason || control.reason,
   highestMetric: highest,
-  generation,
-  validUntil: control.validUntil ? new Date(control.validUntil).toISOString() : null,
+  highestRawMetric: highestMetric(metrics, false),
+  generation: Number(finalControl.generation || generation) || generation,
+  validUntil: Number(finalControl.validUntil || control.validUntil) ? new Date(Number(finalControl.validUntil || control.validUntil)).toISOString() : null,
+  workerApplied: persisted.worker.applied !== false,
+  firebaseApplied: persisted.firebase.applied !== false,
 }, null, 2));

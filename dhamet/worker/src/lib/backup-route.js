@@ -55,6 +55,9 @@ export function normalizeBackupControl(value, env, at = Date.now()) {
   const updatedAt = Math.max(0, finiteNumber(row.updatedAt ?? row.updated_at, 0));
   const active = configuredMode === 'backup-emergency' && validUntil > at;
   return Object.freeze({
+    available: true,
+    readError: false,
+    status: active ? 'backup-confirmed' : 'cloudflare',
     enabled: active,
     mode: active ? 'backup-emergency' : 'cloudflare',
     configuredMode,
@@ -73,6 +76,31 @@ export function normalizeBackupControl(value, env, at = Date.now()) {
   });
 }
 
+export function unavailableBackupControl(env, error, at = Date.now()) {
+  return Object.freeze({
+    available: false,
+    readError: true,
+    status: 'unknown',
+    enabled: false,
+    mode: 'unknown',
+    configuredMode: 'unknown',
+    stale: false,
+    backupUrl: configuredBackupUrl(env),
+    reason: 'backup-route/control-read-failed',
+    source: 'worker-control-read',
+    threshold: 90,
+    observedPercent: 0,
+    metricKey: '',
+    generation: 0,
+    updatedAt: 0,
+    validUntil: 0,
+    resetAt: 0,
+    metrics: {},
+    error: cleanText(error && (error.message || error), 240),
+    checkedAt: at,
+  });
+}
+
 export function invalidateBackupControlCache() {
   cachedControl = null;
   cachedAt = 0;
@@ -81,21 +109,21 @@ export function invalidateBackupControlCache() {
 export async function readBackupControl(env, options = {}) {
   const at = Date.now();
   if (!options.bypassCache && cachedControl && at - cachedAt < CONTROL_CACHE_MS) return cachedControl;
-  if (!env || !env.DB) return normalizeBackupControl(null, env, at);
-  let row = null;
+  if (!env || !env.DB) return unavailableBackupControl(env, 'backup-route/db-missing', at);
   try {
-    row = await env.DB.prepare(`SELECT mode, enabled, backup_url, reason, source, threshold,
+    const row = await env.DB.prepare(`SELECT mode, enabled, backup_url, reason, source, threshold,
                                       observed_percent, metric_key, generation, updated_at,
                                       valid_until, reset_at, metrics_json
                                FROM backup_route_control WHERE id = 1`).first();
+    cachedControl = normalizeBackupControl(row, env, at);
+    cachedAt = at;
+    return cachedControl;
   } catch (error) {
-    // During a rolling deployment the Worker may briefly run before migration
-    // 0006. Fail open to the official Cloudflare backend rather than redirecting.
+    // A read failure is not evidence that the quota is exhausted. Do not cache
+    // the failure: every new player/request must try D1 again.
     console.error(JSON.stringify({ level: 'warn', area: 'backup-route', event: 'read-failed', message: String(error && error.message || error) }));
+    return unavailableBackupControl(env, error, at);
   }
-  cachedControl = normalizeBackupControl(row, env, at);
-  cachedAt = at;
-  return cachedControl;
 }
 
 export async function writeBackupControl(env, payload) {
@@ -109,11 +137,12 @@ export async function writeBackupControl(env, payload) {
     ? Math.max(at + 30_000, finiteNumber(src.validUntil, at + 20 * 60 * 1000))
     : 0;
   const metrics = src.metrics && typeof src.metrics === 'object' ? src.metrics : {};
-  const generation = Math.max(0, Math.floor(finiteNumber(src.generation, 0)));
+  const requestedGeneration = Math.max(1, Math.floor(finiteNumber(src.generation, 1)));
   const resetAt = Math.max(0, finiteNumber(src.resetAt, 0));
   const backupUrl = safeBackupUrl(src.backupUrl, env);
+  const updatedAt = Math.max(0, finiteNumber(src.updatedAt, at));
 
-  await env.DB.prepare(`INSERT INTO backup_route_control (
+  const result = await env.DB.prepare(`INSERT INTO backup_route_control (
       id, mode, enabled, backup_url, reason, source, threshold, observed_percent,
       metric_key, generation, updated_at, valid_until, reset_at, metrics_json
     ) VALUES (1, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
@@ -126,11 +155,12 @@ export async function writeBackupControl(env, payload) {
       threshold = excluded.threshold,
       observed_percent = excluded.observed_percent,
       metric_key = excluded.metric_key,
-      generation = excluded.generation,
+      generation = backup_route_control.generation + 1,
       updated_at = excluded.updated_at,
       valid_until = excluded.valid_until,
       reset_at = excluded.reset_at,
-      metrics_json = excluded.metrics_json`)
+      metrics_json = excluded.metrics_json
+    WHERE excluded.updated_at > backup_route_control.updated_at`)
     .bind(
       mode,
       enabled ? 1 : 0,
@@ -140,16 +170,19 @@ export async function writeBackupControl(env, payload) {
       Math.max(1, Math.min(100, finiteNumber(src.threshold, 90))),
       Math.max(0, finiteNumber(src.observedPercent, 0)),
       cleanText(src.metricKey, 160),
-      generation,
-      Math.max(0, finiteNumber(src.updatedAt, at)),
+      requestedGeneration,
+      updatedAt,
       validUntil,
       resetAt,
       JSON.stringify(metrics).slice(0, 30_000),
     )
     .run();
 
+  const changes = Number(result && result.meta && result.meta.changes);
+  const writeApplied = !Number.isFinite(changes) || changes > 0;
   invalidateBackupControlCache();
-  return readBackupControl(env, { bypassCache: true });
+  const control = await readBackupControl(env, { bypassCache: true });
+  return Object.freeze({ ...control, writeApplied });
 }
 
 async function secretMatches(expected, received) {
@@ -173,7 +206,21 @@ export async function authorizeBackupControl(request, env) {
   return secretMatches(expected, received);
 }
 
-function directivePayload(control) {
+function directivePayload(control, transient = false) {
+  if (transient) {
+    return {
+      ok: false,
+      error: 'backup/backend-unavailable',
+      code: 'BACKUP_BACKEND_UNAVAILABLE',
+      clientDirective: 'backup-transient',
+      backend: 'backup',
+      mode: 'unknown',
+      status: 'unknown',
+      backupUrl: control.backupUrl,
+      reason: control.reason || 'control-read-failed',
+      temporary: true,
+    };
+  }
   return {
     ok: false,
     error: 'backup/backend-active',
@@ -181,6 +228,7 @@ function directivePayload(control) {
     clientDirective: 'backup-emergency',
     backend: 'backup',
     mode: 'backup-emergency',
+    status: 'backup-confirmed',
     backupUrl: control.backupUrl,
     reason: control.reason || 'capacity-threshold',
     threshold: control.threshold,
@@ -192,9 +240,11 @@ function directivePayload(control) {
   };
 }
 
-function blockedResponse(json, control) {
-  const retrySeconds = Math.max(30, Math.min(3600, Math.ceil((control.validUntil - Date.now()) / 1000)));
-  return json(directivePayload(control), 503, {
+function blockedResponse(json, control, transient = false) {
+  const retrySeconds = transient
+    ? 1
+    : Math.max(30, Math.min(3600, Math.ceil((control.validUntil - Date.now()) / 1000)));
+  return json(directivePayload(control, transient), 503, {
     'retry-after': String(retrySeconds),
     'cache-control': 'no-store',
   });
@@ -231,21 +281,22 @@ export async function maybeBlockNewOfficialOnlineWork(request, url, env, json) {
   if (!controlled) return null;
 
   const control = await readBackupControl(env);
-  if (!control.enabled) return null;
+  const transient = control.available === false;
+  if (!transient && !control.enabled) return null;
 
-  if (path === '/api/lobby/live' || path === '/api/lobby/view') return blockedResponse(json, control);
+  if (path === '/api/lobby/live' || path === '/api/lobby/view') return blockedResponse(json, control, transient);
 
   const body = await requestJsonClone(request);
   if (path === '/api/lobby/invite') {
     const action = normalizedAction(body, 'create');
     if (action === 'reject' || action === 'decline' || action === 'invite-reject') return null;
-    return blockedResponse(json, control);
+    return blockedResponse(json, control, transient);
   }
   if (path === '/api/lobby/spectator') {
     const action = normalizedAction(body, 'join');
     if (action === 'leave') return null;
-    return blockedResponse(json, control);
+    return blockedResponse(json, control, transient);
   }
-  if (path === '/api/lobby/pulse' && !pulseSupportsRunningMatch(body)) return blockedResponse(json, control);
+  if (path === '/api/lobby/pulse' && !pulseSupportsRunningMatch(body)) return blockedResponse(json, control, transient);
   return null;
 }

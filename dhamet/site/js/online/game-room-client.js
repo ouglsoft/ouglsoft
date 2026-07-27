@@ -16,7 +16,8 @@
 
   function fetchJson(path, payload, options) {
     var opts = options && typeof options === 'object' ? options : {};
-    var timeoutMs = Number(opts.timeoutMs || 12000) || 12000;
+    var defaultTimeoutMs = String(path || '').indexOf('/dhamet/api/lobby/') === 0 ? 1600 : 12000;
+    var timeoutMs = Number(opts.timeoutMs || defaultTimeoutMs) || defaultTimeoutMs;
     var controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
     var timer = null;
     if (controller && timeoutMs > 0) {
@@ -46,13 +47,18 @@
         return data || {};
       });
     }).catch(function (err) {
+      var failure = err;
       if (err && err.name === 'AbortError') {
-        var timeoutErr = new Error('request-timeout');
-        timeoutErr.code = 'request-timeout';
-        timeoutErr.status = 0;
-        throw timeoutErr;
+        failure = new Error('request-timeout');
+        failure.code = 'request-timeout';
+        failure.status = 0;
       }
-      throw err;
+      try {
+        if (window.DhametBackupRoute && typeof window.DhametBackupRoute.handleTransportFailure === 'function') {
+          window.DhametBackupRoute.handleTransportFailure(path, failure);
+        }
+      } catch (_) {}
+      throw failure;
     }).finally(function () {
       if (timer) clearTimeout(timer);
     });

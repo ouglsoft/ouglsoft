@@ -1107,15 +1107,30 @@ async function turnEndpoint(request, env) {
 
 function publicBackendRouteControl(control) {
   const value = control && typeof control === 'object' ? control : {};
+  const available = value.available !== false;
+  const enabled = available && value.enabled === true;
   return {
-    enabled: value.enabled === true,
-    mode: value.enabled === true ? 'backup-emergency' : 'cloudflare',
+    available,
+    status: available ? (enabled ? 'backup-confirmed' : 'cloudflare') : 'unknown',
+    enabled,
+    mode: available ? (enabled ? 'backup-emergency' : 'cloudflare') : 'unknown',
     backupUrl: value.backupUrl || 'https://dhamet2.ouglsoft.com/pages/loby.html?emergency=1',
     reason: value.reason || '',
+    source: value.source || '',
+    threshold: Number(value.threshold || 0) || 0,
+    observedPercent: Number(value.observedPercent || 0) || 0,
+    metricKey: value.metricKey || '',
     generation: Number(value.generation || 0) || 0,
     updatedAt: Number(value.updatedAt || 0) || 0,
     validUntil: Number(value.validUntil || 0) || 0,
+    resetAt: Number(value.resetAt || 0) || 0,
   };
+}
+
+function backupEntryUrl(control, emergencyMode) {
+  const target = new URL((control && control.backupUrl) || 'https://dhamet2.ouglsoft.com/pages/loby.html?emergency=1');
+  target.searchParams.set('emergency', emergencyMode || '1');
+  return target.toString();
 }
 
 async function onlineEntryEndpoint(request, env) {
@@ -1124,18 +1139,17 @@ async function onlineEntryEndpoint(request, env) {
   const officialUrl = new URL('/dhamet/pages/loby.html', url.origin).toString();
   if (forced === 'backup' || forced === 'backup-test' || forced === 'dhamet2') {
     const configured = await readBackupControl(env);
-    const target = new URL(configured.backupUrl || 'https://dhamet2.ouglsoft.com/pages/loby.html?emergency=1');
-    target.searchParams.set('emergency', 'test');
-    return Response.redirect(target.toString(), 302);
+    return Response.redirect(backupEntryUrl(configured, 'test'), 302);
   }
   if (forced === 'cloudflare' || forced === 'official') return Response.redirect(officialUrl, 302);
   const control = await readBackupControl(env);
-  return Response.redirect(control.enabled ? control.backupUrl : officialUrl, 302);
+  if (control.available === false) return Response.redirect(backupEntryUrl(control, 'transient'), 302);
+  return Response.redirect(control.enabled ? backupEntryUrl(control, '1') : officialUrl, 302);
 }
 
 async function backendRouteStatusEndpoint(env) {
-  // Use the short in-isolate cache. This endpoint is consulted only when a
-  // player enters online mode and must not add an avoidable D1 read per click.
+  // Successful controls are cached briefly. Failed D1 reads are never cached,
+  // so every new entry attempt checks again without changing the global mode.
   const control = await readBackupControl(env);
   return json({ ok: true, control: publicBackendRouteControl(control) }, 200, { 'cache-control': 'no-store' });
 }
@@ -1146,7 +1160,11 @@ async function backendRouteControlEndpoint(request, env) {
   }
   const body = await requestBody(request);
   const control = await writeBackupControl(env, body || {});
-  return json({ ok: true, control }, 200, { 'cache-control': 'no-store' });
+  return json({
+    ok: true,
+    applied: control.writeApplied !== false,
+    control: publicBackendRouteControl(control),
+  }, 200, { 'cache-control': 'no-store' });
 }
 
 
