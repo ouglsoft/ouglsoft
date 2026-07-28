@@ -114,8 +114,16 @@
     }
   }
 
-  function assessAdministrativeEnd(game, loserSide, policyOverrides) {
-    const limits = Object.assign({}, POLICY, policyOverrides && typeof policyOverrides === 'object' ? policyOverrides : {});
+  function resolveAdministrativePolicy(profile) {
+    const name = cleanString(profile || '', 40).toLowerCase();
+    if (name === 'low-material' || name === 'strict-low-material') {
+      return Object.assign({}, POLICY, { maxAdvancedPieces: 10, requireLowMaterial: true });
+    }
+    return POLICY;
+  }
+
+  function assessAdministrativeEnd(game, loserSide, policyProfile) {
+    const limits = resolveAdministrativePolicy(policyProfile);
     const loser = side(loserSide, null);
     const winner = opponent(loser);
     const board = stateBoard(game);
@@ -165,7 +173,8 @@
       return { count: true, reason: mine.total <= 0 ? 'no_pieces' : 'no_legal_moves', confidence: 'high', metrics };
     }
 
-    const criticallyReduced = mine.total <= 3 && mine.kings === 0 && (theirs.kings > 0 || theirs.total - mine.total >= 4);
+    const lowMaterialEligible = !limits.requireLowMaterial || current.total <= limits.maxAdvancedPieces;
+    const criticallyReduced = lowMaterialEligible && mine.total <= 3 && mine.kings === 0 && (theirs.kings > 0 || theirs.total - mine.total >= 4);
     const clearlyBehind = current.total <= limits.maxAdvancedPieces &&
       materialMargin >= limits.clearMaterialMargin &&
       scoreMargin >= limits.clearScoreMargin &&
@@ -175,7 +184,7 @@
       return {
         count: true,
         reason: criticallyReduced ? 'critically_reduced' : 'clear_disadvantage',
-        confidence: criticallyReduced && scoreMargin >= POLICY.clearScoreMargin ? 'high' : 'medium',
+        confidence: criticallyReduced && scoreMargin >= limits.clearScoreMargin ? 'high' : 'medium',
         metrics,
       };
     }
@@ -209,7 +218,7 @@
 
     if (k === 'resign' || k === 'leave' || k === 'opponent-absent') {
       const loser = k === 'opponent-absent' ? opponent(s) : s;
-      const assessment = assessAdministrativeEnd(game, loser, src.policyOverrides);
+      const assessment = assessAdministrativeEnd(game, loser, src.policyProfile);
       if (!assessment.count) return neutralPolicy(k, src, assessment.reason, assessment);
       return {
         ok: true,
@@ -271,6 +280,7 @@
     clone,
     cleanKind,
     normalizeMatchEndPayload,
+    resolveAdministrativePolicy,
     assessAdministrativeEnd,
     policyForEnd,
     createTerminalResult,

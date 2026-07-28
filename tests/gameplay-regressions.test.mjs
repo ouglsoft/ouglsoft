@@ -146,14 +146,23 @@ test('invite creation uses a committed-write timeout and never resends after an 
   const client = read('dhamet/site/js/online/game-room-client.js');
   assert.match(client, /createLobbyInvite[\s\S]*timeoutMs:\s*10000/);
   assert.match(online, /deliveryUnknown[\s\S]*_scheduleUnifiedAppPulseNoLaterThan/);
+  assert.match(online, /status === 0 && \(errorName === "aborterror" \|\| errorName === "typeerror"\)/);
+  assert.doesNotMatch(online, /const deliveryUnknown = status === 0 \|\|/);
   assert.doesNotMatch(online, /deliveryUnknown[\s\S]{0,500}createLobbyInvite\(/);
 });
 
-test('guest identity cookie survives a mobile tab close long enough to restore the active seat', () => {
+test('guest identity belongs to the browser session, survives tab close, and is not cached persistently', () => {
   const worker = read('dhamet/worker/src/index.js');
-  assert.match(worker, /GUEST_SESSION_TTL_SECONDS = 60 \* 60 \* 12/);
-  assert.match(worker, /reusedGuest: true[\s\S]*GUEST_SESSION_TTL_SECONDS/);
-  assert.equal((worker.match(/sessionCookie\(guest\.token, request, GUEST_SESSION_TTL_SECONDS\)/g) || []).length, 2);
+  const auth = read('dhamet/site/js/auth-runtime.js');
+  const app = read('dhamet/site/js/app-runtime.js');
+  const game = read('dhamet/site/js/modes/game-runtime.js');
+  assert.doesNotMatch(worker, /GUEST_SESSION_TTL_SECONDS/);
+  assert.match(worker, /sessionCookie\(existingToken, request, null\)[\s\S]*reusedGuest: true/);
+  assert.equal((worker.match(/sessionCookie\(guest\.token, request, null\)/g) || []).length, 2);
+  assert.match(auth, /cachedUser && !cachedUser\.isAnonymous[\s\S]*localStorage\.setItem\('dhamet\.cf\.user\.v1'/);
+  assert.match(auth, /localUser && localUser\.uid && !localUser\.isAnonymous/);
+  assert.doesNotMatch(app, /localStorage\.getItem\("zamat\.session\.user\.persist\.v1"\)/);
+  assert.doesNotMatch(game, /localStorage\.getItem\("zamat\.session\.user\.persist\.v1"\)/);
 });
 
 test('undo requester receives the accepted or rejected final decision', () => {

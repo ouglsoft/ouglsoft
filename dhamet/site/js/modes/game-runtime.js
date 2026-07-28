@@ -2089,7 +2089,7 @@ const PvCResultRecorder = (() => {
       if (session && session.kind === "registered") return { user: session };
     } catch (_) {}
     try {
-      const raw = sessionStorage.getItem("zamat.session.user.v1") || localStorage.getItem("zamat.session.user.persist.v1");
+      const raw = sessionStorage.getItem("zamat.session.user.v1");
       const session = raw ? JSON.parse(raw) : null;
       const user = session && session.user ? session.user : session;
       if (user && user.kind === "registered") return session;
@@ -2767,7 +2767,7 @@ if (typeof window !== "undefined") window.AI = AI;
           if (s && typeof s === "object") return s;
         } catch (e) {}
         try {
-          const raw = sessionStorage.getItem("zamat.session.user.v1") || localStorage.getItem("zamat.session.user.persist.v1");
+          const raw = sessionStorage.getItem("zamat.session.user.v1");
           if (raw) {
             const obj = JSON.parse(raw);
             if (obj && typeof obj === "object") return obj;

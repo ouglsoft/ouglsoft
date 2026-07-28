@@ -10,6 +10,7 @@
   var cachedUser = null;
   var authListeners = [];
   var readyPromise = null;
+  var guestSignInPromise = null;
 
   function now() { try { return Date.now(); } catch (_) { return 0; } }
   function api(path) { return API_BASE + path; }
@@ -74,7 +75,10 @@
   function persistUser(user) {
     cachedUser = normalizeUser(user);
     try {
-      if (cachedUser) localStorage.setItem('dhamet.cf.user.v1', JSON.stringify(cachedUser));
+      // Registered accounts may be cached for a smoother shell startup. Guest
+      // identity is owned only by the HttpOnly browser-session cookie and must
+      // never survive a full browser-session restart through localStorage.
+      if (cachedUser && !cachedUser.isAnonymous) localStorage.setItem('dhamet.cf.user.v1', JSON.stringify(cachedUser));
       else localStorage.removeItem('dhamet.cf.user.v1');
     } catch (_) {}
     try {
@@ -137,13 +141,16 @@
   }
 
   function signInGuest(input) {
-    if (cachedUser && cachedUser.uid && cachedUser.isAnonymous) return Promise.resolve(cachedUser);
+    if (guestSignInPromise) return guestSignInPromise;
     var src = input && typeof input === 'object' ? input : {};
-    return refreshMe().then(function (u) {
-      if (u && u.uid && u.isAnonymous) return u;
-      if (u && u.uid && !u.isAnonymous) return u;
-      return post('/dhamet/api/auth/guest', { nickname: cleanNickname(src.nickname), icon: src.icon || DEFAULT_ICON }).then(function (res) { return setCurrentUser(res.user); });
+    guestSignInPromise = refreshMe().then(function (u) {
+      if (u && u.uid) return u;
+      return post('/dhamet/api/auth/guest', { nickname: cleanNickname(src.nickname), icon: src.icon || DEFAULT_ICON })
+        .then(function (res) { return setCurrentUser(res.user); });
+    }).finally(function () {
+      guestSignInPromise = null;
     });
+    return guestSignInPromise;
   }
 
   function signInEmail(email, password) {
@@ -285,8 +292,9 @@
   handleResetTokenFromUrl();
   try {
     var raw = localStorage.getItem('dhamet.cf.user.v1');
-    var localUser = raw ? safeJson(raw) : null;
-    if (localUser && localUser.uid) cachedUser = normalizeUser(localUser);
+    var localUser = raw ? normalizeUser(safeJson(raw)) : null;
+    if (localUser && localUser.uid && !localUser.isAnonymous) cachedUser = localUser;
+    else localStorage.removeItem('dhamet.cf.user.v1');
   } catch (_) {}
   refreshMe();
 })();

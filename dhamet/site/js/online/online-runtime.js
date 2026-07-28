@@ -1119,8 +1119,6 @@
             }
           } catch (e) {}
     
-          try {
-          } catch (e) {}
     
           let opponentNick = "";
           let opponentStatus = "";
@@ -1181,7 +1179,10 @@
           } catch (err) {
             const status = Number(err && err.status || 0) || 0;
             const code = String(err && (err.code || err.message) || "").toLowerCase();
-            const deliveryUnknown = status === 0 || /request-timeout|network|failed to fetch|fetch failed|load failed|connection|offline/.test(code);
+            const errorName = String(err && err.name || "").toLowerCase();
+            const deliveryUnknown =
+              /request-timeout|network|failed to fetch|fetch failed|load failed|connection|offline/.test(code) ||
+              (status === 0 && (errorName === "aborterror" || errorName === "typeerror"));
             if (deliveryUnknown) {
               // The server may already have committed and delivered this invite.
               // Never resend here: reconcile through the existing single lobby pulse.

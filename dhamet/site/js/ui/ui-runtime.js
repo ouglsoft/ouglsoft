@@ -2332,8 +2332,6 @@ async function souflaPressed() {
     }
   } catch (_) {}
 
-  try {
-  } catch {}
 
   try {
     if (

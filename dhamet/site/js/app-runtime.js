@@ -255,7 +255,7 @@ window.ZCommon.bindDesktopLanguageSelect = bindDesktopLanguageSelect;
   "use strict";
 
   const SESSION_KEY = "zamat.session.user.v1";
-  const PERSIST_KEY = "zamat.session.user.persist.v1";
+  const LEGACY_PERSIST_KEY = "zamat.session.user.persist.v1";
   const LANG_KEY = "zamat.lang";
 
 const ICON_LS_KEY = "zamat.icon";
@@ -263,6 +263,8 @@ const ICON_LS_KEY = "zamat.icon";
 
 const NICK_LS_KEY = "zamat.nick";
 const NICK_EXPLICIT_KEY = "zamat.nickExplicit";
+
+try { localStorage.removeItem(LEGACY_PERSIST_KEY); } catch (_) {}
 
 const DEFAULT_ICON = "assets/icons/users/user1.png";
   function qs(sel, root){ return (root||document).querySelector(sel); }
@@ -418,7 +420,7 @@ function writeSession(s){
 
   function clearSession(){
     try { sessionStorage.removeItem(SESSION_KEY); } catch (_) {}
-    try { localStorage.removeItem(PERSIST_KEY); } catch (_) {}
+    try { localStorage.removeItem(LEGACY_PERSIST_KEY); } catch (_) {}
     try { sessionStorage.removeItem(NICK_LS_KEY); } catch (_) {}
     try { sessionStorage.removeItem(NICK_EXPLICIT_KEY); } catch (_) {}
     try { localStorage.removeItem(NICK_LS_KEY); } catch (_) {}
@@ -975,7 +977,6 @@ const btnRegister = qs("#btnRegister", root);
       }
     
       var SESSION_KEY = "zamat.session.user.v1";
-      var PERSIST_KEY = "zamat.session.user.persist.v1";
     
       function readSessionAny() {
         var auth = getAuthApi();
@@ -987,9 +988,6 @@ const btnRegister = qs("#btnRegister", root);
         }
         var raw = null;
         try { raw = sessionStorage.getItem(SESSION_KEY); } catch (_) {}
-        if (!raw) {
-          try { raw = localStorage.getItem(PERSIST_KEY); } catch (_) {}
-        }
         var obj = raw ? safeJSONParse(raw) : null;
         return obj && typeof obj === "object" ? obj : null;
       }

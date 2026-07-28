@@ -23,7 +23,6 @@ export { RealtimeObject } from './durable/realtime-object.js';
 
 const SESSION_COOKIE = 'dhm_session';
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 30;
-const GUEST_SESSION_TTL_SECONDS = 60 * 60 * 12;
 const RESET_TTL_SECONDS = 60 * 30;
 const OAUTH_STATE_TTL_SECONDS = 60 * 10;
 const DEFAULT_ICON = 'assets/icons/users/user1.png';
@@ -336,14 +335,14 @@ async function authGuest(request, env) {
   const existing = await currentSession(env, request).catch(() => null);
   if (existing && existing.user && existing.user.kind === 'guest' && existing.publicUser) {
     const existingToken = parseCookies(request)[SESSION_COOKIE];
-    const headers = existingToken ? { 'set-cookie': sessionCookie(existingToken, request, GUEST_SESSION_TTL_SECONDS) } : undefined;
+    const headers = existingToken ? { 'set-cookie': sessionCookie(existingToken, request, null) } : undefined;
     return json({ ok: true, user: existing.publicUser, reusedGuest: true }, 200, headers);
   }
   if (existing && existing.user && existing.user.kind !== 'guest' && existing.publicUser) {
     return json({ ok: true, user: existing.publicUser, reusedRegisteredSession: true });
   }
   const guest = await createGuestIdentity(env, request, body || {});
-  return json({ ok: true, user: guest.user, reusedGuest: false }, 200, { 'set-cookie': sessionCookie(guest.token, request, GUEST_SESSION_TTL_SECONDS) });
+  return json({ ok: true, user: guest.user, reusedGuest: false }, 200, { 'set-cookie': sessionCookie(guest.token, request, null) });
 }
 
 async function authRegister(request, env) {
@@ -407,7 +406,7 @@ async function authLogout(request, env) {
     presenceCleanup,
     newGuest: true,
     user: guest.user,
-  }, 200, { 'set-cookie': sessionCookie(guest.token, request, GUEST_SESSION_TTL_SECONDS) });
+  }, 200, { 'set-cookie': sessionCookie(guest.token, request, null) });
 }
 
 async function authReauth(request, env) {
