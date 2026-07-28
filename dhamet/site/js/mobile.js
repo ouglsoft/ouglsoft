@@ -259,7 +259,7 @@
     backBtn.type = 'button';
     backBtn.className = 'z-mobile-shell-btn is-back';
     backBtn.setAttribute('data-shell-action', options.backAction || 'back');
-    backBtn.innerHTML = '<img src="' + baseHref() + '/assets/icons/' + (options.backIcon || 'chevron-left.svg') + '" alt="" aria-hidden="true">';
+    backBtn.innerHTML = '<img class="directional-exit-icon" src="' + baseHref() + '/assets/icons/logout.svg" alt="" aria-hidden="true">';
     if (options.hideBack) backBtn.hidden = true;
     backBtn.addEventListener('click', options.onBack);
 
@@ -301,7 +301,6 @@
       menuClass: 'z-mobile-shell-menu',
       hideBack: pageType() === 'auth',
       backAction: dashboardPage ? 'logout' : 'back',
-      backIcon: dashboardPage ? 'logout.svg' : 'chevron-left.svg',
       onBack: function (event) {
         if (dashboardPage) {
           handleDashboardMobileLogout(event);

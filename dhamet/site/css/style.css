@@ -2471,3 +2471,14 @@ body.z-game-page:not(.z-mobile-on) .controls-box .btn .btn-ico {
   filter: brightness(0) invert(1) drop-shadow(0 1px 1px rgb(var(--rgb-black) / .28));
   opacity: 1;
 }
+
+
+/* Unified directional exit icon: original orientation in Arabic, mirrored in LTR languages. */
+.directional-exit-icon {
+  transform: none;
+  transform-origin: center;
+}
+
+html[dir="ltr"] .directional-exit-icon {
+  transform: scaleX(-1);
+}

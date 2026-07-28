@@ -373,13 +373,6 @@ body.z-mobile-on .z-mobile-shell-btn img {
   display: block;
 }
 
-body.z-mobile-on .z-mobile-shell-btn.is-back[data-shell-action="back"] img {
-  transform: rotate(180deg);
-}
-
-html[dir="ltr"] body.z-mobile-on .z-mobile-shell-btn.is-back[data-shell-action="back"] img {
-  transform: none;
-}
 
 body.z-mobile-on .z-mobile-shell-menu {
   position: fixed;
