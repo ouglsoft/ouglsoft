@@ -2567,12 +2567,12 @@ function bindUI() {
     killTimerTile.setAttribute("tabindex", "0");
     killTimerTile.setAttribute("aria-label", t("buttons.endKill"));
     killTimerTile.addEventListener("click", function (ev) {
-      if (!document.body || !document.body.classList.contains("z-mobile-on")) return;
+      // Reuse the exact end-capture action used by the nested button.
+      if (ev && ev.target && ev.target.closest && ev.target.closest("#btnEndKill")) return;
       if (ev) ev.preventDefault();
       endKillPressed();
     });
     killTimerTile.addEventListener("keydown", function (ev) {
-      if (!document.body || !document.body.classList.contains("z-mobile-on")) return;
       const key = ev && (ev.key || ev.code);
       if (key === "Enter" || key === " " || key === "Spacebar") {
         ev.preventDefault();

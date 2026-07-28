@@ -1179,6 +1179,15 @@
               nick: this.myNick,
             });
           } catch (err) {
+            const status = Number(err && err.status || 0) || 0;
+            const code = String(err && (err.code || err.message) || "").toLowerCase();
+            const deliveryUnknown = status === 0 || /request-timeout|network|failed to fetch|fetch failed|load failed|connection|offline/.test(code);
+            if (deliveryUnknown) {
+              // The server may already have committed and delivered this invite.
+              // Never resend here: reconcile through the existing single lobby pulse.
+              try { this._scheduleUnifiedAppPulseNoLaterThan && this._scheduleUnifiedAppPulseNoLaterThan(1000); } catch (_) {}
+              return;
+            }
             handleDbError(err, window.I18N.translateArgs("online.inviteSendFail"), { ctx: "invite.send.official" });
             return;
           }
@@ -2378,20 +2387,26 @@
               if (moveFxIndex && moveFxIndex > (this._lastSeenMoveModal || 0)) {
                 this._lastSeenMoveModal = moveFxIndex;
                 if (lm.kind === "soufla" && lm.decision) this._showSouflaModalFromLastMove(lm);
-                else if (lm.kind === "undo" && this.isSpectator) {
-                  const gameData = this._lastGameData || data || {};
-                  const players = gameData.players || {};
-                  const nameForUid = (uid) => {
-                    const want = String(uid || "");
-                    const rows = [players.white || {}, players.black || {}];
-                    const row = rows.find((item) => want && String(item.uid || "") === want) || {};
-                    try { return displayPlayerName(row.uid, row.nickname) || window.I18N.translateArgs("players.player"); }
-                    catch (_) { return String(row.nickname || "").trim() || window.I18N.translateArgs("players.player"); }
-                  };
-                  showOnlineNotice(formatTpl(window.I18N.translateArgs("undo.spectatorAccepted"), {
-                    responder: nameForUid(lm.responderUid),
-                    requester: nameForUid(lm.requesterUid),
-                  }), { allowSpectator: true, title: window.I18N.translateArgs("modals.undo.title") });
+                else if (lm.kind === "undo") {
+                  if (!this.isSpectator && lm.requesterUid && String(lm.requesterUid) === String(this.myUid || "")) {
+                    showOnlineNotice(window.I18N.translateArgs("undo.requesterAccepted"), {
+                      title: window.I18N.translateArgs("modals.undo.title"),
+                    });
+                  } else if (this.isSpectator) {
+                    const gameData = this._lastGameData || data || {};
+                    const players = gameData.players || {};
+                    const nameForUid = (uid) => {
+                      const want = String(uid || "");
+                      const rows = [players.white || {}, players.black || {}];
+                      const row = rows.find((item) => want && String(item.uid || "") === want) || {};
+                      try { return displayPlayerName(row.uid, row.nickname) || window.I18N.translateArgs("players.player"); }
+                      catch (_) { return String(row.nickname || "").trim() || window.I18N.translateArgs("players.player"); }
+                    };
+                    showOnlineNotice(formatTpl(window.I18N.translateArgs("undo.spectatorAccepted"), {
+                      responder: nameForUid(lm.responderUid),
+                      requester: nameForUid(lm.requesterUid),
+                    }), { allowSpectator: true, title: window.I18N.translateArgs("modals.undo.title") });
+                  }
                 }
               }
             } catch (error) {
@@ -5473,7 +5488,7 @@
             const key = this._undoWaitKeyOf(ur) || [ur.requesterUid || "", ur.respondedAt || ur.requestedAt || "", "rejected"].join("|");
             if (!this._lastUndoRejectedKey || this._lastUndoRejectedKey !== key) {
               this._lastUndoRejectedKey = key;
-              showOnlineNotice(window.I18N.translateArgs("undo.rejected"), { title: window.I18N.translateArgs("undo.rejectedTitle") });
+              showOnlineNotice(window.I18N.translateArgs("undo.requesterRejected"), { title: window.I18N.translateArgs("undo.rejectedTitle") });
             }
           }
         },

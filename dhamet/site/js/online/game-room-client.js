@@ -192,7 +192,10 @@
   }
 
   function createLobbyInvite(payload) {
-    return fetchJson('/dhamet/api/lobby/invite', createLobbyInvitePayload(payload));
+    // Invite creation is a committed write, not a disposable lobby poll. Give the
+    // official endpoint enough time to return its committed result; aborting it at
+    // the 1.6-second lobby polling deadline caused a false failure after delivery.
+    return fetchJson('/dhamet/api/lobby/invite', createLobbyInvitePayload(payload), { timeoutMs: 10000 });
   }
 
   function createLobbyInviteResponsePayload(payload) {

@@ -2090,6 +2090,10 @@ body.z-game-page:not(.z-mobile-on) .timer-row {
   box-shadow: 0 10px 24px rgb(var(--rgb-primary-900) / .22), inset 0 1px 0 rgb(var(--rgb-white) / .20) !important;
 }
 
+body.z-game-page:not(.z-mobile-on) .timer-row.is-live {
+  background: var(--gradient-game-control-danger) !important;
+}
+
 body.z-game-page:not(.z-mobile-on) .timer-row .clock {
   background: transparent !important;
   border-color: transparent !important;

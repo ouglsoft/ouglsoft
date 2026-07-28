@@ -43,7 +43,7 @@ test('spectators receive only neutral final match decisions and player-only erro
   for (const key of ['spectatorAccepted', 'spectatorRejected']) assert.ok(tr.ar.undo[key]);
   assert.doesNotMatch(online, /showOnlineNotice[\s\S]{0,240}undo\.spectatorRequested/);
   assert.match(online, /state === "rejected"[\s\S]*undo\.spectatorRejected/);
-  assert.match(online, /lm\.kind === "undo" && this\.isSpectator[\s\S]*undo\.spectatorAccepted/);
+  assert.match(online, /lm\.kind === "undo"[\s\S]*this\.isSpectator[\s\S]*undo\.spectatorAccepted/);
   assert.match(online, /isSpectator:\s*!!this\.isSpectator/);
   assert.match(lobby, /!cfg\.allowSpectator[\s\S]*contains\("z-spectator"\)[\s\S]*return/);
   assert.doesNotMatch(online, /status\.moveSendFail"\),\s*\{\s*allowSpectator:\s*true/);
@@ -134,9 +134,51 @@ test('mobile landscape follows either physical landscape direction without reloa
   assert.doesNotMatch(mobile, /location\.reload|location\.replace/);
 });
 
-test('capture timer uses white text and the shared desktop control colors', () => {
+test('capture timer uses white text, turns red while active, and reuses the end-capture action', () => {
   assert.match(theme, /Unified capture timer colors/);
   assert.match(theme, /timer-row #killClock[\s\S]*rgb\(var\(--rgb-white\)\)/);
   assert.match(theme, /body\.z-game-page:not\(\.z-mobile-on\) \.timer-row[\s\S]*var\(--gradient-game-control\)/);
   assert.match(theme, /timer-row #btnEndKill[\s\S]*var\(--gradient-game-control-danger\)/);
+});
+
+
+test('invite creation uses a committed-write timeout and never resends after an ambiguous reply', () => {
+  const client = read('dhamet/site/js/online/game-room-client.js');
+  assert.match(client, /createLobbyInvite[\s\S]*timeoutMs:\s*10000/);
+  assert.match(online, /deliveryUnknown[\s\S]*_scheduleUnifiedAppPulseNoLaterThan/);
+  assert.doesNotMatch(online, /deliveryUnknown[\s\S]{0,500}createLobbyInvite\(/);
+});
+
+test('guest identity cookie survives a mobile tab close long enough to restore the active seat', () => {
+  const worker = read('dhamet/worker/src/index.js');
+  assert.match(worker, /GUEST_SESSION_TTL_SECONDS = 60 \* 60 \* 12/);
+  assert.match(worker, /reusedGuest: true[\s\S]*GUEST_SESSION_TTL_SECONDS/);
+  assert.equal((worker.match(/sessionCookie\(guest\.token, request, GUEST_SESSION_TTL_SECONDS\)/g) || []).length, 2);
+});
+
+test('undo requester receives the accepted or rejected final decision', () => {
+  assert.ok(tr.ar.undo.requesterAccepted.includes('السهم الأصفر المعكوس'));
+  assert.ok(tr.ar.undo.requesterRejected);
+  assert.match(online, /undo\.requesterAccepted/);
+  assert.match(online, /undo\.requesterRejected/);
+});
+
+test('desktop timer invokes the same endKillPressed handler and becomes red while live', () => {
+  assert.match(ui, /killTimerTile\.addEventListener\("click"[\s\S]*endKillPressed\(\)/);
+  assert.match(theme, /not\(\.z-mobile-on\) \.timer-row\.is-live[\s\S]*gradient-game-control-danger/);
+});
+
+test('nickname prompt starts with the default name, has one action, and close accepts the default', () => {
+  const modal = read('dhamet/site/js/modal.js');
+  assert.match(lobby, /function askNickname\(\)[\s\S]*value: resolveFallbackNick\(\)/);
+  assert.match(lobby, /getCloseValue: \(\) => resolveFallbackNick\(\)/);
+  assert.match(lobby, /hideCancel: true/);
+  assert.match(modal, /cfg\.hideCancel === true \? \[\] :/);
+});
+
+test('the selected game icon is used by all existing Dhamet icon surfaces and remains below 50 KB', () => {
+  assert.ok(fs.statSync('dhamet/site/assets/icons/icon.webp').size <= 50 * 1024);
+  assert.ok(fs.statSync('site/assets/images/products/dhamet/icon.svg').size <= 50 * 1024);
+  assert.match(read('dhamet/site/index.html'), /assets\/icons\/icon\.webp/);
+  assert.match(read('site/ar/products/dhamet/index.html'), /products\/dhamet\/icon\.svg/);
 });

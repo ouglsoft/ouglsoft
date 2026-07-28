@@ -114,7 +114,8 @@
     }
   }
 
-  function assessAdministrativeEnd(game, loserSide) {
+  function assessAdministrativeEnd(game, loserSide, policyOverrides) {
+    const limits = Object.assign({}, POLICY, policyOverrides && typeof policyOverrides === 'object' ? policyOverrides : {});
     const loser = side(loserSide, null);
     const winner = opponent(loser);
     const board = stateBoard(game);
@@ -127,10 +128,10 @@
     const ply = Math.max(0, Number(game && game.ply || game && game.state && game.state.snapshot && game.state.snapshot.moveCount || 0) || 0);
     const captured = Math.max(0, (initial.total || current.total) - current.total);
     const totalKings = current.topKings + current.botKings;
-    const advanced = ply >= POLICY.unconditionalAdvancedPly || (
-      ply >= POLICY.minAdvancedPly && (
-        captured >= POLICY.minCapturedPieces ||
-        current.total <= POLICY.maxAdvancedPieces ||
+    const advanced = ply >= limits.unconditionalAdvancedPly || (
+      ply >= limits.minAdvancedPly && (
+        captured >= limits.minCapturedPieces ||
+        current.total <= limits.maxAdvancedPieces ||
         totalKings > 0
       )
     );
@@ -165,9 +166,9 @@
     }
 
     const criticallyReduced = mine.total <= 3 && mine.kings === 0 && (theirs.kings > 0 || theirs.total - mine.total >= 4);
-    const clearlyBehind = current.total <= POLICY.maxAdvancedPieces &&
-      materialMargin >= POLICY.clearMaterialMargin &&
-      scoreMargin >= POLICY.clearScoreMargin &&
+    const clearlyBehind = current.total <= limits.maxAdvancedPieces &&
+      materialMargin >= limits.clearMaterialMargin &&
+      scoreMargin >= limits.clearScoreMargin &&
       myMaterial < theirMaterial;
 
     if (criticallyReduced || clearlyBehind) {
@@ -208,7 +209,7 @@
 
     if (k === 'resign' || k === 'leave' || k === 'opponent-absent') {
       const loser = k === 'opponent-absent' ? opponent(s) : s;
-      const assessment = assessAdministrativeEnd(game, loser);
+      const assessment = assessAdministrativeEnd(game, loser, src.policyOverrides);
       if (!assessment.count) return neutralPolicy(k, src, assessment.reason, assessment);
       return {
         ok: true,

@@ -429,6 +429,7 @@
             if (onSubmit) onSubmit();
           },
         },
+      ].concat(cfg.hideCancel === true ? [] : [
         {
           label: cfg.cancelLabel || window.I18N.translateArgs("actions.cancel"),
           className: cfg.cancelClassName || "ghost",
@@ -439,7 +440,7 @@
             if (onCancel) onCancel();
           },
         },
-      ],
+      ]),
     });
   }
 

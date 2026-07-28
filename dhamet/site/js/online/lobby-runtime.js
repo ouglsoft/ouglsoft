@@ -1131,6 +1131,7 @@
           onSubmit: submit,
           cancelLabel: cfg.cancelLabel || window.I18N.translateArgs("actions.cancel"),
           cancelClassName: cfg.cancelClassName || "ghost",
+          hideCancel: cfg.hideCancel === true,
           onCancel: () => {
             const value = typeof cfg.getCancelValue === "function" ? cfg.getCancelValue(input) : "";
             finish(value, false);
@@ -1178,7 +1179,7 @@
       allowSpectator: true,
       title,
       label,
-      value: saved,
+      value: resolveFallbackNick(),
       placeholder: label,
       inputId: "nickInput",
       inputClassName: "input",
@@ -1191,6 +1192,7 @@
       getCancelValue: () => resolveFallbackNick(),
       getCloseValue: () => resolveFallbackNick(),
       fallbackValue: () => ({ value: resolveFallbackNick(), submitted: false }),
+      hideCancel: true,
       cancelClassName: "secondary",
     }).then((result) => {
       const nick = String(result && typeof result === "object" ? result.value : result || "").trim() || resolveFallbackNick();
