@@ -942,7 +942,8 @@ async function accountPvcResultEndpoint(request, env) {
   else if (!startedAt || !endedAt || endedAt < startedAt || stepCount < 1 || decisionCount < 1 || body.recordComplete === false) rejectionReason = 'incomplete_record';
   else if (undoCount > globalThis.DhametStats.PVC_MAX_COUNTED_UNDOS) rejectionReason = 'too_many_undos';
   else if (['cancel', 'abort', 'disconnect', 'leave', 'early_exit', 'resign', 'ended_by_player', 'opponent_absent'].includes(endReason) && !lateFinished) rejectionReason = 'non_counted_ending';
-  else if (lateFinished && (winner === 0 || terminalConfidence === 'low')) rejectionReason = 'non_counted_ending';
+  else if (lateFinished && terminalConfidence !== 'certain' && terminalConfidence !== 'high') rejectionReason = 'non_counted_ending';
+  else if (lateFinished && winner === 0 && terminalType !== 'administrative_forced_draw') rejectionReason = 'non_counted_ending';
 
   if (rejectionReason) {
     return json({

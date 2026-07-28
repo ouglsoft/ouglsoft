@@ -1697,7 +1697,7 @@
             if (countsAsResult === false) {
               const key = rejectionReason === "administrative_early_or_midgame"
                 ? "online.resultNotCounted.early"
-                : rejectionReason === "administrative_position_not_clear"
+                : ["administrative_position_not_clear", "administrative_search_inconclusive", "administrative_unresolved_turn"].includes(rejectionReason)
                   ? "online.resultNotCounted.unclear"
                   : "online.resultNotCounted.generic";
               add(window.I18N.translateArgs(key));

@@ -2031,43 +2031,64 @@ const PvCResultRecorder = (() => {
     return out;
   }
 
-  function inferLateExitOutcome(expectedLoserSide) {
+  function inferInterruptedOutcome() {
     const finalCounts = finalCountsFromBoard(window.Game && Game.board ? Game.board : null);
     try {
-      const loser = expectedLoserSide === TOP || expectedLoserSide === BOT ? expectedLoserSide : null;
-      const assessor = window.DhametMatchEnd && typeof window.DhametMatchEnd.assessAdministrativeEnd === "function"
-        ? window.DhametMatchEnd.assessAdministrativeEnd
+      const assessor = window.DhametMatchEnd && typeof window.DhametMatchEnd.assessInterruptedPosition === "function"
+        ? window.DhametMatchEnd.assessInterruptedPosition
         : null;
-      if (loser == null || !assessor || !window.Game || !Array.isArray(Game.board)) {
-        return { lateFinished: false, winner: null, terminalType: "position_unavailable", terminalConfidence: "low", finalCounts };
+      if (!assessor || !window.Game || !Array.isArray(Game.board)) {
+        return { counted: false, winner: null, outcome: "unrated", terminalType: "position_unavailable", terminalConfidence: "low", finalCounts };
       }
       const moveCount = Math.max(0, Number(Game.moveCount || 0) || 0);
       const view = {
         ply: moveCount,
-        state: { snapshot: { board: cloneBoard(Game.board), moveCount } },
-        states: { "0": { snapshot: { board: createInitialBoard(), moveCount: 0 } } },
+        turn: Game.player,
+        state: {
+          snapshot: {
+            board: cloneBoard(Game.board),
+            player: Game.player,
+            moveCount,
+            inChain: !!Game.inChain,
+            chainPos: Game.chainPos == null ? null : Game.chainPos,
+            deferredPromotions: Array.isArray(Game.deferredPromotions) ? Game.deferredPromotions.map((item) => ({ ...item })) : [],
+          },
+          deferredPromotions: Array.isArray(Game.deferredPromotions) ? Game.deferredPromotions.map((item) => ({ ...item })) : [],
+        },
+        states: { "0": { snapshot: { board: createInitialBoard(), player: Game.settings && Game.settings.starter === "white" ? BOT : TOP, moveCount: 0 } } },
+        soufla: hasUnresolvedSoufla() ? { pending: Game.souflaPending || true } : null,
       };
-      const assessment = assessor(view, loser) || null;
+      const assessment = assessor(view) || null;
       if (!assessment || !assessment.count) {
         return {
-          lateFinished: false,
+          counted: false,
           winner: null,
+          outcome: "unrated",
           terminalType: assessment && assessment.reason || "position_not_clear",
           terminalConfidence: assessment && assessment.confidence || "low",
           assessment,
           finalCounts,
         };
       }
+      const winner = assessment.winner === TOP || assessment.winner === BOT ? assessment.winner : null;
+      const natural = assessment.basis === "natural";
       return {
-        lateFinished: true,
-        winner: -loser,
-        terminalType: "administrative_position",
-        terminalConfidence: assessment.confidence || "medium",
+        counted: true,
+        winner,
+        outcome: assessment.outcome === "draw" ? "draw" : "win",
+        natural,
+        reason: assessment.reason || null,
+        terminalType: natural
+          ? "strict"
+          : assessment.outcome === "draw"
+            ? "administrative_forced_draw"
+            : "administrative_forced_win",
+        terminalConfidence: assessment.confidence || "certain",
         assessment,
         finalCounts,
       };
     } catch (_) {
-      return { lateFinished: false, winner: null, terminalType: "position_unavailable", terminalConfidence: "low", finalCounts };
+      return { counted: false, winner: null, outcome: "unrated", terminalType: "position_unavailable", terminalConfidence: "low", finalCounts };
     }
   }
 
@@ -2132,13 +2153,17 @@ const PvCResultRecorder = (() => {
       terminalType = "strict";
       terminalConfidence = "high";
     } else if (["disconnect", "abort", "cancel", "leave", "resign"].includes(reason) && resolvedWinner == null) {
-      const late = inferLateExitOutcome(humanSide());
-      if (late && late.lateFinished && (late.winner === TOP || late.winner === BOT) && late.terminalConfidence !== "low") {
-        resolvedWinner = late.winner;
-        lateFinished = true;
-        terminalType = late.terminalType || "administrative_position";
-        terminalConfidence = late.terminalConfidence || "medium";
-        reason = reason === "disconnect" ? "disconnect_late" : "late_exit";
+      const interrupted = inferInterruptedOutcome();
+      if (interrupted && interrupted.counted && interrupted.terminalConfidence !== "low") {
+        resolvedWinner = interrupted.winner;
+        lateFinished = !interrupted.natural;
+        terminalType = interrupted.terminalType || (interrupted.natural ? "strict" : "administrative_forced_win");
+        terminalConfidence = interrupted.terminalConfidence || "certain";
+        if (interrupted.natural) {
+          reason = interrupted.outcome === "draw" ? "draw" : (interrupted.reason || "natural_win");
+        } else {
+          reason = interrupted.outcome === "draw" ? "late_exit_draw" : (reason === "disconnect" ? "disconnect_late" : "late_exit");
+        }
       }
     }
     if (terminalType === "unknown" && (resolvedWinner === TOP || resolvedWinner === BOT)) {

@@ -1,10 +1,11 @@
 /*
- * Dhamet shared GameRoom match-ending helpers v2.
+ * Dhamet shared match-ending helpers v3.
  *
- * Administrative endings are rated only when the server-held position is both
- * advanced and clearly unfavorable to the departing/absent player. The
- * assessment is deliberately conservative and shallow: board counts and legal
- * mobility only, never AI search.
+ * Natural endings are always counted from the authoritative board. Non-natural
+ * endings are assessed only in the actual endgame and only when a bounded,
+ * rules-based search proves a forced win or a forced draw. Material advantage,
+ * mobility advantage, the identity of the player who left, and the reason for
+ * leaving are never sufficient on their own.
  */
 (function (root) {
   'use strict';
@@ -13,23 +14,34 @@
   if (!Utils) throw new Error('DhametMatchEnd requires DhametUtils');
 
   const Rules = root.DhametRules || null;
+  const State = root.DhametState || null;
   const Result = root.DhametResult || null;
   const TOP = Rules ? Rules.TOP : +1;
   const BOT = Rules ? Rules.BOT : -1;
 
   const POLICY = Object.freeze({
-    minAdvancedPly: 32,
-    unconditionalAdvancedPly: 48,
-    minCapturedPieces: 8,
-    maxAdvancedPieces: 24,
-    clearScoreMargin: 5.5,
-    clearMaterialMargin: 4,
+    // The ordinary game starts with 80 pieces. Requiring at most 16 pieces
+    // means at least four fifths of the material has already disappeared.
+    maxEndgamePieces: 16,
+    minNormalInitialPieces: 40,
+    minCapturedRatio: 0.75,
+    minFallbackPly: 48,
+    maxSearchNodes: 2000,
+    searchDepthByPieces: Object.freeze([
+      Object.freeze({ maxPieces: 6, depth: 14 }),
+      Object.freeze({ maxPieces: 8, depth: 12 }),
+      Object.freeze({ maxPieces: 10, depth: 10 }),
+      Object.freeze({ maxPieces: 12, depth: 8 }),
+      Object.freeze({ maxPieces: 16, depth: 6 }),
+    ]),
   });
 
   const clone = Utils.cloneJson;
   const nowMs = Utils.nowMs;
   const cleanString = Utils.cleanStringLoose;
   const cleanDisplay = Utils.cleanDisplayText || Utils.cleanText;
+
+  const UNKNOWN = Object.freeze({ outcome: 'unknown', winner: null });
 
   function side(value, fallback) {
     const n = Number(value);
@@ -70,9 +82,14 @@
     };
   }
 
-  function stateBoard(game) {
+  function snapshotOf(game) {
     const g = game && typeof game === 'object' ? game : {};
-    return g.state && g.state.snapshot && g.state.snapshot.board ? g.state.snapshot.board : null;
+    return g.state && g.state.snapshot && typeof g.state.snapshot === 'object' ? g.state.snapshot : null;
+  }
+
+  function stateBoard(game) {
+    const snapshot = snapshotOf(game);
+    return snapshot && snapshot.board ? snapshot.board : null;
   }
 
   function initialBoard(game) {
@@ -98,97 +115,304 @@
     };
   }
 
-  function sideCounts(counts, playerSide) {
-    const s = side(playerSide, null);
-    if (s === TOP) return { men: counts.topMen, kings: counts.topKings, total: counts.top };
-    return { men: counts.botMen, kings: counts.botKings, total: counts.bot };
-  }
-
-  function mobility(board, playerSide) {
-    if (!Rules || typeof Rules.generateLegalMoves !== 'function' || !board) return 0;
-    try {
-      const generated = Rules.generateLegalMoves(board, playerSide, { policy: 'strict' });
-      return Math.min(40, Array.isArray(generated && generated.moves) ? generated.moves.length : 0);
-    } catch (_) {
-      return 0;
-    }
-  }
-
-  function resolveAdministrativePolicy(profile) {
-    const name = cleanString(profile || '', 40).toLowerCase();
-    if (name === 'low-material' || name === 'strict-low-material') {
-      return Object.assign({}, POLICY, { maxAdvancedPieces: 10, requireLowMaterial: true });
-    }
-    return POLICY;
-  }
-
-  function assessAdministrativeEnd(game, loserSide, policyProfile) {
-    const limits = resolveAdministrativePolicy(policyProfile);
-    const loser = side(loserSide, null);
-    const winner = opponent(loser);
-    const board = stateBoard(game);
-    if (loser == null || winner == null || !board) {
-      return { count: false, reason: 'administrative_position_unavailable', confidence: 'low' };
-    }
-
-    const current = countBoard(board);
-    const initial = countBoard(initialBoard(game));
-    const ply = Math.max(0, Number(game && game.ply || game && game.state && game.state.snapshot && game.state.snapshot.moveCount || 0) || 0);
-    const captured = Math.max(0, (initial.total || current.total) - current.total);
-    const totalKings = current.topKings + current.botKings;
-    const advanced = ply >= limits.unconditionalAdvancedPly || (
-      ply >= limits.minAdvancedPly && (
-        captured >= limits.minCapturedPieces ||
-        current.total <= limits.maxAdvancedPieces ||
-        totalKings > 0
-      )
+  function pendingPromotions(game) {
+    const g = game && typeof game === 'object' ? game : {};
+    const snapshot = snapshotOf(g) || {};
+    const statePayload = g.state && typeof g.state === 'object' ? g.state : {};
+    if (!State || typeof State.normalizeDeferredPromotions !== 'function') return [];
+    return State.normalizeDeferredPromotions(
+      statePayload.deferredPromotions || snapshot.deferredPromotions || snapshot.deferredPromotion || [],
     );
+  }
 
-    const mine = sideCounts(current, loser);
-    const theirs = sideCounts(current, winner);
-    const myMobility = mobility(board, loser);
-    const theirMobility = mobility(board, winner);
-    const myMaterial = mine.men + mine.kings * 3.5;
-    const theirMaterial = theirs.men + theirs.kings * 3.5;
-    const materialMargin = theirMaterial - myMaterial;
-    const scoreMargin = (theirMaterial + theirMobility * 0.12) - (myMaterial + myMobility * 0.12);
+  function sideToMove(game) {
+    const snapshot = snapshotOf(game) || {};
+    return side(snapshot.player, side(game && game.turn, null));
+  }
 
-    const metrics = {
+  function hasUnresolvedTurn(game) {
+    const snapshot = snapshotOf(game) || {};
+    return !!(
+      snapshot.inChain ||
+      snapshot.chainPos != null ||
+      (game && game.soufla) ||
+      snapshot.soufla
+    );
+  }
+
+  function activateAtTurnStart(board, pending, mover) {
+    if (!State || typeof State.activateDeferredPromotions !== 'function') {
+      return { ok: true, board, deferredPromotions: Array.isArray(pending) ? pending.slice() : [] };
+    }
+    return State.activateDeferredPromotions(board, pending, mover);
+  }
+
+  function naturalOutcome(board, mover, unresolvedTurn) {
+    const counts = countBoard(board);
+    if (counts.top === 0) return { terminal: true, winner: BOT, outcome: 'win', reason: 'no_pieces' };
+    if (counts.bot === 0) return { terminal: true, winner: TOP, outcome: 'win', reason: 'no_pieces' };
+    if (counts.top === 1 && counts.bot === 1 && counts.topKings === 1 && counts.botKings === 1) {
+      return { terminal: true, winner: null, outcome: 'draw', reason: 'one_king_each' };
+    }
+    if (!unresolvedTurn && (mover === TOP || mover === BOT) && Rules && typeof Rules.hasAnyLegalMove === 'function') {
+      if (!Rules.hasAnyLegalMove(board, mover)) {
+        return { terminal: true, winner: opponent(mover), outcome: 'win', reason: 'no_legal_moves' };
+      }
+    }
+    return { terminal: false, winner: null, outcome: 'ongoing', reason: null };
+  }
+
+  function endgameDepth(totalPieces) {
+    for (const item of POLICY.searchDepthByPieces) {
+      if (totalPieces <= item.maxPieces) return item.depth;
+    }
+    return 0;
+  }
+
+  function endgameGate(game, current, initial) {
+    const snapshot = snapshotOf(game) || {};
+    const ply = Math.max(0, Number(game && game.ply || snapshot.moveCount || 0) || 0);
+    const initialTotal = Math.max(current.total, Number(initial.total || 0) || 0);
+    const captured = Math.max(0, initialTotal - current.total);
+    const capturedRatio = initialTotal > 0 ? captured / initialTotal : 0;
+    const ordinaryStart = initialTotal >= POLICY.minNormalInitialPieces;
+    const lateByMaterial = current.total <= POLICY.maxEndgamePieces && capturedRatio >= POLICY.minCapturedRatio;
+    const lateByFallback = current.total <= POLICY.maxEndgamePieces && !ordinaryStart && ply >= POLICY.minFallbackPly;
+    return {
+      eligible: lateByMaterial || lateByFallback,
       ply,
+      initialPieces: initialTotal,
       captured,
+      capturedRatio: Number(capturedRatio.toFixed(3)),
       totalPieces: current.total,
-      totalKings,
-      loserPieces: mine.total,
-      winnerPieces: theirs.total,
-      loserKings: mine.kings,
-      winnerKings: theirs.kings,
-      loserMobility: myMobility,
-      winnerMobility: theirMobility,
-      materialMargin: Number(materialMargin.toFixed(2)),
-      scoreMargin: Number(scoreMargin.toFixed(2)),
+      depth: endgameDepth(current.total),
     };
+  }
 
-    if (!advanced) return { count: false, reason: 'administrative_early_or_midgame', confidence: 'high', metrics };
-    if (mine.total <= 0 || (myMobility === 0 && theirMobility > 0)) {
-      return { count: true, reason: mine.total <= 0 ? 'no_pieces' : 'no_legal_moves', confidence: 'high', metrics };
+  function compactKey(position, mover, pending, depth) {
+    const queue = Array.isArray(pending)
+      ? pending.map((item) => `${Number(item.side)}:${Number(item.idx)}`).sort().join(',')
+      : '';
+    return `${mover}|${depth}|${queue}|${Array.prototype.join.call(position, ',')}`;
+  }
+
+  function compactTerminal(position, mover, moves) {
+    const counts = Rules.compact.countPieces(position);
+    if (counts.top === 0) return { outcome: 'win', winner: BOT };
+    if (counts.bot === 0) return { outcome: 'win', winner: TOP };
+    if (counts.top === 1 && counts.bot === 1 && counts.topKings === 1 && counts.botKings === 1) {
+      return { outcome: 'draw', winner: null };
+    }
+    if (!moves.length) return { outcome: 'win', winner: opponent(mover) };
+    return null;
+  }
+
+  function orderedMoves(moves) {
+    return moves.slice().sort((a, b) => {
+      const captureDiff = Number(b && b.captures || 0) - Number(a && a.captures || 0);
+      if (captureDiff) return captureDiff;
+      const promoteDiff = Number(!!(b && b.promotes)) - Number(!!(a && a.promotes));
+      if (promoteDiff) return promoteDiff;
+      return Number(a && a.from || 0) - Number(b && b.from || 0);
+    });
+  }
+
+  function applySearchMove(position, pending, mover, move) {
+    const applied = Rules.compact.applyMove(position, move, mover);
+    if (!applied || !applied.ok) return null;
+    const queue = Array.isArray(pending) ? pending.map((item) => ({ idx: Number(item.idx), side: Number(item.side) })) : [];
+    if (applied.promotionPending) queue.push(clone(applied.promotionPending));
+    const nextMover = opponent(mover);
+    const activated = activateAtTurnStart(applied.position, queue, nextMover);
+    if (!activated || !activated.ok) return null;
+    return {
+      position: activated.board,
+      pending: activated.deferredPromotions || [],
+      mover: nextMover,
+    };
+  }
+
+  function solveForced(position, pending, mover, depth, context, path) {
+    if (context.nodes >= context.maxNodes) {
+      context.exhausted = true;
+      return UNKNOWN;
+    }
+    context.nodes += 1;
+
+    const key = compactKey(position, mover, pending, depth);
+    const cached = context.memo.get(key);
+    if (cached) return cached;
+
+    const repetitionKey = compactKey(position, mover, pending, -1);
+    if (path.has(repetitionKey)) return UNKNOWN;
+
+    let generated;
+    try {
+      generated = Rules.compact.generateLegalMoves(position, mover, { policy: 'strict' });
+    } catch (_) {
+      return UNKNOWN;
+    }
+    const moves = Array.isArray(generated && generated.moves) ? generated.moves : [];
+    const terminal = compactTerminal(position, mover, moves);
+    if (terminal) {
+      context.memo.set(key, terminal);
+      return terminal;
+    }
+    if (depth <= 0) return UNKNOWN;
+
+    path.add(repetitionKey);
+    let sawDraw = false;
+    let sawUnknown = false;
+    let allOpponentWins = true;
+    const other = opponent(mover);
+
+    for (const move of orderedMoves(moves)) {
+      const next = applySearchMove(position, pending, mover, move);
+      if (!next) {
+        sawUnknown = true;
+        allOpponentWins = false;
+        continue;
+      }
+      const child = solveForced(next.position, next.pending, next.mover, depth - 1, context, path);
+      if (child.outcome === 'win' && child.winner === mover) {
+        path.delete(repetitionKey);
+        const result = { outcome: 'win', winner: mover };
+        context.memo.set(key, result);
+        return result;
+      }
+      if (child.outcome === 'draw') {
+        sawDraw = true;
+        allOpponentWins = false;
+      } else if (child.outcome === 'unknown') {
+        sawUnknown = true;
+        allOpponentWins = false;
+      } else if (!(child.outcome === 'win' && child.winner === other)) {
+        sawUnknown = true;
+        allOpponentWins = false;
+      }
     }
 
-    const lowMaterialEligible = !limits.requireLowMaterial || current.total <= limits.maxAdvancedPieces;
-    const criticallyReduced = lowMaterialEligible && mine.total <= 3 && mine.kings === 0 && (theirs.kings > 0 || theirs.total - mine.total >= 4);
-    const clearlyBehind = current.total <= limits.maxAdvancedPieces &&
-      materialMargin >= limits.clearMaterialMargin &&
-      scoreMargin >= limits.clearScoreMargin &&
-      myMaterial < theirMaterial;
+    path.delete(repetitionKey);
+    let result = UNKNOWN;
+    if (!sawUnknown && sawDraw) result = { outcome: 'draw', winner: null };
+    else if (!sawUnknown && allOpponentWins) result = { outcome: 'win', winner: other };
+    if (result !== UNKNOWN) context.memo.set(key, result);
+    return result;
+  }
 
-    if (criticallyReduced || clearlyBehind) {
+  function searchForcedOutcome(board, pending, mover, depth) {
+    if (!Rules || !Rules.compact || typeof Rules.compact.fromBoard !== 'function') {
+      return { outcome: 'unknown', winner: null, nodes: 0, exhausted: false };
+    }
+    const position = Rules.compact.fromBoard(board);
+    if (!position || !depth) return { outcome: 'unknown', winner: null, nodes: 0, exhausted: false };
+    const context = { nodes: 0, maxNodes: POLICY.maxSearchNodes, exhausted: false, memo: new Map() };
+    const result = solveForced(position, pending, mover, depth, context, new Set());
+    return {
+      outcome: result.outcome,
+      winner: result.winner,
+      nodes: context.nodes,
+      exhausted: context.exhausted,
+      depth,
+    };
+  }
+
+  function assessInterruptedPosition(game) {
+    const board = stateBoard(game);
+    const mover = sideToMove(game);
+    if (!board || mover == null) {
+      return { count: false, winner: null, outcome: 'unrated', reason: 'administrative_position_unavailable', confidence: 'low' };
+    }
+
+    const pending = pendingPromotions(game);
+    const activated = activateAtTurnStart(board, pending, mover);
+    if (!activated || !activated.ok) {
+      return { count: false, winner: null, outcome: 'unrated', reason: 'administrative_position_unavailable', confidence: 'low' };
+    }
+    const activeBoard = activated.board;
+    const activePending = activated.deferredPromotions || [];
+    const unresolved = hasUnresolvedTurn(game);
+    const natural = naturalOutcome(activeBoard, mover, unresolved);
+    const current = countBoard(activeBoard);
+    const initial = countBoard(initialBoard(game));
+    const gate = endgameGate(game, current, initial);
+    const metrics = Object.assign({}, gate, {
+      topPieces: current.top,
+      botPieces: current.bot,
+      topKings: current.topKings,
+      botKings: current.botKings,
+      sideToMove: mover,
+    });
+
+    if (natural.terminal) {
       return {
         count: true,
-        reason: criticallyReduced ? 'critically_reduced' : 'clear_disadvantage',
-        confidence: criticallyReduced && scoreMargin >= limits.clearScoreMargin ? 'high' : 'medium',
+        winner: natural.winner,
+        outcome: natural.outcome,
+        reason: natural.reason,
+        basis: 'natural',
+        confidence: 'certain',
         metrics,
       };
     }
-    return { count: false, reason: 'administrative_position_not_clear', confidence: 'medium', metrics };
+    if (unresolved) {
+      return {
+        count: false,
+        winner: null,
+        outcome: 'unrated',
+        reason: 'administrative_unresolved_turn',
+        basis: 'unclear',
+        confidence: 'high',
+        metrics,
+      };
+    }
+    if (!gate.eligible || !gate.depth) {
+      return {
+        count: false,
+        winner: null,
+        outcome: 'unrated',
+        reason: 'administrative_early_or_midgame',
+        basis: 'unclear',
+        confidence: 'high',
+        metrics,
+      };
+    }
+
+    const search = searchForcedOutcome(activeBoard, activePending, mover, gate.depth);
+    metrics.searchDepth = search.depth;
+    metrics.searchNodes = search.nodes;
+    metrics.searchExhausted = !!search.exhausted;
+    if (search.outcome === 'win' && (search.winner === TOP || search.winner === BOT)) {
+      return {
+        count: true,
+        winner: search.winner,
+        outcome: 'win',
+        reason: 'forced_endgame_win',
+        basis: 'forced-search',
+        confidence: 'certain',
+        metrics,
+      };
+    }
+    if (search.outcome === 'draw') {
+      return {
+        count: true,
+        winner: null,
+        outcome: 'draw',
+        reason: 'forced_endgame_draw',
+        basis: 'forced-search',
+        confidence: 'certain',
+        metrics,
+      };
+    }
+    return {
+      count: false,
+      winner: null,
+      outcome: 'unrated',
+      reason: search.exhausted ? 'administrative_search_inconclusive' : 'administrative_position_not_clear',
+      basis: 'unclear',
+      confidence: 'high',
+      metrics,
+    };
   }
 
   function neutralPolicy(k, src, rejectionReason, assessment) {
@@ -212,27 +436,27 @@
     const src = input && typeof input === 'object' ? input : {};
     if (s == null) return { ok: false, error: 'match-end/invalid-side' };
 
-    if (k === 'cancel' || k === 'abort' || k === 'void') {
-      return neutralPolicy(k, src, 'administrative_cancelled', null);
-    }
-
-    if (k === 'resign' || k === 'leave' || k === 'opponent-absent') {
-      const loser = k === 'opponent-absent' ? opponent(s) : s;
-      const assessment = assessAdministrativeEnd(game, loser, src.policyProfile);
+    if (k === 'cancel' || k === 'abort' || k === 'void' || k === 'resign' || k === 'leave' || k === 'opponent-absent') {
+      const assessment = assessInterruptedPosition(game);
       if (!assessment.count) return neutralPolicy(k, src, assessment.reason, assessment);
+      const winner = side(assessment.winner, null);
+      const natural = assessment.basis === 'natural';
+      const resultReason = natural
+        ? assessment.reason
+        : (k === 'opponent-absent' ? 'opponent_absent_late' : 'late_exit');
       return {
         ok: true,
         kind: k,
-        reason: src.reason || (k === 'opponent-absent' ? 'opponent_absent_late' : 'late_exit'),
-        resultReason: k === 'opponent-absent' ? 'opponent_absent_late' : 'late_exit',
-        winner: opponent(loser),
-        loser,
+        reason: src.reason || resultReason,
+        resultReason,
+        winner,
+        loser: winner == null ? null : opponent(winner),
         countsAsResult: true,
         neutralEnd: false,
-        adjudicated: true,
-        terminalType: 'administrative_position',
-        terminalConfidence: assessment.confidence || 'medium',
-        terminalTag: assessment.reason || 'clear_disadvantage',
+        adjudicated: !natural,
+        terminalType: natural ? 'strict' : (assessment.outcome === 'draw' ? 'administrative_forced_draw' : 'administrative_forced_win'),
+        terminalConfidence: assessment.confidence || 'certain',
+        terminalTag: assessment.reason || null,
         rejectionReason: null,
         assessment,
       };
@@ -256,7 +480,7 @@
         moveIndex: src.moveIndex,
         ply: src.ply,
         endedAt: src.endedAt || nowMs(),
-        source: src.source || 'gameroom-match-end-v2',
+        source: src.source || 'gameroom-match-end-v3',
         meta: Object.assign({}, src.meta || {}, { countsAsResult }),
       });
     }
@@ -269,19 +493,18 @@
       moveIndex: src.moveIndex,
       ply: src.ply,
       endedAt: src.endedAt || nowMs(),
-      source: src.source || 'gameroom-match-end-v2',
+      source: src.source || 'gameroom-match-end-v3',
       meta: Object.assign({}, src.meta || {}, { countsAsResult }),
     };
   }
 
   root.DhametMatchEnd = Object.freeze({
-    version: 'shared-match-end-v2',
+    version: 'shared-match-end-v3',
     POLICY,
     clone,
     cleanKind,
     normalizeMatchEndPayload,
-    resolveAdministrativePolicy,
-    assessAdministrativeEnd,
+    assessInterruptedPosition,
     policyForEnd,
     createTerminalResult,
     opponent,
