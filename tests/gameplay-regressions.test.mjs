@@ -191,3 +191,13 @@ test('the selected game icon is used by all existing Dhamet icon surfaces and re
   assert.match(read('dhamet/site/index.html'), /assets\/icons\/icon\.webp/);
   assert.match(read('site/ar/products/dhamet/index.html'), /products\/dhamet\/icon\.svg/);
 });
+
+
+test('computer-game administrative endings never run endgame adjudication', () => {
+  const gameRuntime = read('dhamet/site/js/modes/game-runtime.js');
+  assert.doesNotMatch(gameRuntime, /inferInterruptedOutcome/);
+  assert.doesNotMatch(gameRuntime, /assessInterruptedPosition/);
+  assert.match(gameRuntime, /Non-natural computer-game endings are deliberately never adjudicated/);
+  assert.match(gameRuntime, /no browser search and no Cloudflare result request/);
+  assert.match(gameRuntime, /reason: "non_counted_ending"[\s\S]*return response/);
+});

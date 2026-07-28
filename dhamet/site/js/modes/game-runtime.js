@@ -2010,88 +2010,6 @@ const PvCResultRecorder = (() => {
     state.undoCount = Math.max(0, Number(state.undoCount || 0) || 0) + 1;
   }
 
-  function finalCountsFromBoard(board) {
-    const out = { topMen: 0, topKings: 0, botMen: 0, botKings: 0, topTotal: 0, botTotal: 0 };
-    if (!Array.isArray(board)) return out;
-    try {
-      for (let r = 0; r < BOARD_N; r += 1) {
-        const row = Array.isArray(board[r]) ? board[r] : [];
-        for (let c = 0; c < BOARD_N; c += 1) {
-          const value = Number(row[c] || 0) | 0;
-          if (!value) continue;
-          const owner = value > 0 ? TOP : BOT;
-          const king = Math.abs(value) === 2;
-          if (owner === TOP) king ? out.topKings++ : out.topMen++;
-          else king ? out.botKings++ : out.botMen++;
-        }
-      }
-    } catch (_) {}
-    out.topTotal = out.topMen + out.topKings;
-    out.botTotal = out.botMen + out.botKings;
-    return out;
-  }
-
-  function inferInterruptedOutcome() {
-    const finalCounts = finalCountsFromBoard(window.Game && Game.board ? Game.board : null);
-    try {
-      const assessor = window.DhametMatchEnd && typeof window.DhametMatchEnd.assessInterruptedPosition === "function"
-        ? window.DhametMatchEnd.assessInterruptedPosition
-        : null;
-      if (!assessor || !window.Game || !Array.isArray(Game.board)) {
-        return { counted: false, winner: null, outcome: "unrated", terminalType: "position_unavailable", terminalConfidence: "low", finalCounts };
-      }
-      const moveCount = Math.max(0, Number(Game.moveCount || 0) || 0);
-      const view = {
-        ply: moveCount,
-        turn: Game.player,
-        state: {
-          snapshot: {
-            board: cloneBoard(Game.board),
-            player: Game.player,
-            moveCount,
-            inChain: !!Game.inChain,
-            chainPos: Game.chainPos == null ? null : Game.chainPos,
-            deferredPromotions: Array.isArray(Game.deferredPromotions) ? Game.deferredPromotions.map((item) => ({ ...item })) : [],
-          },
-          deferredPromotions: Array.isArray(Game.deferredPromotions) ? Game.deferredPromotions.map((item) => ({ ...item })) : [],
-        },
-        states: { "0": { snapshot: { board: createInitialBoard(), player: Game.settings && Game.settings.starter === "white" ? BOT : TOP, moveCount: 0 } } },
-        soufla: hasUnresolvedSoufla() ? { pending: Game.souflaPending || true } : null,
-      };
-      const assessment = assessor(view) || null;
-      if (!assessment || !assessment.count) {
-        return {
-          counted: false,
-          winner: null,
-          outcome: "unrated",
-          terminalType: assessment && assessment.reason || "position_not_clear",
-          terminalConfidence: assessment && assessment.confidence || "low",
-          assessment,
-          finalCounts,
-        };
-      }
-      const winner = assessment.winner === TOP || assessment.winner === BOT ? assessment.winner : null;
-      const natural = assessment.basis === "natural";
-      return {
-        counted: true,
-        winner,
-        outcome: assessment.outcome === "draw" ? "draw" : "win",
-        natural,
-        reason: assessment.reason || null,
-        terminalType: natural
-          ? "strict"
-          : assessment.outcome === "draw"
-            ? "administrative_forced_draw"
-            : "administrative_forced_win",
-        terminalConfidence: assessment.confidence || "certain",
-        assessment,
-        finalCounts,
-      };
-    } catch (_) {
-      return { counted: false, winner: null, outcome: "unrated", terminalType: "position_unavailable", terminalConfidence: "low", finalCounts };
-    }
-  }
-
   function errorReason(error) {
     try {
       const code = String(error && (error.code || error.name) || "").toLowerCase();
@@ -2153,18 +2071,14 @@ const PvCResultRecorder = (() => {
       terminalType = "strict";
       terminalConfidence = "high";
     } else if (["disconnect", "abort", "cancel", "leave", "resign"].includes(reason) && resolvedWinner == null) {
-      const interrupted = inferInterruptedOutcome();
-      if (interrupted && interrupted.counted && interrupted.terminalConfidence !== "low") {
-        resolvedWinner = interrupted.winner;
-        lateFinished = !interrupted.natural;
-        terminalType = interrupted.terminalType || (interrupted.natural ? "strict" : "administrative_forced_win");
-        terminalConfidence = interrupted.terminalConfidence || "certain";
-        if (interrupted.natural) {
-          reason = interrupted.outcome === "draw" ? "draw" : (interrupted.reason || "natural_win");
-        } else {
-          reason = interrupted.outcome === "draw" ? "late_exit_draw" : (reason === "disconnect" ? "disconnect_late" : "late_exit");
-        }
-      }
+      // Non-natural computer-game endings are deliberately never adjudicated or
+      // submitted. The player can continue to a natural ending when they want a
+      // counted result; abandoning or cancelling the local game remains local
+      // and uncounted, with no browser search and no Cloudflare result request.
+      const response = { ok: true, counted: false, reason: "non_counted_ending" };
+      reset();
+      logResult(response);
+      return response;
     }
     if (terminalType === "unknown" && (resolvedWinner === TOP || resolvedWinner === BOT)) {
       terminalType = "strict";

@@ -1,11 +1,12 @@
 /*
- * Dhamet shared match-ending helpers v3.
+ * Dhamet shared match-ending helpers v4.
  *
  * Natural endings are always counted from the authoritative board. Non-natural
- * endings are assessed only in the actual endgame and only when a bounded,
- * rules-based search proves a forced win or a forced draw. Material advantage,
- * mobility advantage, the identity of the player who left, and the reason for
- * leaving are never sufficient on their own.
+ * endings are assessed only in a very small, clearly late endgame and only when
+ * a tightly bounded rules-based search proves a forced win or forced draw. The
+ * identity of the player who left and ordinary material or mobility advantage
+ * are never sufficient on their own. This adjudicator is authoritative server
+ * logic for online play; computer games do not invoke it for non-natural ends.
  */
 (function (root) {
   'use strict';
@@ -20,19 +21,22 @@
   const BOT = Rules ? Rules.BOT : -1;
 
   const POLICY = Object.freeze({
-    // The ordinary game starts with 80 pieces. Requiring at most 16 pieces
-    // means at least four fifths of the material has already disappeared.
-    maxEndgamePieces: 16,
+    // Administrative adjudication is intentionally limited to imminent endings:
+    // either eight pieces or fewer remain, or one side has only a lone king and
+    // no more than ten pieces remain in total. Natural endings are still checked
+    // before this gate and always count.
+    maxEndgamePieces: 8,
+    maxLoneKingPieces: 10,
     minNormalInitialPieces: 40,
-    minCapturedRatio: 0.75,
+    minCapturedRatio: 0.85,
     minFallbackPly: 48,
-    maxSearchNodes: 2000,
+    maxSearchNodes: 600,
+    maxSearchMs: 30,
     searchDepthByPieces: Object.freeze([
-      Object.freeze({ maxPieces: 6, depth: 14 }),
-      Object.freeze({ maxPieces: 8, depth: 12 }),
-      Object.freeze({ maxPieces: 10, depth: 10 }),
-      Object.freeze({ maxPieces: 12, depth: 8 }),
-      Object.freeze({ maxPieces: 16, depth: 6 }),
+      Object.freeze({ maxPieces: 4, depth: 12 }),
+      Object.freeze({ maxPieces: 6, depth: 10 }),
+      Object.freeze({ maxPieces: 8, depth: 8 }),
+      Object.freeze({ maxPieces: 10, depth: 6, loneKingOnly: true }),
     ]),
   });
 
@@ -162,9 +166,18 @@
     return { terminal: false, winner: null, outcome: 'ongoing', reason: null };
   }
 
-  function endgameDepth(totalPieces) {
+  function isLoneKingCase(current) {
+    return !!(
+      (current.top === 1 && current.topKings === 1) ||
+      (current.bot === 1 && current.botKings === 1)
+    );
+  }
+
+  function endgameDepth(totalPieces, loneKingCase) {
     for (const item of POLICY.searchDepthByPieces) {
-      if (totalPieces <= item.maxPieces) return item.depth;
+      if (totalPieces > item.maxPieces) continue;
+      if (item.loneKingOnly && !loneKingCase) continue;
+      return item.depth;
     }
     return 0;
   }
@@ -176,8 +189,11 @@
     const captured = Math.max(0, initialTotal - current.total);
     const capturedRatio = initialTotal > 0 ? captured / initialTotal : 0;
     const ordinaryStart = initialTotal >= POLICY.minNormalInitialPieces;
-    const lateByMaterial = current.total <= POLICY.maxEndgamePieces && capturedRatio >= POLICY.minCapturedRatio;
-    const lateByFallback = current.total <= POLICY.maxEndgamePieces && !ordinaryStart && ply >= POLICY.minFallbackPly;
+    const loneKingCase = isLoneKingCase(current) && current.total <= POLICY.maxLoneKingPieces;
+    const fewPiecesCase = current.total <= POLICY.maxEndgamePieces;
+    const materialGate = fewPiecesCase || loneKingCase;
+    const lateByMaterial = materialGate && capturedRatio >= POLICY.minCapturedRatio;
+    const lateByFallback = materialGate && !ordinaryStart && ply >= POLICY.minFallbackPly;
     return {
       eligible: lateByMaterial || lateByFallback,
       ply,
@@ -185,7 +201,9 @@
       captured,
       capturedRatio: Number(capturedRatio.toFixed(3)),
       totalPieces: current.total,
-      depth: endgameDepth(current.total),
+      loneKingCase,
+      fewPiecesCase,
+      depth: endgameDepth(current.total, loneKingCase),
     };
   }
 
@@ -233,8 +251,9 @@
   }
 
   function solveForced(position, pending, mover, depth, context, path) {
-    if (context.nodes >= context.maxNodes) {
+    if (context.nodes >= context.maxNodes || nowMs() >= context.deadline) {
       context.exhausted = true;
+      context.timedOut = nowMs() >= context.deadline;
       return UNKNOWN;
     }
     context.nodes += 1;
@@ -306,13 +325,21 @@
     }
     const position = Rules.compact.fromBoard(board);
     if (!position || !depth) return { outcome: 'unknown', winner: null, nodes: 0, exhausted: false };
-    const context = { nodes: 0, maxNodes: POLICY.maxSearchNodes, exhausted: false, memo: new Map() };
+    const context = {
+      nodes: 0,
+      maxNodes: POLICY.maxSearchNodes,
+      exhausted: false,
+      timedOut: false,
+      deadline: nowMs() + POLICY.maxSearchMs,
+      memo: new Map(),
+    };
     const result = solveForced(position, pending, mover, depth, context, new Set());
     return {
       outcome: result.outcome,
       winner: result.winner,
       nodes: context.nodes,
       exhausted: context.exhausted,
+      timedOut: context.timedOut,
       depth,
     };
   }
@@ -382,6 +409,7 @@
     metrics.searchDepth = search.depth;
     metrics.searchNodes = search.nodes;
     metrics.searchExhausted = !!search.exhausted;
+    metrics.searchTimedOut = !!search.timedOut;
     if (search.outcome === 'win' && (search.winner === TOP || search.winner === BOT)) {
       return {
         count: true,
@@ -499,7 +527,7 @@
   }
 
   root.DhametMatchEnd = Object.freeze({
-    version: 'shared-match-end-v3',
+    version: 'shared-match-end-v4',
     POLICY,
     clone,
     cleanKind,

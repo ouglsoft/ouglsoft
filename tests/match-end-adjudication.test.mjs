@@ -112,6 +112,39 @@ test('a short forced endgame win is counted independently of who ended the match
   assert.equal(botLeaves.countsAsResult, true);
 });
 
+
+
+test('administrative search is limited to very small online endgames', () => {
+  assert.equal(MatchEnd.POLICY.maxEndgamePieces, 8);
+  assert.equal(MatchEnd.POLICY.maxLoneKingPieces, 10);
+  assert.equal(MatchEnd.POLICY.maxSearchNodes, 600);
+  assert.equal(MatchEnd.POLICY.maxSearchMs, 30);
+
+  const board = emptyBoard();
+  const pieces = [
+    [0, 0, 2], [0, 4, 2], [2, 2, 2], [2, 6, 2], [4, 4, 2],
+    [8, 0, -2], [8, 4, -2], [6, 2, -2], [6, 6, -2],
+  ];
+  for (const [r, c, value] of pieces) board[r][c] = value;
+  const result = MatchEnd.assessInterruptedPosition(gameFromBoard(board, Rules.TOP, 100));
+  assert.equal(result.count, false);
+  assert.equal(result.reason, 'administrative_early_or_midgame');
+  assert.equal(result.metrics.totalPieces, 9);
+  assert.equal(result.metrics.loneKingCase, false);
+});
+
+test('a lone-king ending may enter the small bounded online search', () => {
+  const board = emptyBoard();
+  board[4][4] = 2;
+  const botSquares = [[0,0],[0,2],[0,4],[0,6],[0,8],[2,0],[2,2],[2,6],[2,8]];
+  for (const [r, c] of botSquares) board[r][c] = -1;
+  const result = MatchEnd.assessInterruptedPosition(gameFromBoard(board, Rules.TOP, 100));
+  assert.equal(result.metrics.totalPieces, 10);
+  assert.equal(result.metrics.loneKingCase, true);
+  assert.equal(result.metrics.depth, 6);
+  assert.notEqual(result.reason, 'administrative_early_or_midgame');
+});
+
 test('unresolved soufla or capture-chain state is never administratively adjudicated', () => {
   const board = emptyBoard();
   board[0][0] = 2;
