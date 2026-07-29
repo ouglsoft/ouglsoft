@@ -18,7 +18,7 @@ import '../../shared/dhamet-lifecycle.js';
 import '../../shared/dhamet-live.js';
 import '../../shared/dhamet-authority.js';
 import '../../shared/dhamet-stats.js';
-import { json, bad, requestBody, now } from '../lib/http.js';
+import { json, bad, requestBody, now, jsonHeaders } from '../lib/http.js';
 import { randomToken } from '../lib/security.js';
 import {
   cleanPath,

@@ -31,6 +31,13 @@ function escapeUiText(value) {
     .replace(/"/g, "&quot;");
 }
 
+function formatUiTemplate(template, vars) {
+  const values = vars && typeof vars === "object" ? vars : {};
+  return String(template == null ? "" : template).replace(/\{(\w+)\}/g, (match, key) =>
+    Object.prototype.hasOwnProperty.call(values, key) ? String(values[key]) : match,
+  );
+}
+
 function decorateUiPlayerNames(message, names) {
   let html = escapeUiText(message);
   const clean = (Array.isArray(names) ? names : [])
@@ -1123,7 +1130,6 @@ const Input = {
             body: `<div>${t("modals.forcedOpening.body")}</div>`,
             okLabel: t("actions.close"),
             okClassName: "primary",
-            onClick: () => UI.showSettingsModal(prefill),
           });
           return;
         }
@@ -1655,11 +1661,11 @@ const UI = {
     if (reason === "no_pieces") {
       add(loserSide === humanSide
         ? t("online.endPresentation.reason.selfNoPieces")
-        : formatTpl(t("modals.gameOver.reason.noPieces"), { player: loserName }));
+        : formatUiTemplate(t("modals.gameOver.reason.noPieces"), { player: loserName }));
     } else if (reason === "no_legal_moves") {
       add(loserSide === humanSide
         ? t("online.endPresentation.reason.selfNoLegalMoves")
-        : formatTpl(t("modals.gameOver.reason.noLegalMoves"), { player: loserName }));
+        : formatUiTemplate(t("modals.gameOver.reason.noLegalMoves"), { player: loserName }));
     } else if (reason === "one_king_each") {
       add(t("modals.gameOver.reason.oneKingEach"));
     }
@@ -2112,7 +2118,6 @@ function performLocalUndo(options) {
       title: t("modals.notice"),
       body: `<div>${t("ui.noUndo")}</div>`,
       okLabel: t("actions.close"),
-      onClick: () => UI.showSettingsModal(prefill),
     });
     return false;
   }

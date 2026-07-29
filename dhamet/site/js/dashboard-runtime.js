@@ -109,7 +109,6 @@
       clearInterval(_dashRefreshTimer);
       _dashRefreshTimer = null;
     }
-    _detachProfileListener();
   }
 
   function restartRefreshTimer(uid) {

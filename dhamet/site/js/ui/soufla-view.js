@@ -22,6 +22,7 @@
       rcStr: deps.rcStr || root.rcStr || ((idx) => { const n = Number(idx); return Number.isFinite(n) ? `${Math.floor(n / 9)}.${n % 9}` : ""; }),
       applySouflaDecision: deps.applySouflaDecision || root.applySouflaDecision,
       UI: deps.UI || root.UI,
+      Rules: deps.Rules || root.DhametRules,
     };
   }
 
@@ -38,6 +39,7 @@
     const boardIdxFromClient = d.boardIdxFromClient;
     const applySouflaDecision = d.applySouflaDecision;
     const UI = d.UI;
+    const Rules = d.Rules;
 
     if (!pending) return;
 
