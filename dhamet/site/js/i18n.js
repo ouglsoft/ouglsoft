@@ -88,7 +88,7 @@
         "title": "الدردشة الكتابية",
         "tooLong": "اختصر الرسالة إلى 200 حرف أو أقل."
       },
-      "leave": "مغادرة"
+      "leave": "مغادرة المباراة"
     },
     "advHelp": {
       "title": "شرح المستويات",
@@ -343,24 +343,24 @@
     "lobby": {
       "backToMode": "العودة إلى اختيار نمط اللعب",
       "refresh": "تحديث اللوبي",
-      "emptyRooms": "لا توجد غرف جارية.",
+      "emptyRooms": "لا توجد مباريات جارية.",
       "emptyPlayers": "لا يوجد لاعبون متصلون.",
       "loadingPlayers": "جاري تحميل قائمة اللاعبين المتصلين...",
-      "loadingRooms": "جاري تحميل قائمة الغرف النشطة...",
+      "loadingRooms": "جاري تحميل قائمة المباريات الجارية...",
       "loadFailed": "تعذر تحميل اللوبي مؤقتًا. ستتم إعادة المحاولة تلقائيًا، ويمكنك الضغط على زر «تحديث» للمحاولة الآن.",
-      "roomsTitle": "قائمة الغرف النشطة",
+      "roomsTitle": "قائمة المباريات الجارية",
       "playersTitle": "قائمة اللاعبين المتصلين",
       "subtitle": "شاهد المباريات الجارية أو اختر لاعبًا متصلًا وادعه إلى مباراة مباشرة.",
-      "title": "الغرف النشطة واللاعبون المتصلون",
+      "title": "المباريات الجارية واللاعبون المتصلون",
       "inviteDisabled": "لا يمكن دعوته الآن",
       "invitesDisabled": "لا يقبل الدعوات",
       "returnToMatch": "العودة إلى المباراة",
       "reconnectingRoom": "اللاعبان يعيدان الاتصال",
-      "privateRoom": "غرفة خاصة",
-      "roomDefault": "غرفة",
-      "roomLabel": "الغرفة",
+      "privateRoom": "مباراة خاصة",
+      "roomDefault": "مباراة",
+      "roomLabel": "المباراة",
       "spectate": "مشاهدة",
-      "spectatorFull": "اكتمل عدد المشاهدين لهذه الغرفة."
+      "spectatorFull": "اكتمل عدد المشاهدين لهذه المباراة."
     },
     "status": {
       "forcedChainStepByStep": "هذه سلسلة أسر إجبارية. نفّذها خطوةً خطوة.",
@@ -429,7 +429,7 @@
         "selfEndedByAbsence": "أنهيت المباراة بعد استمرار غياب {opponent}.",
         "endedByAbsence": "طلب {player} إنهاء المباراة بعد استمرار غياب {opponent}.",
         "noRecordedResult": "انتهت المباراة دون نتيجة محفوظة.",
-        "roomUnavailable": "لم تعد الغرفة متاحة، لذلك تعذر عرض نتيجة المباراة.",
+        "roomUnavailable": "لم تعد المباراة متاحة، لذلك تعذر عرض نتيجتها.",
         "reason": {
           "noLegalMoves": "لم يعد {player} يملك نقلة قانونية.",
           "selfNoPieces": "نفدت قطعك.",
@@ -439,7 +439,7 @@
         }
       },
       "errors": {
-        "noGame": "انتهت المباراة أو لم تعد الغرفة متاحة.",
+        "noGame": "انتهت المباراة أو لم تعد متاحة.",
         "authRequired": "تم تسجيل خروجك. سجّل الدخول من جديد ثم حاول مرة أخرى.",
         "presenceWriteDenied": "عاد الاتصال. جارٍ إعادتك إلى المباراة…",
         "moveWriteDenied": "لم تُرسل النقلة. تأكد أن الدور لك وأن المباراة ما زالت مستمرة، ثم حاول مرة أخرى.",
@@ -458,18 +458,18 @@
         "generic": "انتهت المباراة دون اعتماد فائز."
       },
       "newInviteBody": "يدعوك <strong>${fromName}</strong> إلى مباراة${roomPart}.",
-      "newInviteRoomPart": " في الغرفة <strong>${roomName}</strong>",
+      "newInviteRoomPart": " باسم <strong>${roomName}</strong>",
       "newInviteTitle": "دعوة إلى مباراة",
       "noPlayers": "لا يوجد لاعب متاح الآن.",
       "absenceTitle": "انقطع اتصال الخصم",
       "absencePrompt": "انقطع اتصال {player} منذ دقيقتين. هل تريد الانتظار أم إنهاء المباراة؟",
       "opponent": "الخصم",
-      "roomNamePlaceholder": "اسم الغرفة",
-      "roomNamePrompt": "اكتب اسمًا قصيرًا يميّز الغرفة في القائمة.",
-      "roomNameTitle": "اسم الغرفة",
+      "roomNamePlaceholder": "اسم المباراة",
+      "roomNamePrompt": "اكتب اسمًا قصيرًا يميّز المباراة في القائمة.",
+      "roomNameTitle": "اسم المباراة",
       "roomVisibility": {
-        "public": "غرفة عامة (يسمح للمشاهدين بمتابعة المباراة)",
-        "private": "غرفة خاصة (لا يسمح للمشاهدين بمتابعة المباراة)"
+        "public": "مباراة عامة (يسمح للمشاهدين بمتابعتها)",
+        "private": "مباراة خاصة (لا يسمح للمشاهدين بمتابعتها)"
       },
       "invites": {
         "receiveLabel": "استقبال الدعوات:",
@@ -652,7 +652,7 @@
         "title": "Chat",
         "tooLong": "Shorten the message to 200 characters or fewer."
       },
-      "leave": "Leave"
+      "leave": "Leave match"
     },
     "advHelp": {
       "title": "Level guide",
@@ -907,24 +907,24 @@
     "lobby": {
       "backToMode": "Back to mode selection",
       "refresh": "Refresh lobby",
-      "emptyRooms": "No active rooms.",
+      "emptyRooms": "No ongoing matches.",
       "emptyPlayers": "No players online.",
       "loadingPlayers": "Loading online players...",
-      "loadingRooms": "Loading live rooms...",
+      "loadingRooms": "Loading ongoing matches...",
       "loadFailed": "The lobby could not be loaded temporarily. It will retry automatically, or press Refresh to try now.",
-      "roomsTitle": "Active rooms list",
+      "roomsTitle": "List of ongoing matches",
       "playersTitle": "Connected players list",
-      "subtitle": "Choose a room to watch, or invite a player to start a match.",
-      "title": "Active rooms and connected players",
+      "subtitle": "Choose a match to watch, or invite a player to start one.",
+      "title": "Ongoing matches and connected players",
       "inviteDisabled": "Can't invite right now",
       "invitesDisabled": "Not accepting invites",
       "returnToMatch": "Return to match",
       "reconnectingRoom": "Players are reconnecting",
-      "privateRoom": "Private room",
-      "roomDefault": "Room",
-      "roomLabel": "Room",
+      "privateRoom": "Private match",
+      "roomDefault": "Match",
+      "roomLabel": "Match",
       "spectate": "Spectate",
-      "spectatorFull": "Spectator slots are full for this room."
+      "spectatorFull": "This match has reached its spectator limit."
     },
     "status": {
       "forcedChainStepByStep": "This is a forced capture chain. Complete it one step at a time.",
@@ -993,7 +993,7 @@
         "selfEndedByAbsence": "You ended the match after {opponent} remained absent.",
         "endedByAbsence": "{player} requested to end the match after {opponent} remained absent.",
         "noRecordedResult": "The match ended without a saved result.",
-        "roomUnavailable": "The room is no longer available, so the match result cannot be shown.",
+        "roomUnavailable": "The match is no longer available, so its result cannot be shown.",
         "reason": {
           "noLegalMoves": "{player} had no legal move left.",
           "selfNoPieces": "You have no pieces left.",
@@ -1003,7 +1003,7 @@
         }
       },
       "errors": {
-        "noGame": "The match ended or the room is no longer available.",
+        "noGame": "The match has ended or is no longer available.",
         "authRequired": "You were signed out. Sign in again and try once more.",
         "presenceWriteDenied": "Connection restored. Returning you to the match…",
         "moveWriteDenied": "The move was not sent. Make sure it is your turn and the match is still active, then try again.",
@@ -1022,18 +1022,18 @@
         "generic": "The match ended without an official winner."
       },
       "newInviteBody": "<strong>${fromName}</strong> invited you to a match${roomPart}.",
-      "newInviteRoomPart": " in room <strong>${roomName}</strong>",
+      "newInviteRoomPart": " named <strong>${roomName}</strong>",
       "newInviteTitle": "Match invitation",
       "noPlayers": "No player is available right now.",
       "absenceTitle": "Opponent disconnected",
       "absencePrompt": "{player} has been offline for two minutes. Wait or end the match?",
       "opponent": "Opponent",
-      "roomNamePlaceholder": "Room name",
-      "roomNamePrompt": "Enter a short name that identifies this room in the list.",
-      "roomNameTitle": "Room name",
+      "roomNamePlaceholder": "Match name",
+      "roomNamePrompt": "Enter a short name that identifies this match in the list.",
+      "roomNameTitle": "Match name",
       "roomVisibility": {
-        "public": "Public room (spectators can watch the match)",
-        "private": "Private room (spectators cannot watch the match)"
+        "public": "Public match (spectators can watch)",
+        "private": "Private match (spectators cannot watch)"
       },
       "invites": {
         "receiveLabel": "Invite receiving:",
@@ -1216,7 +1216,7 @@
         "title": "Chat",
         "tooLong": "Réduisez le message à 200 caractères ou moins."
       },
-      "leave": "Quitter"
+      "leave": "Quitter la partie"
     },
     "advHelp": {
       "title": "Guide des niveaux",
@@ -1471,24 +1471,24 @@
     "lobby": {
       "backToMode": "Retour au choix du mode",
       "refresh": "Actualiser le lobby",
-      "emptyRooms": "Aucune salle active.",
+      "emptyRooms": "Aucune partie en cours.",
       "emptyPlayers": "Aucun joueur en ligne.",
       "loadingPlayers": "Chargement des joueurs en ligne...",
       "loadingRooms": "Chargement des parties en cours...",
       "loadFailed": "Le lobby est temporairement indisponible. Une nouvelle tentative sera effectuée automatiquement, ou appuyez sur Actualiser pour réessayer maintenant.",
-      "roomsTitle": "Liste des salles actives",
+      "roomsTitle": "Liste des parties en cours",
       "playersTitle": "Liste des joueurs connectés",
-      "subtitle": "Choisissez une salle à regarder, ou invitez un joueur pour démarrer une partie.",
-      "title": "Salles actives et joueurs connectés",
+      "subtitle": "Choisissez une partie à regarder, ou invitez un joueur à en démarrer une.",
+      "title": "Parties en cours et joueurs connectés",
       "inviteDisabled": "Invitation impossible pour le moment",
       "invitesDisabled": "N’accepte pas les invitations",
       "returnToMatch": "Revenir à la partie",
       "reconnectingRoom": "Les joueurs se reconnectent",
-      "privateRoom": "Salle privée",
-      "roomDefault": "Salle",
-      "roomLabel": "Salle",
+      "privateRoom": "Partie privée",
+      "roomDefault": "Partie",
+      "roomLabel": "Partie",
       "spectate": "Observer",
-      "spectatorFull": "Nombre de spectateurs complet pour cette salle."
+      "spectatorFull": "Cette partie a atteint le nombre maximal de spectateurs."
     },
     "status": {
       "forcedChainStepByStep": "Cette chaîne de prises est obligatoire. Effectuez-la étape par étape.",
@@ -1557,7 +1557,7 @@
         "selfEndedByAbsence": "Vous avez terminé la partie après l’absence prolongée de {opponent}.",
         "endedByAbsence": "{player} a demandé la fin de la partie après l’absence prolongée de {opponent}.",
         "noRecordedResult": "La partie s’est terminée sans résultat enregistré.",
-        "roomUnavailable": "La salle n’est plus disponible ; le résultat de la partie ne peut donc pas être affiché.",
+        "roomUnavailable": "La partie n’est plus disponible ; son résultat ne peut donc pas être affiché.",
         "reason": {
           "noLegalMoves": "{player} n’avait plus de coup légal.",
           "selfNoPieces": "Vous n’avez plus de pièces.",
@@ -1567,7 +1567,7 @@
         }
       },
       "errors": {
-        "noGame": "La partie est terminée ou la salle n’est plus disponible.",
+        "noGame": "La partie est terminée ou n’est plus disponible.",
         "authRequired": "Vous avez été déconnecté. Reconnectez-vous puis réessayez.",
         "presenceWriteDenied": "Connexion rétablie. Retour à la partie en cours…",
         "moveWriteDenied": "Le coup n’a pas été envoyé. Vérifiez que c’est votre tour et que la partie est toujours en cours, puis réessayez.",
@@ -1586,18 +1586,18 @@
         "generic": "La partie s’est terminée sans gagnant officiel."
       },
       "newInviteBody": "<strong>${fromName}</strong> vous invite à une partie${roomPart}.",
-      "newInviteRoomPart": " dans la salle <strong>${roomName}</strong>",
+      "newInviteRoomPart": " nommée <strong>${roomName}</strong>",
       "newInviteTitle": "Invitation à une partie",
       "noPlayers": "Aucun joueur n’est disponible pour le moment.",
       "absenceTitle": "Adversaire déconnecté",
       "absencePrompt": "{player} est hors ligne depuis deux minutes. Attendre ou terminer la partie ?",
       "opponent": "Adversaire",
-      "roomNamePlaceholder": "Nom de la salle",
-      "roomNamePrompt": "Saisissez un nom court pour identifier cette salle dans la liste.",
-      "roomNameTitle": "Nom de la salle",
+      "roomNamePlaceholder": "Nom de la partie",
+      "roomNamePrompt": "Saisissez un nom court pour identifier cette partie dans la liste.",
+      "roomNameTitle": "Nom de la partie",
       "roomVisibility": {
-        "public": "Salle publique (les spectateurs peuvent observer la partie)",
-        "private": "Salle privée (les spectateurs ne peuvent pas observer la partie)"
+        "public": "Partie publique (les spectateurs peuvent la regarder)",
+        "private": "Partie privée (les spectateurs ne peuvent pas la regarder)"
       },
       "invites": {
         "receiveLabel": "Réception des invitations :",
