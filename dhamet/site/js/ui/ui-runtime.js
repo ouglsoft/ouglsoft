@@ -22,6 +22,27 @@ function themeChannels(name, alpha) {
     ? ThemeModule.channels(name, alpha)
     : "";
 }
+
+function escapeUiText(value) {
+  return String(value == null ? "" : value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function decorateUiPlayerNames(message, names) {
+  let html = escapeUiText(message);
+  const clean = (Array.isArray(names) ? names : [])
+    .map((name) => String(name || "").trim())
+    .filter((name, index, all) => name && all.indexOf(name) === index)
+    .sort((a, b) => b.length - a.length);
+  clean.forEach((name) => {
+    const encoded = escapeUiText(name);
+    if (encoded) html = html.split(encoded).join(`<span class="z-player-name">${encoded}</span>`);
+  });
+  return html;
+}
 for (const [name, value] of Object.entries({
   BoardGeometryModule,
   BoardViewModule,
@@ -1548,7 +1569,8 @@ const UI = {
     const opts = options && typeof options === "object" ? options : {};
     const title = String(opts.title || t("modals.gameOver.title") || "").trim();
     const bodyTxt = String(opts.text || opts.message || "").trim();
-    if (!bodyTxt) return false;
+    const bodyHtml = String(opts.html || "").trim();
+    if (!bodyTxt && !bodyHtml) return false;
     let leaving = false;
     const leave = () => {
       if (leaving) return;
@@ -1566,9 +1588,17 @@ const UI = {
       } catch (_) {}
     };
 
+    const body = bodyHtml ? (() => {
+      const div = document.createElement("div");
+      div.style.whiteSpace = "pre-wrap";
+      div.innerHTML = bodyHtml;
+      return div;
+    })() : null;
+
     return Modal.open({
       title,
-      text: bodyTxt,
+      body: body || undefined,
+      text: body ? undefined : bodyTxt,
       allowSpectator: true,
       hideClose: true,
       allowEsc: false,
@@ -1634,11 +1664,16 @@ const UI = {
       add(t("modals.gameOver.reason.oneKingEach"));
     }
 
+    const computerName = t("players.computer");
+    const names = [winnerName, loserName, computerName]
+      .map((name) => String(name || "").trim())
+      .filter((name, index, all) => name && all.indexOf(name) === index);
     return {
       title: t("modals.gameOver.title"),
       primary: lines[0],
       details: lines.slice(1),
       text: lines.join("\n\n"),
+      html: lines.map((line) => decorateUiPlayerNames(line, names)).join("<br><br>"),
       winner: validWinner,
       reason,
     };
@@ -1662,9 +1697,17 @@ const UI = {
       try { location.href = href; } catch (_) {}
     };
 
+    const body = presentation.html ? (() => {
+      const div = document.createElement("div");
+      div.style.whiteSpace = "pre-wrap";
+      div.innerHTML = presentation.html;
+      return div;
+    })() : null;
+
     return Modal.open({
       title: presentation.title,
-      text: presentation.text,
+      body: body || undefined,
+      text: body ? undefined : presentation.text,
       hideClose: true,
       allowEsc: false,
       buttons: [

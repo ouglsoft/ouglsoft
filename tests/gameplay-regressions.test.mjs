@@ -114,15 +114,36 @@ test('the original application does not depend on a persisted Firebase session',
 });
 
 
-test('Soufla and undo result wording is simplified without duplicate player confirmations', () => {
-  assert.equal(tr.ar.soufla.summary.remove, 'اختار اللاعب عقوبة السوفلة ضدك، وأزال قطعتك الموجودة في الموضع المحدد بعلامة X الحمراء.');
-  assert.equal(tr.ar.soufla.summary.force, 'اختار اللاعب عقوبة السوفلة ضدك، وأجبرك على تنفيذ المسار المحدد على الرقعة باللون الأخضر.');
-  assert.equal(tr.ar.soufla.spectator.remove, 'اختار اللاعب {actor} عقوبة السوفلة ضد اللاعب {victim}، وأزال قطعته الموجودة في الموضع المحدد بعلامة X الحمراء.');
-  assert.equal(tr.ar.soufla.spectator.force, 'اختار اللاعب {actor} عقوبة السوفلة ضد اللاعب {victim}، وأجبره على تنفيذ المسار المحدد على الرقعة باللون الأخضر.');
+test('player messages show the complete real name without a generic player prefix and highlight it', () => {
+  assert.equal(tr.ar.soufla.summary.remove, 'اختار {actor} عقوبة السوفلة ضدك، وأزال قطعتك الموجودة في الموضع المحدد بعلامة X الحمراء.');
+  assert.equal(tr.ar.soufla.summary.force, 'اختار {actor} عقوبة السوفلة ضدك، وأجبرك على تنفيذ المسار المحدد على الرقعة باللون الأخضر.');
+  assert.equal(tr.ar.soufla.spectator.remove, 'اختار {actor} عقوبة السوفلة ضد {victim}، وأزال قطعته الموجودة في الموضع المحدد بعلامة X الحمراء.');
+  assert.equal(tr.ar.soufla.spectator.force, 'اختار {actor} عقوبة السوفلة ضد {victim}، وأجبره على تنفيذ المسار المحدد على الرقعة باللون الأخضر.');
+  assert.equal(tr.ar.undo.requesterAccepted, 'وافق {responder} على التراجع عن النقلة الأخيرة المحددة بالسهم الأصفر المعكوس.');
+  assert.equal(tr.ar.undo.requesterRejected, 'رفض {responder} التراجع عن النقلة الأخيرة المحددة بالسهم الأصفر المعكوس.');
+  assert.doesNotMatch(i18n, /(?:اللاعب|Player |Le joueur |du joueur )\s*\{(?:actor|victim|player|requester|responder|opponent)\}/);
+  assert.match(souflaView, /decoratePlayerNames\(message, \[actorName, victimName\]\)/);
+  assert.match(souflaView, /z-player-name/);
+  assert.match(lobby, /Array\.isArray\(cfg\.playerNames\)/);
+  assert.match(lobby, /z-notice-player-name/);
+  assert.match(online, /playerNames:\s*\[responder\]/);
+  assert.match(online, /playerNames:\s*\[responder, requester\]/);
   assert.match(souflaView, /mySide === by\) return false/);
   assert.doesNotMatch(online, /showOnlineNotice\(window\.I18N\.translateArgs\("undo\.applied"/);
   assert.equal(tr.ar.undo.applied, 'تم التراجع عن النقلة الأخيرة.');
   assert.doesNotMatch(tr.ar.undo.applied, /movePart|\$\{/);
+});
+
+test('computer mode reuses the online result wording while naming the computer explicitly', () => {
+  assert.match(souflaView, /const computerName = t\("players\.computer"\)/);
+  assert.match(souflaView, /t\(`soufla\.summary\.\$\{resultKind\}`/);
+  assert.match(souflaView, /decoratePlayerNames[\s\S]*\[computerName\]/);
+  assert.match(ui, /buildComputerGameEndPresentation/);
+  assert.match(ui, /online\.endPresentation/);
+  assert.match(ui, /decorateUiPlayerNames\([^\n]+, names\)/);
+  assert.match(ui, /bodyHtml/);
+  assert.match(ui, /modals\.forcedOpening/);
+  assert.match(ui, /modals\.undo/);
 });
 
 test('mobile landscape follows either physical landscape direction without reload', () => {

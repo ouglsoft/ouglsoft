@@ -435,22 +435,23 @@
     div.className = "z-notice-text";
     div.style.whiteSpace = "pre-wrap";
     const names = [];
-    const addName = (value) => {
+    const addName = (value, explicit) => {
       const name = String(value || "").trim();
-      if (name && name.length >= 3 && !names.includes(name)) names.push(name);
+      const minimumLength = explicit ? 1 : 2;
+      if (name && name.length >= minimumLength && !names.includes(name)) names.push(name);
     };
     try {
       const supplied = cfg && Array.isArray(cfg.playerNames) ? cfg.playerNames : [];
-      supplied.forEach(addName);
+      supplied.forEach((name) => addName(name, true));
       const online = window.Online || null;
-      addName(online && online.myNick);
+      addName(online && online.myNick, false);
       const game = online && online._lastGameData && typeof online._lastGameData === "object" ? online._lastGameData : null;
       const gamePlayers = game && game.players && typeof game.players === "object" ? game.players : {};
-      addName(gamePlayers.white && gamePlayers.white.nickname);
-      addName(gamePlayers.black && gamePlayers.black.nickname);
+      addName(gamePlayers.white && gamePlayers.white.nickname, false);
+      addName(gamePlayers.black && gamePlayers.black.nickname, false);
       const lobbyPlayers = online && online._lastOfficialLobbyView && online._lastOfficialLobbyView.players;
       if (lobbyPlayers && typeof lobbyPlayers === "object") {
-        Object.values(lobbyPlayers).forEach((row) => addName(row && row.nickname));
+        Object.values(lobbyPlayers).forEach((row) => addName(row && row.nickname, false));
       }
     } catch (e) {}
     names.sort((a, b) => b.length - a.length);

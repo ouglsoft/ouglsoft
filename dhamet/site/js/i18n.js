@@ -44,18 +44,18 @@
       },
       "sendFailed": "تعذر تطبيق السوفلة بسبب مشكلة في الاتصال. تحقق من الإنترنت ثم حاول مرة أخرى.",
       "summary": {
-        "force": "اختار اللاعب عقوبة السوفلة ضدك، وأجبرك على تنفيذ المسار المحدد على الرقعة باللون الأخضر.",
+        "force": "اختار {actor} عقوبة السوفلة ضدك، وأجبرك على تنفيذ المسار المحدد على الرقعة باللون الأخضر.",
         "penaltyTitle": "العقوبة المختارة:",
         "reason": "طالب خصمك بالسوفلة لأن قطعتك تجاهلت الأسر المحدد بالمسار الأحمر.",
-        "remove": "اختار اللاعب عقوبة السوفلة ضدك، وأزال قطعتك الموجودة في الموضع المحدد بعلامة X الحمراء.",
+        "remove": "اختار {actor} عقوبة السوفلة ضدك، وأزال قطعتك الموجودة في الموضع المحدد بعلامة X الحمراء.",
         "title": "نتيجة السوفلة",
         "undo": "أُلغيت نقلتك الأخيرة، ويظهر مسارها باللون الأصفر."
       },
       "spectator": {
-        "force": "اختار اللاعب {actor} عقوبة السوفلة ضد اللاعب {victim}، وأجبره على تنفيذ المسار المحدد على الرقعة باللون الأخضر.",
+        "force": "اختار {actor} عقوبة السوفلة ضد {victim}، وأجبره على تنفيذ المسار المحدد على الرقعة باللون الأخضر.",
         "penaltyTitle": "العقوبة المختارة:",
         "reason": "طُلبت السوفلة لأن إحدى القطع تجاهلت الأسر المحدد بالمسار الأحمر.",
-        "remove": "اختار اللاعب {actor} عقوبة السوفلة ضد اللاعب {victim}، وأزال قطعته الموجودة في الموضع المحدد بعلامة X الحمراء.",
+        "remove": "اختار {actor} عقوبة السوفلة ضد {victim}، وأزال قطعته الموجودة في الموضع المحدد بعلامة X الحمراء.",
         "title": "نتيجة السوفلة",
         "undo": "أُلغيت النقلة المخالفة، ويظهر مسارها باللون الأصفر."
       }
@@ -233,11 +233,11 @@
     "modals": {
       "gameOver": {
         "title": "انتهت المباراة",
-        "winner": "فاز اللاعب {player} بالمباراة.",
+        "winner": "فاز {player} بالمباراة.",
         "draw": "انتهت المباراة بالتعادل.",
         "reason": {
-          "noPieces": "نفدت قطع اللاعب {player}.",
-          "noLegalMoves": "لا يملك اللاعب {player} أي نقلة قانونية.",
+          "noPieces": "نفدت قطع {player}.",
+          "noLegalMoves": "لا يملك {player} أي نقلة قانونية.",
           "oneKingEach": "تعادل اللاعبان بعد بقاء ظائم واحد لكل منهما."
         }
       },
@@ -421,17 +421,17 @@
       },
       "endFail": "تعذر إنهاء المباراة الآن. تحقق من الاتصال ثم أعد المحاولة.",
       "endPresentation": {
-        "winner": "انتهت المباراة. فاز اللاعب {player}.",
+        "winner": "انتهت المباراة. فاز {player}.",
         "selfWinner": "لقد فزت بالمباراة.",
         "selfLoser": "لقد خسرت المباراة.",
-        "endedBy": "اللاعب {player} أنهى المباراة.",
+        "endedBy": "{player} أنهى المباراة.",
         "selfEndedBy": "أنهيت المباراة.",
-        "selfEndedByAbsence": "أنهيت المباراة بعد استمرار غياب اللاعب {opponent}.",
-        "endedByAbsence": "طلب اللاعب {player} إنهاء المباراة بعد استمرار غياب اللاعب {opponent}.",
+        "selfEndedByAbsence": "أنهيت المباراة بعد استمرار غياب {opponent}.",
+        "endedByAbsence": "طلب {player} إنهاء المباراة بعد استمرار غياب {opponent}.",
         "noRecordedResult": "انتهت المباراة دون نتيجة محفوظة.",
         "roomUnavailable": "لم تعد الغرفة متاحة، لذلك تعذر عرض نتيجة المباراة.",
         "reason": {
-          "noLegalMoves": "لم يعد اللاعب {player} يملك نقلة قانونية.",
+          "noLegalMoves": "لم يعد {player} يملك نقلة قانونية.",
           "selfNoPieces": "نفدت قطعك.",
           "selfNoLegalMoves": "لم تعد تملك نقلة قانونية.",
           "oneKingEach": "تحقق التعادل ببقاء ظائم واحد لكل لاعب.",
@@ -457,7 +457,7 @@
         "unclear": "لم يُحدَّد فائز لأن وضع القطع عند الإنهاء لم يُظهر تفوقًا واضحًا.",
         "generic": "انتهت المباراة دون اعتماد فائز."
       },
-      "newInviteBody": "يدعوك اللاعب <strong>${fromName}</strong> إلى مباراة${roomPart}.",
+      "newInviteBody": "يدعوك <strong>${fromName}</strong> إلى مباراة${roomPart}.",
       "newInviteRoomPart": " في الغرفة <strong>${roomName}</strong>",
       "newInviteTitle": "دعوة إلى مباراة",
       "noPlayers": "لا يوجد لاعب متاح الآن.",
@@ -541,11 +541,11 @@
       "notCommitted": "لم يتم التراجع لأن المباراة تقدمت قبل اكتمال الطلب. اضغط «تحديث» ثم حاول مرة أخرى.",
       "rejected": "رفض اللاعب الآخر طلب التراجع.",
       "rejectedTitle": "رُفض طلب التراجع",
-      "spectatorRequested": "طلب اللاعب {player} التراجع عن النقلة الأخيرة.",
-      "spectatorAccepted": "وافق اللاعب {responder} على تراجع اللاعب {requester} عن النقلة الأخيرة المحددة بالسهم الأصفر المعكوس.",
-      "spectatorRejected": "رفض اللاعب {responder} طلب اللاعب {requester} التراجع عن النقلة الأخيرة المحددة بالسهم الأصفر المعكوس.",
-      "requesterAccepted": "وافق اللاعب على التراجع عن النقلة الأخيرة المحددة بالسهم الأصفر المعكوس.",
-      "requesterRejected": "رفض اللاعب التراجع عن النقلة الأخيرة.",
+      "spectatorRequested": "طلب {player} التراجع عن النقلة الأخيرة.",
+      "spectatorAccepted": "وافق {responder} على تراجع {requester} عن النقلة الأخيرة المحددة بالسهم الأصفر المعكوس.",
+      "spectatorRejected": "رفض {responder} طلب {requester} التراجع عن النقلة الأخيرة المحددة بالسهم الأصفر المعكوس.",
+      "requesterAccepted": "وافق {responder} على التراجع عن النقلة الأخيرة المحددة بالسهم الأصفر المعكوس.",
+      "requesterRejected": "رفض {responder} التراجع عن النقلة الأخيرة المحددة بالسهم الأصفر المعكوس.",
       "request": {
         "body": "يريد {name} التراجع عن النقلة الأخيرة. هل توافق؟",
         "title": "طلب التراجع عن نقلة"
@@ -608,10 +608,10 @@
       },
       "sendFailed": "Soufla could not be applied because of a connection problem. Check your internet connection and try again.",
       "summary": {
-        "force": "The player chose a Soufla penalty against you and forced you to follow the path marked in green on the board.",
+        "force": "{actor} chose a Soufla penalty against you and forced you to follow the path marked in green on the board.",
         "penaltyTitle": "Selected penalty:",
         "reason": "Your opponent claimed Soufla because your piece skipped the capture shown by the red path.",
-        "remove": "The player chose a Soufla penalty against you and removed your piece from the position marked with a red X.",
+        "remove": "{actor} chose a Soufla penalty against you and removed your piece from the position marked with a red X.",
         "title": "Soufla result",
         "undo": "Your last move was undone and its path is shown in yellow."
       },
@@ -985,17 +985,17 @@
       },
       "endFail": "The match could not be ended. Check your connection and try again.",
       "endPresentation": {
-        "winner": "The match ended. Player {player} won.",
+        "winner": "The match ended. {player} won.",
         "selfWinner": "You won the match.",
         "selfLoser": "You lost the match.",
-        "endedBy": "Player {player} ended the match.",
+        "endedBy": "{player} ended the match.",
         "selfEndedBy": "You ended the match.",
-        "selfEndedByAbsence": "You ended the match after player {opponent} remained absent.",
-        "endedByAbsence": "Player {player} requested to end the match after player {opponent} remained absent.",
+        "selfEndedByAbsence": "You ended the match after {opponent} remained absent.",
+        "endedByAbsence": "{player} requested to end the match after {opponent} remained absent.",
         "noRecordedResult": "The match ended without a saved result.",
         "roomUnavailable": "The room is no longer available, so the match result cannot be shown.",
         "reason": {
-          "noLegalMoves": "Player {player} had no legal move left.",
+          "noLegalMoves": "{player} had no legal move left.",
           "selfNoPieces": "You have no pieces left.",
           "selfNoLegalMoves": "You have no legal move left.",
           "oneKingEach": "The draw was reached with one king remaining for each player.",
@@ -1108,8 +1108,8 @@
       "spectatorRequested": "{player} requested to undo the last move.",
       "spectatorAccepted": "{responder} accepted {requester}’s request to undo the last move marked by the reversed yellow arrow.",
       "spectatorRejected": "{responder} declined {requester}’s request to undo the last move marked by the reversed yellow arrow.",
-      "requesterAccepted": "The player accepted undoing the last move marked by the reversed yellow arrow.",
-      "requesterRejected": "The player declined undoing the last move.",
+      "requesterAccepted": "{responder} accepted undoing the last move marked by the reversed yellow arrow.",
+      "requesterRejected": "{responder} declined undoing the last move marked by the reversed yellow arrow.",
       "request": {
         "body": "{name} wants to undo the last move. Allow it?",
         "title": "Undo request"
@@ -1172,10 +1172,10 @@
       },
       "sendFailed": "La Soufla n’a pas pu être appliquée à cause d’un problème de connexion. Vérifiez votre accès à Internet puis réessayez.",
       "summary": {
-        "force": "Le joueur a choisi une sanction de Soufla contre vous et vous a imposé le chemin indiqué en vert sur le plateau.",
+        "force": "{actor} a choisi une sanction de Soufla contre vous et vous a imposé le chemin indiqué en vert sur le plateau.",
         "penaltyTitle": "Sanction choisie :",
         "reason": "Votre adversaire a réclamé Soufla parce que votre pièce a ignoré la prise indiquée par le chemin rouge.",
-        "remove": "Le joueur a choisi une sanction de Soufla contre vous et a retiré votre pièce de la position marquée d’une croix rouge.",
+        "remove": "{actor} a choisi une sanction de Soufla contre vous et a retiré votre pièce de la position marquée d’une croix rouge.",
         "title": "Résultat de la Soufla",
         "undo": "Votre dernier coup a été annulé et son chemin apparaît en jaune."
       },
@@ -1549,17 +1549,17 @@
       },
       "endFail": "La partie n’a pas pu être terminée. Vérifiez votre connexion et réessayez.",
       "endPresentation": {
-        "winner": "La partie est terminée. Le joueur {player} a gagné.",
+        "winner": "La partie est terminée. {player} a gagné.",
         "selfWinner": "Vous avez gagné la partie.",
         "selfLoser": "Vous avez perdu la partie.",
-        "endedBy": "Le joueur {player} a terminé la partie.",
+        "endedBy": "{player} a terminé la partie.",
         "selfEndedBy": "Vous avez terminé la partie.",
-        "selfEndedByAbsence": "Vous avez terminé la partie après l’absence prolongée du joueur {opponent}.",
-        "endedByAbsence": "Le joueur {player} a demandé la fin de la partie après l’absence prolongée du joueur {opponent}.",
+        "selfEndedByAbsence": "Vous avez terminé la partie après l’absence prolongée de {opponent}.",
+        "endedByAbsence": "{player} a demandé la fin de la partie après l’absence prolongée de {opponent}.",
         "noRecordedResult": "La partie s’est terminée sans résultat enregistré.",
         "roomUnavailable": "La salle n’est plus disponible ; le résultat de la partie ne peut donc pas être affiché.",
         "reason": {
-          "noLegalMoves": "Le joueur {player} n’avait plus de coup légal.",
+          "noLegalMoves": "{player} n’avait plus de coup légal.",
           "selfNoPieces": "Vous n’avez plus de pièces.",
           "selfNoLegalMoves": "Vous n’avez plus de coup légal.",
           "oneKingEach": "Le match nul a été atteint avec un roi restant pour chaque joueur.",
@@ -1672,8 +1672,8 @@
       "spectatorRequested": "{player} a demandé l’annulation du dernier coup.",
       "spectatorAccepted": "{responder} a accepté la demande de {requester} d’annuler le dernier coup indiqué par la flèche jaune inversée.",
       "spectatorRejected": "{responder} a refusé la demande de {requester} d’annuler le dernier coup indiqué par la flèche jaune inversée.",
-      "requesterAccepted": "Le joueur a accepté d’annuler le dernier coup indiqué par la flèche jaune inversée.",
-      "requesterRejected": "Le joueur a refusé d’annuler le dernier coup.",
+      "requesterAccepted": "{responder} a accepté d’annuler le dernier coup indiqué par la flèche jaune inversée.",
+      "requesterRejected": "{responder} a refusé d’annuler le dernier coup indiqué par la flèche jaune inversée.",
       "request": {
         "body": "{name} souhaite annuler le dernier coup. Acceptez-vous ?",
         "title": "Demande d’annulation"

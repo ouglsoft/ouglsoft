@@ -388,14 +388,20 @@
     const t = d.t;
     const Modal = d.Modal;
     const hasRevertedMove = pending.startedFrom != null && pending.lastPieceIdx != null;
+    const computerName = t("players.computer");
+    const resultKind = decision.kind === "remove" ? "remove" : "force";
+    const resultSentence = decoratePlayerNames(
+      t(`soufla.summary.${resultKind}`, { actor: computerName, victim: t("players.you") }),
+      [computerName],
+    );
 
-    let title = t("modals.soufla.header");
+    let title = t("soufla.summary.title");
     let body = "";
 
     if (decision.kind === "remove") {
       const reasonLine = t("soufla.cpu.reason");
       body = `
-  <div><b>${t("soufla.cpu.title")}</b></div>
+  <div>${resultSentence}</div>
   <div>${reasonLine}</div>
   <div>${t("soufla.cpu.penaltyRemove")}</div>
       `;
@@ -413,7 +419,7 @@
       const forcedLine = t("soufla.cpu.forcedPathLine");
 
       body = `
-  <div><b>${t("soufla.cpu.title")}</b></div>
+  <div>${resultSentence}</div>
   <div>${reasonLine}</div>
   ${
     hasRevertedMove
@@ -435,6 +441,27 @@
   
   }
 
+  function escapeMessageHtml(value) {
+    return String(value == null ? "" : value)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  function decoratePlayerNames(message, names) {
+    let html = escapeMessageHtml(message);
+    const cleanNames = (Array.isArray(names) ? names : [])
+      .map((name) => String(name || "").trim())
+      .filter((name, index, all) => name && all.indexOf(name) === index)
+      .sort((a, b) => b.length - a.length);
+    cleanNames.forEach((name) => {
+      const encoded = escapeMessageHtml(name);
+      if (encoded) html = html.split(encoded).join(`<span class="z-player-name">${encoded}</span>`);
+    });
+    return html;
+  }
+
 
   function showAppliedSummary(lastMove, deps) {
     const d = buildDeps(deps);
@@ -453,13 +480,12 @@
 
     const kind = decision.kind === "remove" ? "remove" : "force";
     const key = isSpectator ? `soufla.spectator.${kind}` : `soufla.summary.${kind}`;
-    const message = t(key, {
-      actor: String((deps && deps.actorName) || "").trim(),
-      victim: String((deps && deps.victimName) || "").trim(),
-    });
+    const actorName = String((deps && deps.actorName) || "").trim();
+    const victimName = String((deps && deps.victimName) || "").trim();
+    const message = t(key, { actor: actorName, victim: victimName });
     const body = document.createElement("div");
     body.className = "soufla-summary";
-    body.textContent = message;
+    body.innerHTML = decoratePlayerNames(message, [actorName, victimName]);
     Modal.alert({
       title: t("soufla.summary.title"),
       body,

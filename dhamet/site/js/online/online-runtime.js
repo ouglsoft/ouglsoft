@@ -1707,11 +1707,26 @@
           }
 
           const primary = lines[0] || window.I18N.translateArgs("online.endPresentation.noRecordedResult");
+          const namesToEmphasize = [
+            actorActualName, otherName, winnerName, loserName,
+            actualNameForSide(TOP), actualNameForSide(BOT),
+          ].map((name) => String(name || "").trim())
+            .filter((name, index, all) => name && all.indexOf(name) === index)
+            .sort((a, b) => b.length - a.length);
+          const decorateLine = (line) => {
+            let html = escapeHtml(String(line || ""));
+            namesToEmphasize.forEach((name) => {
+              const encoded = escapeHtml(name);
+              if (encoded) html = html.split(encoded).join(`<span class="z-player-name">${encoded}</span>`);
+            });
+            return html;
+          };
           return {
             title: window.I18N.translateArgs("modals.gameOver.title"),
             primary,
             details: lines.slice(1),
             text: lines.join("\n\n"),
+            html: lines.map(decorateLine).join("<br><br>"),
             reason,
             winner,
             countsAsResult,
@@ -2389,24 +2404,29 @@
                 this._lastSeenMoveModal = moveFxIndex;
                 if (lm.kind === "soufla" && lm.decision) this._showSouflaModalFromLastMove(lm);
                 else if (lm.kind === "undo") {
+                  const gameData = this._lastGameData || data || {};
+                  const players = gameData.players || {};
+                  const nameForUid = (uid, fallbackNick) => {
+                    const want = String(uid || "");
+                    const rows = [players.white || {}, players.black || {}];
+                    const row = rows.find((item) => want && String(item.uid || "") === want) || {};
+                    const nickname = String(row.nickname || fallbackNick || "").trim();
+                    try { return displayPlayerName(row.uid || want, nickname) || window.I18N.translateArgs("players.player"); }
+                    catch (_) { return nickname || window.I18N.translateArgs("players.player"); }
+                  };
                   if (!this.isSpectator && lm.requesterUid && String(lm.requesterUid) === String(this.myUid || "")) {
-                    showOnlineNotice(window.I18N.translateArgs("undo.requesterAccepted"), {
+                    const responder = nameForUid(lm.responderUid, lm.responderNick);
+                    showOnlineNotice(formatTpl(window.I18N.translateArgs("undo.requesterAccepted"), { responder }), {
                       title: window.I18N.translateArgs("modals.undo.title"),
+                      playerNames: [responder],
                     });
                   } else if (this.isSpectator) {
-                    const gameData = this._lastGameData || data || {};
-                    const players = gameData.players || {};
-                    const nameForUid = (uid) => {
-                      const want = String(uid || "");
-                      const rows = [players.white || {}, players.black || {}];
-                      const row = rows.find((item) => want && String(item.uid || "") === want) || {};
-                      try { return displayPlayerName(row.uid, row.nickname) || window.I18N.translateArgs("players.player"); }
-                      catch (_) { return String(row.nickname || "").trim() || window.I18N.translateArgs("players.player"); }
-                    };
+                    const responder = nameForUid(lm.responderUid, lm.responderNick);
+                    const requester = nameForUid(lm.requesterUid, lm.requesterNick);
                     showOnlineNotice(formatTpl(window.I18N.translateArgs("undo.spectatorAccepted"), {
-                      responder: nameForUid(lm.responderUid),
-                      requester: nameForUid(lm.requesterUid),
-                    }), { allowSpectator: true, title: window.I18N.translateArgs("modals.undo.title") });
+                      responder,
+                      requester,
+                    }), { allowSpectator: true, title: window.I18N.translateArgs("modals.undo.title"), playerNames: [responder, requester] });
                   }
                 }
               }
@@ -5444,6 +5464,7 @@
                 showOnlineNotice(formatTpl(window.I18N.translateArgs("undo.spectatorRejected"), { requester, responder }), {
                   allowSpectator: true,
                   title: window.I18N.translateArgs("modals.undo.title"),
+                  playerNames: [requester, responder],
                 });
               }
             }
@@ -5489,7 +5510,19 @@
             const key = this._undoWaitKeyOf(ur) || [ur.requesterUid || "", ur.respondedAt || ur.requestedAt || "", "rejected"].join("|");
             if (!this._lastUndoRejectedKey || this._lastUndoRejectedKey !== key) {
               this._lastUndoRejectedKey = key;
-              showOnlineNotice(window.I18N.translateArgs("undo.requesterRejected"), { title: window.I18N.translateArgs("undo.rejectedTitle") });
+              const responder = (() => {
+                const direct = String(ur.responderNick || "").trim();
+                if (direct) return direct;
+                const players = (this._lastGameData && this._lastGameData.players) || {};
+                const rows = [players.white || {}, players.black || {}];
+                const row = rows.find((item) => ur.responderUid && String(item.uid || "") === String(ur.responderUid)) || {};
+                try { return displayPlayerName(row.uid || ur.responderUid, row.nickname) || window.I18N.translateArgs("players.player"); }
+                catch (_) { return String(row.nickname || "").trim() || window.I18N.translateArgs("players.player"); }
+              })();
+              showOnlineNotice(formatTpl(window.I18N.translateArgs("undo.requesterRejected"), { responder }), {
+                title: window.I18N.translateArgs("undo.rejectedTitle"),
+                playerNames: [responder],
+              });
             }
           }
         },
