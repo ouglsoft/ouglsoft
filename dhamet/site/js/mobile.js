@@ -799,6 +799,34 @@ if (!icon) {
 
 /* Game page */
 
+  var GAME_EXIT_ICON_RAF = 0;
+
+  function syncGameDirectionalExitIcons() {
+    if (pageType() !== 'game' || !document.body) return;
+    var viewportMid = Math.max(0, window.innerWidth || document.documentElement.clientWidth || 0) / 2;
+    qsa('.directional-exit-icon', document.body).forEach(function (icon) {
+      var owner = icon.closest ? (icon.closest('button, a') || icon) : icon;
+      if (!owner || !owner.getClientRects || owner.getClientRects().length === 0) return;
+      var rect = owner.getBoundingClientRect();
+      var pointsRight = (rect.left + rect.width / 2) >= viewportMid;
+      icon.classList.toggle('z-points-outward-right', pointsRight);
+      icon.classList.toggle('z-points-outward-left', !pointsRight);
+    });
+  }
+
+  function scheduleGameDirectionalExitIcons() {
+    if (pageType() !== 'game') return;
+    if (GAME_EXIT_ICON_RAF) window.cancelAnimationFrame(GAME_EXIT_ICON_RAF);
+    GAME_EXIT_ICON_RAF = window.requestAnimationFrame(function () {
+      GAME_EXIT_ICON_RAF = window.requestAnimationFrame(function () {
+        GAME_EXIT_ICON_RAF = 0;
+        syncGameDirectionalExitIcons();
+      });
+    });
+  }
+
+  window.DhametSyncGameExitIcons = scheduleGameDirectionalExitIcons;
+
   function gameMode() {
     try {
       var mm = window.DhametMatchMode;
@@ -1176,6 +1204,7 @@ if (!icon) {
     items.forEach(function (item) { moveGameNode(item, grid); });
     if (grid.getAttribute('data-mode') !== mode) grid.setAttribute('data-mode', mode);
     syncKillTile();
+    scheduleGameDirectionalExitIcons();
   }
 
   function syncGameDrawer() {
@@ -1256,6 +1285,7 @@ if (!icon) {
       } catch (_) {}
       try { if (window.UI && typeof window.UI.updateAiLevelDisplay === 'function') window.UI.updateAiLevelDisplay(); } catch (_) {}
       GAME_LAYOUT_MOBILE_ACTIVE = false;
+      scheduleGameDirectionalExitIcons();
     });
   }
 
@@ -1275,6 +1305,7 @@ if (!icon) {
       syncGameLevelInShell(qs('.z-mobile-game-shell'));
       syncGameControls();
       syncGameDrawer();
+      scheduleGameDirectionalExitIcons();
     });
   }
 
@@ -1520,6 +1551,7 @@ function refreshMobileText() {
     document.body.setAttribute('data-mobile-orientation', orientation);
     document.body.classList.add('z-mobile-layout-ready');
     reconcileGameFullscreenForOrientation(mobile, orientation);
+    scheduleGameDirectionalExitIcons();
 
     if (!mobile) {
       restoreModeHead();

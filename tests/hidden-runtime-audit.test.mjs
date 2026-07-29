@@ -20,6 +20,10 @@ test('PvC end presentation owns its template formatter instead of depending on l
   assert.doesNotMatch(ui, /\bformatTpl\s*\(/);
   assert.match(ui, /formatUiTemplate\(t\("modals\.gameOver\.reason\.noPieces"\)/);
   assert.match(ui, /formatUiTemplate\(t\("modals\.gameOver\.reason\.noLegalMoves"\)/);
+  assert.match(ui, /showGameOverModal\(winner\)/);
+  assert.match(ui, /label:\s*t\("modals\.newGame\.title"\) \|\| t\("buttons\.newGame"\)/);
+  assert.match(ui, /label:\s*t\("buttons\.home"\) \|\| t\("mode\.title"\)/);
+  assert.match(ui, /onClose:\s*\(reason\) =>[\s\S]{0,160}goMode\(\)/);
 });
 
 test('Soufla view receives the shared rules dependency explicitly', () => {

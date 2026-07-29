@@ -120,7 +120,7 @@ test('player messages show the complete real name without a generic player prefi
   assert.equal(tr.ar.soufla.spectator.remove, 'اختار {actor} عقوبة السوفلة ضد {victim}، وأزال قطعته الموجودة في الموضع المحدد بعلامة X الحمراء.');
   assert.equal(tr.ar.soufla.spectator.force, 'اختار {actor} عقوبة السوفلة ضد {victim}، وأجبره على تنفيذ المسار المحدد على الرقعة باللون الأخضر.');
   assert.equal(tr.ar.undo.requesterAccepted, 'وافق {responder} على التراجع عن النقلة الأخيرة المحددة بالسهم الأصفر المعكوس.');
-  assert.equal(tr.ar.undo.requesterRejected, 'رفض {responder} التراجع عن النقلة الأخيرة المحددة بالسهم الأصفر المعكوس.');
+  assert.equal(tr.ar.undo.requesterRejected, 'رفض {responder} التراجع عن النقلة الأخيرة.');
   assert.doesNotMatch(i18n, /(?:اللاعب|Player |Le joueur |du joueur )\s*\{(?:actor|victim|player|requester|responder|opponent)\}/);
   assert.match(souflaView, /decoratePlayerNames\(message, \[actorName, victimName\]\)/);
   assert.match(souflaView, /z-player-name/);
@@ -134,10 +134,12 @@ test('player messages show the complete real name without a generic player prefi
   assert.doesNotMatch(tr.ar.undo.applied, /movePart|\$\{/);
 });
 
-test('computer mode reuses the online result wording while naming the computer explicitly', () => {
+test('computer mode reuses only the concise online Soufla result wording while naming the computer explicitly', () => {
   assert.match(souflaView, /const computerName = t\("players\.computer"\)/);
   assert.match(souflaView, /t\(`soufla\.summary\.\$\{resultKind\}`/);
   assert.match(souflaView, /decoratePlayerNames[\s\S]*\[computerName\]/);
+  assert.doesNotMatch(souflaView, /t\("soufla\.cpu\./);
+  assert.match(souflaView, /body:\s*`<div>\$\{resultSentence\}<\/div>`/);
   assert.match(ui, /buildComputerGameEndPresentation/);
   assert.match(ui, /online\.endPresentation/);
   assert.match(ui, /decorateUiPlayerNames\([^\n]+, names\)/);
@@ -153,6 +155,24 @@ test('mobile landscape follows either physical landscape direction without reloa
   assert.match(mobile, /orientationchange/);
   assert.match(mobile, /exitMobileFullscreen/);
   assert.doesNotMatch(mobile, /location\.reload|location\.replace/);
+});
+
+test('undo arrows use a bright explicit yellow in every theme variant', () => {
+  const values = [...theme.matchAll(/--mark-undo:\s*rgb\(255 221 0\)/g)];
+  assert.equal(values.length, 3);
+});
+
+test('game-page exit icons point toward the actual nearest screen edge without moving controls', () => {
+  const mobile = read('dhamet/site/js/mobile.js');
+  const style = read('dhamet/site/css/style.css');
+  assert.match(mobile, /syncGameDirectionalExitIcons/);
+  assert.match(mobile, /getBoundingClientRect\(\)/);
+  assert.match(mobile, /viewportMid/);
+  assert.match(mobile, /z-points-outward-right/);
+  assert.match(mobile, /z-points-outward-left/);
+  assert.match(style, /body\.z-game-page \.directional-exit-icon\.z-points-outward-left/);
+  assert.match(style, /body\.z-game-page \.directional-exit-icon\.z-points-outward-right/);
+  assert.doesNotMatch(mobile, /insertBefore\([^\n]*directional-exit-icon|appendChild\([^\n]*directional-exit-icon/);
 });
 
 test('capture timer uses white text, turns red while active, and reuses the end-capture action', () => {
@@ -189,6 +209,14 @@ test('guest identity belongs to the browser session, survives tab close, and is 
 test('undo requester receives the accepted or rejected final decision', () => {
   assert.ok(tr.ar.undo.requesterAccepted.includes('السهم الأصفر المعكوس'));
   assert.ok(tr.ar.undo.requesterRejected);
+  assert.ok(!tr.ar.undo.requesterRejected.includes('السهم الأصفر المعكوس'));
+  assert.ok(!tr.ar.undo.spectatorRejected.includes('السهم الأصفر المعكوس'));
+  assert.ok(tr.en.undo.requesterAccepted.includes('reversed yellow arrow'));
+  assert.ok(!tr.en.undo.requesterRejected.includes('reversed yellow arrow'));
+  assert.ok(!tr.en.undo.spectatorRejected.includes('reversed yellow arrow'));
+  assert.ok(tr.fr.undo.requesterAccepted.includes('flèche jaune inversée'));
+  assert.ok(!tr.fr.undo.requesterRejected.includes('flèche jaune inversée'));
+  assert.ok(!tr.fr.undo.spectatorRejected.includes('flèche jaune inversée'));
   assert.match(online, /undo\.requesterAccepted/);
   assert.match(online, /undo\.requesterRejected/);
 });

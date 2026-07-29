@@ -543,9 +543,9 @@
       "rejectedTitle": "رُفض طلب التراجع",
       "spectatorRequested": "طلب {player} التراجع عن النقلة الأخيرة.",
       "spectatorAccepted": "وافق {responder} على تراجع {requester} عن النقلة الأخيرة المحددة بالسهم الأصفر المعكوس.",
-      "spectatorRejected": "رفض {responder} طلب {requester} التراجع عن النقلة الأخيرة المحددة بالسهم الأصفر المعكوس.",
+      "spectatorRejected": "رفض {responder} طلب {requester} التراجع عن النقلة الأخيرة.",
       "requesterAccepted": "وافق {responder} على التراجع عن النقلة الأخيرة المحددة بالسهم الأصفر المعكوس.",
-      "requesterRejected": "رفض {responder} التراجع عن النقلة الأخيرة المحددة بالسهم الأصفر المعكوس.",
+      "requesterRejected": "رفض {responder} التراجع عن النقلة الأخيرة.",
       "request": {
         "body": "يريد {name} التراجع عن النقلة الأخيرة. هل توافق؟",
         "title": "طلب التراجع عن نقلة"
@@ -1107,9 +1107,9 @@
       "rejectedTitle": "Undo request declined",
       "spectatorRequested": "{player} requested to undo the last move.",
       "spectatorAccepted": "{responder} accepted {requester}’s request to undo the last move marked by the reversed yellow arrow.",
-      "spectatorRejected": "{responder} declined {requester}’s request to undo the last move marked by the reversed yellow arrow.",
+      "spectatorRejected": "{responder} declined {requester}’s request to undo the last move.",
       "requesterAccepted": "{responder} accepted undoing the last move marked by the reversed yellow arrow.",
-      "requesterRejected": "{responder} declined undoing the last move marked by the reversed yellow arrow.",
+      "requesterRejected": "{responder} declined undoing the last move.",
       "request": {
         "body": "{name} wants to undo the last move. Allow it?",
         "title": "Undo request"
@@ -1671,9 +1671,9 @@
       "rejectedTitle": "Demande d’annulation refusée",
       "spectatorRequested": "{player} a demandé l’annulation du dernier coup.",
       "spectatorAccepted": "{responder} a accepté la demande de {requester} d’annuler le dernier coup indiqué par la flèche jaune inversée.",
-      "spectatorRejected": "{responder} a refusé la demande de {requester} d’annuler le dernier coup indiqué par la flèche jaune inversée.",
+      "spectatorRejected": "{responder} a refusé la demande de {requester} d’annuler le dernier coup.",
       "requesterAccepted": "{responder} a accepté d’annuler le dernier coup indiqué par la flèche jaune inversée.",
-      "requesterRejected": "{responder} a refusé d’annuler le dernier coup indiqué par la flèche jaune inversée.",
+      "requesterRejected": "{responder} a refusé d’annuler le dernier coup.",
       "request": {
         "body": "{name} souhaite annuler le dernier coup. Acceptez-vous ?",
         "title": "Demande d’annulation"

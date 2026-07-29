@@ -59,7 +59,7 @@
   --mark-danger-strong: rgb(var(--rgb-danger-600));
   --mark-move: rgb(var(--rgb-secondary-600));
   --mark-move-strong: rgb(var(--rgb-secondary-700));
-  --mark-undo: rgb(var(--rgb-gold-600));
+  --mark-undo: rgb(255 221 0);
   --mark-label-bg: rgb(var(--rgb-white) / .88);
   --mark-overlay-light: rgb(var(--rgb-white) / .76);
   --mark-overlay-dark: rgb(var(--rgb-black) / .60);
@@ -358,7 +358,7 @@
   --mark-move-strong: rgb(133 255 235);
   --mark-danger: rgb(255 107 120);
   --mark-danger-strong: rgb(255 160 168);
-  --mark-undo: rgb(255 202 114);
+  --mark-undo: rgb(255 221 0);
   --mark-label-bg: rgb(8 31 44 / .94);
   --mark-overlay-dark: rgb(var(--rgb-black) / .72);
   --piece-white-light: rgb(255 255 255);
@@ -1657,7 +1657,7 @@ html.dark body.z-mobile-on .z-mobile-footer-rights {
   --mark-move-strong: rgb(0 89 92);
   --mark-danger: rgb(212 49 61);
   --mark-danger-strong: rgb(148 20 31);
-  --mark-undo: rgb(174 101 8);
+  --mark-undo: rgb(255 221 0);
   --piece-white-dot: rgb(20 73 95);
   --piece-black-light: rgb(48 88 102);
   --piece-black-mid: rgb(18 53 68);

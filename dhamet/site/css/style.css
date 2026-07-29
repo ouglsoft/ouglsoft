@@ -2482,3 +2482,13 @@ body.z-game-page:not(.z-mobile-on) .controls-box .btn .btn-ico {
 html[dir="ltr"] .directional-exit-icon {
   transform: scaleX(-1);
 }
+
+/* On the game page, exit/back icons point toward the nearest screen edge.
+   Geometry is assigned by mobile.js; no button position or layout is changed. */
+body.z-game-page .directional-exit-icon.z-points-outward-left {
+  transform: none !important;
+}
+
+body.z-game-page .directional-exit-icon.z-points-outward-right {
+  transform: scaleX(-1) !important;
+}
