@@ -1,5 +1,5 @@
 /*
- * Dhamet shared authoritative match reducer v6.
+ * Dhamet shared authoritative match reducer v7.
  *
  * Pure GameRoom transition logic. This is the single shared place that turns a
  * player MoveIntent into an official match state. It deliberately contains no
@@ -298,6 +298,7 @@
     const nextTurn = penalizer;
     const statePayload = createSouflaStatePayload(record, baseSnapshotForNext, penaltyResult.board, nextTurn, appliedMeta);
     if (!statePayload) return { ok: false, error: 'authority/state-build-failed' };
+    const storedStatePayload = Control.stateWithSoufla(statePayload, null) || statePayload;
 
     const mi = Number(record.moveIndex || 0) + 1;
     // Resolving a soufla settles/replaces the already-counted offending turn.
@@ -330,13 +331,13 @@
       authoritative: true,
       ts,
     };
-    nextGame.state = statePayload;
+    nextGame.state = storedStatePayload;
     nextGame.states = nextGame.states && typeof nextGame.states === 'object' ? clone(nextGame.states) : {};
-    nextGame.states[String(ply)] = statePayload;
+    nextGame.states[String(ply)] = storedStatePayload;
     nextGame.soufla = null;
     nextGame.undoRequest = null;
 
-    const result = evaluateResult(statePayload, { mode: 'pvp', moveIndex: mi, ply, source: 'gameroom-soufla-authority', endedAt: ts });
+    const result = evaluateResult(storedStatePayload, { mode: 'pvp', moveIndex: mi, ply, source: 'gameroom-soufla-authority', endedAt: ts });
     if (result) {
       nextGame.result = result;
       if (result.terminal) {
@@ -384,7 +385,7 @@
       game: nextGame,
       moveIndex: mi,
       ply,
-      state: statePayload,
+      state: storedStatePayload,
       decision,
       pending,
       result,
@@ -514,8 +515,12 @@
     nextGame.moveIndex = mi;
     nextGame.ply = prev.ply;
     nextGame.turn = side(prev.state.snapshot.player, record.turn);
-    nextGame.state = prev.state;
-    nextGame.soufla = null;
+    const restoredSoufla = Control.souflaFromState(prev.state);
+    const restoredState = Control.stateWithSoufla(prev.state, restoredSoufla) || prev.state;
+    nextGame.state = restoredState;
+    nextGame.states = nextGame.states && typeof nextGame.states === 'object' ? clone(nextGame.states) : {};
+    nextGame.states[String(prev.ply)] = restoredState;
+    nextGame.soufla = restoredSoufla;
     nextGame.undoRequest = null;
     nextGame.result = null;
     nextGame.winner = null;
@@ -740,6 +745,10 @@
     };
 
     const serverSoufla = Rules.detectSoufla(startSnapshot, startBoard, mover, ruleCheck);
+    const officialSoufla = serverSoufla && serverSoufla.penalizer != null
+      ? { availableFor: serverSoufla.penalizer, pending: serverSoufla }
+      : null;
+    const storedStatePayload = Control.stateWithSoufla(statePayload, officialSoufla) || statePayload;
     const appliedMove = Move.normalizeAppliedMove({
       moveIndex: mi,
       ply,
@@ -749,7 +758,7 @@
       captures: applied.captures,
       serverValidated: true,
       souflaDetected: !!serverSoufla,
-      state: statePayload,
+      state: storedStatePayload,
       ts,
     });
 
@@ -768,18 +777,20 @@
       souflaDetected: !!serverSoufla,
       authoritative: true,
     });
-    nextGame.state = statePayload;
+    nextGame.state = storedStatePayload;
     nextGame.states = nextGame.states && typeof nextGame.states === 'object' ? clone(nextGame.states) : {};
-    nextGame.states[String(ply)] = statePayload;
-    if (serverSoufla && serverSoufla.penalizer != null) nextGame.soufla = { availableFor: serverSoufla.penalizer, pending: serverSoufla };
-    else nextGame.soufla = null;
+    const currentPly = Math.max(0, Number(record.ply || 0) || 0);
+    const historicalCurrentState = Control.stateWithSoufla(record.state, record.soufla) || record.state;
+    nextGame.states[String(currentPly)] = historicalCurrentState;
+    nextGame.states[String(ply)] = storedStatePayload;
+    nextGame.soufla = officialSoufla;
 
     // A detected soufla gives the opponent an immediate penalty right before
     // any new move or terminal claim is settled. The violating board is not the
     // final legal consequence until removal/force is chosen, so defer result
     // evaluation to applySouflaDecision in that case.
     let result = !serverSoufla && Result && typeof Result.fromSnapshot === 'function'
-      ? Result.fromSnapshot(statePayload.snapshot, { mode: 'pvp', moveIndex: mi, ply, source: 'gameroom-authority', endedAt: ts })
+      ? Result.fromSnapshot(storedStatePayload.snapshot, { mode: 'pvp', moveIndex: mi, ply, source: 'gameroom-authority', endedAt: ts })
       : null;
     if (result) {
       nextGame.result = result;
@@ -820,7 +831,7 @@
       game: nextGame,
       moveIndex: mi,
       ply,
-      state: statePayload,
+      state: storedStatePayload,
       move: appliedMove,
       ruleCheck,
       soufla: serverSoufla,
@@ -830,7 +841,7 @@
   }
 
   root.DhametAuthority = Object.freeze({
-    version: 'shared-authority-v6',
+    version: 'shared-authority-v7',
     clone,
     normalizeGame,
     normalizeMovePayload,

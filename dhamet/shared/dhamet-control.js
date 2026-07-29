@@ -141,9 +141,70 @@
     if (prevPly < 0) return null;
     const states = g.states && typeof g.states === 'object' ? g.states : {};
     const prev = states[String(prevPly)];
-    const payload = State && typeof State.normalizeStatePayload === 'function' ? State.normalizeStatePayload(prev || {}) : prev;
+    const payload = stateWithSoufla(prev, souflaFromState(prev));
     if (!payload || !payload.snapshot) return null;
     return { ply: prevPly, state: payload };
+  }
+
+  // A Soufla right belongs to one exact official turn state. Store only the
+  // normalized pending right in the historical snapshot; availableFor is
+  // derived from its penalizer and must always match the player to move in
+  // that snapshot. This prevents an older or foreign right from being revived
+  // by an unrelated undo.
+  function stripSnapshotSouflaMetadata(snapshot) {
+    const snap = snapshot && typeof snapshot === 'object' ? clone(snapshot) : null;
+    if (!snap) return null;
+    delete snap.soufla;
+    delete snap.souflaPending;
+    delete snap.availableSouflaForLocalPlayer;
+    delete snap.awaitingPenalty;
+    if (snap.turnCtx && typeof snap.turnCtx === 'object') {
+      snap.turnCtx = clone(snap.turnCtx);
+      if (snap.turnCtx.snapshot) snap.turnCtx.snapshot = stripSnapshotSouflaMetadata(snap.turnCtx.snapshot);
+    }
+    return snap;
+  }
+
+  function normalizeOfficialSoufla(input, expectedTurn) {
+    const src = input && typeof input === 'object' ? input : null;
+    const rawInput = src && src.pending && typeof src.pending === 'object' ? src.pending : src;
+    const raw = rawInput ? clone(rawInput) : null;
+    if (raw && raw.turnStartSnapshot) raw.turnStartSnapshot = stripSnapshotSouflaMetadata(raw.turnStartSnapshot);
+    const pending = State && typeof State.normalizeSouflaRight === 'function'
+      ? State.normalizeSouflaRight(raw)
+      : raw;
+    if (!pending) return null;
+    const penalizer = side(pending.penalizer, null);
+    const availableFor = side(src && src.availableFor, penalizer);
+    const turn = side(expectedTurn, null);
+    if (penalizer == null || availableFor == null || availableFor !== penalizer) return null;
+    if (turn != null && availableFor !== turn) return null;
+    return { availableFor, pending: clone(pending) };
+  }
+
+  function stateWithSoufla(state, soufla) {
+    const rawState = state && typeof state === 'object' ? clone(state) : null;
+    if (!rawState) return null;
+    const rawSnapshot = rawState.snapshot && typeof rawState.snapshot === 'object' ? rawState.snapshot : rawState;
+    rawSnapshot.soufla = null;
+    const payload = State && typeof State.normalizeStatePayload === 'function'
+      ? State.normalizeStatePayload(rawState)
+      : rawState;
+    if (!payload || !payload.snapshot) return null;
+    const official = normalizeOfficialSoufla(soufla, payload.snapshot.player);
+    const next = clone(payload);
+    next.snapshot = clone(next.snapshot);
+    next.snapshot.soufla = official ? clone(official.pending) : null;
+    return State && typeof State.normalizeStatePayload === 'function'
+      ? State.normalizeStatePayload(next)
+      : next;
+  }
+
+  function souflaFromState(state) {
+    const src = state && typeof state === 'object' ? state : null;
+    const snapshot = src && src.snapshot && typeof src.snapshot === 'object' ? src.snapshot : src;
+    if (!snapshot) return null;
+    return normalizeOfficialSoufla(snapshot.soufla, snapshot.player);
   }
 
   function undoFxFromSnapshot(snapshot) {
@@ -167,7 +228,7 @@
   }
 
   root.DhametControl = Object.freeze({
-    version: 'shared-control-v2',
+    version: 'shared-control-v3',
     clone,
     normalizeControlPayload,
     createUndoRequest,
@@ -175,6 +236,9 @@
     isMandatoryOpeningSnapshot,
     canRequestUndo,
     previousStateForUndo,
+    normalizeOfficialSoufla,
+    stateWithSoufla,
+    souflaFromState,
     undoFxFromSnapshot,
     undoFxFromLastMove,
   });
