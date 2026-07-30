@@ -23,7 +23,7 @@
     "soufla": {
       "pick": {
         "toastNotOffender": "هذه القطعة ليست مسوفلة/مخالفة، اختر القطعة التي تجاهلت الأسر.",
-        "title": "لديك حق السوفلة. اختر القطعة التي تجاهلت الأسر والمعلّمة بعلامة X الحمراء، ثم اختر العقوبة.",
+        "title": "لديك حق السوفلة. اختر القطعة التي تجاهلت الأسر.",
         "btnRemove": "إزالة القطعة",
         "btnForcePath": "إجبارها على المسار ${n}"
       },
@@ -233,8 +233,8 @@
     "modals": {
       "gameOver": {
         "title": "انتهت المباراة",
-        "winner": "فاز {player} بالمباراة.",
-        "draw": "انتهت المباراة بالتعادل.",
+        "winner": "تهانينا لـ{player}، لقد فاز بالمباراة!",
+        "draw": "مباراة متكافئة، انتهت بالتعادل.",
         "reason": {
           "noPieces": "نفدت قطع {player}.",
           "noLegalMoves": "لا يملك {player} أي نقلة قانونية.",
@@ -322,10 +322,10 @@
       "undoSelf": "${actor}: تراجعت عن النقلة.",
       "matchEndedByActor": "${actor}: أنهى المباراة.",
       "matchEndedBySelf": "${actor}: أنهيت المباراة.",
-      "gameWinner": "انتهت المباراة. الفائز: ${winner}.",
-      "gameWinnerSelf": "لقد فزت بالمباراة.",
-      "gameLoserSelf": "لقد خسرت المباراة.",
-      "gameDraw": "انتهت المباراة دون فائز.",
+      "gameWinner": "تهانينا لـ${winner}، لقد فاز بالمباراة!",
+      "gameWinnerSelf": "تهانينا، لقد فزت بالمباراة!",
+      "gameLoserSelf": "حظًا أوفر، انتهت المباراة بخسارتك.",
+      "gameDraw": "مباراة متكافئة، انتهت بالتعادل.",
       "turnMoveFmt": "${side}: حركة ${from}-${to}.",
       "turnMoveSelf": "أنت: حرّكت القطعة من ${from} إلى ${to}.",
       "turnCaptureFmt": "${side}: أسر ${from}-${to} (${n}).",
@@ -351,7 +351,7 @@
       "roomsTitle": "قائمة المباريات الجارية",
       "playersTitle": "قائمة اللاعبين المتصلين",
       "subtitle": "شاهد المباريات الجارية أو اختر لاعبًا متصلًا وادعه إلى مباراة مباشرة.",
-      "title": "المباريات الجارية واللاعبون المتصلون",
+      "title": "اللوبي",
       "inviteDisabled": "لا يمكن دعوته الآن",
       "invitesDisabled": "لا يقبل الدعوات",
       "returnToMatch": "العودة إلى المباراة",
@@ -421,9 +421,9 @@
       },
       "endFail": "تعذر إنهاء المباراة الآن. تحقق من الاتصال ثم أعد المحاولة.",
       "endPresentation": {
-        "winner": "انتهت المباراة. فاز {player}.",
-        "selfWinner": "لقد فزت بالمباراة.",
-        "selfLoser": "لقد خسرت المباراة.",
+        "winner": "تهانينا لـ{player}، لقد فاز بالمباراة!",
+        "selfWinner": "تهانينا، لقد فزت بالمباراة!",
+        "selfLoser": "حظًا أوفر، انتهت المباراة بخسارتك.",
         "endedBy": "{player} أنهى المباراة.",
         "selfEndedBy": "أنهيت المباراة.",
         "selfEndedByAbsence": "أنهيت المباراة بعد استمرار غياب {opponent}.",
@@ -587,7 +587,7 @@
     "soufla": {
       "pick": {
         "toastNotOffender": "This piece is not the offending Soufla piece. Select the piece that ignored the capture.",
-        "title": "You may claim Soufla. Select the piece that skipped the capture and is marked with a red X, then choose the penalty.",
+        "title": "You may claim Soufla. Select the piece that skipped the capture.",
         "btnRemove": "Remove piece",
         "btnForcePath": "Force path ${n}"
       },
@@ -797,8 +797,8 @@
     "modals": {
       "gameOver": {
         "title": "Match over",
-        "winner": "{player} won the match.",
-        "draw": "The match ended in a draw.",
+        "winner": "Congratulations to {player}, who won the match!",
+        "draw": "A closely fought match—it ended in a draw.",
         "reason": {
           "noPieces": "{player} has no pieces left.",
           "noLegalMoves": "{player} has no legal move left.",
@@ -886,10 +886,10 @@
       "undoSelf": "${actor}: Undid the move.",
       "matchEndedByActor": "${actor}: Ended the match.",
       "matchEndedBySelf": "${actor}: Ended the match.",
-      "gameWinner": "The match ended. Winner: ${winner}.",
-      "gameWinnerSelf": "You won the match.",
-      "gameLoserSelf": "You lost the match.",
-      "gameDraw": "The match ended without a winner.",
+      "gameWinner": "Congratulations to ${winner}, who won the match!",
+      "gameWinnerSelf": "Congratulations, you won the match!",
+      "gameLoserSelf": "Better luck next time—you lost the match.",
+      "gameDraw": "A closely fought match—it ended in a draw.",
       "turnMoveFmt": "${side}: Move ${from}-${to}.",
       "turnMoveSelf": "You: moved from ${from} to ${to}.",
       "turnCaptureFmt": "${side}: Capture ${from}-${to} (${n}).",
@@ -915,7 +915,7 @@
       "roomsTitle": "List of ongoing matches",
       "playersTitle": "Connected players list",
       "subtitle": "Choose a match to watch, or invite a player to start one.",
-      "title": "Ongoing matches and connected players",
+      "title": "Lobby",
       "inviteDisabled": "Can't invite right now",
       "invitesDisabled": "Not accepting invites",
       "returnToMatch": "Return to match",
@@ -985,9 +985,9 @@
       },
       "endFail": "The match could not be ended. Check your connection and try again.",
       "endPresentation": {
-        "winner": "The match ended. {player} won.",
-        "selfWinner": "You won the match.",
-        "selfLoser": "You lost the match.",
+        "winner": "Congratulations to {player}, who won the match!",
+        "selfWinner": "Congratulations, you won the match!",
+        "selfLoser": "Better luck next time—you lost the match.",
         "endedBy": "{player} ended the match.",
         "selfEndedBy": "You ended the match.",
         "selfEndedByAbsence": "You ended the match after {opponent} remained absent.",
@@ -1151,7 +1151,7 @@
     "soufla": {
       "pick": {
         "toastNotOffender": "Cette pièce n’est pas la pièce fautive de la soufla. Sélectionnez la pièce qui a ignoré la prise.",
-        "title": "Vous pouvez réclamer Soufla. Sélectionnez la pièce qui a ignoré la prise et qui est marquée d’une croix rouge, puis choisissez la sanction.",
+        "title": "Vous pouvez réclamer Soufla. Sélectionnez la pièce qui a ignoré la prise.",
         "btnRemove": "Retirer la pièce",
         "btnForcePath": "Imposer le chemin ${n}"
       },
@@ -1361,8 +1361,8 @@
     "modals": {
       "gameOver": {
         "title": "Partie terminée",
-        "winner": "{player} a gagné la partie.",
-        "draw": "La partie s’est terminée par un match nul.",
+        "winner": "Félicitations à {player}, qui remporte la partie !",
+        "draw": "Une partie équilibrée, terminée par un match nul.",
         "reason": {
           "noPieces": "{player} n’a plus de pièces.",
           "noLegalMoves": "{player} n’a plus de coup légal.",
@@ -1450,10 +1450,10 @@
       "undoSelf": "${actor} : avez annulé le coup.",
       "matchEndedByActor": "${actor} : a terminé la partie.",
       "matchEndedBySelf": "${actor} : avez terminé la partie.",
-      "gameWinner": "La partie est terminée. Vainqueur : ${winner}.",
-      "gameWinnerSelf": "Vous avez gagné la partie.",
-      "gameLoserSelf": "Vous avez perdu la partie.",
-      "gameDraw": "La partie est terminée sans vainqueur.",
+      "gameWinner": "Félicitations à ${winner}, qui remporte la partie !",
+      "gameWinnerSelf": "Félicitations, vous avez gagné la partie !",
+      "gameLoserSelf": "Courage, vous avez perdu la partie.",
+      "gameDraw": "Une partie équilibrée, terminée par un match nul.",
       "turnMoveFmt": "${side} : Déplacement ${from}-${to}.",
       "turnMoveSelf": "Vous : déplacement de ${from} à ${to}.",
       "turnCaptureFmt": "${side} : Prise ${from}-${to} (${n}).",
@@ -1479,7 +1479,7 @@
       "roomsTitle": "Liste des parties en cours",
       "playersTitle": "Liste des joueurs connectés",
       "subtitle": "Choisissez une partie à regarder, ou invitez un joueur à en démarrer une.",
-      "title": "Parties en cours et joueurs connectés",
+      "title": "Lobby",
       "inviteDisabled": "Invitation impossible pour le moment",
       "invitesDisabled": "N’accepte pas les invitations",
       "returnToMatch": "Revenir à la partie",
@@ -1549,9 +1549,9 @@
       },
       "endFail": "La partie n’a pas pu être terminée. Vérifiez votre connexion et réessayez.",
       "endPresentation": {
-        "winner": "La partie est terminée. {player} a gagné.",
-        "selfWinner": "Vous avez gagné la partie.",
-        "selfLoser": "Vous avez perdu la partie.",
+        "winner": "Félicitations à {player}, qui remporte la partie !",
+        "selfWinner": "Félicitations, vous avez gagné la partie !",
+        "selfLoser": "Courage, vous avez perdu la partie.",
         "endedBy": "{player} a terminé la partie.",
         "selfEndedBy": "Vous avez terminé la partie.",
         "selfEndedByAbsence": "Vous avez terminé la partie après l’absence prolongée de {opponent}.",

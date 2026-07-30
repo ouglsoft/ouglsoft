@@ -1144,7 +1144,13 @@ if (!icon) {
       var nextPresence = gamePresenceText(slot.presence);
       if (name && name.textContent !== nextName) name.textContent = nextName;
       if (presence && presence.textContent !== nextPresence) presence.textContent = nextPresence;
-      if (presence) presence.hidden = !nextPresence;
+      if (presence) {
+        presence.hidden = !nextPresence;
+        var onlineNow = !!(slot.presence && slot.presence.online === true);
+        var offlineNow = !!(slot.presence && slot.presence.online === false);
+        presence.classList.toggle('z-presence-online', onlineNow);
+        presence.classList.toggle('z-presence-offline', offlineNow);
+      }
       if (avatar) {
         var src = String(slot.avatar || '').trim();
         if (!src && model.mode === 'pvc' && side === 'top') src = baseHref() + '/assets/icons/users/computeruser.png';

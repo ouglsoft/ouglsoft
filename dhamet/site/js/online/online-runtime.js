@@ -1503,6 +1503,7 @@
         },
 
     endOnline: async function () {
+          this._suppressNextLocalEndPresentation = true;
           const asyncContext = this._captureAsyncContext(this.gameId);
           const who = this.myNick || window.I18N.translateArgs("players.player");
           let res = null;
@@ -1516,7 +1517,10 @@
             if (serverGame && serverGame.status === "ended") res = { ok: true, committed: true, game: serverGame };
           }
 
-          if (!this._isAsyncContextCurrent(asyncContext, { ignorePostMatch: true })) return false;
+          if (!this._isAsyncContextCurrent(asyncContext, { ignorePostMatch: true })) {
+            this._suppressNextLocalEndPresentation = false;
+            return false;
+          }
 
           let endedGame = res && res.game && res.game.status === "ended"
             ? res.game
@@ -1534,6 +1538,7 @@
           }
 
           if (!endedGame) {
+            this._suppressNextLocalEndPresentation = false;
             try { Logger.warn("official_match_end_failed", { gameId: asyncContext.gameId, error: String(requestError && (requestError.message || requestError) || (res && res.error) || "not-ended") }); } catch (_) {}
             try { showOnlineNotice(window.I18N.translateArgs("online.endFail")); } catch (_) {}
             return false;
@@ -1735,6 +1740,8 @@
 
     _enterPostMatch: function (meta) {
           const info = meta && typeof meta === "object" ? meta : {};
+          const suppressLocalNotice = info.suppressLocalNotice === true || this._suppressNextLocalEndPresentation === true;
+          this._suppressNextLocalEndPresentation = false;
           const presentation = this._buildOnlineEndPresentation(info);
           const winner = presentation.winner;
 
@@ -1775,6 +1782,7 @@
           try { if (typeof Input !== "undefined" && Input) Input.selected = null; } catch (e) {}
           try { if (typeof UI !== "undefined" && UI && typeof UI.updateStatus === "function") UI.updateStatus(); } catch (e) {}
           try { this.refreshPvpControls && this.refreshPvpControls(); } catch (e) {}
+          if (suppressLocalNotice) return true;
 
           try {
             if (typeof UI !== "undefined" && UI && typeof UI.showOnlineGameOverModal === "function") {
@@ -4594,8 +4602,10 @@
 
             const logEl = document.getElementById("log");
             if (!logEl) return;
+            const previousTop = logEl.scrollTop || 0;
+            const followLatest = Math.max(0, logEl.scrollHeight - logEl.clientHeight - logEl.scrollTop) <= 48;
             logEl.innerHTML = "";
-            evs.slice().reverse().forEach((ev) => {
+            evs.forEach((ev) => {
               const row = document.createElement("div");
               row.className = "log-item";
               const timeEl = document.createElement("span");
@@ -4619,6 +4629,9 @@
               row.appendChild(document.createTextNode(" "));
               row.appendChild(msgEl);
               logEl.appendChild(row);
+            });
+            requestAnimationFrame(() => {
+              logEl.scrollTop = followLatest ? logEl.scrollHeight : previousTop;
             });
           } catch (e) {}
         },

@@ -144,7 +144,11 @@
   line-height: 1.1;
   text-align: center;
   color: var(--text-strong);
-  font-size: var(--fs-title);
+  font-size: calc(var(--fs-title) * 1.08);
+}
+
+.z-auth-brand p {
+  font-size: calc(var(--fs-body) * 1.06);
 }
 
 .z-auth-lang {

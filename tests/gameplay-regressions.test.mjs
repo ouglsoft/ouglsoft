@@ -67,10 +67,10 @@ test('self is rendered as You with conjugated self messages, while spectators ke
   assert.match(online, /!this\.isSpectator[\s\S]*String\(uid\)[\s\S]*players\.you/);
   assert.match(game, /gameWinnerSelf/);
   assert.equal(tr.ar.online.endPresentation.selfEndedBy, 'أنهيت المباراة.');
-  assert.equal(tr.ar.online.endPresentation.selfWinner, 'لقد فزت بالمباراة.');
-  assert.equal(tr.ar.online.endPresentation.selfLoser, 'لقد خسرت المباراة.');
-  assert.equal(tr.ar.log.gameWinnerSelf, 'لقد فزت بالمباراة.');
-  assert.equal(tr.ar.log.gameLoserSelf, 'لقد خسرت المباراة.');
+  assert.equal(tr.ar.online.endPresentation.selfWinner, 'تهانينا، لقد فزت بالمباراة!');
+  assert.equal(tr.ar.online.endPresentation.selfLoser, 'حظًا أوفر، انتهت المباراة بخسارتك.');
+  assert.equal(tr.ar.log.gameWinnerSelf, 'تهانينا، لقد فزت بالمباراة!');
+  assert.equal(tr.ar.log.gameLoserSelf, 'حظًا أوفر، انتهت المباراة بخسارتك.');
 });
 
 test('Soufla selection follows the offending piece to its new square', () => {
