@@ -257,9 +257,9 @@ function confirmedAutoDecision(initialMetrics, previousControl = {}) {
       readings = [...previous.readings, currentReading].slice(-confirmationRequiredRuns);
       spacing = 'scheduled-follow-up';
     } else {
-      // Manual re-runs or duplicate schedule delivery must not be counted as a
-      // separate confirmation. Keep the prior timestamp so the next normal
-      // five-minute run can advance the sequence.
+       
+       
+       
       count = previous.count;
       firstObservedAt = previous.firstObservedAt || previous.lastObservedAt || checkedAt;
       lastObservedAt = previous.lastObservedAt || checkedAt;
@@ -388,8 +388,8 @@ async function writeFirebaseControl(control) {
   const headers = { authorization: `Bearer ${token}`, accept: 'application/json' };
   const incoming = publicMirrorControl(control);
 
-  // Conditional writes prevent an older delayed workflow from replacing a
-  // newer routing decision in Firebase.
+   
+   
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const currentResponse = await fetchWithTimeout(firebaseRouteControlUrl, {
       method: 'GET',
@@ -454,8 +454,8 @@ async function persistControl(control) {
 const previous = await readPreviousControl();
 const previousBackupActive = previous && previous.enabled === true && String(previous.mode || '') === 'backup-emergency' && Number(previous.validUntil || 0) > now;
 
-// If a confirmed emergency decision is already active, repair the Firebase
-// mirror once and ask the workflow to disable itself until the daily wake-up.
+ 
+ 
 if (forceMode === 'auto' && previousBackupActive) {
   const mirror = await writeFirebaseControl(previous);
   setGithubOutput('disable_monitor', 'true');

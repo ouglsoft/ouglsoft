@@ -174,7 +174,6 @@ test('phone game return reuses the shared shell order and language-aware icon di
 });
 
 test('capture timer uses white text, turns red while active, and reuses the end-capture action', () => {
-  assert.match(theme, /Unified capture timer colors/);
   assert.match(theme, /timer-row #killClock[\s\S]*rgb\(var\(--rgb-white\)\)/);
   assert.match(theme, /body\.z-game-page:not\(\.z-mobile-on\) \.timer-row[\s\S]*var\(--gradient-game-control\)/);
   assert.match(theme, /timer-row #btnEndKill[\s\S]*var\(--gradient-game-control-danger\)/);
@@ -244,7 +243,5 @@ test('computer-game administrative endings never run endgame adjudication', () =
   const gameRuntime = read('dhamet/site/js/modes/game-runtime.js');
   assert.doesNotMatch(gameRuntime, /inferInterruptedOutcome/);
   assert.doesNotMatch(gameRuntime, /assessInterruptedPosition/);
-  assert.match(gameRuntime, /Non-natural computer-game endings are deliberately never adjudicated/);
-  assert.match(gameRuntime, /no browser search and no Cloudflare result request/);
   assert.match(gameRuntime, /reason: "non_counted_ending"[\s\S]*return response/);
 });

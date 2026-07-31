@@ -152,6 +152,6 @@ test('Firebase mirror is still attempted if Worker control write fails during co
   });
   assert.notEqual(result.status, 0, 'workflow must report incomplete persistence');
   assert.match(result.stderr, /Firebase control mirror failed|Route control persistence incomplete|Worker control write failed/);
-  // The mocked Firebase PUT is reached before the process reports the partial failure.
+   
   assert.doesNotMatch(result.stderr, /unexpected fetch/);
 });

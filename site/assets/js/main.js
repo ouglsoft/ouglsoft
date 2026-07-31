@@ -3,7 +3,7 @@ const toggle=document.querySelector('.menu-toggle');const nav=document.querySele
 const items=document.querySelectorAll('.reveal');if('IntersectionObserver'in window){const obs=new IntersectionObserver((entries)=>{for(const e of entries){if(e.isIntersecting){e.target.classList.add('visible');obs.unobserve(e.target);}}},{threshold:.12});items.forEach(i=>obs.observe(i));}else{items.forEach(i=>i.classList.add('visible'));}
 
 
-// Product screenshot lightbox
+ 
 (function(){
   const galleryImages = document.querySelectorAll('.gallery-grid .gallery-item img');
   if(!galleryImages.length) return;

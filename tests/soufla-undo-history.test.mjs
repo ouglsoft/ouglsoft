@@ -43,7 +43,7 @@ function rightFor(side, reason) {
         forcedEnabled: false,
         forcedPly: 10,
         openingPly: 10,
-        // This stale nested value must never be retained inside the pending right.
+         
         soufla: { penalizer: -side, offenderSide: side, offenders: [31] },
       },
       lastPieceIdx: 30,
