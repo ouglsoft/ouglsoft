@@ -2484,13 +2484,13 @@ body.z-game-page:not(.z-mobile-on) .controls-box .btn .btn-ico {
 }
 
 
-/* Unified directional exit icon: original orientation in Arabic, mirrored in LTR languages. */
+/* The source SVG points left: mirror it in RTL so Back follows the page direction. */
 .directional-exit-icon {
-  transform: none;
+  transform: scaleX(-1);
   transform-origin: center;
 }
 
 html[dir="ltr"] .directional-exit-icon {
-  transform: scaleX(-1);
+  transform: none;
 }
 

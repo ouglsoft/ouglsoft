@@ -18,5 +18,5 @@
     "dhametPublicPath": "/dhamet",
     "dhametWorkerRoute": "ouglsoft.com/dhamet/api/*"
   },
-  "dhametBuild": "computer-pvs-2.13.45-v32-unified-shell-scroll-active-match"
+  "dhametBuild": "computer-pvs-2.13.46-v33-direction-scroll-manual-end"
 }

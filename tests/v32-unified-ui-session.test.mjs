@@ -7,8 +7,8 @@ test("shared shell owns language-aware back placement", () => {
   const mobile = read("dhamet/site/js/mobile.js");
   const style = read("dhamet/site/css/style.css");
   assert.match(mobile, /bar\.appendChild\(backBtn\);\s*bar\.appendChild\(langBtn\);/);
-  assert.match(style, /\.directional-exit-icon\s*\{\s*transform: none;/);
-  assert.match(style, /html\[dir="ltr"\] \.directional-exit-icon\s*\{\s*transform: scaleX\(-1\)/);
+  assert.match(style, /\.directional-exit-icon\s*\{\s*transform: scaleX\(-1\);/);
+  assert.match(style, /html\[dir="ltr"\] \.directional-exit-icon\s*\{\s*transform: none/);
 });
 
 test("game log has one shared native-scroll implementation", () => {

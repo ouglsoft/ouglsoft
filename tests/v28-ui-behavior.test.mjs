@@ -11,8 +11,8 @@ const online = read("dhamet/site/js/online/online-runtime.js");
 const i18n = read("dhamet/site/js/i18n.js");
 
 test("game return uses the same shared shell and language direction as every other page", () => {
-  assert.match(style, /\.directional-exit-icon\s*\{\s*transform: none;/);
-  assert.match(style, /html\[dir="ltr"\] \.directional-exit-icon\s*\{\s*transform: scaleX\(-1\)/);
+  assert.match(style, /\.directional-exit-icon\s*\{\s*transform: scaleX\(-1\);/);
+  assert.match(style, /html\[dir="ltr"\] \.directional-exit-icon\s*\{\s*transform: none/);
   assert.match(mobile, /bar\.appendChild\(backBtn\);\s*bar\.appendChild\(langBtn\);/);
   assert.doesNotMatch(mobile, /syncGameDirectionalExitIcons|scheduleGameDirectionalExitIcons|syncGameShellPins|DhametSyncGameExitIcons/);
   assert.doesNotMatch(mobileCss, /\.z-mobile-game-shell-inner\s*\{[^}]*direction:\s*ltr|body\.z-mobile-on\[data-mobile-page="game"\] \.directional-exit-icon|\.z-mobile-shell-btn\.is-back\s+img\s*\{[^}]*transform:\s*rotate/);
@@ -43,7 +43,9 @@ test("activity log uses the shared native-scroll reconciler", () => {
   assert.match(logView, /function syncElement\(/);
   assert.match(logView, /distanceFromBottom\(element\) <= threshold/);
   assert.match(logView, /if \(row === cursor\) cursor = cursor\.nextSibling/);
-  assert.match(logView, /followLatest \? maxTop : Math\.min\(previousTop, maxTop\)/);
+  assert.match(logView, /if \(!changed && !cfg\.forceLatest\)\s*\{/);
+  assert.match(logView, /if \(followLatest && !state\.interacting\) element\.scrollTop = maxTop/);
+  assert.doesNotMatch(logView, /requestAnimationFrame\(applyPosition/);
   assert.match(style, /\.log-item \{\s*flex: 0 0 auto;/);
   assert.match(style, /\.log \{[\s\S]*scrollbar-gutter: stable;[\s\S]*backdrop-filter: none;/);
 });

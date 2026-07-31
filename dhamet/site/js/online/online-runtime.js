@@ -1567,6 +1567,11 @@
             winner: endedGame.winner,
             players: endedGame.players || null,
           });
+
+          // A confirmed manual end has one explicit completion path on every
+          // viewport. Do not depend on whether a post-match modal happened to
+          // open or close; the initiating player goes directly to mode.html.
+          await this._exitOnlineSessionTo("mode.html");
           return true;
         },
 
