@@ -266,8 +266,8 @@
     var menu = ensureLanguageMenu(menuClass);
     bindLangButton(langBtn, menu);
 
-    bar.appendChild(langBtn);
     bar.appendChild(backBtn);
+    bar.appendChild(langBtn);
     root.appendChild(bar);
     root.appendChild(menu);
     return root;
@@ -799,125 +799,6 @@ if (!icon) {
 
 /* Game page */
 
-  var GAME_EXIT_ICON_RAF = 0;
-
-  function syncGameDirectionalExitIcons() {
-    if (pageType() !== 'game' || !document.body) return;
-    var viewportMid = Math.max(0, window.innerWidth || document.documentElement.clientWidth || 0) / 2;
-    qsa('.directional-exit-icon', document.body).forEach(function (icon) {
-      var owner = icon.closest ? (icon.closest('button, a') || icon) : icon;
-      if (!owner || !owner.getClientRects || owner.getClientRects().length === 0) return;
-      var rect = owner.getBoundingClientRect();
-      var pointsRight = (rect.left + rect.width / 2) >= viewportMid;
-      icon.classList.toggle('z-points-outward-right', pointsRight);
-      icon.classList.toggle('z-points-outward-left', !pointsRight);
-    });
-  }
-
-  function scheduleGameDirectionalExitIcons() {
-    if (pageType() !== 'game') return;
-    if (GAME_EXIT_ICON_RAF) window.cancelAnimationFrame(GAME_EXIT_ICON_RAF);
-    GAME_EXIT_ICON_RAF = window.requestAnimationFrame(function () {
-      GAME_EXIT_ICON_RAF = window.requestAnimationFrame(function () {
-        GAME_EXIT_ICON_RAF = 0;
-        syncGameDirectionalExitIcons();
-      });
-    });
-  }
-
-  window.DhametSyncGameExitIcons = scheduleGameDirectionalExitIcons;
-
-  function gameMode() {
-    try {
-      var mm = window.DhametMatchMode;
-      if (mm && typeof mm.detectMode === 'function') {
-        var detected = mm.detectMode();
-        if (detected === mm.MODE_SPECTATOR) return 'spectator';
-        if (detected === mm.MODE_ONLINE) return 'pvp';
-        return 'pvc';
-      }
-    } catch (_) {}
-    var body = document.body;
-    if (body && body.classList.contains('z-spectator')) return 'spectator';
-    if (body && body.classList.contains('mode-pvp')) return 'pvp';
-    return 'pvc';
-  }
-
-  function gameBack() {
-    try {
-      if (gameMode() === 'spectator') {
-        var leave = qs('#btnLeaveRoom');
-        if (leave) {
-          leave.click();
-          return;
-        }
-      }
-      var target = (window.Online && window.Online.isActive) ? qs('#btnEndOnline') : qs('#btnEndLocalMatch');
-      if (target) {
-        target.click();
-        return;
-      }
-    } catch (_) {}
-    location.href = baseHref() + '/pages/mode.html';
-  }
-
-  function markGameLayoutMutation(fn) {
-    GAME_LAYOUT_MUTATING += 1;
-    try {
-      return fn();
-    } finally {
-      window.setTimeout(function () {
-        GAME_LAYOUT_MUTATING = Math.max(0, GAME_LAYOUT_MUTATING - 1);
-      }, 0);
-    }
-  }
-
-  function rememberGameHome(node) {
-    if (!node) return;
-    var currentMarker = node.__zMobileHomeMarker;
-    if (currentMarker && currentMarker.parentNode) return;
-    if (currentMarker && !currentMarker.parentNode) node.__zMobileHomeMarker = null;
-    var parent = node.parentNode;
-    if (!parent) return;
-    var marker = document.createComment('z-mobile-home:' + (node.id || node.className || node.nodeName));
-    parent.insertBefore(marker, node);
-    node.__zMobileHomeMarker = marker;
-    if (GAME_HOME_RECORDS.indexOf(node) === -1) GAME_HOME_RECORDS.push(node);
-  }
-
-  function moveGameNode(node, parent, before) {
-    if (!node || !parent) return;
-    rememberGameHome(node);
-    if (node.parentNode === parent && (!before || node.nextSibling === before)) return;
-    if (before && before.parentNode === parent) parent.insertBefore(node, before);
-    else parent.appendChild(node);
-  }
-
-  function restoreGameNode(node) {
-    if (!node) return;
-    var marker = node.__zMobileHomeMarker;
-    if (marker && marker.parentNode) {
-      marker.parentNode.insertBefore(node, marker.nextSibling);
-      marker.parentNode.removeChild(marker);
-    }
-    node.__zMobileHomeMarker = null;
-  }
-
-  function restoreAllGameNodes() {
-    var records = GAME_HOME_RECORDS.slice();
-    GAME_HOME_RECORDS.length = 0;
-    records.forEach(restoreGameNode);
-  }
-
-  function ensureGameSideLane() {
-    if (pageType() !== 'game') return null;
-    var lane = qs('.z-mobile-game-side-lane');
-    if (lane) return lane;
-    lane = document.createElement('div');
-    lane.className = 'z-mobile-game-side-lane';
-    return lane;
-  }
-
   function ensureGameShell() {
     if (pageType() !== 'game') return null;
     var shell = qs('.z-mobile-game-shell');
@@ -1210,7 +1091,6 @@ if (!icon) {
     items.forEach(function (item) { moveGameNode(item, grid); });
     if (grid.getAttribute('data-mode') !== mode) grid.setAttribute('data-mode', mode);
     syncKillTile();
-    scheduleGameDirectionalExitIcons();
   }
 
   function syncGameDrawer() {
@@ -1291,8 +1171,7 @@ if (!icon) {
       } catch (_) {}
       try { if (window.UI && typeof window.UI.updateAiLevelDisplay === 'function') window.UI.updateAiLevelDisplay(); } catch (_) {}
       GAME_LAYOUT_MOBILE_ACTIVE = false;
-      scheduleGameDirectionalExitIcons();
-    });
+      });
   }
 
   function syncGameLayout() {
@@ -1311,8 +1190,7 @@ if (!icon) {
       syncGameLevelInShell(qs('.z-mobile-game-shell'));
       syncGameControls();
       syncGameDrawer();
-      scheduleGameDirectionalExitIcons();
-    });
+      });
   }
 
   function scheduleGameLayoutSync() {
@@ -1557,7 +1435,6 @@ function refreshMobileText() {
     document.body.setAttribute('data-mobile-orientation', orientation);
     document.body.classList.add('z-mobile-layout-ready');
     reconcileGameFullscreenForOrientation(mobile, orientation);
-    scheduleGameDirectionalExitIcons();
 
     if (!mobile) {
       restoreModeHead();

@@ -18,5 +18,5 @@
     "dhametPublicPath": "/dhamet",
     "dhametWorkerRoute": "ouglsoft.com/dhamet/api/*"
   },
-  "dhametBuild": "computer-pvs-2.13.42-v29-mobile-head-scroll-fixes"
+  "dhametBuild": "computer-pvs-2.13.43-v30-unified-back-scroll-root-fix"
 }

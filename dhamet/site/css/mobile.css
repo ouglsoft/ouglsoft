@@ -2110,39 +2110,9 @@ body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-shell {
 }
 
 body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-shell-inner {
-  position: relative;
   width: 100%;
   min-height: var(--m-shell-size);
   padding-inline: 0;
-  direction: ltr !important;
-}
-
-body.z-mobile-on[data-mobile-page="game"]
-  .z-mobile-game-shell
-  .z-mobile-shell-btn {
-  position: absolute;
-  top: 0;
-}
-
-body.z-mobile-on[data-mobile-page="game"]
-  .z-mobile-game-shell
-  .z-mobile-shell-btn.is-lang {
-  right: 0;
-  left: auto;
-}
-
-body.z-mobile-on[data-mobile-page="game"]
-  .z-mobile-game-shell
-  .z-mobile-shell-btn.is-back {
-  left: 0;
-  right: auto;
-}
-
-body.z-mobile-on[data-mobile-page="game"]
-  .z-mobile-game-shell
-  .z-mobile-shell-btn.is-back
-  img {
-  transform: rotate(180deg) !important;
 }
 
 body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-level-slot {
@@ -2988,7 +2958,6 @@ body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="game"]
 body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="game"]
   .z-mobile-game-shell-inner {
   width: 100%;
-  direction: ltr !important;
   justify-content: space-between;
   padding-inline: 0;
 }
@@ -3196,27 +3165,6 @@ body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnSpk {
   ) !important;
   border: 1px solid var(--btn-border) !important;
   box-shadow: var(--btn-shadow) !important;
-}
-
-body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="game"]
-  .z-mobile-game-shell,
-body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="game"]
-  .z-mobile-game-shell-inner {
-  direction: ltr !important;
-}
-
-body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="game"]
-  .z-mobile-game-shell
-  .z-mobile-shell-btn.is-lang {
-  left: auto !important;
-  right: 0 !important;
-}
-
-body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="game"]
-  .z-mobile-game-shell
-  .z-mobile-shell-btn.is-back {
-  left: 0 !important;
-  right: auto !important;
 }
 
 body.z-spectator .timer-row,
@@ -3968,7 +3916,3 @@ body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="game"] .
   min-height: 60px;
 }
 
-/* Game-page return icon: the phone layout has one fixed physical direction in all languages. */
-body.z-mobile-on[data-mobile-page="game"] .directional-exit-icon {
-  transform: none !important;
-}

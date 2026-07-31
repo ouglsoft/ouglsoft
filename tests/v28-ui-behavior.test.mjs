@@ -10,8 +10,10 @@ const game = read("dhamet/site/js/modes/game-runtime.js");
 const online = read("dhamet/site/js/online/online-runtime.js");
 const i18n = read("dhamet/site/js/i18n.js");
 
-test("phone-only return direction and connection colors are isolated", () => {
-  assert.match(mobileCss, /body\.z-mobile-on\[data-mobile-page="game"\] \.directional-exit-icon\s*\{\s*transform: none !important/);
+test("shared return icon logic and phone connection colors are isolated", () => {
+  assert.match(mobile, /bar\.appendChild\(backBtn\);\s*bar\.appendChild\(langBtn\);/);
+  assert.doesNotMatch(mobile, /syncGameDirectionalExitIcons|scheduleGameDirectionalExitIcons|z-points-outward/);
+  assert.doesNotMatch(mobileCss, /direction:\s*ltr !important/);
   assert.match(mobile, /presence\.classList\.toggle\('z-presence-online', onlineNow\)/);
   assert.match(mobile, /presence\.classList\.toggle\('z-presence-offline', offlineNow\)/);
 });
@@ -32,6 +34,7 @@ test("activity log follows the bottom only while the reader remains there", () =
   assert.match(game, /followLatest = distanceFromBottom\(log\) <= LOG_BOTTOM_THRESHOLD/);
   assert.match(game, /scrollTop = Math.max\(0, log.scrollHeight - log.clientHeight\)/);
   assert.match(game, /log.addEventListener\("touchmove"/);
+  assert.match(style, /\.log-item\s*\{\s*flex:\s*0 0 auto;/);
   assert.doesNotMatch(game, /events\.length - 1; i >= 0/);
 });
 

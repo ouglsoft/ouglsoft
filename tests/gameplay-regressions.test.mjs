@@ -162,11 +162,16 @@ test('undo arrows use a bright explicit yellow in every theme variant', () => {
   assert.equal(values.length, 3);
 });
 
-test('phone game return icon points left in every language without moving controls', () => {
+test('game shell uses the shared language-directed return icon without page-specific overrides', () => {
   const mobile = read('dhamet/site/js/mobile.js');
   const mobileCss = read('dhamet/site/css/mobile.css');
-  assert.match(mobileCss, /body\.z-mobile-on\[data-mobile-page="game"\] \.directional-exit-icon\s*\{\s*transform: none !important/);
-  assert.doesNotMatch(mobile, /insertBefore\([^\n]*directional-exit-icon|appendChild\([^\n]*directional-exit-icon/);
+  const style = read('dhamet/site/css/style.css');
+  assert.match(mobile, /bar\.appendChild\(backBtn\);\s*bar\.appendChild\(langBtn\);/);
+  assert.doesNotMatch(mobile, /GAME_EXIT_ICON_RAF|syncGameDirectionalExitIcons|scheduleGameDirectionalExitIcons|z-points-outward/);
+  assert.doesNotMatch(mobileCss, /direction:\s*ltr !important|z-mobile-shell-btn\.is-back[\s\S]{0,120}rotate\(180deg\)/);
+  assert.match(style, /\.directional-exit-icon\s*\{\s*transform:\s*none/);
+  assert.match(style, /html\[dir="ltr"\] \.directional-exit-icon\s*\{\s*transform:\s*scaleX\(-1\)/);
+  assert.doesNotMatch(style, /z-points-outward|phone game back icon/);
 });
 
 test('capture timer uses white text, turns red while active, and reuses the end-capture action', () => {

@@ -1195,6 +1195,7 @@ body.z-game-page:not(.mode-pvp):not(.z-mobile-on) #btnNew {
 }
 
 .log-item {
+  flex: 0 0 auto;
   padding: 6px 8px;
   line-height: 1.4;
   display: flex;
@@ -2488,17 +2489,3 @@ html[dir="ltr"] .directional-exit-icon {
   transform: scaleX(-1);
 }
 
-/* On the game page, exit/back icons point toward the nearest screen edge.
-   Geometry is assigned by mobile.js; no button position or layout is changed. */
-body.z-game-page .directional-exit-icon.z-points-outward-left {
-  transform: none !important;
-}
-
-body.z-game-page .directional-exit-icon.z-points-outward-right {
-  transform: scaleX(-1) !important;
-}
-
-/* The phone game back icon is always on the user's left, so its direction is fixed left in every language. */
-body.z-mobile-on[data-mobile-page="game"] .z-mobile-shell-btn.is-back .directional-exit-icon {
-  transform: none !important;
-}
