@@ -13,7 +13,7 @@ const i18n = read("dhamet/site/js/i18n.js");
 test("game return uses the same shared shell and language direction as every other page", () => {
   assert.match(style, /\.directional-exit-icon\s*\{\s*transform: none;/);
   assert.match(style, /html\[dir="ltr"\] \.directional-exit-icon\s*\{\s*transform: scaleX\(-1\)/);
-  assert.match(mobile, /bar\.appendChild\(langBtn\);\s*bar\.appendChild\(backBtn\);/);
+  assert.match(mobile, /bar\.appendChild\(backBtn\);\s*bar\.appendChild\(langBtn\);/);
   assert.doesNotMatch(mobile, /syncGameDirectionalExitIcons|scheduleGameDirectionalExitIcons|syncGameShellPins|DhametSyncGameExitIcons/);
   assert.doesNotMatch(mobileCss, /\.z-mobile-game-shell-inner\s*\{[^}]*direction:\s*ltr|body\.z-mobile-on\[data-mobile-page="game"\] \.directional-exit-icon|\.z-mobile-shell-btn\.is-back\s+img\s*\{[^}]*transform:\s*rotate/);
   assert.doesNotMatch(style, /z-points-outward|body\.z-game-page \.directional-exit-icon|body\.z-mobile-on\[data-mobile-page="game"\][^{]*directional-exit-icon/);
@@ -35,19 +35,17 @@ test("original icon is the approved icon and cannot reuse the immutable favicon 
   assert.match(read("site/_headers"), /\/dhamet\/assets\/icons\/icon\.webp\n\s+Cache-Control: no-cache/);
 });
 
-test("activity log defers DOM rebuilds during manual scrolling and follows only near the bottom", () => {
+test("activity log uses the shared native-scroll reconciler", () => {
+  const logView = read("dhamet/site/js/ui/game-log-view.js");
   assert.match(game, /LOG_BOTTOM_THRESHOLD = 48/);
-  assert.match(game, /LOG_SCROLL_IDLE_MS = 140/);
-  assert.match(game, /let manualScrollActive = false/);
-  assert.match(game, /let pendingRender = false/);
-  assert.match(game, /for \(let i = 0; i < events\.length; i \+= 1\)/);
-  assert.match(game, /followLatest = distanceFromBottom\(log\) <= LOG_BOTTOM_THRESHOLD/);
-  assert.match(game, /log\.addEventListener\("scroll", updateFromActualScroll/);
-  assert.match(game, /log\.addEventListener\("touchstart", beginManualScroll/);
-  assert.doesNotMatch(game, /log\.addEventListener\("touchmove"/);
-  assert.match(game, /if \(manualScrollActive\) \{\s*pendingRender = true;\s*return;/);
-  assert.match(game, /shouldFollowLatest\s*\? Math\.max\(0, log\.scrollHeight - log\.clientHeight\)/);
-  assert.doesNotMatch(game, /events\.length - 1; i >= 0/);
+  assert.match(game, /DhametGameLogView\.syncElement\(log, events/);
+  assert.doesNotMatch(game, /manualScrollActive|LOG_SCROLL_IDLE_MS|touchstart.*beginManualScroll|ResizeObserver/);
+  assert.match(logView, /function syncElement\(/);
+  assert.match(logView, /distanceFromBottom\(element\) <= threshold/);
+  assert.match(logView, /if \(row === cursor\) cursor = cursor\.nextSibling/);
+  assert.match(logView, /followLatest \? maxTop : Math\.min\(previousTop, maxTop\)/);
+  assert.match(style, /\.log-item \{\s*flex: 0 0 auto;/);
+  assert.match(style, /\.log \{[\s\S]*scrollbar-gutter: stable;[\s\S]*backdrop-filter: none;/);
 });
 
 test("local manual end consumes its presentation while remote endings remain presented", () => {

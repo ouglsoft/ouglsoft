@@ -266,8 +266,8 @@
     var menu = ensureLanguageMenu(menuClass);
     bindLangButton(langBtn, menu);
 
-    bar.appendChild(langBtn);
     bar.appendChild(backBtn);
+    bar.appendChild(langBtn);
     root.appendChild(bar);
     root.appendChild(menu);
     return root;

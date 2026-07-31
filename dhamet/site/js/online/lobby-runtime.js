@@ -2648,6 +2648,32 @@
           return true;
         },
 
+
+
+    _resolveActivePlayerMatch: async function () {
+          if (!this.myUid) return { state: "unknown", gameId: "" };
+          const result = await this._dispatchUnifiedAppPulseNow(true, "active-match-resolve");
+          if (!result || result === true) return { state: "unknown", gameId: "" };
+          const presence = result.presence && typeof result.presence === "object" ? result.presence : null;
+          const status = String(presence && presence.status || "");
+          const role = String(presence && presence.role || "");
+          const gameId = String(presence && presence.roomId || "").trim();
+          if ((status === "inPvP" || role === "player") && gameId) {
+            this._applySessionState({
+              presenceStatus: "inPvP",
+              presenceRole: "player",
+              presenceRoomId: gameId,
+            });
+            try {
+              if (!this.gameId) this.gameId = gameId;
+              this._persistActiveGame && this._persistActiveGame();
+            } catch (e) {}
+            return { state: "active", gameId, presence, result };
+          }
+          try { this._handleClearedBusyReconciliation && this._handleClearedBusyReconciliation(); } catch (e) {}
+          return { state: "none", gameId: "", presence, result };
+        },
+
     _markBusyIfActivePlayerRoom: async function (options) {
           const gid = this._getKnownActivePlayerRoomId ? this._getKnownActivePlayerRoomId() : "";
           if (!gid) return false;
@@ -2656,9 +2682,12 @@
 
     _syncLobbyAvailabilityFromActiveGame: async function (options) {
           const cfg = options && typeof options === "object" ? options : {};
-          const busy = await this._markBusyIfActivePlayerRoom(cfg);
-          if (busy) return true;
-          await this._setLobbyStatus("available", cfg);
+          const resolved = await this._resolveActivePlayerMatch();
+          if (resolved && resolved.state === "active") return true;
+          if (resolved && resolved.state === "none") {
+            await this._setLobbyStatus("available", Object.assign({}, cfg, { deferPulse: true }));
+            return false;
+          }
           return false;
         },
 

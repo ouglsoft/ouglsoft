@@ -2186,10 +2186,10 @@ body.z-mobile-on[data-mobile-page="game"]
   #aiLevelBox.z-mobile-game-top-level
   .ai-level-select {
   width: auto;
-  min-width: 84px;
-  max-width: min(30vw, 138px);
+  min-width: 0;
+  max-width: calc(100vw - (2 * var(--m-shell-size)) - 32px);
   height: 28px;
-  padding: 0 6px;
+  padding: 0;
   border-radius: 999px;
   font-size: var(--m-text-sm);
 }

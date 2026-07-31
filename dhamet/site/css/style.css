@@ -1186,7 +1186,10 @@ body.z-game-page:not(.mode-pvp):not(.z-mobile-on) #btnNew {
   overscroll-behavior-x: auto;
   -webkit-overflow-scrolling: touch;
   touch-action: pan-y;
-  overflow-anchor: none;
+  overflow-anchor: auto;
+  scrollbar-gutter: stable;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
   background: var(--panel);
   border: 1px solid var(--border);
   box-shadow: var(--shadow);
@@ -1195,6 +1198,7 @@ body.z-game-page:not(.mode-pvp):not(.z-mobile-on) #btnNew {
 }
 
 .log-item {
+  flex: 0 0 auto;
   padding: 6px 8px;
   line-height: 1.4;
   display: flex;
@@ -2172,8 +2176,8 @@ html:not(.ui-hold) body.z-game-page .app {
 }
 
 .z-select-dropdown.is-ai-level {
-  width: auto;
-  min-width: 118px;
+  width: min(var(--z-ai-level-width, max-content), calc(100vw - 16px));
+  min-width: 0;
   max-width: 100%;
 }
 
@@ -2207,7 +2211,9 @@ html:not(.ui-hold) body.z-game-page .app {
 
 .z-select-dropdown.is-ai-level .z-select-trigger {
   min-height: 0;
-  padding: 6px 10px;
+  width: 100%;
+  gap: 4px;
+  padding: 6px 7px;
   border-radius: 12px;
   background: var(--panel);
   color: var(--danger);

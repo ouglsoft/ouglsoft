@@ -18,12 +18,37 @@
     return option ? String(option.textContent || option.label || option.value || "") : "";
   }
 
+  function syncAiLevelWidth(instance) {
+    if (!instance || !instance.wrapper || !instance.wrapper.classList.contains("is-ai-level")) return 0;
+    var labels = Array.from(instance.select.options || []).map(function (option) {
+      return String(option.textContent || option.label || option.value || "");
+    });
+    var triggerStyle = null;
+    try { triggerStyle = global.getComputedStyle(instance.trigger); } catch (_) {}
+    var maxText = 0;
+    try {
+      var canvas = syncAiLevelWidth._canvas || (syncAiLevelWidth._canvas = document.createElement("canvas"));
+      var context = canvas.getContext && canvas.getContext("2d");
+      if (context) {
+        context.font = triggerStyle && triggerStyle.font ? triggerStyle.font : "800 14px sans-serif";
+        labels.forEach(function (label) { maxText = Math.max(maxText, context.measureText(label).width); });
+      }
+    } catch (_) {}
+    if (!maxText) labels.forEach(function (label) { maxText = Math.max(maxText, label.length * 8); });
+    var required = Math.ceil(maxText + 12 + 4 + 16 + 2);
+    var viewport = Math.max(0, (document.documentElement && document.documentElement.clientWidth) || global.innerWidth || 0);
+    if (viewport) required = Math.min(required, Math.max(72, viewport - 16));
+    instance.wrapper.style.setProperty("--z-ai-level-width", required + "px");
+    return required;
+  }
+
   function positionMenu(instance) {
     if (!instance || instance.menu.hidden) return;
     var rect = instance.trigger.getBoundingClientRect();
     var doc = document.documentElement;
     var viewportWidth = Math.max(doc.clientWidth || 0, global.innerWidth || 0);
-    var width = Math.max(rect.width, 150);
+    var aiWidth = instance.wrapper.classList.contains("is-ai-level") ? syncAiLevelWidth(instance) : 0;
+    var width = aiWidth || Math.max(rect.width, 150);
     var left = rect.left;
     if (left + width > viewportWidth - 8) left = Math.max(8, viewportWidth - width - 8);
     instance.menu.style.position = "fixed";
@@ -52,6 +77,7 @@
       button.setAttribute("aria-selected", selected ? "true" : "false");
     });
     instance.label.textContent = optionLabel(select);
+    syncAiLevelWidth(instance);
     var aria = select.getAttribute("aria-label");
     if (aria) instance.trigger.setAttribute("aria-label", aria);
   }

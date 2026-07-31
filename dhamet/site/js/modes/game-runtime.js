@@ -2532,102 +2532,29 @@ if (typeof window !== "undefined") window.AI = AI;
         };
 
         const LOG_BOTTOM_THRESHOLD = 48;
-        const LOG_SCROLL_IDLE_MS = 140;
-        let followLatest = true;
-        let manualScrollActive = false;
-        let pendingRender = false;
-        let pendingScrollFrame = 0;
-        let scrollIdleTimer = 0;
-        let observedLog = null;
-        let logResizeObserver = null;
 
-        const distanceFromBottom = (log) => Math.max(0,
-          Number(log.scrollHeight || 0) - Number(log.clientHeight || 0) - Number(log.scrollTop || 0));
-
-        const cancelPendingLogScroll = () => {
-          if (!pendingScrollFrame) return;
-          try { cancelAnimationFrame(pendingScrollFrame); } catch (_) {}
-          pendingScrollFrame = 0;
-        };
-
-        const restoreLogPosition = (log, shouldFollowLatest, previousTop) => {
-          cancelPendingLogScroll();
-          pendingScrollFrame = requestAnimationFrame(() => {
-            pendingScrollFrame = 0;
-            if (!log || !log.isConnected) return;
+        const _logKey = (ev, index) => {
+          if (ev && typeof ev === "object") {
+            const explicit = String(ev.displayId || ev.id || "").trim();
+            if (explicit) return `id:${explicit}`;
             try {
-              log.scrollTop = shouldFollowLatest
-                ? Math.max(0, log.scrollHeight - log.clientHeight)
-                : Math.min(previousTop, Math.max(0, log.scrollHeight - log.clientHeight));
-            } catch (_) {}
-          });
-        };
-
-        const finishManualScroll = () => {
-          manualScrollActive = false;
-          if (!pendingRender) return;
-          pendingRender = false;
-          render();
-        };
-
-        const scheduleManualScrollEnd = () => {
-          if (scrollIdleTimer) clearTimeout(scrollIdleTimer);
-          scrollIdleTimer = setTimeout(finishManualScroll, LOG_SCROLL_IDLE_MS);
-        };
-
-        const bindManualScroll = (log) => {
-          if (!log || log.__zScrollBound) return;
-          log.__zScrollBound = true;
-
-          const beginManualScroll = () => {
-            manualScrollActive = true;
-            cancelPendingLogScroll();
-            if (scrollIdleTimer) clearTimeout(scrollIdleTimer);
-          };
-          const updateFromActualScroll = () => {
-            followLatest = distanceFromBottom(log) <= LOG_BOTTOM_THRESHOLD;
-            manualScrollActive = true;
-            scheduleManualScrollEnd();
-          };
-
-          log.addEventListener("scroll", updateFromActualScroll, { passive: true });
-          log.addEventListener("wheel", beginManualScroll, { passive: true });
-          log.addEventListener("touchstart", beginManualScroll, { passive: true });
-          log.addEventListener("pointerdown", beginManualScroll, { passive: true });
-          log.addEventListener("touchend", scheduleManualScrollEnd, { passive: true });
-          log.addEventListener("touchcancel", scheduleManualScrollEnd, { passive: true });
-          log.addEventListener("pointerup", scheduleManualScrollEnd, { passive: true });
-          log.addEventListener("pointercancel", scheduleManualScrollEnd, { passive: true });
-
-          if (typeof ResizeObserver === "function") {
-            try {
-              if (logResizeObserver) logResizeObserver.disconnect();
-              observedLog = log;
-              logResizeObserver = new ResizeObserver(() => {
-                if (observedLog !== log || manualScrollActive || !followLatest) return;
-                restoreLogPosition(log, true, Number(log.scrollTop || 0));
-              });
-              logResizeObserver.observe(log);
+              return `event:${String(ev.ts || "")}:${String(ev.kind || "")}:${JSON.stringify(ev)}:${index}`;
             } catch (_) {}
           }
+          return `row:${index}:${String(ev == null ? "" : ev)}`;
         };
 
-        const render = () => {
+        const render = (forceRebuild = false, forceLatest = false) => {
           const log = qs("#log");
           if (!log) return;
-          bindManualScroll(log);
-
-          if (manualScrollActive) {
-            pendingRender = true;
-            return;
+          if (!window.DhametGameLogView || typeof window.DhametGameLogView.syncElement !== "function") {
+            throw new Error("game-log-view syncElement is required");
           }
-
-          pendingRender = false;
-          const shouldFollowLatest = followLatest;
-          const previousTop = Number(log.scrollTop || 0);
-          log.innerHTML = "";
-          for (let i = 0; i < events.length; i += 1) log.appendChild(_makeEl(events[i]));
-          restoreLogPosition(log, shouldFollowLatest, previousTop);
+          window.DhametGameLogView.syncElement(log, events, _makeEl, _logKey, {
+            bottomThreshold: LOG_BOTTOM_THRESHOLD,
+            forceRebuild: !!forceRebuild,
+            forceLatest: !!forceLatest,
+          });
         };
 
         const addEvent = (ev) => {
@@ -2660,7 +2587,7 @@ if (typeof window !== "undefined") window.AI = AI;
           render();
         };
 
-        const retranslate = () => render();
+        const retranslate = () => render(true, false);
 
         return { addEvent, addText, setEvents, retranslate, _events: events };
       })();

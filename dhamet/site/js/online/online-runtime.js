@@ -1112,12 +1112,19 @@
           }
     
           try {
-            const activeRoomId = String(this.gameId || this._presenceRoomId || (this._getPersistedActiveGameId && this._getPersistedActiveGameId()) || "").trim();
-            if (activeRoomId) {
-              const shouldContinue = await this._confirmLeaveActiveMatchBeforeInvite(activeRoomId);
+            const activeMatch = await this._resolveActivePlayerMatch();
+            if (!activeMatch || activeMatch.state === "unknown") {
+              showOnlineNotice(window.I18N.translateArgs("status.onlineInitFail"));
+              return;
+            }
+            if (activeMatch.state === "active" && activeMatch.gameId) {
+              const shouldContinue = await this._confirmLeaveActiveMatchBeforeInvite(activeMatch.gameId);
               if (!shouldContinue) return;
             }
-          } catch (e) {}
+          } catch (e) {
+            showOnlineNotice(window.I18N.translateArgs("status.onlineInitFail"));
+            return;
+          }
     
     
           let opponentNick = "";
@@ -1217,8 +1224,12 @@
         },
 
     _returnToActiveMatch: async function (gameId) {
-          const gid = String(gameId || this.gameId || this._presenceRoomId || "").trim();
-          if (!gid) return false;
+          const resolved = await this._resolveActivePlayerMatch();
+          if (!resolved || resolved.state !== "active" || !resolved.gameId) {
+            if (resolved && resolved.state === "none") showOnlineNotice(window.I18N.translateArgs("online.roomUnavailable"));
+            return false;
+          }
+          const gid = String(resolved.gameId);
           try {
             if (isGamePage && isGamePage()) {
               try { await this._enterGameFromId(gid, false); } catch (e) {}
@@ -4601,38 +4612,36 @@
             }
 
             const logEl = document.getElementById("log");
-            if (!logEl) return;
-            const previousTop = logEl.scrollTop || 0;
-            const followLatest = Math.max(0, logEl.scrollHeight - logEl.clientHeight - logEl.scrollTop) <= 48;
-            logEl.innerHTML = "";
-            evs.forEach((ev) => {
-              const row = document.createElement("div");
-              row.className = "log-item";
-              const timeEl = document.createElement("span");
-              timeEl.className = "time";
-              timeEl.textContent = ev.ts ? new Date(ev.ts).toLocaleTimeString("en-GB", { hour12: false }) : "";
-              const msgEl = document.createElement("span");
-              msgEl.className = "msg";
-              if (ev.kind === "actor_i18n") {
-                const actorEl = document.createElement("span");
-                actorEl.className = "actor-word";
-                actorEl.textContent = String(ev.actor || "");
-                msgEl.appendChild(actorEl);
-                msgEl.appendChild(document.createTextNode(`: ${window.I18N.translateArgs(ev.key, ev.vars || {})}`));
-              } else if (ev.kind === "i18n") {
-                msgEl.textContent = window.I18N.translateArgs(ev.key, ev.vars || {});
-              } else {
-                msgEl.textContent = "";
-              }
-              if (!msgEl.textContent) return;
-              row.appendChild(timeEl);
-              row.appendChild(document.createTextNode(" "));
-              row.appendChild(msgEl);
-              logEl.appendChild(row);
-            });
-            requestAnimationFrame(() => {
-              logEl.scrollTop = followLatest ? logEl.scrollHeight : previousTop;
-            });
+            if (!logEl || !window.DhametGameLogView || typeof window.DhametGameLogView.syncElement !== "function") return;
+            window.DhametGameLogView.syncElement(
+              logEl,
+              evs,
+              (ev) => {
+                const row = document.createElement("div");
+                row.className = "log-item";
+                const timeEl = document.createElement("span");
+                timeEl.className = "time";
+                timeEl.textContent = ev.ts ? new Date(ev.ts).toLocaleTimeString("en-GB", { hour12: false }) : "";
+                const msgEl = document.createElement("span");
+                msgEl.className = "msg";
+                if (ev.kind === "actor_i18n") {
+                  const actorEl = document.createElement("span");
+                  actorEl.className = "actor-word";
+                  actorEl.textContent = String(ev.actor || "");
+                  msgEl.appendChild(actorEl);
+                  msgEl.appendChild(document.createTextNode(`: ${window.I18N.translateArgs(ev.key, ev.vars || {})}`));
+                } else if (ev.kind === "i18n") {
+                  msgEl.textContent = window.I18N.translateArgs(ev.key, ev.vars || {});
+                }
+                if (!msgEl.textContent) return null;
+                row.appendChild(timeEl);
+                row.appendChild(document.createTextNode(" "));
+                row.appendChild(msgEl);
+                return row;
+              },
+              (ev, index) => String(ev.displayId || "") || `fallback:${String(ev.ts || "")}:${String(ev.kind || "")}:${JSON.stringify(ev)}:${index}`,
+              { bottomThreshold: 48 },
+            );
           } catch (e) {}
         },
 

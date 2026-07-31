@@ -166,7 +166,7 @@ test('phone game return reuses the shared shell order and language-aware icon di
   const mobile = read('dhamet/site/js/mobile.js');
   const mobileCss = read('dhamet/site/css/mobile.css');
   const style = read('dhamet/site/css/style.css');
-  assert.match(mobile, /bar\.appendChild\(langBtn\);\s*bar\.appendChild\(backBtn\);/);
+  assert.match(mobile, /bar\.appendChild\(backBtn\);\s*bar\.appendChild\(langBtn\);/);
   assert.match(style, /html\[dir="ltr"\] \.directional-exit-icon\s*\{\s*transform: scaleX\(-1\)/);
   assert.doesNotMatch(mobile, /syncGameDirectionalExitIcons|scheduleGameDirectionalExitIcons|syncGameShellPins/);
   assert.doesNotMatch(mobileCss, /\.z-mobile-game-shell-inner\s*\{[^}]*direction:\s*ltr|body\.z-mobile-on\[data-mobile-page="game"\] \.directional-exit-icon/);
