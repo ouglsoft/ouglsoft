@@ -2,8 +2,8 @@ name: Wake Dhamet Capacity Monitor
 
 on:
   schedule:
-    # The confirmed emergency decision expires at 00:02 UTC. The second run is
-    # a fallback in case GitHub delays or misses the first scheduled wake-up.
+
+
     - cron: "3 0 * * *"
     - cron: "8 0 * * *"
   workflow_dispatch:
