@@ -6,11 +6,7 @@ import vm from "node:vm";
 const source = fs.readFileSync(LOG_VIEW_PATH, "utf8");
 
 class FakeNode {
-  constructor(label = "") {
-    this.label = label;
-    this.dataset = {};
-    this.parentNode = null;
-  }
+  constructor(label = "") { this.label = label; this.dataset = {}; this.parentNode = null; }
   get nextSibling() {
     if (!this.parentNode) return null;
     const rows = this.parentNode.children;
@@ -47,9 +43,7 @@ class FakeLog {
     if (!this.listeners.has(type)) this.listeners.set(type, []);
     this.listeners.get(type).push(fn);
   }
-  dispatch(type) {
-    for (const fn of this.listeners.get(type) || []) fn({ type, target: this });
-  }
+  dispatch(type) { for (const fn of this.listeners.get(type) || []) fn({ type, target: this }); }
   insertBefore(row, cursor) {
     this.insertions += 1;
     if (row.parentNode) row.remove();
@@ -71,30 +65,23 @@ assert.ok(view && typeof view.syncElement === "function");
 const log = new FakeLog();
 const createRow = (item) => new FakeNode(String(item.id));
 const keyFor = (item) => String(item.id);
-let rows = [1,2,3,4,5].map((id) => ({ id }));
-view.syncElement(log, rows, createRow, keyFor, { bottomThreshold: 5 });
-assert.equal(log.scrollTop, 60, "first render follows the newest row");
+let rows = [5,4,3,2,1].map((id) => ({ id }));
+view.syncElement(log, rows, createRow, keyFor);
+assert.equal(log.scrollTop, 0, "first render shows the newest row at the top");
+assert.equal(log.children[0].label, "5", "newest row is physically first");
 
 const writesAfterFirstRender = log.scrollWrites;
-for (let i = 0; i < 8; i += 1) view.syncElement(log, rows, createRow, keyFor, { bottomThreshold: 5 });
+for (let i = 0; i < 8; i += 1) view.syncElement(log, rows, createRow, keyFor);
 assert.equal(log.scrollWrites, writesAfterFirstRender, "unchanged live snapshots never rewrite scrollTop");
 
-log.dispatch("pointerdown");
-log.scrollTop = 10;
-log.dispatch("scroll");
+log.scrollTop = 30;
 const insertedBefore = log.insertions;
-rows = [1,2,3,4,5,6].map((id) => ({ id }));
-view.syncElement(log, rows, createRow, keyFor, { bottomThreshold: 5 });
-assert.equal(log.scrollTop, 10, "a new row cannot pull the log down during a manual gesture");
+rows = [6,5,4,3,2,1].map((id) => ({ id }));
+view.syncElement(log, rows, createRow, keyFor);
+assert.equal(log.scrollTop, 0, "a new activity restores the newest row at the top");
+assert.equal(log.children[0].label, "6", "new activity is inserted at the top");
 assert.equal(log.insertions - insertedBefore, 1, "unchanged rows are not detached and rebuilt");
-log.dispatch("pointerup");
 
-rows = [1,2,3,4,5,6,7].map((id) => ({ id }));
-view.syncElement(log, rows, createRow, keyFor, { bottomThreshold: 5 });
-assert.equal(log.scrollTop, 10, "manual position remains after the gesture ends while away from the bottom");
-
-log.scrollTop = log.scrollHeight - log.clientHeight;
-log.dispatch("scroll");
-rows = [1,2,3,4,5,6,7,8].map((id) => ({ id }));
-view.syncElement(log, rows, createRow, keyFor, { bottomThreshold: 5 });
-assert.equal(log.scrollTop, 120, "a user already at the bottom follows the new row");
+log.scrollTop = 20;
+view.syncElement(log, rows, createRow, keyFor);
+assert.equal(log.scrollTop, 20, "manual position remains while the row set is unchanged");

@@ -38,13 +38,13 @@ test("original icon is the approved icon and cannot reuse the immutable favicon 
 test("activity log uses the shared native-scroll reconciler", () => {
   const logView = read("dhamet/site/js/ui/game-log-view.js");
   assert.match(game, /LOG_BOTTOM_THRESHOLD = 48/);
-  assert.match(game, /DhametGameLogView\.syncElement\(log, events/);
+  assert.match(game, /DhametGameLogView\.syncElement\([\s\S]*log,[\s\S]*newestFirst/);
   assert.doesNotMatch(game, /manualScrollActive|LOG_SCROLL_IDLE_MS|touchstart.*beginManualScroll|ResizeObserver/);
   assert.match(logView, /function syncElement\(/);
-  assert.match(logView, /distanceFromBottom\(element\) <= threshold/);
   assert.match(logView, /if \(row === cursor\) cursor = cursor\.nextSibling/);
   assert.match(logView, /if \(!changed && !cfg\.forceLatest\)\s*\{/);
-  assert.match(logView, /if \(followLatest && !state\.interacting\) element\.scrollTop = maxTop/);
+  assert.match(logView, /element\.scrollTop = 0/);
+  assert.match(game, /const newestFirst = events\.map\([\s\S]*\)\.reverse\(\)/);
   assert.doesNotMatch(logView, /requestAnimationFrame\(applyPosition/);
   assert.match(style, /\.log-item \{\s*flex: 0 0 auto;/);
   assert.match(style, /\.log \{[\s\S]*scrollbar-gutter: stable;[\s\S]*backdrop-filter: none;/);

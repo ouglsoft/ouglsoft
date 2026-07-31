@@ -71,6 +71,26 @@
   const SPECTATOR_RECONNECT_REGISTRATION_MS = 95 * 1000;
   const SPECTATOR_RECONNECT_RETRY_MS = 30 * 1000;
 
+  function waitForOnlineRetry(ms) {
+    return new Promise(function (resolve) { setTimeout(resolve, Math.max(0, Number(ms || 0) || 0)); });
+  }
+
+  async function initPresenceWithRetry(owner, options) {
+    let ok = false;
+    try { ok = !!(await owner.initPresence(options)); } catch (_) { ok = false; }
+    if (ok) return true;
+    await waitForOnlineRetry(350);
+    try { return !!(await owner.initPresence(options)); } catch (_) { return false; }
+  }
+
+  async function resolveActiveMatchWithRetry(owner) {
+    let resolved = null;
+    try { resolved = await owner._resolveActivePlayerMatch(); } catch (_) { resolved = null; }
+    if (resolved && resolved.state !== "unknown") return resolved;
+    await waitForOnlineRetry(350);
+    try { return await owner._resolveActivePlayerMatch(); } catch (_) { return resolved || { state: "unknown", gameId: "" }; }
+  }
+
   function gameCommitErrorDetails(err) {
     const data = err && err.data && typeof err.data === 'object' ? err.data : {};
     return {
@@ -972,7 +992,7 @@
         },
 
     startOnline: async function () {
-          const ok = await this.initPresence();
+          const ok = await initPresenceWithRetry(this);
           if (!ok) {
             showOnlineNotice(window.I18N.translateArgs("status.onlineInitFail"));
             return;
@@ -1105,14 +1125,14 @@
         },
 
     _createGame: async function (opponentUid) {
-          const ok = await this.initPresence();
+          const ok = await initPresenceWithRetry(this);
           if (!ok) {
             showOnlineNotice(window.I18N.translateArgs("status.onlineInitFail"));
             return;
           }
     
           try {
-            const activeMatch = await this._resolveActivePlayerMatch();
+            const activeMatch = await resolveActiveMatchWithRetry(this);
             if (!activeMatch || activeMatch.state === "unknown") {
               showOnlineNotice(window.I18N.translateArgs("status.onlineInitFail"));
               return;
@@ -4620,7 +4640,7 @@
             if (!logEl || !window.DhametGameLogView || typeof window.DhametGameLogView.syncElement !== "function") return;
             window.DhametGameLogView.syncElement(
               logEl,
-              evs,
+              evs.slice().reverse(),
               (ev) => {
                 const row = document.createElement("div");
                 row.className = "log-item";
@@ -6055,7 +6075,7 @@
     _enterGameFromId: async function (gameId, forceSpectator) {
           const entryRequest = this._beginEntryRequest(gameId);
           try { this._setOnlineEntryLoading(true, "status.loadingMatch"); } catch (e) {}
-          const ok = await this.initPresence({ deferHeartbeat: true });
+          const ok = await initPresenceWithRetry(this, { deferHeartbeat: true });
           if (!this._isEntryRequestCurrent(entryRequest)) return false;
           if (!ok) {
             try { this._setOnlineEntryLoading(false); } catch (e) {}

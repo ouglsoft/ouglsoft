@@ -16,7 +16,7 @@ test("game log has one shared native-scroll implementation", () => {
   const game = read("dhamet/site/js/modes/game-runtime.js");
   const online = read("dhamet/site/js/online/online-runtime.js");
   assert.match(view, /function syncElement\(/);
-  assert.match(game, /DhametGameLogView\.syncElement\(log, events/);
+  assert.match(game, /DhametGameLogView\.syncElement\([\s\S]*log,[\s\S]*newestFirst/);
   assert.match(online, /DhametGameLogView\.syncElement\(/);
   assert.doesNotMatch(game + online, /manualScrollActive|LOG_SCROLL_IDLE_MS|pendingRender|beginManualScroll/);
 });
@@ -35,7 +35,8 @@ test("original active-match actions use the authoritative lobby reconciliation",
   const online = read("dhamet/site/js/online/online-runtime.js");
   assert.match(lobby, /_resolveActivePlayerMatch:[\s\S]*_dispatchUnifiedAppPulseNow\(true, "active-match-resolve"\)/);
   assert.match(lobby, /_syncLobbyAvailabilityFromActiveGame:[\s\S]*_resolveActivePlayerMatch\(\)/);
-  assert.match(online, /_createGame:[\s\S]*const activeMatch = await this\._resolveActivePlayerMatch\(\)/);
+  assert.match(online, /_createGame:[\s\S]*const activeMatch = await resolveActiveMatchWithRetry\(this\)/);
+  assert.match(online, /async function resolveActiveMatchWithRetry\(owner\)[\s\S]*owner\._resolveActivePlayerMatch\(\)/);
   assert.match(online, /_returnToActiveMatch:[\s\S]*const resolved = await this\._resolveActivePlayerMatch\(\)/);
   assert.doesNotMatch(online, /const activeRoomId = String\(this\.gameId \|\| this\._presenceRoomId/);
 });

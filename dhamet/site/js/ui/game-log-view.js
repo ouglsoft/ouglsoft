@@ -105,17 +105,15 @@
     return state;
   }
 
-  // The browser owns manual scrolling. The component touches scrollTop only
-  // after the visible row set really changes, and only follows the newest row
-  // when the user was already at the bottom before that change.
+  // Log rows are rendered newest-first. The browser owns manual scrolling
+  // between updates; whenever the visible row set changes, the newest row is
+  // restored at the top of the log. Unchanged live snapshots never touch scrollTop.
   function syncElement(element, items, createRow, keyFor, options) {
     if (!element || typeof createRow !== "function") return false;
     var list = Array.isArray(items) ? items : [];
     var cfg = options && typeof options === "object" ? options : {};
     var threshold = Math.max(0, Number(cfg.bottomThreshold == null ? 48 : cfg.bottomThreshold) || 0);
     var state = stateFor(element, threshold);
-    var previousTop = Number(element.scrollTop || 0);
-    var followLatest = !!cfg.forceLatest || !state.initialized || (!state.interacting && state.atBottom !== false);
     var existing = new Map();
     var unkeyed = [];
     var changed = false;
@@ -161,11 +159,7 @@
       return true;
     }
 
-    var maxTop = Math.max(0, Number(element.scrollHeight || 0) - Number(element.clientHeight || 0));
-    try {
-      if (followLatest && !state.interacting) element.scrollTop = maxTop;
-      else if (previousTop > maxTop) element.scrollTop = maxTop;
-    } catch (_) {}
+    try { element.scrollTop = 0; } catch (_) {}
     state.atBottom = distanceFromBottom(element) <= threshold;
     rememberState(element, state);
     return true;

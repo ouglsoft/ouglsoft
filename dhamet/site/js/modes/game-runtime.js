@@ -2550,11 +2550,18 @@ if (typeof window !== "undefined") window.AI = AI;
           if (!window.DhametGameLogView || typeof window.DhametGameLogView.syncElement !== "function") {
             throw new Error("game-log-view syncElement is required");
           }
-          window.DhametGameLogView.syncElement(log, events, _makeEl, _logKey, {
-            bottomThreshold: LOG_BOTTOM_THRESHOLD,
-            forceRebuild: !!forceRebuild,
-            forceLatest: !!forceLatest,
-          });
+          const newestFirst = events.map((event, sourceIndex) => ({ event, sourceIndex })).reverse();
+          window.DhametGameLogView.syncElement(
+            log,
+            newestFirst,
+            (entry) => _makeEl(entry.event),
+            (entry) => _logKey(entry.event, entry.sourceIndex),
+            {
+              bottomThreshold: LOG_BOTTOM_THRESHOLD,
+              forceRebuild: !!forceRebuild,
+              forceLatest: !!forceLatest,
+            },
+          );
         };
 
         const addEvent = (ev) => {

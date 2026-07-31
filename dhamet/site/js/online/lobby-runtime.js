@@ -2224,7 +2224,15 @@
                 try { await this._handleOutgoingInviteAccepted(gid); } catch (e) {}
                 return true;
               }
-              if (st === "rejected" || st === "ended") {
+              if (st === "rejected") {
+                try {
+                  if (this._lastRejectedInviteNoticeId !== gid) {
+                    this._lastRejectedInviteNoticeId = gid;
+                    showOnlineNotice(window.I18N.translateArgs("online.inviteRejected"));
+                  }
+                } catch (e) {}
+                try { this._untrackOutgoingInviteByGame(gid); } catch (e) {}
+              } else if (st === "ended") {
                 try { this._untrackOutgoingInviteByGame(gid); } catch (e) {}
               }
             }
