@@ -26,7 +26,7 @@ concurrency:
 
 jobs:
   monitor:
-    # Enable scheduled monitoring only after a successful manual auto run.
+
     if: github.event_name == 'workflow_dispatch' || vars.DHAMET_AUTO_MONITOR_ENABLED == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -40,8 +40,8 @@ jobs:
       DHAMET_ROUTE_CONTROL_ENDPOINT: ${{ vars.DHAMET_ROUTE_CONTROL_ENDPOINT }}
       DHAMET_ACTIVATION_THRESHOLD: ${{ vars.DHAMET_ACTIVATION_THRESHOLD || '90' }}
       DHAMET_RESET_GRACE_MINUTES: "2"
-      # Three separate scheduled runs are required. A duplicate/manual run
-      # arriving too soon is not counted as another confirmation.
+
+
       DHAMET_CONFIRMATION_REQUIRED_RUNS: ${{ vars.DHAMET_CONFIRMATION_REQUIRED_RUNS || '3' }}
       DHAMET_CONFIRMATION_MIN_GAP_MS: ${{ vars.DHAMET_CONFIRMATION_MIN_GAP_MS || '240000' }}
       DHAMET_CONFIRMATION_MAX_GAP_MS: ${{ vars.DHAMET_CONFIRMATION_MAX_GAP_MS || '720000' }}
