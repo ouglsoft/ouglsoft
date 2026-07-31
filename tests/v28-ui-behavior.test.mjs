@@ -10,10 +10,17 @@ const game = read("dhamet/site/js/modes/game-runtime.js");
 const online = read("dhamet/site/js/online/online-runtime.js");
 const i18n = read("dhamet/site/js/i18n.js");
 
-test("shared return icon logic and phone connection colors are isolated", () => {
-  assert.match(mobile, /bar\.appendChild\(backBtn\);\s*bar\.appendChild\(langBtn\);/);
-  assert.doesNotMatch(mobile, /syncGameDirectionalExitIcons|scheduleGameDirectionalExitIcons|z-points-outward/);
-  assert.doesNotMatch(mobileCss, /direction:\s*ltr !important/);
+test("game return uses the same shared shell and language direction as every other page", () => {
+  assert.match(style, /\.directional-exit-icon\s*\{\s*transform: none;/);
+  assert.match(style, /html\[dir="ltr"\] \.directional-exit-icon\s*\{\s*transform: scaleX\(-1\)/);
+  assert.match(mobile, /bar\.appendChild\(langBtn\);\s*bar\.appendChild\(backBtn\);/);
+  assert.doesNotMatch(mobile, /syncGameDirectionalExitIcons|scheduleGameDirectionalExitIcons|syncGameShellPins|DhametSyncGameExitIcons/);
+  assert.doesNotMatch(mobileCss, /\.z-mobile-game-shell-inner\s*\{[^}]*direction:\s*ltr|body\.z-mobile-on\[data-mobile-page="game"\] \.directional-exit-icon|\.z-mobile-shell-btn\.is-back\s+img\s*\{[^}]*transform:\s*rotate/);
+  assert.doesNotMatch(style, /z-points-outward|body\.z-game-page \.directional-exit-icon|body\.z-mobile-on\[data-mobile-page="game"\][^{]*directional-exit-icon/);
+  assert.match(mobile, /function markGameLayoutMutation\(/);
+  assert.match(mobile, /function rememberGameHome\(/);
+  assert.match(mobile, /function ensureGameSideLane\(/);
+  assert.match(mobile, /function syncGameLevelInShell\(/);
   assert.match(mobile, /presence\.classList\.toggle\('z-presence-online', onlineNow\)/);
   assert.match(mobile, /presence\.classList\.toggle\('z-presence-offline', offlineNow\)/);
 });
@@ -28,13 +35,18 @@ test("original icon is the approved icon and cannot reuse the immutable favicon 
   assert.match(read("site/_headers"), /\/dhamet\/assets\/icons\/icon\.webp\n\s+Cache-Control: no-cache/);
 });
 
-test("activity log follows the bottom only while the reader remains there", () => {
+test("activity log defers DOM rebuilds during manual scrolling and follows only near the bottom", () => {
   assert.match(game, /LOG_BOTTOM_THRESHOLD = 48/);
+  assert.match(game, /LOG_SCROLL_IDLE_MS = 140/);
+  assert.match(game, /let manualScrollActive = false/);
+  assert.match(game, /let pendingRender = false/);
   assert.match(game, /for \(let i = 0; i < events\.length; i \+= 1\)/);
   assert.match(game, /followLatest = distanceFromBottom\(log\) <= LOG_BOTTOM_THRESHOLD/);
-  assert.match(game, /scrollTop = Math.max\(0, log.scrollHeight - log.clientHeight\)/);
-  assert.match(game, /log.addEventListener\("touchmove"/);
-  assert.match(style, /\.log-item\s*\{\s*flex:\s*0 0 auto;/);
+  assert.match(game, /log\.addEventListener\("scroll", updateFromActualScroll/);
+  assert.match(game, /log\.addEventListener\("touchstart", beginManualScroll/);
+  assert.doesNotMatch(game, /log\.addEventListener\("touchmove"/);
+  assert.match(game, /if \(manualScrollActive\) \{\s*pendingRender = true;\s*return;/);
+  assert.match(game, /shouldFollowLatest\s*\? Math\.max\(0, log\.scrollHeight - log\.clientHeight\)/);
   assert.doesNotMatch(game, /events\.length - 1; i >= 0/);
 });
 

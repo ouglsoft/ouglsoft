@@ -1195,7 +1195,6 @@ body.z-game-page:not(.mode-pvp):not(.z-mobile-on) #btnNew {
 }
 
 .log-item {
-  flex: 0 0 auto;
   padding: 6px 8px;
   line-height: 1.4;
   display: flex;

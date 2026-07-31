@@ -266,8 +266,8 @@
     var menu = ensureLanguageMenu(menuClass);
     bindLangButton(langBtn, menu);
 
-    bar.appendChild(backBtn);
     bar.appendChild(langBtn);
+    bar.appendChild(backBtn);
     root.appendChild(bar);
     root.appendChild(menu);
     return root;
@@ -799,6 +799,98 @@ if (!icon) {
 
 /* Game page */
 
+
+  function gameMode() {
+    try {
+      var mm = window.DhametMatchMode;
+      if (mm && typeof mm.detectMode === 'function') {
+        var detected = mm.detectMode();
+        if (detected === mm.MODE_SPECTATOR) return 'spectator';
+        if (detected === mm.MODE_ONLINE) return 'pvp';
+        return 'pvc';
+      }
+    } catch (_) {}
+    var body = document.body;
+    if (body && body.classList.contains('z-spectator')) return 'spectator';
+    if (body && body.classList.contains('mode-pvp')) return 'pvp';
+    return 'pvc';
+  }
+
+  function gameBack() {
+    try {
+      if (gameMode() === 'spectator') {
+        var leave = qs('#btnLeaveRoom');
+        if (leave) {
+          leave.click();
+          return;
+        }
+      }
+      var target = (window.Online && window.Online.isActive) ? qs('#btnEndOnline') : qs('#btnEndLocalMatch');
+      if (target) {
+        target.click();
+        return;
+      }
+    } catch (_) {}
+    location.href = baseHref() + '/pages/mode.html';
+  }
+
+  function markGameLayoutMutation(fn) {
+    GAME_LAYOUT_MUTATING += 1;
+    try {
+      return fn();
+    } finally {
+      window.setTimeout(function () {
+        GAME_LAYOUT_MUTATING = Math.max(0, GAME_LAYOUT_MUTATING - 1);
+      }, 0);
+    }
+  }
+
+  function rememberGameHome(node) {
+    if (!node) return;
+    var currentMarker = node.__zMobileHomeMarker;
+    if (currentMarker && currentMarker.parentNode) return;
+    if (currentMarker && !currentMarker.parentNode) node.__zMobileHomeMarker = null;
+    var parent = node.parentNode;
+    if (!parent) return;
+    var marker = document.createComment('z-mobile-home:' + (node.id || node.className || node.nodeName));
+    parent.insertBefore(marker, node);
+    node.__zMobileHomeMarker = marker;
+    if (GAME_HOME_RECORDS.indexOf(node) === -1) GAME_HOME_RECORDS.push(node);
+  }
+
+  function moveGameNode(node, parent, before) {
+    if (!node || !parent) return;
+    rememberGameHome(node);
+    if (node.parentNode === parent && (!before || node.nextSibling === before)) return;
+    if (before && before.parentNode === parent) parent.insertBefore(node, before);
+    else parent.appendChild(node);
+  }
+
+  function restoreGameNode(node) {
+    if (!node) return;
+    var marker = node.__zMobileHomeMarker;
+    if (marker && marker.parentNode) {
+      marker.parentNode.insertBefore(node, marker.nextSibling);
+      marker.parentNode.removeChild(marker);
+    }
+    node.__zMobileHomeMarker = null;
+  }
+
+  function restoreAllGameNodes() {
+    var records = GAME_HOME_RECORDS.slice();
+    GAME_HOME_RECORDS.length = 0;
+    records.forEach(restoreGameNode);
+  }
+
+  function ensureGameSideLane() {
+    if (pageType() !== 'game') return null;
+    var lane = qs('.z-mobile-game-side-lane');
+    if (lane) return lane;
+    lane = document.createElement('div');
+    lane.className = 'z-mobile-game-side-lane';
+    return lane;
+  }
+
   function ensureGameShell() {
     if (pageType() !== 'game') return null;
     var shell = qs('.z-mobile-game-shell');
@@ -1171,7 +1263,7 @@ if (!icon) {
       } catch (_) {}
       try { if (window.UI && typeof window.UI.updateAiLevelDisplay === 'function') window.UI.updateAiLevelDisplay(); } catch (_) {}
       GAME_LAYOUT_MOBILE_ACTIVE = false;
-      });
+    });
   }
 
   function syncGameLayout() {
@@ -1185,12 +1277,11 @@ if (!icon) {
       LAST_GAME_MODE = gameMode();
       document.body.setAttribute('data-mobile-game-mode', LAST_GAME_MODE);
       placeGameLayout();
-      syncGameShellPins();
       syncGameHead();
       syncGameLevelInShell(qs('.z-mobile-game-shell'));
       syncGameControls();
       syncGameDrawer();
-      });
+    });
   }
 
   function scheduleGameLayoutSync() {
@@ -1246,13 +1337,6 @@ if (!icon) {
     scheduleGameLayoutSync();
   }
 
-  function syncGameShellPins() {
-    if (pageType() !== 'game' || !isPhone()) return;
-    var shell = qs('.z-mobile-game-shell');
-    if (!shell) return;
-    var inner = qs('.z-mobile-game-shell-inner', shell);
-    if (inner) inner.style.direction = 'ltr';
-  }
 
 
   /* Dashboard page */

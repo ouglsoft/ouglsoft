@@ -162,16 +162,15 @@ test('undo arrows use a bright explicit yellow in every theme variant', () => {
   assert.equal(values.length, 3);
 });
 
-test('game shell uses the shared language-directed return icon without page-specific overrides', () => {
+test('phone game return reuses the shared shell order and language-aware icon direction', () => {
   const mobile = read('dhamet/site/js/mobile.js');
   const mobileCss = read('dhamet/site/css/mobile.css');
   const style = read('dhamet/site/css/style.css');
-  assert.match(mobile, /bar\.appendChild\(backBtn\);\s*bar\.appendChild\(langBtn\);/);
-  assert.doesNotMatch(mobile, /GAME_EXIT_ICON_RAF|syncGameDirectionalExitIcons|scheduleGameDirectionalExitIcons|z-points-outward/);
-  assert.doesNotMatch(mobileCss, /direction:\s*ltr !important|z-mobile-shell-btn\.is-back[\s\S]{0,120}rotate\(180deg\)/);
-  assert.match(style, /\.directional-exit-icon\s*\{\s*transform:\s*none/);
-  assert.match(style, /html\[dir="ltr"\] \.directional-exit-icon\s*\{\s*transform:\s*scaleX\(-1\)/);
-  assert.doesNotMatch(style, /z-points-outward|phone game back icon/);
+  assert.match(mobile, /bar\.appendChild\(langBtn\);\s*bar\.appendChild\(backBtn\);/);
+  assert.match(style, /html\[dir="ltr"\] \.directional-exit-icon\s*\{\s*transform: scaleX\(-1\)/);
+  assert.doesNotMatch(mobile, /syncGameDirectionalExitIcons|scheduleGameDirectionalExitIcons|syncGameShellPins/);
+  assert.doesNotMatch(mobileCss, /\.z-mobile-game-shell-inner\s*\{[^}]*direction:\s*ltr|body\.z-mobile-on\[data-mobile-page="game"\] \.directional-exit-icon/);
+  assert.doesNotMatch(style, /z-points-outward|body\.z-game-page \.directional-exit-icon|body\.z-mobile-on\[data-mobile-page="game"\][^{]*directional-exit-icon/);
 });
 
 test('capture timer uses white text, turns red while active, and reuses the end-capture action', () => {

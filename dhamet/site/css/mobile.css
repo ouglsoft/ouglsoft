@@ -2110,6 +2110,7 @@ body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-shell {
 }
 
 body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-shell-inner {
+  position: relative;
   width: 100%;
   min-height: var(--m-shell-size);
   padding-inline: 0;
@@ -2960,12 +2961,6 @@ body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="game"]
   width: 100%;
   justify-content: space-between;
   padding-inline: 0;
-}
-
-body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="game"]
-  .z-mobile-game-shell-menu {
-  left: 8px;
-  right: auto;
 }
 
 body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="game"]

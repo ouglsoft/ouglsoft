@@ -2532,26 +2532,84 @@ if (typeof window !== "undefined") window.AI = AI;
         };
 
         const LOG_BOTTOM_THRESHOLD = 48;
+        const LOG_SCROLL_IDLE_MS = 140;
         let followLatest = true;
+        let manualScrollActive = false;
+        let pendingRender = false;
+        let pendingScrollFrame = 0;
+        let scrollIdleTimer = 0;
+        let observedLog = null;
+        let logResizeObserver = null;
 
         const distanceFromBottom = (log) => Math.max(0,
           Number(log.scrollHeight || 0) - Number(log.clientHeight || 0) - Number(log.scrollTop || 0));
 
-        const scrollToLatest = (log) => {
-          requestAnimationFrame(() => {
-            try { log.scrollTop = Math.max(0, log.scrollHeight - log.clientHeight); } catch (_) {}
+        const cancelPendingLogScroll = () => {
+          if (!pendingScrollFrame) return;
+          try { cancelAnimationFrame(pendingScrollFrame); } catch (_) {}
+          pendingScrollFrame = 0;
+        };
+
+        const restoreLogPosition = (log, shouldFollowLatest, previousTop) => {
+          cancelPendingLogScroll();
+          pendingScrollFrame = requestAnimationFrame(() => {
+            pendingScrollFrame = 0;
+            if (!log || !log.isConnected) return;
+            try {
+              log.scrollTop = shouldFollowLatest
+                ? Math.max(0, log.scrollHeight - log.clientHeight)
+                : Math.min(previousTop, Math.max(0, log.scrollHeight - log.clientHeight));
+            } catch (_) {}
           });
+        };
+
+        const finishManualScroll = () => {
+          manualScrollActive = false;
+          if (!pendingRender) return;
+          pendingRender = false;
+          render();
+        };
+
+        const scheduleManualScrollEnd = () => {
+          if (scrollIdleTimer) clearTimeout(scrollIdleTimer);
+          scrollIdleTimer = setTimeout(finishManualScroll, LOG_SCROLL_IDLE_MS);
         };
 
         const bindManualScroll = (log) => {
           if (!log || log.__zScrollBound) return;
           log.__zScrollBound = true;
-          const updateFollowLatest = () => {
-            followLatest = distanceFromBottom(log) <= LOG_BOTTOM_THRESHOLD;
+
+          const beginManualScroll = () => {
+            manualScrollActive = true;
+            cancelPendingLogScroll();
+            if (scrollIdleTimer) clearTimeout(scrollIdleTimer);
           };
-          log.addEventListener("scroll", updateFollowLatest, { passive: true });
-          log.addEventListener("wheel", updateFollowLatest, { passive: true });
-          log.addEventListener("touchmove", updateFollowLatest, { passive: true });
+          const updateFromActualScroll = () => {
+            followLatest = distanceFromBottom(log) <= LOG_BOTTOM_THRESHOLD;
+            manualScrollActive = true;
+            scheduleManualScrollEnd();
+          };
+
+          log.addEventListener("scroll", updateFromActualScroll, { passive: true });
+          log.addEventListener("wheel", beginManualScroll, { passive: true });
+          log.addEventListener("touchstart", beginManualScroll, { passive: true });
+          log.addEventListener("pointerdown", beginManualScroll, { passive: true });
+          log.addEventListener("touchend", scheduleManualScrollEnd, { passive: true });
+          log.addEventListener("touchcancel", scheduleManualScrollEnd, { passive: true });
+          log.addEventListener("pointerup", scheduleManualScrollEnd, { passive: true });
+          log.addEventListener("pointercancel", scheduleManualScrollEnd, { passive: true });
+
+          if (typeof ResizeObserver === "function") {
+            try {
+              if (logResizeObserver) logResizeObserver.disconnect();
+              observedLog = log;
+              logResizeObserver = new ResizeObserver(() => {
+                if (observedLog !== log || manualScrollActive || !followLatest) return;
+                restoreLogPosition(log, true, Number(log.scrollTop || 0));
+              });
+              logResizeObserver.observe(log);
+            } catch (_) {}
+          }
         };
 
         const render = () => {
@@ -2559,19 +2617,17 @@ if (typeof window !== "undefined") window.AI = AI;
           if (!log) return;
           bindManualScroll(log);
 
-          const shouldFollowLatest = followLatest || distanceFromBottom(log) <= LOG_BOTTOM_THRESHOLD || log.scrollHeight <= log.clientHeight + 1;
-          const prevTop = Number(log.scrollTop || 0);
+          if (manualScrollActive) {
+            pendingRender = true;
+            return;
+          }
+
+          pendingRender = false;
+          const shouldFollowLatest = followLatest;
+          const previousTop = Number(log.scrollTop || 0);
           log.innerHTML = "";
           for (let i = 0; i < events.length; i += 1) log.appendChild(_makeEl(events[i]));
-
-          if (shouldFollowLatest) {
-            followLatest = true;
-            scrollToLatest(log);
-          } else {
-            requestAnimationFrame(() => {
-              try { log.scrollTop = Math.min(prevTop, Math.max(0, log.scrollHeight - log.clientHeight)); } catch (_) {}
-            });
-          }
+          restoreLogPosition(log, shouldFollowLatest, previousTop);
         };
 
         const addEvent = (ev) => {
@@ -2588,10 +2644,6 @@ if (typeof window !== "undefined") window.AI = AI;
         };
 
         const setEvents = (arr) => {
-          const log = qs("#log");
-          if (log) bindManualScroll(log);
-          const shouldFollowLatest = !log || followLatest || distanceFromBottom(log) <= LOG_BOTTOM_THRESHOLD || log.scrollHeight <= log.clientHeight + 1;
-          const prevTop = log ? Number(log.scrollTop || 0) : 0;
           const list = Array.isArray(arr) ? arr : [];
           events.length = 0;
           const sliced = list.length > MAX ? list.slice(-MAX) : list;
@@ -2604,10 +2656,6 @@ if (typeof window !== "undefined") window.AI = AI;
             } else {
               events.push({ kind: "raw", text: String(it ?? ""), ts: Date.now() });
             }
-          }
-          if (log) {
-            followLatest = shouldFollowLatest;
-            log.__zRestoreTopAfterRender = shouldFollowLatest ? null : prevTop;
           }
           render();
         };
