@@ -162,16 +162,10 @@ test('undo arrows use a bright explicit yellow in every theme variant', () => {
   assert.equal(values.length, 3);
 });
 
-test('game-page exit icons point toward the actual nearest screen edge without moving controls', () => {
+test('phone game return icon points left in every language without moving controls', () => {
   const mobile = read('dhamet/site/js/mobile.js');
-  const style = read('dhamet/site/css/style.css');
-  assert.match(mobile, /syncGameDirectionalExitIcons/);
-  assert.match(mobile, /getBoundingClientRect\(\)/);
-  assert.match(mobile, /viewportMid/);
-  assert.match(mobile, /z-points-outward-right/);
-  assert.match(mobile, /z-points-outward-left/);
-  assert.match(style, /body\.z-game-page \.directional-exit-icon\.z-points-outward-left/);
-  assert.match(style, /body\.z-game-page \.directional-exit-icon\.z-points-outward-right/);
+  const mobileCss = read('dhamet/site/css/mobile.css');
+  assert.match(mobileCss, /body\.z-mobile-on\[data-mobile-page="game"\] \.directional-exit-icon\s*\{\s*transform: none !important/);
   assert.doesNotMatch(mobile, /insertBefore\([^\n]*directional-exit-icon|appendChild\([^\n]*directional-exit-icon/);
 });
 

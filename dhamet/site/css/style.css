@@ -2497,3 +2497,8 @@ body.z-game-page .directional-exit-icon.z-points-outward-left {
 body.z-game-page .directional-exit-icon.z-points-outward-right {
   transform: scaleX(-1) !important;
 }
+
+/* The phone game back icon is always on the user's left, so its direction is fixed left in every language. */
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-shell-btn.is-back .directional-exit-icon {
+  transform: none !important;
+}

@@ -3970,5 +3970,5 @@ body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="game"] .
 
 /* Game-page return icon: the phone layout has one fixed physical direction in all languages. */
 body.z-mobile-on[data-mobile-page="game"] .directional-exit-icon {
-  transform: scaleX(-1) !important;
+  transform: none !important;
 }

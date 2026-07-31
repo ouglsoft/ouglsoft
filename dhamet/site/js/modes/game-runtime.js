@@ -2533,37 +2533,45 @@ if (typeof window !== "undefined") window.AI = AI;
 
         const LOG_BOTTOM_THRESHOLD = 48;
         let followLatest = true;
-        let programmaticLogScroll = false;
 
         const distanceFromBottom = (log) => Math.max(0,
           Number(log.scrollHeight || 0) - Number(log.clientHeight || 0) - Number(log.scrollTop || 0));
 
-        const setLogScrollTop = (log, value) => {
-          programmaticLogScroll = true;
-          try { log.scrollTop = Math.max(0, Number(value) || 0); } catch (_) {}
-          requestAnimationFrame(() => { programmaticLogScroll = false; });
+        const scrollToLatest = (log) => {
+          requestAnimationFrame(() => {
+            try { log.scrollTop = Math.max(0, log.scrollHeight - log.clientHeight); } catch (_) {}
+          });
+        };
+
+        const bindManualScroll = (log) => {
+          if (!log || log.__zScrollBound) return;
+          log.__zScrollBound = true;
+          const updateFollowLatest = () => {
+            followLatest = distanceFromBottom(log) <= LOG_BOTTOM_THRESHOLD;
+          };
+          log.addEventListener("scroll", updateFollowLatest, { passive: true });
+          log.addEventListener("wheel", updateFollowLatest, { passive: true });
+          log.addEventListener("touchmove", updateFollowLatest, { passive: true });
         };
 
         const render = () => {
           const log = qs("#log");
           if (!log) return;
+          bindManualScroll(log);
 
-          const prevTop = log.scrollTop || 0;
-          const wasNearBottom = distanceFromBottom(log) <= LOG_BOTTOM_THRESHOLD;
-          const shouldFollowLatest = followLatest || wasNearBottom || log.scrollHeight <= log.clientHeight + 1;
+          const shouldFollowLatest = followLatest || distanceFromBottom(log) <= LOG_BOTTOM_THRESHOLD || log.scrollHeight <= log.clientHeight + 1;
+          const prevTop = Number(log.scrollTop || 0);
           log.innerHTML = "";
-          for (let i = 0; i < events.length; i += 1) {
-            log.appendChild(_makeEl(events[i]));
-          }
+          for (let i = 0; i < events.length; i += 1) log.appendChild(_makeEl(events[i]));
 
-          requestAnimationFrame(() => {
-            if (shouldFollowLatest) {
-              followLatest = true;
-              setLogScrollTop(log, log.scrollHeight);
-            } else {
-              setLogScrollTop(log, prevTop);
-            }
-          });
+          if (shouldFollowLatest) {
+            followLatest = true;
+            scrollToLatest(log);
+          } else {
+            requestAnimationFrame(() => {
+              try { log.scrollTop = Math.min(prevTop, Math.max(0, log.scrollHeight - log.clientHeight)); } catch (_) {}
+            });
+          }
         };
 
         const addEvent = (ev) => {
@@ -2580,6 +2588,10 @@ if (typeof window !== "undefined") window.AI = AI;
         };
 
         const setEvents = (arr) => {
+          const log = qs("#log");
+          if (log) bindManualScroll(log);
+          const shouldFollowLatest = !log || followLatest || distanceFromBottom(log) <= LOG_BOTTOM_THRESHOLD || log.scrollHeight <= log.clientHeight + 1;
+          const prevTop = log ? Number(log.scrollTop || 0) : 0;
           const list = Array.isArray(arr) ? arr : [];
           events.length = 0;
           const sliced = list.length > MAX ? list.slice(-MAX) : list;
@@ -2593,21 +2605,14 @@ if (typeof window !== "undefined") window.AI = AI;
               events.push({ kind: "raw", text: String(it ?? ""), ts: Date.now() });
             }
           }
+          if (log) {
+            followLatest = shouldFollowLatest;
+            log.__zRestoreTopAfterRender = shouldFollowLatest ? null : prevTop;
+          }
           render();
         };
 
         const retranslate = () => render();
-
-        requestAnimationFrame(() => {
-          const log = qs("#log");
-          if (!log || log.__zScrollBound) return;
-          log.__zScrollBound = true;
-          const updateFollowLatest = () => {
-            if (programmaticLogScroll) return;
-            followLatest = distanceFromBottom(log) <= LOG_BOTTOM_THRESHOLD;
-          };
-          log.addEventListener("scroll", updateFollowLatest, { passive: true });
-        });
 
         return { addEvent, addText, setEvents, retranslate, _events: events };
       })();
