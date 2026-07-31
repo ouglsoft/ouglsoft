@@ -1,8 +1,8 @@
 ;(function(){
 
-// Build-level browser storage migration.
-// Clear an incompatible pre-rebuild automatic PvC snapshot once, while preserving user settings,
-// manual saves, account data, language, theme, and compatible sessions from later engine builds.
+ 
+ 
+ 
 (function () {
   var BUILD = "__DHAMET_BUILD__";
   try {
@@ -30,9 +30,9 @@
     var prev = null;
     try { prev = localStorage.getItem(key); } catch (_) { prev = null; }
     if (prev !== BUILD) {
-      // A missing/legacy marker means the stored automatic game can contain the
-      // state from the removed computer engine. Sessions created by the clean PVS engine are schema-
-      // compatible across maintenance releases and must not be discarded.
+       
+       
+       
       if (!prev || String(prev).indexOf("computer-pvs-1.") !== 0) {
         try { sessionStorage.removeItem("zamat.session.game.pvc.v1"); } catch (_) {}
       }
@@ -69,14 +69,14 @@ function isPhoneLike() {
   var ua = "", touch = 0;
   try { touch = Math.max(0, navigator.maxTouchPoints || 0); ua = String(navigator.userAgent || navigator.vendor || ""); } catch (_) {}
 
-  // Device classification must be stable while hovering, scrolling, opening a
-  // scrollbar, or resizing a desktop window.  Generic touch capability is not
-  // sufficient: many Windows laptops and large monitors expose touch input.
+   
+   
+   
   if (/Android.+Mobile|iPhone|iPod|Windows Phone|Opera Mini|IEMobile|Mobile Safari/i.test(ua)) return true;
   if (/iPad|Tablet|Silk|Android(?!.*Mobile)/i.test(ua)) return screenShort <= 1024;
 
-  // A desktop-class UA stays in the desktop layout even when it has a coarse
-  // pointer.  Only genuinely phone-sized physical screens use the mobile DOM.
+   
+   
   if (/Windows NT|Macintosh|X11|CrOS|Linux x86_64/i.test(ua)) return touch > 0 && screenShort > 0 && screenShort <= 600;
   return touch > 0 && screenShort > 0 && screenShort <= 600;
 }
@@ -323,8 +323,8 @@ function persistNickIcon(session){
       try { stored = String(sessionStorage.getItem(NICK_LS_KEY) || "").trim(); } catch {}
       try { explicit = String(sessionStorage.getItem(NICK_EXPLICIT_KEY) || "") === "1"; } catch {}
 
-      // Preserve a nickname explicitly chosen during this browser session, but
-      // clear the generated guest placeholder that older builds marked explicit.
+       
+       
       if (generatedGuestNick && (!explicit || !stored || stored === nickname)) {
         try { sessionStorage.removeItem(NICK_LS_KEY); } catch {}
         try { sessionStorage.removeItem(NICK_EXPLICIT_KEY); } catch {}

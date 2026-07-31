@@ -1,6 +1,6 @@
-// Shared status/stats view helpers for Dhamet.
-// This file is UI-only: it renders status, player counts, and the AI level control.
-// It must not contain game rules, AI evaluation, online transport, or persistence logic.
+ 
+ 
+ 
 (function (global) {
   "use strict";
 

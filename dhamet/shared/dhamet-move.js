@@ -1,10 +1,10 @@
-/*
- * Dhamet shared move helpers v2.
- *
- * Pure helpers for normalizing move intent, paths, jumps, and commit payloads.
- * Rule legality remains in shared/dhamet-rules.js; this module only describes
- * move shape so PvC/PvP/client/server do not each invent their own format.
- */
+  
+                                 
+  
+                                                                               
+                                                                              
+                                                                           
+   
 (function (root) {
   'use strict';
 

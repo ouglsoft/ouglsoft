@@ -17,8 +17,8 @@
   }
 
   function selectLeaderboardRows(rows) {
-    // The official endpoint already returns ranked rows. Keep this selector as a
-    // UI-level safety net only.
+     
+     
     const list = Array.isArray(rows) ? rows : [];
     return list.map((row, idx) => Object.assign({ rank: row.rank || idx + 1 }, row));
   }

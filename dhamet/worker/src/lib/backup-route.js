@@ -119,8 +119,8 @@ export async function readBackupControl(env, options = {}) {
     cachedAt = at;
     return cachedControl;
   } catch (error) {
-    // A read failure is not evidence that the quota is exhausted. Do not cache
-    // the failure: every new player/request must try D1 again.
+     
+     
     console.error(JSON.stringify({ level: 'warn', area: 'backup-route', event: 'read-failed', message: String(error && error.message || error) }));
     return unavailableBackupControl(env, error, at);
   }
@@ -271,10 +271,10 @@ async function requestJsonClone(request) {
   try { return await request.clone().json(); } catch (_) { return {}; }
 }
 
-/**
- * Blocks only entry points that create new official online workload. Existing
- * matches continue through /api/game/* and their game WebSocket.
- */
+   
+                                                                              
+                                                                 
+   
 export async function maybeBlockNewOfficialOnlineWork(request, url, env, json) {
   const path = String(url && url.pathname || '');
   const controlled = path === '/api/lobby/live' || path === '/api/lobby/view' || path === '/api/lobby/invite' || path === '/api/lobby/pulse' || path === '/api/lobby/spectator';

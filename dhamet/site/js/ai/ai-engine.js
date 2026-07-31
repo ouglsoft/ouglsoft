@@ -1,12 +1,12 @@
-/*
- * Dhamet computer engine — clean implementation.
- *
- * The shared rules module is the only move generator and move applier.  This
- * file contains computer-only concerns: graph-aware evaluation, iterative
- * deepening PVS/alpha-beta, quiescence, move ordering, time management,
- * transposition memory, level scaling, browser-worker orchestration, and
- * execution of the chosen canonical move through the existing game runtime.
- */
+  
+                                                 
+  
+                                                                             
+                                                                          
+                                                                        
+                                                                         
+                                                                            
+   
 (function (root) {
   'use strict';
 
@@ -28,10 +28,10 @@
   const INF = 1000000000;
   const MATE_WINDOW = 100000;
   const ENGINE_VERSION = 'dhamet-__DHAMET_BUILD__';
-  // Root-only tie preference for a remembered, uniquely forced soufla plan.
-  // One man is worth 100 evaluation points. The bonus is deliberately small:
-  // it preserves a previously proven plan when results are close, but cannot
-  // override a clearly stronger removal decision.
+   
+   
+   
+   
   const SOUFLA_PLAN_ROOT_BONUS = 12;
   const TIMEOUT = Object.freeze({ searchTimeout: true });
   const MASK64 = (1n << 64n) - 1n;
@@ -123,10 +123,10 @@
     return Object.freeze({ degree, centrality, rayReach, wide, row });
   })();
 
-  // Mauritanian strategic geometry for the computer's fixed TOP perspective.
-  // These values never affect move legality; they only refine the existing
-  // evaluation and move ordering. The shared rules module remains the sole
-  // authority for PvC and online play.
+   
+   
+   
+   
   const STRATEGY = (() => {
     const at = (r, c) => R.idx(r, c);
     const backEyesTop = Object.freeze([
@@ -407,8 +407,8 @@
 
   function pieceValue(v, totalPieces) {
     if (Math.abs(v) !== KING) return 100;
-    // In practical Dhamet a crowned piece is commonly decisive. Keep a smooth
-    // phase curve, but value the king clearly above a small material gain.
+     
+     
     const phaseTotal = Math.max(6, Math.min(36, Number(totalPieces) || 36));
     const phase = (36 - phaseTotal) / 30;
     return 440 + Math.round(60 * phase);
@@ -465,9 +465,9 @@
     return false;
   }
 
-  // One lightweight, legality-aware promotion summary is shared by evaluation
-  // and move ordering. Quiet promotion moves are unavailable whenever that side
-  // has a compulsory capture, so they must not influence the race in that turn.
+   
+   
+   
   function promotionCandidatesSummary(pos, side, ctx, knownHasCapture) {
     const key = positionIdentity(pos) + ':promotion-summary:' + side;
     if (ctx && ctx.promotionCandidateCache && ctx.promotionCandidateCache.has(key)) {
@@ -512,9 +512,9 @@
 
   function candidateCaughtByStructuralTrap(pos, candidate, runnerSide, trapSide) {
     if (!candidate || candidate.distance !== 1 || !candidate.mobile || !candidate.targets.length) return false;
-    // The trap is treated as relevant only when every currently legal promotion
-    // destination of this runner enters the known structural sequence. A mere
-    // intact shape elsewhere on the back rank must not discount the threat.
+     
+     
+     
     for (const target of candidate.targets) {
       const board = new Int8Array(pos.board);
       board[candidate.idx] = 0;
@@ -637,8 +637,8 @@
       if (ownsAt(board, STRATEGY.topTrap.junction, TOP)) score += 5 * phase;
     }
 
-    // For the opponent only 8.8, 8.6 and 8.4 have special strategic value.
-    // Their departure is rewarded implicitly by removing this defensive value.
+     
+     
     for (const item of STRATEGY.opponentTrapTargets) {
       const value = board[item.idx] | 0;
       if (value && R.owner(value) === BOT) score -= item.weight * phase;
@@ -662,8 +662,8 @@
       const mobile = (facts.stepCounts[i] | 0) > 0;
       const progress = 8 - promotionDistance(side, i);
 
-      // The TOP back-gap pieces must leave; their geometric adjacency is not
-      // functional support and must not be rewarded twice.
+       
+       
       const excludedBackGap = side === TOP && !!STRATEGY.backGap[i];
       if (!excludedBackGap && !forced && support > 0) {
         let valueScore = Math.min(2, support) * (threatened ? 1 : 3);
@@ -721,9 +721,9 @@
       }
     }
 
-    // Defence is local: a piece on the far side of the board does not count as
-    // a blocker merely because it shares columns 6-8. Only nearby supported
-    // pieces can offset the corresponding attack pressure.
+     
+     
+     
     for (const attacker of botAttackers) {
       let coverage = 0;
       for (const idx of [attacker.idx, ...STRATEGY.neighbors[attacker.idx], ...STRATEGY.reserveCells[attacker.idx]]) {
@@ -758,9 +758,9 @@
         continue;
       }
 
-      // Ordinary pieces do not receive an unconditional centre/Wasaa bonus.
-      // The point is useful only when the piece is supported and not a forced
-      // bridge in the opponent's legal longest capture.
+       
+       
+       
       let positional = GRAPH.degree[i] * 0.3;
       if (!forced && !threatened && support > 0) {
         positional += Math.max(0, GRAPH.centrality[i]) * 0.28;
@@ -782,8 +782,8 @@
   }
 
   function scoreMobility(facts) {
-    // Ordinary movement is not legal when capture is compulsory. Capture
-    // freedom is represented by the legal longest-chain summary instead.
+     
+     
     const top = facts.topThreat.hasCapture ? 0 : facts.topSteps;
     const bot = facts.botThreat.hasCapture ? 0 : facts.botSteps;
     return (top - bot) * 3;
@@ -801,8 +801,8 @@
     const topSummary = promotionCandidatesSummary(pos, TOP, ctx, !!facts.topThreat.hasCapture);
     const botSummary = promotionCandidatesSummary(pos, BOT, ctx, !!facts.botThreat.hasCapture);
 
-    // General progress is scored for every man, while near-promotion race
-    // values come from the single legality-aware summary shared with ordering.
+     
+     
     for (let i = 0; i < CELLS; i++) {
       const value = facts.board[i] | 0;
       if (!value || R.kind(value) !== MAN) continue;
@@ -848,9 +848,9 @@
     const trapRaceFactor = 0.55 + facts.strategicPhase * 0.45;
     score += roundSymmetric((bestTopRace - bestBotRace) * 0.55);
 
-    // The back trap is a one-use emergency resource. It affects the race only
-    // when the immediate promotion destinations actually enter its structural
-    // sequence; an intact but unrelated shape elsewhere gives no discount.
+     
+     
+     
     const topTrapRelevant = facts.topTrapReady
       && candidateCaughtByStructuralTrap(pos, bestBot, BOT, TOP);
     if (topTrapRelevant && bestBot && bestBot.race >= 75) {
@@ -912,8 +912,8 @@
     }
 
     let score = pressure(facts.topThreat) - pressure(facts.botThreat);
-    // Material risk is counted once here. The lighter pressure term above
-    // describes forcing power and flexibility, not the same material again.
+     
+     
     for (const i of facts.topThreatened) {
       const v = facts.board[i] | 0;
       if (!v) continue;
@@ -1177,9 +1177,9 @@
     trimTo(targetSize) {
       let remove = Math.max(0, this.map.size - Math.max(1, targetSize | 0));
       if (!remove) return;
-      // Map iteration follows insertion order. Updated/deeper entries are moved
-      // to the end in put(), so bounded FIFO trimming removes stale entries
-      // without the uninterruptible full-table sort used by the old engine.
+       
+       
+       
       for (const key of this.map.keys()) {
         this.map.delete(key);
         if (--remove <= 0) break;
@@ -1270,15 +1270,15 @@
     let nextQuietPromotionPlies = quietPromotionPlies | 0;
     let best = -INF;
     if (!hasCapture) {
-      // Quiet promotion-race moves are optional, unlike compulsory captures.
-      // Keep the current position as a stand-pat candidate so the extension can
-      // discover a good attack without forcing a bad forward move.
+       
+       
+       
       const standPat = evaluate(pos, ctx);
       best = standPat;
       if (standPat >= beta) return standPat;
       if (standPat > alpha) alpha = standPat;
-      // A small cap prevents quiet blocker/reblocker loops from turning
-      // quiescence into a second full search.
+       
+       
       if (nextQuietPromotionPlies >= 2) return standPat;
       tacticalMoves = moves.filter((move) => isPromotionCriticalMove(pos, move, ctx));
       if (!tacticalMoves.length) return standPat;
@@ -1464,8 +1464,8 @@
     if (requestedTopN === 1 || temperature <= 0) return provenBestMove || scoredMoves[0].move;
 
     const best = scoredMoves[0].score;
-    // Easier levels may vary among close alternatives, but they must not turn a
-    // known win into a non-win or select a forced loss when a safe move exists.
+     
+     
     const safetyWindow = Math.max(80, Math.min(420, Math.round(temperature * 3.5)));
     const bestIsForcedWin = best >= WIN - MATE_WINDOW;
     const bestAvoidsForcedLoss = best > -WIN + MATE_WINDOW;
@@ -1550,9 +1550,9 @@
     });
   }
 
-  // One-turn memory only. No new search or secondary evaluator is run here:
-  // the plan is copied from the exact transposition record and PV produced by
-  // the already completed search that selected the computer's move.
+   
+   
+   
   function deriveSouflaPlan(pos, chosenMove, fallbackScore, fallbackDepth, searchedHumanTurn, pvDetails) {
     if (!chosenMove) return null;
     if (pos.forcedEnabled && pos.forcedPly < 10) return null;
@@ -1570,9 +1570,9 @@
     try { computerTurn = applyMove(humanTurn, expectedCapture); }
     catch (_) { return null; }
 
-    // This exact record is the previous search's evaluation of the position
-    // that force will recreate: turn-start board + the unique forced capture.
-    // Loading it at ply zero also normalizes mate distance for its new root.
+     
+     
+     
     const exact = exactTTRecord(computerTurn, 1);
     const fallbackIsUsable = Number.isFinite(Number(fallbackScore)) && Math.max(0, Number(fallbackDepth || 0) | 0) >= 2;
     if (!exact && !fallbackIsUsable) return null;
@@ -1631,10 +1631,10 @@
     if (positionIdentity(turnStart) !== String(plan.turnStartIdentity || '')) return null;
     if ((turnStart.moveCount | 0) !== (Number(plan.turnStartMoveCount) | 0)) return null;
 
-    // The pending record was built by the authoritative shared rules from this
-    // exact turn-start snapshot. Reuse its force choices instead of solving the
-    // capture tree again. A remembered plan is valid only when there was one
-    // unique force path in the original turn.
+     
+     
+     
+     
     const expected = plan.expectedCapture;
     const forceOptions = Array.isArray(pending.options)
       ? pending.options.filter((candidate) => candidate && candidate.kind === 'force')
@@ -1700,10 +1700,10 @@
     const pos = normalizePosition(input);
     const settings = Config.normalizeAdvancedSettings((input && input.settings && input.settings.advanced) || input.settings || {});
 
-    // Root generation is exhaustive, but it now observes the level's hard
-    // deadline. If an exceptional capture graph exhausts the whole budget, a
-    // separately generated first *strict legal* move is returned rather than
-    // evaluating illegal alternatives or failing the worker.
+     
+     
+     
+     
     let rootMoves;
     let generatedFallback = null;
     let generatedFallbackScore = -INF;
@@ -1763,9 +1763,9 @@
       };
     }
 
-    // With exactly one strict legal move there is no decision to optimise.
-    // Return it immediately; illegal/soufla-producing alternatives are never
-    // part of the computer's normal move search.
+     
+     
+     
     if (rootMoves.length === 1) {
       const only = rootMoves[0];
       return {
@@ -1922,8 +1922,8 @@
       Number(option.offenderIdx) === Number(matchedPlan.option.offenderIdx) &&
       R.samePath(option.path || [], matchedPlan.option.path || []));
 
-    // Every option is built from its own legal origin. Only options producing
-    // the exact same complete next-turn state are merged.
+     
+     
     const candidateByIdentity = new Map();
     for (const option of options) {
       try {
@@ -1953,8 +1953,8 @@
     const rememberedDepth = rememberedScore == null ? 0 : Math.max(0, Number(matchedPlan.plan.previousDepth || 0) | 0);
     const selectionScore = (candidate, rawScore) => souflaPenaltySelectionScore(rawScore, candidate === plannedCandidate);
 
-    // Use the ordinary soufla budget. The plan changes ordering and reuses a
-    // completed score; it never adds a second evaluator, extra depth, or time.
+     
+     
     const totalSoft = Math.max(settings.thinkTimeMs, Math.min(settings.hardTimeMs, settings.thinkTimeMs + settings.timeBoostCriticalMs));
     const penaltySettings = {
       ...settings,
@@ -1983,9 +1983,9 @@
       return score;
     }
 
-    // Depth zero covers every distinct legal outcome before any option is
-    // deepened. If time expires later, the decision falls back to this common
-    // full-board baseline instead of comparing a searched prefix only.
+     
+     
+     
     const savedHardDeadline = ctx.hardDeadline;
     ctx.hardDeadline = Infinity;
     let baselineScored;

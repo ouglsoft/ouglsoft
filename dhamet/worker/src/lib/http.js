@@ -1,10 +1,10 @@
-/*
- * Shared Cloudflare HTTP helpers.
- *
- * Official owner for JSON responses and safe request body parsing used by the
- * Worker entrypoint and Durable Object. Keep this file small: it must not own
- * route logic, session logic, realtime storage, or game rules.
- */
+  
+                                  
+  
+                                                                              
+                                                                              
+                                                               
+   
 
 export const jsonHeaders = {
   'content-type': 'application/json; charset=utf-8',

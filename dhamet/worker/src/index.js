@@ -9,25 +9,25 @@ import '../shared/dhamet-privacy.js';
 import '../shared/dhamet-stats.js';
 export { RealtimeObject } from './durable/realtime-object.js';
 
-/*
- * Dhamet Cloudflare backend
- * Cloudflare authentication and sharded realtime rooms.
- * Deploy this Worker on /dhamet/api/* and bind D1 + Durable Object as configured in wrangler.toml.
- *
- * Design note:
- * - global realtime paths stay in the global Durable Object.
- * - live game paths are routed to one Durable Object per game id.
- *   This isolates active matches, chat, WebRTC signaling, and spectators without
- *   changing the existing board rules or client-side move legality code.
- */
+  
+                            
+                                                        
+                                                                                                   
+  
+               
+                                                             
+                                                                  
+                                                                                 
+                                                                         
+   
 
 const SESSION_COOKIE = 'dhm_session';
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 30;
 const RESET_TTL_SECONDS = 60 * 30;
 const OAUTH_STATE_TTL_SECONDS = 60 * 10;
 const DEFAULT_ICON = 'assets/icons/users/user1.png';
-// Keep password hashing within Cloudflare Workers' free CPU budget.
-// The iteration count is stored per user, so it can be raised later without breaking old accounts.
+ 
+ 
 const PBKDF2_ITERATIONS = 25000;
 
 function requestRateIdentity(request, category) {
@@ -525,7 +525,7 @@ async function authRequestReset(request, env) {
   const email = safeEmail(body.email);
   if (!validEmail(email)) return bad('invalid-email', 400, 'auth/invalid-email');
   const row = await db.prepare('SELECT * FROM users WHERE email = ?1 AND deleted_at IS NULL').bind(email).first();
-  // Always return ok to avoid account enumeration.
+   
   if (!row || !row.password_hash) return json({ ok: true });
   const token = randomToken(32);
   const tokenHash = await sha256Hex(token);
@@ -571,8 +571,8 @@ async function authResetPassword(request, env) {
   const salt = randomToken(16);
   const h = await hashPassword(password, salt, PBKDF2_ITERATIONS);
 
-  // Save the password first, then verify the exact stored hash before consuming the token.
-  // This prevents a silent half-success where the user sees no message and cannot tell what happened.
+   
+   
   const updateRes = await db.prepare(`UPDATE users
     SET password_hash = ?1,
         password_salt = ?2,
@@ -906,7 +906,7 @@ async function accountPvcResultEndpoint(request, env) {
   const session = await requireSession(env, request);
   const user = session && session.user ? session.user : null;
   const contentLength = Math.max(0, Number(request.headers.get('content-length') || 0) || 0);
-  // Results use a compact payload only; no replay, sample, or model data is accepted.
+   
   if (contentLength > 16_384) return json({ ok: false, error: 'pvc/result-too-large' }, 413);
   const body = await requestBody(request);
   if (!user || user.kind !== 'registered') {
@@ -1170,8 +1170,8 @@ async function onlineEntryEndpoint(request, env) {
 }
 
 async function backendRouteStatusEndpoint(env) {
-  // Successful controls are cached briefly. Failed D1 reads are never cached,
-  // so every new entry attempt checks again without changing the global mode.
+   
+   
   const control = await readBackupControl(env);
   return json({ ok: true, control: publicBackendRouteControl(control) }, 200, { 'cache-control': 'no-store' });
 }

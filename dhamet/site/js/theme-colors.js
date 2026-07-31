@@ -1,10 +1,10 @@
 (function (global) {
   "use strict";
 
-  /*
-   * JavaScript has no independent palette. It reads the same semantic CSS
-   * tokens used by every screen, including Canvas and generated SVG pieces.
-   */
+    
+                                                                          
+                                                                            
+     
   var TOKEN_MAP = Object.freeze({
     primary: "--color-primary",
     secondary: "--color-secondary",

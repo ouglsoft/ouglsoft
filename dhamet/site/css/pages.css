@@ -1,7 +1,7 @@
-/* ========================================================================== PAGES.CSS ========================================================================== */
+ 
 
-/* ========================================================================== PAGE TOKENS,
-LAYOUT & INFO SIDEBAR ========================================================================== */
+                                                                                          
+                                                                                                   
 
 :root {
   --z-topbar-h: 40px;
@@ -39,8 +39,8 @@ html[dir="ltr"] .z-footer-wrap {
   margin: 0 auto;
 }
 
-/* ========================================================================== TOPBAR,
-NAVIGATION & ACCOUNT MENUS ========================================================================== */
+                                                                                     
+                                                                                                        
 
 html.dark .z-nav a.active {
   background: rgb(var(--rgb-primary-400) / .16);
@@ -312,8 +312,8 @@ html.dark .z-acc-item:hover {
   color: rgb(var(--rgb-danger-400));
 }
 
-/* ========================================================================== SHARED CARDS,
-TYPOGRAPHY & CTA ========================================================================== */
+                                                                                           
+                                                                                              
 
 body.z-page-body.z-info-page {
   min-height: 100dvh;
@@ -333,7 +333,7 @@ body.z-page-body.z-info-page main.z-page.z-vcenter > .z-page-inner {
   margin-block: auto;
 }
 
-/* ========================================================================== HOME PAGE LAYOUT ========================================================================== */
+ 
 
 body.z-home-page {
   overflow: hidden;
@@ -369,13 +369,13 @@ body.z-home-page .board-wrap {
   padding: 2px !important;
 }
 
-/* ========================================================================== SPECTATOR VISIBILITY ========================================================================== */
+ 
 
 body.z-spectator #specBar {
   display: grid !important;
 }
 
-/* ========================================================================== DASHBOARD & ACCOUNT PANELS ========================================================================== */
+ 
 
 html.dark .z-dash-profile-card {
   background: linear-gradient(180deg, rgb(var(--rgb-primary-900) / .94), rgb(var(--rgb-primary-900) / .96));
@@ -732,7 +732,7 @@ html.dark .z-dash-details-table tbody th {
   display: block;
 }
 
-/* ========================================================================== LEADERBOARD COMPONENTS ========================================================================== */
+ 
 
 .z-leaderboard-loading {
   text-align: center;
@@ -812,7 +812,7 @@ html.dark .z-dash-details-table tbody th {
   color: var(--muted);
 }
 
-/* ========================================================================== MODE SELECTION PAGE ========================================================================== */
+ 
 
 html.dark .z-mode-card {
   background: radial-gradient(120% 120% at 0% 0%, rgb(var(--rgb-primary-400) / .18), rgb(var(--rgb-primary-400) / 0) 54%), radial-gradient(120% 120% at 100% 100%, rgb(var(--rgb-secondary-500) / .12), rgb(var(--rgb-secondary-500) / 0) 52%), linear-gradient(180deg, rgb(var(--rgb-primary-900) / .96), rgb(var(--rgb-primary-900) / .98));
@@ -893,7 +893,7 @@ html.dark .z-lobby-panel::after {
 
 
 
-/* Mode-card icons retain the original artwork without an added tile. */
+ 
 .z-mode-ico {
   display: grid;
   place-items: center;
@@ -963,7 +963,7 @@ html.dark .z-lobby-panel::after {
   margin-top: 18px;
 }
 
-/* ========================================================================== LOBBY PAGE ========================================================================== */
+ 
 
 html.dark .z-row {
   background: linear-gradient(180deg, rgb(var(--rgb-primary-800) / .98), rgb(var(--rgb-primary-900) / .98));
@@ -1285,7 +1285,7 @@ html.dark .z-invite-receive-row {
   justify-content: center;
 }
 
-/* ========================================================================== FOOTER ========================================================================== */
+ 
 
 .z-footer-wrap {
   max-width: var(--z-page-max);
@@ -1413,7 +1413,7 @@ body.z-spectator #btnMic {
   display: none !important;
 }
 
-/* ========================================================================== FORM CONTROLS ========================================================================== */
+ 
 
 .z-form-row {
   display: grid;

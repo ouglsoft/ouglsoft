@@ -33,18 +33,18 @@ import {
   bumpVersions,
 } from '../lib/realtime-tree.js';
 
-/*
- * Cloudflare Durable Object for realtime data and authoritative GameRoom state.
- *
- * Scope rules:
- * - global scope keeps lobby/account-adjacent realtime data.
- * - game:<id> scopes isolate live games, chat, spectators, and WebRTC signaling.
- * - Official PvP moves are reduced here with shared/dhamet-authority.js.
- *
- * This file intentionally contains no DOM, client UI, AI player, or duplicated
- * Dhamet move rules. It owns storage, websocket fanout, participant checks, and
- * the server-authoritative application of already-shared rule logic.
- */
+  
+                                                                                
+  
+               
+                                                             
+                                                                                 
+                                                                         
+  
+                                                                               
+                                                                                
+                                                                     
+   
 
 const Rules = globalThis.DhametRules;
 const MoveCore = globalThis.DhametMove;
@@ -139,7 +139,7 @@ function normalizeGameMoveBody(body) {
   return body;
 }
 
-// Undo snapshots are retained for the lifetime of the active game; no silent truncation is performed.
+ 
 export class RealtimeObject {
   constructor(ctx, env) {
     this.ctx = ctx;
@@ -398,9 +398,9 @@ export class RealtimeObject {
   _isSocketExpired(sess, atValue) {
     if (!sess || !sess.official) return false;
     const expiresAt = Number(sess.authExpiresAt) || 0;
-    // Sockets created by older deployments do not carry an expiry attachment;
-    // close them once after deployment so the client reconnects through current
-    // authentication instead of remaining authorized indefinitely.
+     
+     
+     
     if (!expiresAt) return true;
     return Number(atValue || now()) >= expiresAt;
   }
@@ -569,10 +569,10 @@ export class RealtimeObject {
     const absenceMs = Number(PresenceCore && PresenceCore.POLICY && PresenceCore.POLICY.opponentAbsenceMs) || 120000;
     const disconnectedAt = Number(presence && presence.disconnectedAt) || 0;
     const lastSeenAt = Number(presence && (presence.updatedAt || presence.connectedAt || presence.joinedAt)) || 0;
-    // A persisted online flag is only advisory. The active game socket above is
-    // authoritative; without it, the last persisted timestamp must age out.
-    // Legacy matches may not have disconnectedAt. Their last persisted presence
-    // remains a conservative fallback until the socket-based state is written.
+     
+     
+     
+     
     const ttl = Number(PresenceCore && PresenceCore.POLICY && PresenceCore.POLICY.gamePresenceTtlMs) || 45000;
     const baseline = disconnectedAt || lastSeenAt || Number(game && (game.acceptedAt || game.startedAt || game.createdAt)) || at;
     const claimAt = baseline + absenceMs + (disconnectedAt ? 0 : ttl);
@@ -2511,9 +2511,9 @@ export class RealtimeObject {
       next.reconnectGraceUntil = at + ROOM_RECONNECT_GRACE_MS;
       next.lastLiveAt = Number(current.lastLiveAt || at) || at;
       delete next.unlistedAt;
-      // Keep the private return-to-match record for as long as the authoritative
-      // game itself remains recoverable. Public listing still ends after the
-      // short reconnect grace below.
+       
+       
+       
       next.leaseUntil = Math.max(Number(next.leaseUntil || 0) || 0, at + ABANDONED_GAME_RETENTION_MS);
       next.cleanupAt = next.leaseUntil;
     } else {
@@ -3336,7 +3336,7 @@ export class RealtimeObject {
             ws.send(JSON.stringify({ type: 'child', event: 'child_added', id: sub.id, path: childPath(sub.path, key), key, value: cur[key], version: this._versionForPath(childPath(sub.path, key)) }));
           }
         } else if (sub.event === 'child_changed' || sub.event === 'child_removed') {
-          // Changed/removed live streams do not emit existing children at attach time.
+                                                                                       
         } else {
           ws.send(JSON.stringify({ type: 'value', id: sub.id, path: sub.path, value: getAt(this.root, sub.path), version: this._versionForPath(sub.path) }));
         }

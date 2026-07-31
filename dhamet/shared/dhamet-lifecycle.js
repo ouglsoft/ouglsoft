@@ -1,11 +1,11 @@
-/*
- * Dhamet operational lifecycle helpers v1.
- *
- * Runtime-neutral cleanup policy for transient GameRoom data. This module does
- * not decide Dhamet rules, match results, scoring, UI, or Cloudflare storage.
- * It only classifies short-lived records so server code can remove stale data
- * without randomly deleting active rooms or ending matches.
- */
+  
+                                           
+  
+                                                                               
+                                                                              
+                                                                              
+                                                            
+   
 (function (root) {
   'use strict';
 

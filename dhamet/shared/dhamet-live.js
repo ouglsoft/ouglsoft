@@ -1,11 +1,11 @@
-/*
- * Official GameRoom live-view helper.
- *
- * This file defines the narrow policy for live game subscriptions. It contains
- * no DOM, UI, Cloudflare storage, WebSocket implementation, AI, or Dhamet move
- * rules. It only normalizes the subscription request and checks whether a user
- * may observe the official GameRecord.
- */
+  
+                                      
+  
+                                                                               
+                                                                               
+                                                                               
+                                       
+   
 (function (root) {
   'use strict';
 

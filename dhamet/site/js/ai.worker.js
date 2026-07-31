@@ -1,4 +1,4 @@
-/* Dedicated worker for the local Dhamet computer player. */
+ 
 (() => {
   'use strict';
 
@@ -12,9 +12,9 @@
     'ai/ai-engine.js' + BUILD,
   );
 
-  // One-turn, in-memory soufla plan. It is replaced by every new computer
-  // turn and consumed by the next penalty decision. It is never persisted or
-  // sent to the server.
+   
+   
+   
   let rememberedSouflaPlan = null;
 
   self.onmessage = (event) => {
@@ -31,8 +31,8 @@
       if (message.cmd === 'pickSouflaDecision') {
         const plan = rememberedSouflaPlan;
         const decision = self.DhametAIEngine.analyzePenalty(message.state || {}, message.pending || null, plan);
-        // Consume the one-turn plan only after a successful decision. A worker
-        // exception or retry must not silently erase the remembered trap.
+         
+         
         rememberedSouflaPlan = null;
         self.postMessage({ id, decision });
         return;

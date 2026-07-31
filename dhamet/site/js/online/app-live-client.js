@@ -1,12 +1,12 @@
-/*
- * Dhamet application live channel.
- *
- * One elected tab owns the authenticated WebSocket for the browser. Other
- * tabs publish their page/presence state to it and receive server events over
- * a local BroadcastChannel (with a storage-event fallback). This keeps invite
- * delivery and presence live on every authenticated page without periodic
- * HTTP polling or duplicate cloud connections.
- */
+  
+                                   
+  
+                                                                          
+                                                                              
+                                                                              
+                                                                          
+                                               
+   
 (function () {
   'use strict';
 

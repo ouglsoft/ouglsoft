@@ -1,4 +1,4 @@
-// Dhamet UI runtime.
+ 
 const uiPreferences = globalThis.AppPref;
 if (!uiPreferences) throw new Error("app-runtime.js must load before ui-runtime.js");
 const BoardGeometryModule = globalThis.DhametBoardGeometry;
@@ -64,9 +64,9 @@ for (const [name, value] of Object.entries({
 })) {
   if (!value) throw new Error(`${name} must load before ui-runtime.js`);
 }
-// Dhamet UI runtime loader and coordination layer.
-// Existing specialized UI modules remain the owners of board rendering, input, status, soufla, capture timer, log, and action state.
-// This file owns UI orchestration, local PvC controls, 3D board runtime, and page bootstrap.
+ 
+ 
+ 
 const Visual = (() => {
   const S = {
     lastMove: null,
@@ -326,9 +326,9 @@ const Visual = (() => {
     opts = opts || {};
     const noDraw = !!opts.noDraw;
 
-    // Soufla is a replacement visual state, not an addition to the ordinary
-    // move trace. Clear the normal move path, capture numbering, highlights,
-    // and any previous undo marker before installing the canonical Soufla FX.
+     
+     
+     
     _clearTurnFx(false);
 
     const redPaths = payload.redPaths;
@@ -615,7 +615,7 @@ const Visual = (() => {
         drawCrownPulse(ctx, idx);
       }
 
-      // Mandatory-opening guidance is the highest-priority board effect.
+       
       if (Array.isArray(S.forcedOpeningArrows) && S.forcedOpeningArrows.length) {
         for (const openingArrow of S.forcedOpeningArrows) {
           drawArrow(ctx, openingArrow.from, openingArrow.to, themeColor("--mark-danger"));
@@ -2398,9 +2398,9 @@ async function souflaPressed() {
     return;
   }
   if (!Game.availableSouflaForHuman && window.Online && Online.isActive && typeof Online.syncNow === "function") {
-    // WebSocket remains the normal zero-request path.  A manual claim is the
-    // one situation where a single explicit resync is justified: it prevents a
-    // delayed live event from causing a false "legal move" response.
+     
+     
+     
     try {
       await Online.syncNow({ reason: "soufla-claim-check", notifyFailure: true, repairPresence: false });
     } catch (_) {}
@@ -2613,7 +2613,7 @@ function bindUI() {
     killTimerTile.setAttribute("tabindex", "0");
     killTimerTile.setAttribute("aria-label", t("buttons.endKill"));
     killTimerTile.addEventListener("click", function (ev) {
-      // Reuse the exact end-capture action used by the nested button.
+       
       if (ev && ev.target && ev.target.closest && ev.target.closest("#btnEndKill")) return;
       if (ev) ev.preventDefault();
       endKillPressed();
@@ -2786,8 +2786,8 @@ function init() {
   } catch {}
 
   try {
-    // Online match entry owns its bootstrap order: authenticate without a
-    // heartbeat, apply the first official board, then start presence/live hooks.
+     
+     
     if (!_isOnlineMode && window.Online && typeof Online.initPresence === "function") {
       Online.initPresence();
     }

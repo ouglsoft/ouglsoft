@@ -58,7 +58,7 @@
     isHumanTurn,
     isComputerTurn,
     shouldScheduleComputerMove,
-    // Public pass-throughs owned by DhametMatchMode; kept here as the PvC boundary API.
+     
     MODE_PVC: match ? match.MODE_PVC : 'vs_cpu',
     MODE_ONLINE: match ? match.MODE_ONLINE : 'online_pvp',
     MODE_SPECTATOR: match ? match.MODE_SPECTATOR : 'spectator',

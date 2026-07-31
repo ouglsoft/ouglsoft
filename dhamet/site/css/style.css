@@ -1,6 +1,6 @@
-/* ========================================================================== STYLE.CSS ========================================================================== */
+ 
 
-/* ========================================================================== THEME TOKENS & GLOBAL FOUNDATIONS ========================================================================== */
+ 
 
 :root {
   --primary-green: rgb(var(--rgb-success-600));
@@ -183,7 +183,7 @@ img[src*="assets/icons/"]:not([src*="assets/icons/users/"]) {
   box-shadow: none;
 }
 
-/* ========================================================================== SHARED TYPOGRAPHY ========================================================================== */
+ 
 
 h1,
 .z-page-title,
@@ -244,7 +244,7 @@ footer,
   font-size: var(--fs-footer);
 }
 
-/* ========================================================================== SHARED SURFACES & PANELS ========================================================================== */
+ 
 
 .board-wrap,
 .side,
@@ -267,7 +267,7 @@ footer,
   backdrop-filter: blur(18px);
 }
 
-/* ========================================================================== SHARED SOFT CONTROLS ========================================================================== */
+ 
 
 .z-lang-select,
 .z-nav-toggle {
@@ -282,7 +282,7 @@ html.dark .z-nav-toggle {
   background: rgb(var(--rgb-primary-900) / .88);
 }
 
-/* ========================================================================== GAME SHELL LAYOUT ========================================================================== */
+ 
 
 :root.dark canvas#board {
   background: linear-gradient(180deg, var(--board-bg-start) 0%, var(--board-bg-end) 100%);
@@ -375,7 +375,7 @@ body.board-depth .board-wrap {
   direction: ltr;
 }
 
-/* ========================================================================== GAME HEADER & STATUS ========================================================================== */
+ 
 
 :root.dark .status-row {
   background: linear-gradient(180deg, rgb(var(--rgb-primary-900) / .94), rgb(var(--rgb-primary-900) / .88));
@@ -457,7 +457,7 @@ body.board-depth .board-wrap {
   font-family: var(--font);
 }
 
-/* ========================================================================== STATS, PRESENCE & INFO PANELS ========================================================================== */
+ 
 
 :root.dark .stats-mobile-table th,
 :root.dark .stats tbody td,
@@ -790,7 +790,7 @@ body[dir="rtl"] #aiLevelBox {
   text-align: center;
 }
 
-/* ========================================================================== FORM CONTROLS & BUTTONS ========================================================================== */
+ 
 
 body.z-game-page .btn-grid .btn {
   padding-top: 6px;
@@ -1160,7 +1160,7 @@ body.z-game-page:not(.mode-pvp):not(.z-mobile-on) #btnNew {
   background: rgb(var(--rgb-primary-500) / .06) !important;
 }
 
-/* ========================================================================== ACTIVITY LOG ========================================================================== */
+ 
 
 :root.dark .log .time {
   color: rgb(var(--rgb-secondary-300));
@@ -1250,7 +1250,7 @@ body.z-game-page:not(.mode-pvp):not(.z-mobile-on) #btnNew {
   margin-left: 8px;
 }
 
-/* ========================================================================== MODAL DIALOGS & SETTINGS ========================================================================== */
+ 
 
 :root.dark .modal {
   border: 3px solid var(--primary-gold);
@@ -1451,7 +1451,7 @@ body.z-game-page:not(.mode-pvp):not(.z-mobile-on) #btnNew {
   min-height: 0;
 }
 
-/* ========================================================================== DIRECTION & LOCALIZATION ========================================================================== */
+ 
 
 body[dir="rtl"] #aiLevelPrefix {
   unicode-bidi: isolate;
@@ -1463,7 +1463,7 @@ body[dir="rtl"] #aiLevelValue {
   direction: auto;
 }
 
-/* ========================================================================== GAME STATE & ROLE VISIBILITY ========================================================================== */
+ 
 
 .ui-hold body.z-game-page .timer-row,
 .ui-hold body.z-game-page .soufla-row,
@@ -1486,7 +1486,7 @@ body[dir="rtl"] #aiLevelValue {
   display: grid !important;
 }
 
-/* ========================================================================== PVP CONTROLS & CHAT ========================================================================== */
+ 
 
 :root.dark .pvp-chat-list {
   background: rgb(var(--rgb-white) / .05);
@@ -1766,9 +1766,9 @@ body[dir="rtl"] #aiLevelValue {
   text-align: left;
 }
 
-/* ========================================================================== FOOTER ========================================================================== */
+ 
 
-/* ========================================================================== MISCELLANEOUS GAME STYLES ========================================================================== */
+ 
 
 :root.dark select:focus,
 :root.dark button:focus,
@@ -2042,8 +2042,8 @@ body[dir="rtl"] .settings-control {
   box-shadow: 0 8px 18px rgb(var(--rgb-danger-600) / .28) !important;
 }
 
-/* Compact desktop game layout. This is used only when the responsive mobile
-   controller is not active, so a narrow desktop window never crushes the 9×9 board. */
+                                                                            
+                                                                                       
 
 @media (max-width: 1160px) {
   body.z-game-page:not(.z-mobile-on) .app {
@@ -2080,10 +2080,10 @@ body[dir="rtl"] .settings-control {
   }
 }
 
-/* Desktop game sidebar stability.
- * Avoid backdrop-filter/transform compositing inside the scroll container:
- * on Chromium/Windows touch-capable desktops it can continuously rebuild the
- * hit-test layer while hovering a button or the scrollbar. */
+                                  
+                                                                           
+                                                                             
+                                                              
 
 body.z-game-page:not(.z-mobile-on) .side {
   background: var(--panel-strong) !important;
@@ -2112,7 +2112,7 @@ body.z-game-page:not(.z-mobile-on) .side::-webkit-scrollbar-thumb:hover {
   background: var(--accent) !important;
 }
 
-/* Online identity and recovery states */
+ 
 
 .z-player-name,
 .z-notice-player-name {
@@ -2155,7 +2155,7 @@ body.z-game-page:not(.z-mobile-on) .side::-webkit-scrollbar-thumb:hover {
   box-shadow: var(--shadow);
 }
 
-/* Prevent desktop-side panels from flashing before mobile layout ownership is known. */
+ 
 
 html.ui-hold body.z-game-page .app {
   visibility: hidden;
@@ -2166,7 +2166,7 @@ html:not(.ui-hold) body.z-game-page .app {
   visibility: visible;
 }
 
-/* In-page select component */
+ 
 
 .z-select-dropdown {
   display: inline-block;
@@ -2299,7 +2299,7 @@ html.dark .z-select-option {
   color: var(--color-on-dark);
 }
 
-/* Desktop Soufla control */
+ 
 
 body.z-game-page:not(.z-mobile-on) #btnSoufla .z-soufla-icon {
   display: block;
@@ -2324,7 +2324,7 @@ body.z-game-page:not(.z-mobile-on) #btnSoufla .z-soufla-label {
   white-space: nowrap;
 }
 
-/* Runtime pre-initialization guard */
+ 
 
 html.z-mobile-preinit body {
   visibility: hidden;
@@ -2337,7 +2337,7 @@ html.z-mobile-preinit body * {
   animation: none;
 }
 
-/* Soufla decision modal */
+ 
 
 .soufla-root {
   width: 100%;
@@ -2466,7 +2466,7 @@ html.z-mobile-preinit body * {
 }
 
 
-/* Desktop game-control icons use the original artwork directly. */
+ 
 body.z-game-page:not(.z-mobile-on) .side .btn .btn-ico,
 body.z-game-page:not(.z-mobile-on) .controls-box .btn .btn-ico {
   display: block;
@@ -2484,7 +2484,7 @@ body.z-game-page:not(.z-mobile-on) .controls-box .btn .btn-ico {
 }
 
 
-/* The source SVG points left: mirror it in RTL so Back follows the page direction. */
+ 
 .directional-exit-icon {
   transform: scaleX(-1);
   transform-origin: center;

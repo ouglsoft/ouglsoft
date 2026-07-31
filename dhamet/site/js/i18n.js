@@ -27,21 +27,8 @@
         "btnRemove": "إزالة القطعة",
         "btnForcePath": "إجبارها على المسار ${n}"
       },
-      "cpu": {
-        "reason": "تجاهلت قطعتك الأسر المحدد بالمسار الأحمر الظاهر على الرقعة.",
-        "forcedPathLine": "اتبع المسار الملوّن الظاهر على الرقعة.",
-        "penaltyRemove": "العقوبة: <b>إزالة القطعة المخالفة</b> من الموضع المعلّم بعلامة X حمراء.",
-        "revertNotice": "أُلغيت نقلتك الأخيرة، ويظهر مسارها بالسهم الأصفر.",
-        "title": "طُبقت السوفلة عليك",
-        "penaltyForceInline": "العقوبة: <b>إجبار القطعة</b> على تنفيذ الأسر المحدد بالمسار الملوّن على الرقعة.",
-        "forcedPathIntro": "مسار الأسر الذي ستنفذه القطعة:",
-        "penaltyForcePicked": "العقوبة: <b>إجبار القطعة على الأسر</b>."
-      },
-      "applied": {
-        "force": "أُجبرت قطعة الخصم على تنفيذ مسار الأسر الصحيح.",
-        "remove": "أُزيلت قطعة الخصم التي تجاهلت الأسر.",
-        "self": "تم تطبيق السوفلة."
-      },
+      "cpu": {},
+      "applied": {},
       "sendFailed": "تعذر تطبيق السوفلة بسبب مشكلة في الاتصال. تحقق من الإنترنت ثم حاول مرة أخرى.",
       "summary": {
         "force": "اختار {actor} عقوبة السوفلة ضدك، وأجبرك على تنفيذ المسار المحدد على الرقعة باللون الأخضر.",
@@ -233,7 +220,6 @@
     "modals": {
       "gameOver": {
         "title": "انتهت المباراة",
-        "winner": "تهانينا لـ{player}، لقد فاز بالمباراة!",
         "draw": "مباراة متكافئة، انتهت بالتعادل.",
         "reason": {
           "noPieces": "نفدت قطع {player}.",
@@ -355,7 +341,6 @@
       "inviteDisabled": "لا يمكن دعوته الآن",
       "invitesDisabled": "لا يقبل الدعوات",
       "returnToMatch": "العودة إلى المباراة",
-      "reconnectingRoom": "اللاعبان يعيدان الاتصال",
       "privateRoom": "مباراة خاصة",
       "roomDefault": "مباراة",
       "roomLabel": "المباراة",
@@ -367,7 +352,6 @@
       "onlineInitFail": "تعذر فتح اللعب عبر الإنترنت الآن. تأكد من اتصالك بالإنترنت وحاول مرة أخرى.",
       "reconnecting": "جارٍ استعادة الاتصال…",
       "loadingMatch": "جارٍ فتح المباراة…",
-      "onlineInitHelp": "تحقق من تسجيل الدخول والاتصال، ثم أعد المحاولة.",
       "loading": "جارٍ التحميل…",
       "wait": "الدور على اللاعب الآخر. انتظر قليلًا.",
       "aiThinkingMove": "الحاسوب يختار نقلته…",
@@ -542,7 +526,6 @@
       "notCommitted": "لم يتم التراجع لأن المباراة تقدمت قبل اكتمال الطلب. اضغط «تحديث» ثم حاول مرة أخرى.",
       "rejected": "رفض اللاعب الآخر طلب التراجع.",
       "rejectedTitle": "رُفض طلب التراجع",
-      "spectatorRequested": "طلب {player} التراجع عن النقلة الأخيرة.",
       "spectatorAccepted": "وافق {responder} على تراجع {requester} عن النقلة الأخيرة المحددة بالسهم الأصفر المعكوس.",
       "spectatorRejected": "رفض {responder} طلب {requester} التراجع عن النقلة الأخيرة.",
       "requesterAccepted": "وافق {responder} على التراجع عن النقلة الأخيرة المحددة بالسهم الأصفر المعكوس.",
@@ -592,21 +575,8 @@
         "btnRemove": "Remove piece",
         "btnForcePath": "Force path ${n}"
       },
-      "cpu": {
-        "reason": "Your piece skipped the capture shown by the red path on the board.",
-        "forcedPathLine": "Follow the highlighted path shown on the board.",
-        "penaltyRemove": "Penalty: <b>remove the offending piece</b> from the position marked with a red X.",
-        "revertNotice": "Your last move was undone and is shown by the yellow arrow.",
-        "title": "Soufla was claimed against you",
-        "penaltyForceInline": "Penalty: <b>force the piece</b> to complete the capture shown by the highlighted path.",
-        "forcedPathIntro": "Capture path the piece must follow:",
-        "penaltyForcePicked": "Penalty: <b>force the piece to capture</b>."
-      },
-      "applied": {
-        "force": "The opponent’s piece was forced to follow the valid capture path.",
-        "remove": "The opponent’s piece that skipped the capture was removed.",
-        "self": "Soufla applied."
-      },
+      "cpu": {},
+      "applied": {},
       "sendFailed": "Soufla could not be applied because of a connection problem. Check your internet connection and try again.",
       "summary": {
         "force": "{actor} chose a Soufla penalty against you and forced you to follow the path marked in green on the board.",
@@ -628,7 +598,7 @@
     "pvp": {
       "voice": {
         "micOn": "Mute mic",
-        "spkOn": "Mute",
+        "spkOn": "Mute sound",
         "failed": "Connection failed",
         "failedTitle": "Voice could not start",
         "failure": {
@@ -642,7 +612,7 @@
         },
         "micOff": "Turn on microphone",
         "spkOff": "Turn on sound",
-        "mic": "Mic",
+        "mic": "Microphone",
         "speaker": "Sound"
       },
       "chat": {
@@ -650,7 +620,7 @@
         "failed": "The message could not be sent. Try again.",
         "placeholder": "Type a message…",
         "rateLimit": "Wait one second before sending another message.",
-        "title": "Chat",
+        "title": "Text chat",
         "tooLong": "Shorten the message to 200 characters or fewer."
       },
       "leave": "Leave match"
@@ -682,7 +652,7 @@
       "toRecover": "Forgot password?",
       "save": "Save changes",
       "nickname": "Nickname",
-      "email": "Email",
+      "email": "Adresse e-mail",
       "registerTitle": "Create account",
       "register": "Sign up",
       "recoverTitle": "Password reset",
@@ -699,7 +669,7 @@
         "start": {
           "title": "Start Playing Dhamet Easily",
           "b1": "Sign in or create a new account, and you can also continue as a guest for a quick trial.",
-          "b2": "After signing in, you can choose to play against the computer or play Dhamet online with other players.",
+          "b2": "After entering the app, you can choose to play against the computer or play Dhamet online with other players.",
           "b3": "Creating an account gives you a personal profile, statistics, and a more complete experience inside the app.",
           "b4": "Continuing as a guest is suitable for a quick try, while an account gives you extra features and better organization for your experience.",
           "b5": "At the bottom of the page you will find links to the terms of use, privacy policy, rules, and contact options.",
@@ -711,12 +681,12 @@
           "b2": "It is played on a board of points and paths, and it differs from common checkers in board shape, directions of play, and some core rules.",
           "b3": "The game depends on good positioning, using capture opportunities, and choosing the right moment to promote pieces into Dhaim.",
           "b4": "The Dhamet application was created and developed by العُقل للبرمجيات / El Ougl Software SARL, the rights holder. You can visit the company website to learn about its products: <a href=\"https://ouglsoft.com\" target=\"_blank\" rel=\"noopener\">ouglsoft.com</a>.",
-          "small": "Dhamet is a traditional Mauritanian strategy game based on thinking, planning, and reading movement well. The application was created and developed by El Ougl Software SARL. Company website: <a href=\"https://ouglsoft.com\" target=\"_blank\" rel=\"noopener\">ouglsoft.com</a>."
+          "small": "Dhamet is a traditional Mauritanian strategy game based on thinking, planning, and reading movement well. The application was created and developed by El Ougl Software SARL, the rights holder. Company website: <a href=\"https://ouglsoft.com\" target=\"_blank\" rel=\"noopener\">ouglsoft.com</a>."
         }
       }
     },
     "buttons": {
-      "newGame": "New ",
+      "newGame": "New match",
       "soufla": "Soufla",
       "settings": "Settings",
       "home": "Home",
@@ -798,7 +768,6 @@
     "modals": {
       "gameOver": {
         "title": "Match over",
-        "winner": "Congratulations to {player}, who won the match!",
         "draw": "A closely fought match—it ended in a draw.",
         "reason": {
           "noPieces": "{player} has no pieces left.",
@@ -891,9 +860,9 @@
       "gameWinnerSelf": "Congratulations, you won the match!",
       "gameLoserSelf": "Better luck next time—you lost the match.",
       "gameDraw": "A closely fought match—it ended in a draw.",
-      "turnMoveFmt": "${side}: Move ${from}-${to}.",
-      "turnMoveSelf": "You: moved from ${from} to ${to}.",
-      "turnCaptureFmt": "${side}: Capture ${from}-${to} (${n}).",
+      "turnMoveFmt": "${side}: moved the piece from ${from} to ${to}.",
+      "turnMoveSelf": "You: moved the piece from ${from} to ${to}.",
+      "turnCaptureFmt": "${side}: captured from ${from} to ${to} (${n}).",
       "turnCaptureSelf": "You: captured from ${from} to ${to} (${n})."
     },
     "mode": {
@@ -920,7 +889,6 @@
       "inviteDisabled": "Can't invite right now",
       "invitesDisabled": "Not accepting invites",
       "returnToMatch": "Return to match",
-      "reconnectingRoom": "Players are reconnecting",
       "privateRoom": "Private match",
       "roomDefault": "Match",
       "roomLabel": "Match",
@@ -932,7 +900,6 @@
       "onlineInitFail": "Online play could not be opened right now. Check your internet connection and try again.",
       "reconnecting": "Restoring the connection…",
       "loadingMatch": "Opening the match…",
-      "onlineInitHelp": "Check your sign-in and connection, then try again.",
       "loading": "Loading…",
       "wait": "It is the other player’s turn. Please wait.",
       "aiThinkingMove": "The computer is choosing a move…",
@@ -1038,7 +1005,7 @@
         "private": "Private match (spectators cannot watch)"
       },
       "invites": {
-        "receiveLabel": "Invite receiving:",
+        "receiveLabel": "Receive invitations:",
         "enabled": "Enabled",
         "disabled": "Disabled",
         "receivingEnabled": "Invite receiving enabled.",
@@ -1051,7 +1018,7 @@
       "status": {
         "available": "Available",
         "vsComputer": "In a match vs computer",
-        "inPvP": "In online match"
+        "inPvP": "In an online match"
       },
       "syncFail": "The match could not be refreshed. Check your connection and try again.",
       "syncIssueNotice": "The latest match changes are not showing. Press Refresh to load them again.",
@@ -1107,13 +1074,12 @@
       "notCommitted": "The move was not undone because the match continued before the request finished. Press Refresh and try again.",
       "rejected": "The other player declined the undo request.",
       "rejectedTitle": "Undo request declined",
-      "spectatorRequested": "{player} requested to undo the last move.",
       "spectatorAccepted": "{responder} accepted {requester}’s request to undo the last move marked by the reversed yellow arrow.",
       "spectatorRejected": "{responder} declined {requester}’s request to undo the last move.",
       "requesterAccepted": "{responder} accepted undoing the last move marked by the reversed yellow arrow.",
       "requesterRejected": "{responder} declined undoing the last move.",
       "request": {
-        "body": "{name} wants to undo the last move. Allow it?",
+        "body": "{name} wants to undo the last move. Do you agree?",
         "title": "Undo request"
       },
       "requestFailed": "The undo request could not be sent. Check your connection and try again.",
@@ -1142,7 +1108,7 @@
         "contact": "Contact"
       },
       "navShort": {
-        "privacy": "Confid.",
+        "privacy": "Confidentialité",
         "terms": "Conditions",
         "contact": "Contact"
       },
@@ -1157,21 +1123,8 @@
         "btnRemove": "Retirer la pièce",
         "btnForcePath": "Imposer le chemin ${n}"
       },
-      "cpu": {
-        "reason": "Votre pièce a ignoré la prise indiquée par le chemin rouge sur le plateau.",
-        "forcedPathLine": "Suivez le chemin coloré affiché sur le plateau.",
-        "penaltyRemove": "Sanction : <b>retirer la pièce fautive</b> de la position marquée d’une croix rouge.",
-        "revertNotice": "Votre dernier coup a été annulé et apparaît avec la flèche jaune.",
-        "title": "Soufla réclamée contre vous",
-        "penaltyForceInline": "Sanction : <b>forcer la pièce</b> à effectuer la prise indiquée par le chemin coloré.",
-        "forcedPathIntro": "Chemin de prise que la pièce doit suivre :",
-        "penaltyForcePicked": "Sanction : <b>forcer la pièce à prendre</b>."
-      },
-      "applied": {
-        "force": "La pièce adverse a été forcée à suivre le chemin de prise valide.",
-        "remove": "La pièce adverse qui a ignoré la prise a été retirée.",
-        "self": "Soufla appliquée."
-      },
+      "cpu": {},
+      "applied": {},
       "sendFailed": "La Soufla n’a pas pu être appliquée à cause d’un problème de connexion. Vérifiez votre accès à Internet puis réessayez.",
       "summary": {
         "force": "{actor} a choisi une sanction de Soufla contre vous et vous a imposé le chemin indiqué en vert sur le plateau.",
@@ -1207,7 +1160,7 @@
         },
         "micOff": "Activer le micro",
         "spkOff": "Activer le son",
-        "mic": "Micro",
+        "mic": "Microphone",
         "speaker": "Son"
       },
       "chat": {
@@ -1215,14 +1168,14 @@
         "failed": "Le message n’a pas pu être envoyé. Réessayez.",
         "placeholder": "Écrivez un message…",
         "rateLimit": "Attendez une seconde avant d’envoyer un autre message.",
-        "title": "Chat",
+        "title": "Discussion écrite",
         "tooLong": "Réduisez le message à 200 caractères ou moins."
       },
       "leave": "Quitter la partie"
     },
     "advHelp": {
       "title": "Guide des niveaux",
-      "levelsIntro": "Le jeu contre l’ordinateur utilise un moteur unique PVS/Alpha-Beta à approfondissement itératif et gestion automatique du temps. Les profondeurs indiquées sont des plafonds de sécurité; la recherche peut s’arrêter plus tôt selon le temps et la complexité. Les niveaux élevés disposent de plus de temps, de nœuds et de mémoire.",
+      "levelsIntro": "Le jeu contre l’ordinateur utilise un moteur unique PVS/Alpha-Beta à approfondissement itératif et gestion automatique du temps. Les profondeurs indiquées sont des plafonds de sécurité ; la recherche peut s’arrêter plus tôt selon le temps et la complexité. Les niveaux élevés disposent de plus de temps, de nœuds et de mémoire.",
       "levelDetails": {
         "beginner": "Plafond de profondeur : 7 ; temps de base : 180 ms ; limite stricte : 420 ms ; choix sûr parmi 4 coups proches au maximum.",
         "easy": "Plafond de profondeur : 10 ; temps de base : 500 ms ; limite stricte : 1,1 s ; choix sûr parmi 3 coups proches au maximum.",
@@ -1245,26 +1198,26 @@
       "password2": "Confirmer le mot de passe",
       "msgResetDomain": "Le message de récupération du mot de passe ne peut pas être envoyé depuis ce site pour le moment. Réessayez plus tard ou contactez l’assistance.",
       "toRecover": "Mot de passe oublié ?",
-      "save": "Enregistrer",
+      "save": "Enregistrer les modifications",
       "nickname": "Pseudo",
-      "email": "Email",
+      "email": "Adresse e-mail",
       "registerTitle": "Créer un compte",
       "register": "S’inscrire",
       "recoverTitle": "Réinitialiser le mot de passe",
       "loginEmailOption": "Se connecter avec e-mail",
       "toRegister": "Créer un compte",
       "msgResetTooMany": "Trop de tentatives. Réessayez plus tard.",
-      "backLogin": "Retour",
+      "backLogin": "Retour à la connexion",
       "msgResetInvalidEmail": "Adresse e-mail invalide.",
       "msgInvalid": "Vérifiez les informations saisies et remplissez les champs obligatoires.",
       "msgLoginInvalid": "L’adresse e-mail ou le mot de passe est incorrect.",
-      "msgSent": "Instructions envoyées.",
+      "msgSent": "Les instructions ont été envoyées à votre adresse e-mail.",
       "msgNetwork": "Connexion impossible pour le moment. Vérifiez votre accès à Internet puis réessayez.",
       "seo": {
         "start": {
           "title": "Commencez à jouer à Dhamet facilement",
           "b1": "Connectez-vous ou créez un nouveau compte, et vous pouvez aussi continuer comme invité pour essayer rapidement le jeu.",
-          "b2": "Après la connexion, vous pouvez choisir de jouer contre l’ordinateur ou de jouer à Dhamet en ligne avec d’autres joueurs.",
+          "b2": "Après être entré dans l’application, vous pouvez choisir de jouer contre l’ordinateur ou de jouer à Dhamet en ligne avec d’autres joueurs.",
           "b3": "La création d’un compte vous donne un profil personnel, des statistiques et une expérience plus complète dans l’application.",
           "b4": "Le mode invité convient à un essai rapide, tandis qu’un compte vous offre des fonctionnalités supplémentaires et une meilleure organisation de votre expérience.",
           "b5": "Au bas de la page, vous trouverez des liens vers les conditions d’utilisation, la politique de confidentialité, les règles et les moyens de contact.",
@@ -1276,12 +1229,12 @@
           "b2": "Il se joue sur un plateau de points et de trajets, et se distingue des dames courantes par la forme du plateau, les directions de jeu et certaines règles fondamentales.",
           "b3": "Le jeu repose sur un bon placement, l’exploitation des occasions de prise et le bon moment pour promouvoir les pièces en Dhaïm.",
           "b4": "L’application Dhamet a été créée et développée par العُقل للبرمجيات / El Ougl Software SARL, titulaire des droits. Vous pouvez visiter le site de l’entreprise pour découvrir ses produits : <a href=\"https://ouglsoft.com\" target=\"_blank\" rel=\"noopener\">ouglsoft.com</a>.",
-          "small": "Dhamet est un jeu stratégique mauritanien traditionnel fondé sur la réflexion, la planification et une bonne lecture du mouvement. L’application a été créée et développée par El Ougl Software SARL. Site de l’entreprise : <a href=\"https://ouglsoft.com\" target=\"_blank\" rel=\"noopener\">ouglsoft.com</a>."
+          "small": "Dhamet est un jeu stratégique mauritanien traditionnel fondé sur la réflexion, la planification et une bonne lecture du mouvement. L’application a été créée et développée par El Ougl Software SARL, titulaire des droits. Site de l’entreprise : <a href=\"https://ouglsoft.com\" target=\"_blank\" rel=\"noopener\">ouglsoft.com</a>."
         }
       }
     },
     "buttons": {
-      "newGame": "Nouveau",
+      "newGame": "Nouvelle partie",
       "soufla": "Soufla",
       "settings": "Paramètres",
       "home": "Accueil",
@@ -1363,7 +1316,6 @@
     "modals": {
       "gameOver": {
         "title": "Partie terminée",
-        "winner": "Félicitations à {player}, qui remporte la partie !",
         "draw": "Une partie équilibrée, terminée par un match nul.",
         "reason": {
           "noPieces": "{player} n’a plus de pièces.",
@@ -1456,16 +1408,16 @@
       "gameWinnerSelf": "Félicitations, vous avez gagné la partie !",
       "gameLoserSelf": "Courage, vous avez perdu la partie.",
       "gameDraw": "Une partie équilibrée, terminée par un match nul.",
-      "turnMoveFmt": "${side} : Déplacement ${from}-${to}.",
-      "turnMoveSelf": "Vous : déplacement de ${from} à ${to}.",
-      "turnCaptureFmt": "${side} : Prise ${from}-${to} (${n}).",
-      "turnCaptureSelf": "Vous : prise de ${from} à ${to} (${n})."
+      "turnMoveFmt": "${side} : a déplacé la pièce de ${from} à ${to}.",
+      "turnMoveSelf": "Vous : avez déplacé la pièce de ${from} à ${to}.",
+      "turnCaptureFmt": "${side} : a capturé de ${from} à ${to} (${n}).",
+      "turnCaptureSelf": "Vous : avez capturé de ${from} à ${to} (${n})."
     },
     "mode": {
       "subtitle": "Choisissez votre façon de jouer : une partie en solo contre l’ordinateur ou une partie en direct avec un autre joueur.",
       "pvcDesc": "Commencez une partie en solo contre un moteur de jeu intelligent et choisissez le niveau de difficulté adapté.",
-      "title": "Choisir le mode",
-      "pvpTitle": "En ligne",
+      "title": "Choisir le mode de jeu",
+      "pvpTitle": "Jouer en ligne",
       "backToAccount": "Retour au compte",
       "pvpDesc": "Commencez une partie directe et compétitive contre un autre joueur connecté.",
       "pvcTitle": "Contre l’ordinateur"
@@ -1485,7 +1437,6 @@
       "inviteDisabled": "Invitation impossible pour le moment",
       "invitesDisabled": "N’accepte pas les invitations",
       "returnToMatch": "Revenir à la partie",
-      "reconnectingRoom": "Les joueurs se reconnectent",
       "privateRoom": "Partie privée",
       "roomDefault": "Partie",
       "roomLabel": "Partie",
@@ -1497,7 +1448,6 @@
       "onlineInitFail": "Le jeu en ligne ne peut pas être ouvert pour le moment. Vérifiez votre connexion Internet et réessayez.",
       "reconnecting": "Rétablissement de la connexion…",
       "loadingMatch": "Ouverture de la partie…",
-      "onlineInitHelp": "Vérifiez que vous êtes connecté et que votre accès à Internet fonctionne, puis réessayez.",
       "loading": "Chargement…",
       "wait": "C’est au tour de l’autre joueur. Veuillez patienter.",
       "aiThinkingMove": "L’ordinateur choisit son coup…",
@@ -1522,10 +1472,10 @@
       "board": "Plateau de jeu",
       "activityLog": "Journal d’activité",
       "controls": "Commandes",
-      "mobileStats": "Statistiques mobile",
+      "mobileStats": "Statistiques mobiles",
       "pvpActions": "Actions PvP",
       "stats": "Statistiques",
-      "matchDetails": "Détails du match",
+      "matchDetails": "Détails de la partie",
       "editAccount": "Modifier le compte",
       "authOverview": "Vue d’ensemble de Dhamet",
       "authStart": "Commencer à jouer à Dhamet",
@@ -1603,7 +1553,7 @@
         "private": "Partie privée (les spectateurs ne peuvent pas la regarder)"
       },
       "invites": {
-        "receiveLabel": "Réception des invitations :",
+        "receiveLabel": "Recevoir les invitations :",
         "enabled": "Activée",
         "disabled": "Désactivée",
         "receivingEnabled": "Réception des invitations activée.",
@@ -1672,7 +1622,6 @@
       "notCommitted": "Le coup n’a pas été annulé, car la partie a continué avant la fin de la demande. Appuyez sur Actualiser puis réessayez.",
       "rejected": "L’autre joueur a refusé la demande d’annulation.",
       "rejectedTitle": "Demande d’annulation refusée",
-      "spectatorRequested": "{player} a demandé l’annulation du dernier coup.",
       "spectatorAccepted": "{responder} a accepté la demande de {requester} d’annuler le dernier coup indiqué par la flèche jaune inversée.",
       "spectatorRejected": "{responder} a refusé la demande de {requester} d’annuler le dernier coup.",
       "requesterAccepted": "{responder} a accepté d’annuler le dernier coup indiqué par la flèche jaune inversée.",
@@ -1882,11 +1831,11 @@ function deepGet(obj, key) {
       scheduled = false;
       applyDir();
 
-      /*
-       * Keep DOM translations synchronized when i18n.js loads after the shell,
-       * when the language is changed, or when caching changes script execution
-       * order.
-       */
+        
+                                                                               
+                                                                               
+               
+         
       try {
         applyI18nDom(document, currentLang());
       } catch (_) {}

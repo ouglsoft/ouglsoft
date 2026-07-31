@@ -1,10 +1,10 @@
-/*
- * Computer-player configuration.
- *
- * Strength is time-led rather than depth-led.  Depth and node limits are hard
- * safety ceilings only; iterative deepening always returns the last completed
- * iteration.
- */
+  
+                                 
+  
+                                                                              
+                                                                              
+             
+   
 (function (root) {
   'use strict';
 
@@ -94,9 +94,9 @@
     const src = source && typeof source === 'object' ? source : {};
     const aiLevel = normalizeLevel(src.aiLevel);
     const base = getLevelConfig(aiLevel);
-    // Settings saved by the removed engine are not compatible with this search
-    // architecture.  Preserve the selected level, but migrate its old tuning
-    // values to the new level defaults instead of silently weakening the engine.
+     
+     
+     
     const current = Number(src.engineConfigVersion) === ENGINE_CONFIG_VERSION ? src : {};
     const soft = clampInt(current.thinkTimeMs, 80, 30000, base.thinkTimeMs);
     const boost = clampInt(current.timeBoostCriticalMs, 0, 15000, base.timeBoostCriticalMs);

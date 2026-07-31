@@ -1,9 +1,9 @@
-/*
- * Dhamet shared result helpers v3.
- *
- * Pure helpers for terminal match result shape. Scoring policies and dashboard
- * writes are mode/account concerns; this module only standardizes result data.
- */
+  
+                                   
+  
+                                                                               
+                                                                               
+   
 (function (root) {
   'use strict';
 
@@ -72,10 +72,10 @@
     const snap = State && typeof State.normalizeSnapshot === 'function' ? State.normalizeSnapshot(snapshot) : snapshot;
     if (!snap || !snap.board) return normalizeResult({ status: RESULT_ONGOING, reason: 'missing_snapshot' });
 
-    // Deferred promotion becomes active after the opponent completes a turn,
-    // before terminal conditions for the promoted side are evaluated. Stored
-    // online snapshots retain the man plus this queue for backward-compatible
-    // animation, so materialize the current side's valid promotions on a copy.
+     
+     
+     
+     
     let board = Rules.cloneBoard(snap.board);
     if (State && typeof State.activateDeferredPromotions === 'function') {
       const activated = State.activateDeferredPromotions(board, snap, snap.player);

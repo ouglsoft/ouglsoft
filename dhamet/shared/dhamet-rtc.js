@@ -1,11 +1,11 @@
-/*
- * Dhamet RTC signaling helper.
- *
- * Shared validation for WebRTC signaling records. This file is not a TURN
- * server, does not relay audio, and does not contain Dhamet board rules. It
- * only normalizes small operational signaling payloads before GameRoom writes
- * them officially.
- */
+  
+                               
+  
+                                                                          
+                                                                            
+                                                                              
+                   
+   
 (function (root) {
   'use strict';
 

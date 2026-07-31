@@ -422,7 +422,7 @@
     ctx.lineJoin = "round";
     ctx.lineWidth = Math.max(2.2, width * 0.045);
 
-    // Broad double base, similar to a classical chess pawn.
+     
     ctx.beginPath();
     ctx.moveTo(x - width * 0.39, baseY);
     ctx.quadraticCurveTo(x - width * 0.43, baseY - height * 0.08, x - width * 0.31, anchorY - height * 0.18);
@@ -441,7 +441,7 @@
     ctx.lineWidth = Math.max(1.6, width * 0.03);
     ctx.stroke();
 
-    // Curved pawn stem.
+     
     ctx.beginPath();
     ctx.moveTo(x - width * 0.12, stemTop);
     ctx.bezierCurveTo(x - width * 0.11, stemTop + height * 0.12, x - width * 0.23, stemBottom - height * 0.07, x - width * 0.27, stemBottom);
@@ -454,7 +454,7 @@
     ctx.lineWidth = Math.max(2, width * 0.04);
     ctx.stroke();
 
-    // Collar and spherical head.
+     
     ctx.beginPath();
     ctx.ellipse(x, collarY, width * 0.24, height * 0.092, 0, 0, Math.PI * 2);
     ctx.fillStyle = bodyGrad;
@@ -487,7 +487,7 @@
     var ownerFn = opts.pieceOwner || global.pieceOwner;
     var kindFn = opts.pieceKind || global.pieceKind;
     var bot = opts.BOT != null ? opts.BOT : global.BOT;
-    // Canvas-native pieces are the single dimensional rendering path.
+     
 
     for (var r = 0; r < n; r++) {
       for (var c = 0; c < n; c++) {
@@ -532,7 +532,7 @@
         drawDimensionalPieces(ctx, board, opts);
         return;
       } catch (_) {
-        /* Fall through to the canonical 2D pieces instead of leaving an empty board. */
+                                                                                        
       }
     }
 

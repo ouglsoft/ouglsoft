@@ -1,13 +1,13 @@
-/*
- * Dhamet shared match-ending helpers v4.
- *
- * Natural endings are always counted from the authoritative board. Non-natural
- * endings are assessed only in a very small, clearly late endgame and only when
- * a tightly bounded rules-based search proves a forced win or forced draw. The
- * identity of the player who left and ordinary material or mobility advantage
- * are never sufficient on their own. This adjudicator is authoritative server
- * logic for online play; computer games do not invoke it for non-natural ends.
- */
+  
+                                         
+  
+                                                                               
+                                                                                
+                                                                               
+                                                                              
+                                                                              
+                                                                               
+   
 (function (root) {
   'use strict';
 
@@ -21,10 +21,10 @@
   const BOT = Rules ? Rules.BOT : -1;
 
   const POLICY = Object.freeze({
-    // Administrative adjudication is intentionally limited to imminent endings:
-    // either eight pieces or fewer remain, or one side has only a lone king and
-    // no more than ten pieces remain in total. Natural endings are still checked
-    // before this gate and always count.
+     
+     
+     
+     
     maxEndgamePieces: 8,
     maxLoneKingPieces: 10,
     minNormalInitialPieces: 40,

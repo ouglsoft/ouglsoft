@@ -1,9 +1,9 @@
-/* ========================================================================== 
-   DHAMET UNIFIED THEME — ELECTRIC DESERT
-   Single source of truth for every application color, gradient and elevation.
-   Loaded after the legacy layout styles so desktop, mobile portrait and mobile
-   landscape share the same visual identity without changing game geometry.
-   ========================================================================== */
+                                                                              
+                                         
+                                                                              
+                                                                               
+                                                                           
+                                                                                
 
 :root {
   --rgb-white: 255 255 255;
@@ -240,24 +240,24 @@
   --gradient-game-control: linear-gradient(145deg, rgb(19 69 94) 0%, rgb(25 108 119) 58%, rgb(49 143 132) 100%);
   --gradient-game-control-danger: linear-gradient(145deg, rgb(128 40 48) 0%, rgb(177 61 70) 100%);
   --gradient-modal-header: linear-gradient(135deg, rgb(18 66 90) 0%, rgb(24 105 116) 58%, rgb(48 143 132) 100%);
-  /* ------------------------------------------------------------------------
-     RAW PALETTE
-     Concrete color channels are intentionally confined to this file.
-     ------------------------------------------------------------------------ */
-  /* ------------------------------------------------------------------------
-     SEMANTIC COLOR ROLES — LIGHT
-     ------------------------------------------------------------------------ */
-  /* ------------------------------------------------------------------------
-     GAME / CANVAS ROLES
-     JavaScript resolves these values through js/theme-colors.js.
-     ------------------------------------------------------------------------ */
-  /* ------------------------------------------------------------------------
-     GRADIENTS, SHADOWS, SHAPE AND TYPE
-     ------------------------------------------------------------------------ */
-  /* ------------------------------------------------------------------------
-     LEGACY COMPATIBILITY ALIASES
-     Existing layouts use these names; their values are now centrally owned.
-     ------------------------------------------------------------------------ */
+                                                                             
+                
+                                                                     
+                                                                                
+                                                                             
+                                 
+                                                                                
+                                                                             
+                        
+                                                                 
+                                                                                
+                                                                             
+                                       
+                                                                                
+                                                                             
+                                 
+                                                                            
+                                                                                
   --rgb-board-light: 250 253 253;
   --rgb-board-light-alt: 222 241 244;
 }
@@ -375,9 +375,9 @@
   --piece-black-edge-soft: rgb(194 65 12);
 }
 
-/* ========================================================================== 
-   GLOBAL VISUAL FOUNDATION
-   ========================================================================== */
+                                                                              
+                           
+                                                                                
 
 html,
 body {
@@ -431,9 +431,9 @@ h3,
   color: var(--color-text-muted);
 }
 
-/* ========================================================================== 
-   SHARED SURFACES, CONTROLS AND BUTTON HIERARCHY
-   ========================================================================== */
+                                                                              
+                                                 
+                                                                                
 
 .z-auth-card,
 .z-auth-seo-card,
@@ -609,9 +609,9 @@ button.ghost {
   }
 }
 
-/* ========================================================================== 
-   AUTHENTICATION / FIRST IMPRESSION
-   ========================================================================== */
+                                                                              
+                                    
+                                                                                
 
 .z-auth-wrap {
   position: relative;
@@ -657,9 +657,9 @@ button.ghost {
   filter: drop-shadow(0 16px 28px rgb(var(--rgb-primary-500) / .22));
 }
 
-/* ========================================================================== 
-   MODE SELECTION — TWO DISTINCT GAME EXPERIENCES
-   ========================================================================== */
+                                                                              
+                                                 
+                                                                                
 
 .z-mode-grid {
   perspective: 1000px;
@@ -736,9 +736,9 @@ button.ghost {
   }
 }
 
-/* ========================================================================== 
-   DASHBOARD / PLAYER PROFILE
-   ========================================================================== */
+                                                                              
+                             
+                                                                                
 
 .z-dash-profile-card {
   position: relative;
@@ -793,9 +793,9 @@ button.ghost {
   box-shadow: var(--shadow-sm-unified) !important;
 }
 
-/* ========================================================================== 
-   LOBBY / LIVE PRESENCE
-   ========================================================================== */
+                                                                              
+                        
+                                                                                
 
 .z-lobby-panel {
   position: relative;
@@ -893,9 +893,9 @@ button.ghost {
   border-color: var(--color-border) !important;
 }
 
-/* ========================================================================== 
-   GAME SCREEN — BOARD, TURN, STATS AND ACTIONS
-   ========================================================================== */
+                                                                              
+                                               
+                                                                                
 
 body.z-game-page .app {
   background: transparent;
@@ -1009,9 +1009,9 @@ canvas#board {
   border-color: rgb(var(--rgb-danger-500) / .34) !important;
 }
 
-/* ========================================================================== 
-   MODALS, ALERTS AND FEEDBACK
-   ========================================================================== */
+                                                                              
+                              
+                                                                                
 
 .dialog {
   border-color: var(--color-border-strong) !important;
@@ -1030,10 +1030,10 @@ canvas#board {
   border-color: rgb(var(--rgb-danger-500) / .34) !important;
 }
 
-/* ========================================================================== 
-   MOBILE: SHARED IDENTITY FOR PORTRAIT AND LANDSCAPE
-   Layout dimensions remain controlled by mobile.css.
-   ========================================================================== */
+                                                                              
+                                                     
+                                                     
+                                                                                
 
 body.z-mobile-on {
   --fs-title: 22px;
@@ -1110,8 +1110,8 @@ body.z-mobile-on .z-mobile-shell-menu {
   }
 }
 
-/* Compact title scale is explicit so the desktop refresh does not crowd either
-   mobile orientation. */
+                                                                               
+                         
 
 body.z-mobile-on h1,
 body.z-mobile-on .z-page-title,
@@ -1231,7 +1231,7 @@ html.dark .z-mode-card p {
   color: rgb(var(--rgb-white) / .86) !important;
 }
 
-/* Login and lobby actions use one strong, harmonious family instead of pale tints. */
+ 
 
 .z-auth-page #btnLogin,
 .z-auth-page #btnRegister,
@@ -1261,7 +1261,7 @@ html.dark .z-mode-card p {
   filter: saturate(.55) !important;
 }
 
-/* Modal family: clearly new surface, header, close control and footer hierarchy. */
+ 
 
 .modal,
 .dialog {
@@ -1337,7 +1337,7 @@ html.dark .modal-footer {
   background: var(--color-surface-solid) !important;
 }
 
-/* Mobile shell icons stay crisp in dark mode. */
+ 
 
 html.dark body.z-mobile-on .z-mobile-shell-btn {
   color: rgb(var(--rgb-white)) !important;
@@ -1351,7 +1351,7 @@ html.dark body.z-mobile-on .z-mobile-shell-btn img {
   opacity: 1 !important;
 }
 
-/* Game controls: one coherent color family, with destructive actions only in red. */
+ 
 
 body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid .btn,
 body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid .soufla-row .btn,
@@ -1382,13 +1382,13 @@ body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid .btn:not(
   display: none !important;
 }
 
-/* Portrait buttons are reduced by about 40%; icons consume essentially the full tile. */
+ 
 
 body.z-mobile-on[data-mobile-orientation="portrait"][data-mobile-page="game"] .z-mobile-game-controls-grid {
   gap: 4px !important;
 }
 
-/* Landscape retains button height; the icon fills the available vertical area. */
+ 
 
 body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="game"] .z-mobile-game-controls-grid .btn,
 body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="game"] .z-mobile-game-controls-grid .soufla-row {
@@ -1397,9 +1397,9 @@ body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="game"] .
   padding: 0 !important;
 }
 
-/* Capture timer is always above the end-capture button while the chain is active. */
+ 
 
-/* Desktop game controls use the same restrained ocean family as mobile. */
+ 
 
 body.z-game-page:not(.z-mobile-on) .side .btn,
 body.z-game-page:not(.z-mobile-on) .controls-box .btn,
@@ -1523,7 +1523,7 @@ html.dark .dialog {
   color: var(--color-text) !important;
 }
 
-/* Language controls: readable native select and mobile language menu. */
+ 
 
 #authLangSel,
 #langSel,
@@ -1557,7 +1557,7 @@ html.dark .dialog {
   background: rgb(var(--rgb-white) / .15) !important;
 }
 
-/* Stronger page guidance text. */
+ 
 
 .z-mode-sub,
 .z-lobby-subtitle {
@@ -1584,11 +1584,11 @@ html.dark .z-lobby-subtitle {
   color: rgb(var(--rgb-white)) !important;
 }
 
-/* Light board: same hue family, slightly brighter only. */
+ 
 
-/* Active capture timer: explicit red outline and 20% height increase only while live. */
+ 
 
-/* Dark mode icon treatment outside game controls: preserve glyph, remove white discs. */
+ 
 
 html.dark body.z-mobile-on .z-mobile-shell-btn img,
 html.dark body.z-mobile-on[data-mobile-page="auth"] .btn-ico,
@@ -1610,14 +1610,14 @@ html.dark body.z-mobile-on[data-mobile-page="dashboard"] .btn {
   overflow: visible;
 }
 
-/* Mode icons retain their real SVG silhouette in dark mode. The surrounding
-   tile is translucent, never an opaque white square. */
+                                                                            
+                                                        
 
 
 
 
 
-/* Login footer content and external links remain readable over dark surfaces. */
+ 
 
 html.dark .z-auth-foot,
 html.dark .z-auth-foot a,
@@ -1637,8 +1637,8 @@ html.dark body.z-mobile-on .z-mobile-footer-rights {
   background: rgb(8 37 51 / .88) !important;
 }
 
-/* Brighter light board with explicit contrast roles for lines, routes, markers
-   and pieces. Hue identity stays in the existing blue/teal/ocher family. */
+                                                                               
+                                                                            
 
 :root:not(.dark) {
   --mark-label-bg: rgb(var(--rgb-white) / .94);
@@ -1678,8 +1678,8 @@ canvas#board {
   box-shadow: inset 0 0 0 1px rgb(var(--rgb-white) / .18), 0 14px 34px rgb(var(--rgb-primary-900) / .20) !important;
 }
 
-/* Soufla must use the same icon treatment as the other game buttons.
-   No dedicated white plate, no extra background, no enlarged desktop tile. */
+                                                                     
+                                                                              
 
 
 
@@ -1696,7 +1696,7 @@ body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid .soufla-r
 
 
 
-/* Lobby titles act as real card headers, similar to table heads. */
+ 
 
 .z-lobby-panel {
   padding-top: 0 !important;
@@ -1722,7 +1722,7 @@ html.dark .z-lobby-panel:nth-child(2) .z-lobby-h2 {
   border-bottom: 1px solid rgb(var(--rgb-white) / .12);
 }
 
-/* Auth page in dark mode: keep every entry and footer link readable and on-brand. */
+ 
 
 html.dark .z-auth-page #btnLogin,
 html.dark .z-auth-page #btnRegister,
@@ -1755,7 +1755,7 @@ html.dark body.z-mobile-on[data-mobile-page="auth"] .z-mobile-footer-nav a {
   color: rgb(var(--rgb-white)) !important;
 }
 
-/* Dark mode mode-selection icons: keep a visible glyph, not a pale square. */
+ 
 
 
 
@@ -1765,9 +1765,9 @@ html.dark body.z-mobile-on[data-mobile-page="mode"] .z-mode-card p {
   color: rgb(var(--rgb-white) / .88) !important;
 }
 
-/* Light board: a little brighter, while lines, diagonals, routes and pieces stay clearer. */
+ 
 
-/* A single structural header model applies to desktop and mobile. */
+ 
 
 .z-lobby-panel {
   padding: 0 14px 14px !important;
@@ -1811,7 +1811,7 @@ body.z-mobile-on[data-mobile-page="lobby"] .z-lobby-h2 {
   font-size: var(--fs-body) !important;
 }
 
-/* Player rows stay on one line: avatar, name, status, action. */
+ 
 
 .z-player-row {
   min-height: 42px;
@@ -1931,7 +1931,7 @@ body.z-mobile-on[data-mobile-page="lobby"] .z-player-row .z-row-actions .btn {
   font-size: .72rem;
 }
 
-/* Disabled invitations must read as unavailable, not as an active action. */
+ 
 
 .z-player-row .z-invite-btn.is-invite-disabled,
 .z-player-row .z-invite-btn:disabled {
@@ -1951,20 +1951,20 @@ html.dark .z-player-row .z-invite-btn:disabled {
   border-color: rgb(var(--rgb-danger-400) / .42) !important;
 }
 
-/* Desktop keeps the original pictogram and its label. Mobile uses the
-   localized word only, because Soufla has no universally recognizable icon. */
+                                                                      
+                                                                               
 
-/* Online refresh uses the same transparent icon treatment as other controls. */
-
-
+ 
 
 
 
-/* Keep the orientation control above the bottom drawer handle and away from
-   the gameplay control grid. */
 
-/* This selector deliberately outranks the general lobby action gradient.
-   Disabled invitations are neutral and unmistakably unavailable on every size. */
+
+                                                                            
+                                
+
+                                                                         
+                                                                                  
 
 .z-lobby-panel .z-player-row .z-row-actions .z-invite-btn.is-invite-disabled:disabled,
 body.z-mobile-on[data-mobile-page="lobby"] .z-lobby-panel .z-player-row .z-row-actions .z-invite-btn.is-invite-disabled:disabled {
@@ -1986,13 +1986,13 @@ html.dark body.z-mobile-on[data-mobile-page="lobby"] .z-lobby-panel .z-player-ro
   box-shadow: inset 0 1px 0 rgb(var(--rgb-white) / .08) !important;
 }
 
-/* The orientation control sits on the physical bottom edge with no gap below it. */
+ 
 
-/* The orientation control occupies the bottom edge but must remain above the
-   drawer handle, whose full-width surface stays available everywhere else. */
+                                                                             
+                                                                              
 
-/* The mobile login artwork replaces only the stretched mobile brand image.
-   Desktop keeps the compact application icon. */
+                                                                           
+                                                 
 
 .z-auth-mobile-hero {
   display: none;
@@ -2019,15 +2019,15 @@ body.z-mobile-on[data-mobile-page="auth"] .z-auth-mobile-hero {
   border-radius: 0 !important;
 }
 
-/* Keep the orientation action at its existing position, but always above the
-   bottom drawer handle and its pointer layer. */
+                                                                             
+                                                 
 
 body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-drawer-handle {
   z-index: 1 !important;
 }
 
-/* The dimensional mode still uses the same canvas and must never make it
-   transparent while a redraw is pending or fails. */
+                                                                         
+                                                     
 
 body.board-depth canvas#board {
   background: linear-gradient(180deg, var(--board-bg-start) 0%, var(--board-bg-end) 100%) !important;
@@ -2047,16 +2047,16 @@ body.board-depth canvas#board {
   line-height: 1.65 !important;
 }
 
-/* Strong, opposing outlines keep the flat pieces separate from every board line. */
+ 
 
-/* One compact orientation control on every mobile page and in both rotations. */
+ 
 
-/* The title/subtitle pair shares one overlay and sits slightly above the
-   visual centre of the mobile login artwork. */
+                                                                         
+                                                
 
-/* Very light application-derived board gradient in light mode. */
+ 
 
-/* The log itself owns vertical scrolling in every layout. */
+ 
 
 .log,
 body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-drawer .log {
@@ -2066,17 +2066,17 @@ body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-drawer .log {
   scrollbar-gutter: stable;
 }
 
-/* Restore the original orientation control exactly: compact translucent shell
-   and the original 20px two-device glyph. The same shared component is used on
-   every mobile page. */
+                                                                              
+                                                                               
+                        
 
-/* Strong, comfortable 2D piece separation in the two difficult combinations. */
+ 
 
-/* On phones the timer row itself is the one end-capture control. There is no
-   small white clock layered over a hidden button. */
+                                                                             
+                                                     
 
 
-/* Unified capture timer colors: white glyphs everywhere; desktop timer uses the shared game-control green. */
+ 
 .timer-row,
 .timer-row .clock,
 .timer-row #killClock,

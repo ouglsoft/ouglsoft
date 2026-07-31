@@ -1,10 +1,10 @@
-/*
- * Shared Dhamet turn-resolution helpers.
- *
- * This module contains only pure rule/state transitions that must be identical
- * in PvC, the local computer worker, and the authoritative online reducer.
- * It deliberately contains no DOM, timers, storage, network, or animation code.
- */
+  
+                                         
+  
+                                                                               
+                                                                           
+                                                                                
+   
 (function (root) {
   'use strict';
 
@@ -48,13 +48,13 @@
     };
   }
 
-  /**
-   * Resolve one allowed soufla option into its complete legal next-turn state.
-   *
-   * Removal starts from the post-violation board and keeps the violating move.
-   * Force starts from the turn-start snapshot, discards the violating move, and
-   * applies the selected mandatory capture as the offender's replacement turn.
-   */
+     
+                                                                               
+    
+                                                                               
+                                                                                
+                                                                               
+     
   function resolveSouflaPenalty(input) {
     const src = input && typeof input === 'object' ? input : {};
     const pending = src.pending && typeof src.pending === 'object' ? src.pending : null;
@@ -92,9 +92,9 @@
         : {};
       preActivationPromotions = clonePromotionQueue(turnStart);
       if (!preActivationPromotions.length) {
-        // Compatibility with old pending records: a promotion created by the
-        // discarded offender move cannot survive rollback. Only the penalizer's
-        // already-carried promotion may remain.
+         
+         
+         
         preActivationPromotions = clonePromotionQueue(src.currentDeferredPromotions)
           .filter((item) => item.side === penalizer);
       }
@@ -114,11 +114,11 @@
       kind: option.kind,
       option,
       nextTurn: penalizer,
-      // Board immediately after the penalty, before crowns belonging to the
-      // penalizer become active at the start of the next turn.
+       
+       
       preActivationBoard: toBoard(rawBoard),
       preActivationPromotions: preActivationPromotions.map((item) => ({ ...item })),
-      // Complete legal state at the start of the penalizer's turn.
+       
       board: activated.board,
       deferredPromotions: activated.deferredPromotions,
       deferredPromotion: activated.deferredPromotion,

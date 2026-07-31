@@ -1,10 +1,10 @@
-/*
- * Dhamet shared Soufla helpers v1.
- *
- * Pure runtime-neutral helpers for Soufla decision payloads. This module does
- * not apply game state by itself; it normalizes and validates the player choice
- * so client and GameRoom do not invent different shapes for the same penalty.
- */
+  
+                                   
+  
+                                                                              
+                                                                                
+                                                                              
+   
 (function (root) {
   'use strict';
 
@@ -165,8 +165,8 @@
       }
     }
 
-    // Keep this value available for old UI summaries without requiring DOM-side
-    // recomputation of longest-chain metadata.
+     
+     
     fx.longestForOffender = longestByPieceValue(pending, decision.offenderIdx);
     return Object.keys(fx).length ? fx : null;
   }

@@ -1,10 +1,10 @@
-/*
- * Dhamet shared event helpers v1.
- *
- * Runtime-neutral event-log helpers. Events are structured data only; UI layers
- * may translate or render them, but this module does not touch DOM, storage,
- * Cloudflare, or i18n.
- */
+  
+                                  
+  
+                                                                                
+                                                                             
+                       
+   
 (function (root) {
   'use strict';
 

@@ -1,10 +1,10 @@
-/*
- * Silent online-backend router.
- *
- * A confirmed capacity decision is global and remains active until its recorded
- * reset. A transport/D1 failure is local to the current player only: the next
- * player starts a fresh check and no browser can change the global decision.
- */
+  
+                                
+  
+                                                                                
+                                                                              
+                                                                             
+   
 (function (root) {
   'use strict';
 
@@ -125,8 +125,8 @@
           if (control.available) return redirectToOfficial();
           return redirectToBackup(control.backupUrl, 'transient');
         } catch (_) {
-          // Firebase is consulted only after Cloudflare has actually failed,
-          // avoiding an unnecessary Firebase read during normal operation.
+           
+           
           if (!mirrorPromise) mirrorPromise = readFirebaseMirror();
           if (attempt + 1 < WORKER_ATTEMPTS) await delay(RETRY_DELAY_MS);
         }
@@ -146,8 +146,8 @@
     if (String(path || '').indexOf('/dhamet/api/lobby/') !== 0) return false;
     var status = Number(error && error.status || 0) || 0;
     if (status > 0 && status < 500 && status !== 429) return false;
-    // This is a per-player transport fallback only. It does not persist or
-    // announce a global capacity decision; later players check again.
+     
+     
     redirectToBackup(DEFAULT_BACKUP_URL, 'transient');
     return true;
   }

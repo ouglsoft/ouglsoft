@@ -6,9 +6,9 @@
 
   const VERSION = 'shared-presence-live-channel-v12';
 
-  // Cloudflare Free conscious policy. App-live and game-live sockets are the
-  // normal presence channels; the remaining pulse values define the bounded
-  // HTTP recovery path used only while a live channel is unavailable.
+   
+   
+   
   const POLICY = Object.freeze({
     inviteTtlMs: 60 * 1000,
     unifiedAppPulseMs: 30 * 1000,

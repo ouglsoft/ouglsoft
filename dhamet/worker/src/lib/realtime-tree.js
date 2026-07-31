@@ -1,8 +1,8 @@
-/*
- * Small JSON tree helpers used by the Cloudflare realtime Durable Object and
- * Worker routing code. These helpers are transport/storage utilities only; they
- * do not know anything about Dhamet rules, turns, UI, AI, lobby, chat, or voice.
- */
+  
+                                                                             
+                                                                                
+                                                                                 
+   
 
 export function cleanPath(path) {
   return String(path || '').trim().replace(/^\/+|\/+$/g, '').replace(/\/+/g, '/');
@@ -80,9 +80,9 @@ export function bumpVersions(versions, changedPaths, nowFn = Date.now) {
   for (const p0 of changedPaths || []) {
     const parts = splitPath(p0);
     if (!parts.length) continue;
-    // Keep one version per logical domain and, for keyed collections, one per
-    // entity. Dynamic leaf paths (messages, signals, fields) must not make the
-    // version map grow without bound.
+     
+     
+     
     versions[parts[0]] = t;
     if (parts.length > 1) versions[parts.slice(0, 2).join('/')] = t;
   }

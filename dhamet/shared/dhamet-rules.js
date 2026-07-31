@@ -1,14 +1,14 @@
-/*
- * Dhamet shared rules engine v2.
- *
- * Runtime-neutral, single-source rule logic for Dhamet/Zamat. This file is
- * intentionally pure: no DOM, no localStorage, no Cloudflare APIs,
- * no UI, and no AI evaluation. It attaches one object to globalThis:
- *   globalThis.DhametRules
- *
- * General game rules belong here. Mode-specific behavior belongs in PvC, PvP,
- * UI, AI, or Worker orchestration layers.
- */
+  
+                                 
+  
+                                                                           
+                                                                   
+                                                                     
+                           
+  
+                                                                              
+                                          
+   
 (function (root) {
   'use strict';
 
@@ -33,8 +33,8 @@
   const SOUFLA_SHORTER_THAN_GLOBAL_LONGEST = 'shorter_than_global_longest';
   const SOUFLA_CUT_CHAIN = 'cut_chain';
 
-  // Opening paths are expressed as [row, col] points. The side argument means
-  // the side that starts the game: TOP or BOT.
+   
+   
   const FORCED_OPENING_TOP = [
     [[3, 5], [4, 4]],
     [[5, 3], [3, 5]],
@@ -82,8 +82,8 @@
   ];
 
   const DIRS_ORTHO = Object.freeze([[-1, 0], [1, 0], [0, -1], [0, 1]]);
-  const DIRS_DIAG_A = Object.freeze([[-1, 1], [1, -1]]); // ↙ / ↗ family
-  const DIRS_DIAG_B = Object.freeze([[-1, -1], [1, 1]]); // ↘ / ↖ family
+  const DIRS_DIAG_A = Object.freeze([[-1, 1], [1, -1]]);  
+  const DIRS_DIAG_B = Object.freeze([[-1, -1], [1, 1]]);  
   const DIRS_ALL = Object.freeze([[-1, 0], [1, 0], [0, -1], [0, 1], [-1, 1], [1, -1], [-1, -1], [1, 1]]);
 
   const clone = Utils.cloneJson;
@@ -294,14 +294,14 @@
   }
 
 
-  /*
-   * Compact shared core.
-   *
-   * This is the canonical high-throughput move generator used by the public
-   * rules API and by the computer engine.  The board is an Int8Array(81); all
-   * capture recursion uses make/unmake on one buffer, so legal-path generation
-   * does not allocate a cloned 9x9 board at every jump.
-   */
+    
+                         
+    
+                                                                            
+                                                                              
+                                                                               
+                                                        
+     
   const COMPACT_NEXT = Array.from({ length: N_CELLS }, () => new Int16Array(DIRS_ALL.length).fill(-1));
   for (let cellIdx = 0; cellIdx < N_CELLS; cellIdx++) {
     const [r, c] = rc(cellIdx);
@@ -586,9 +586,9 @@
   }
 
   function compactLongestCaptureSearch(position, from, limit) {
-    // `limit` is retained for API compatibility. An object may be supplied by
-    // search clients to request cancellation or equivalent-position merging;
-    // legal capture lengths are never truncated.
+     
+     
+     
     const options = limit && typeof limit === 'object' ? limit : {};
     return compactCaptureAnalysis(position, from, { ...options, collectPaths: true });
   }
@@ -832,8 +832,8 @@
 
   function compactHasAnyLegalMove(position, side) {
     if (!(position instanceof Int8Array) || (side !== TOP && side !== BOT)) return false;
-    // A single legal capture segment guarantees at least one finite complete
-    // capture path because every jump removes an opposing piece.
+     
+     
     for (let from = 0; from < N_CELLS; from++) {
       const v = position[from] | 0;
       if (v && owner(v) === side && compactCaptureOptions(position, from).length) return true;
@@ -895,8 +895,8 @@
   function compactGenerateLegalMoves(position, side, options) {
     options = options || {};
     const policy = options.policy || 'strict';
-    // Strict play needs only globally longest chains. Use the two-pass search so
-    // shorter chains are measured but never materialized in memory.
+     
+     
     if (policy !== 'playable') {
       return compactGenerateSearchMoves(position, side, { ...options, dedupeEquivalent: false });
     }
@@ -1171,9 +1171,9 @@
 
   function finalizeTurnBoard(board, applied) {
     if (!applied || !applied.ok) return { ok: false, error: 'turn/not-applied' };
-    // Reaching the back rank creates a deferred right to promotion. The piece
-    // remains a man until the opponent has completed a turn and this player's
-    // next turn starts.
+     
+     
+     
     return {
       ok: true,
       board: cloneBoard(board),
@@ -1244,11 +1244,11 @@
     );
     if (explicit === TOP || explicit === BOT) return explicit;
 
-    // forcedPly is the index of the move about to be played. During the
-    // mandatory opening, the mover alternates from the original starter.
-    // Therefore the starter can be reconstructed from the current mover and
-    // the parity of forcedPly for older GameRoom records that do not yet store
-    // opening.starter.
+     
+     
+     
+     
+     
     const ply = Math.max(0, Number(snap.forcedPly || snap.openingPly || 0) || 0);
     const mover = Number(snap.player);
     if (mover === TOP || mover === BOT) return ply % 2 === 0 ? mover : opponent(mover);
@@ -1297,11 +1297,11 @@
     const byPiece = mandatory.byPiece || new Map();
     const selectedInfo = byPiece.get(from);
     const selectedMax = selectedInfo ? Number(selectedInfo.max || 0) : 0;
-    // The offender set is defined exclusively by the turn-start position:
-    // every piece that owned a globally longest capture chain is eligible for
-    // the single penalty.  How the player violated the duty (ignored capture,
-    // chose a shorter chain, or stopped a chain) changes the reason only; it
-    // never changes the offender set.
+     
+     
+     
+     
+     
     let offenders = mandatory.candidates.slice();
     offenders = Array.from(new Set(offenders)).filter(validIdx);
     if (!offenders.length) return null;
@@ -1336,7 +1336,7 @@
   }
 
   function detectSoufla(beforeSnap, board, by, ruleCheck) {
-    // Forced opening is a strict rule step: an opening mismatch is invalid, not a soufla.
+     
     if (beforeSnap && beforeSnap.forcedEnabled && Number(beforeSnap.forcedPly || 0) >= 0 && Number(beforeSnap.forcedPly || 0) < 10) return null;
 
     const supplied = ruleCheck && ruleCheck.mandatory && typeof ruleCheck.mandatory === 'object'
@@ -1350,8 +1350,8 @@
       ? supplied.candidates.map(Number).filter(validIdx)
       : [];
 
-    // Most turns are compliant. Reuse the summary already computed at turn
-    // start to detect that fact without materialising any capture paths again.
+     
+     
     let summary = null;
     if (supplied && suppliedLongest > 0) {
       summary = {
@@ -1377,8 +1377,8 @@
     else if (captures < selectedMax) reason = SOUFLA_CUT_CHAIN;
     if (!reason) return null;
 
-    // Full paths are needed only after a violation is confirmed, because they
-    // define the force choices.  This keeps normal legal turns inexpensive.
+     
+     
     const mandatory = mandatoryCaptureInfo(board, by, { includePaths: true, includeAllPiecePaths: false });
     if (!mandatory.hasCapture) return null;
     return buildSouflaPending(mandatory, ruleCheck, beforeSnap, by, reason);

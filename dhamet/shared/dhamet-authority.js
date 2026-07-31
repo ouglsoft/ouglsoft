@@ -1,10 +1,10 @@
-/*
- * Dhamet shared authoritative match reducer v7.
- *
- * Pure GameRoom transition logic. This is the single shared place that turns a
- * player MoveIntent into an official match state. It deliberately contains no
- * DOM, storage, WebSocket, Cloudflare, scoring, or account logic.
- */
+  
+                                                
+  
+                                                                               
+                                                                              
+                                                                  
+   
 (function (root) {
   'use strict';
 
@@ -186,19 +186,19 @@
     const currentMoveCount = Math.max(0, Number(currentSnap && currentSnap.moveCount || 0) || 0);
     const baseMoveCount = Math.max(0, Number(base && base.moveCount || 0) || 0);
     const decision = applied && applied.decision ? applied.decision : null;
-    // A soufla resolution settles the already-recorded offending turn. Removal
-    // keeps the current post-violation position; force replays exactly one turn
-    // from the turn-start snapshot. Neither creates a second game turn.
+     
+     
+     
     const resolvedMoveCount = decision && decision.kind === 'force'
       ? Math.max(currentMoveCount, baseMoveCount + 1)
       : Math.max(currentMoveCount, baseMoveCount);
 
     const pending = State.normalizeDeferredPromotions(applied && applied.deferredPromotions);
     if (applied && applied.promotionPending) pending.push(clone(applied.promotionPending));
-    // The forced capture is the offender's replacement turn. Once it finishes,
-    // the penalizer's next turn starts immediately, so any crown that had been
-    // waiting through the offender's turn must become active in the authoritative
-    // state now. A new crown earned by the forced offender remains deferred.
+     
+     
+     
+     
     const activated = State.activateDeferredPromotions(board, pending, nextTurn);
     if (!activated || !activated.ok) return null;
     const resolvedBoard = activated.board;
@@ -286,8 +286,8 @@
       board: resolvedPenalty.preActivationBoard,
       jumps: applied && Array.isArray(applied.jumps) ? applied.jumps.slice() : [],
       captures: applied ? Number(applied.captures || 0) || 0 : 0,
-      // The shared resolver already placed any newly earned crown in the
-      // pre-activation queue. Do not enqueue it a second time here.
+       
+       
       promotionPending: null,
       deferredPromotions: resolvedPenalty.preActivationPromotions,
       removed: resolvedPenalty.removed,
@@ -301,8 +301,8 @@
     const storedStatePayload = Control.stateWithSoufla(statePayload, null) || statePayload;
 
     const mi = Number(record.moveIndex || 0) + 1;
-    // Resolving a soufla settles/replaces the already-counted offending turn.
-    // It is a new authoritative action (moveIndex) but never a second game ply.
+     
+     
     const ply = Math.max(0, Number(record.ply || 0) || 0);
     const ts = nowMs();
     const fx = Soufla.buildFx(pending, decision);
@@ -785,10 +785,10 @@
     nextGame.states[String(ply)] = storedStatePayload;
     nextGame.soufla = officialSoufla;
 
-    // A detected soufla gives the opponent an immediate penalty right before
-    // any new move or terminal claim is settled. The violating board is not the
-    // final legal consequence until removal/force is chosen, so defer result
-    // evaluation to applySouflaDecision in that case.
+     
+     
+     
+     
     let result = !serverSoufla && Result && typeof Result.fromSnapshot === 'function'
       ? Result.fromSnapshot(storedStatePayload.snapshot, { mode: 'pvp', moveIndex: mi, ply, source: 'gameroom-authority', endedAt: ts })
       : null;

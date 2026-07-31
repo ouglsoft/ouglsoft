@@ -112,11 +112,11 @@
     setShown(one(".timer-row"), !state.spectator);
     setShown(one(".soufla-row"), !state.spectator);
 
-    // Gameplay controls never reveal hidden rule state by becoming disabled.
-    // Availability is recorded as data only; each handler and, in PvP, the
-    // authoritative server still validates the requested action.  The global
-    // ui-hold layer may block the entire surface during initial boot, but no
-    // individual action button is visually or natively disabled.
+     
+     
+     
+     
+     
     const availability = {
       btnEndOnline: !state.uiBlocked,
       btnSpk: !state.uiBlocked,
@@ -138,8 +138,8 @@
       try { el.dataset.actionAvailable = availability[id] ? "true" : "false"; } catch (_) {}
     });
 
-    // Responsive DOM placement is only required when the match role changes.
-    // Never remount desktop controls on routine timer/status refreshes.
+     
+     
     try {
       const d = doc();
       if (

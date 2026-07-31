@@ -105,9 +105,9 @@
     return state;
   }
 
-  // Log rows are rendered newest-first. The browser owns manual scrolling
-  // between updates; whenever the visible row set changes, the newest row is
-  // restored at the top of the log. Unchanged live snapshots never touch scrollTop.
+   
+   
+   
   function syncElement(element, items, createRow, keyFor, options) {
     if (!element || typeof createRow !== "function") return false;
     var list = Array.isArray(items) ? items : [];

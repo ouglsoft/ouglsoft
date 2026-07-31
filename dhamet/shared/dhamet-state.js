@@ -1,10 +1,10 @@
-/*
- * Dhamet shared state helpers v4.
- *
- * Runtime-neutral helpers for the shape of a Dhamet match state. This module is
- * intentionally small and pure: no DOM, no storage, no Cloudflare.
- * It is loaded by the browser and by the Cloudflare Worker through globalThis.
- */
+  
+                                  
+  
+                                                                                
+                                                                   
+                                                                               
+   
 (function (root) {
   'use strict';
 
@@ -205,7 +205,7 @@
     return {
       snapshot: synchronizedSnapshot,
       deferredPromotions,
-      // Backward-compatible singular alias for older clients and stored games.
+       
       deferredPromotion,
       capturedOrder: Array.isArray(src.capturedOrder) ? src.capturedOrder.map(Number).filter(Number.isFinite) : [],
     };

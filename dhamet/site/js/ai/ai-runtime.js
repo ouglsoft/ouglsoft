@@ -1,10 +1,10 @@
-/*
- * Dhamet AI runtime helpers.
- *
- * Runtime wiring only: worker bridge creation, worker retry/fallback calls, and
- * thinking-state aggregation. The computer engine uses one full-turn analysis command and one separate
- * soufla-penalty command.
- */
+  
+                             
+  
+                                                                                
+                                                                                                       
+                          
+   
 (function (root) {
   'use strict';
 
@@ -57,10 +57,10 @@
     try { return await runWorkerOnce(); }
     catch (error) {
       const code = String(error && error.message || '');
-      // Explicit cancellation means the position changed and must remain final.
-      // A worker timeout, however, may be caused by a suspended/backgrounded
-      // worker on mobile. Terminate that worker and use the bounded local
-      // fallback supplied by the engine so the match can continue.
+       
+       
+       
+       
       if (code === 'ai_worker_cancelled') throw error;
       if (code === 'ai_worker_timeout') {
         cancelWorker(bridge);

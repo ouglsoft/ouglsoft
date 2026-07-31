@@ -1,11 +1,11 @@
-/*
- * Dhamet shared privacy/account deletion helpers v1.
- *
- * Runtime-neutral helpers for cleaning user-owned operational data after an
- * account deletion. This file contains no DOM, no Cloudflare storage calls, no
- * WebSocket code, and no Dhamet move/rule logic. It only classifies paths and
- * scrub operations so the Worker and GameRoom can apply one consistent policy.
- */
+  
+                                                     
+  
+                                                                            
+                                                                               
+                                                                              
+                                                                               
+   
 (function (root) {
   'use strict';
 

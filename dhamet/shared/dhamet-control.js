@@ -1,10 +1,10 @@
-/*
- * Dhamet shared GameRoom control helpers v2.
- *
- * Runtime-neutral helpers for official PvP control actions. This module only
- * normalizes intent payloads and derives rollback metadata from GameRecord data.
- * It contains no DOM, storage, WebSocket, Cloudflare, or UI behavior.
- */
+  
+                                             
+  
+                                                                             
+                                                                                 
+                                                                      
+   
 (function (root) {
   'use strict';
 
@@ -146,11 +146,11 @@
     return { ply: prevPly, state: payload };
   }
 
-  // A Soufla right belongs to one exact official turn state. Store only the
-  // normalized pending right in the historical snapshot; availableFor is
-  // derived from its penalizer and must always match the player to move in
-  // that snapshot. This prevents an older or foreign right from being revived
-  // by an unrelated undo.
+   
+   
+   
+   
+   
   function stripSnapshotSouflaMetadata(snapshot) {
     const snap = snapshot && typeof snapshot === 'object' ? clone(snapshot) : null;
     if (!snap) return null;

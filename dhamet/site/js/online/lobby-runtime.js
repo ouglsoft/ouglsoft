@@ -1,10 +1,10 @@
-/*
- * Dhamet lobby runtime.
- *
- * Owns the browser-side lobby, public presence, unified app pulse, invite
- * preference, invite receive/send flow, online notices, nickname migration,
- * and lightweight online page bootstrap.
- */
+  
+                        
+  
+                                                                          
+                                                                            
+                                         
+   
 (function () {
   function formatTpl(s, vars) {
     return (s || "").replace(/\{(\w+)\}/g, (_, k) => (vars && vars[k] != null ? vars[k] : ""));
@@ -270,7 +270,7 @@
     return info.authUid;
   }
 
-  // Browser writes must use official Worker/GameRoom endpoints for all realtime mutations.
+   
 
   function isGamePage() {
     try {
@@ -613,10 +613,10 @@
     }
   }
 
-  // Prefer a nickname explicitly chosen by the player (or stored on a registered
-  // account). Fall back to the stable localized four-digit label only when the
-  // server still carries its generated guest placeholder. This is display-only
-  // and adds no read, write, pulse, or network request.
+   
+   
+   
+   
   function displayPlayerName(uid, nickname) {
     const id = String(uid || "").trim();
     const chosen = String(nickname || "").trim();
@@ -798,17 +798,17 @@
       const explicit = String(sessionStorage.getItem(NICK_EXPLICIT_KEY) || "") === "1";
       const seenThisSession = String(sessionStorage.getItem(seenKey) || "") === "1";
 
-      // A nickname chosen in this browser session has first priority. Ignore the
-      // historical generated guest value that older builds marked explicit.
+       
+       
       if (explicit && stored && !isGeneratedGuestNickname(sessionUser && sessionUser.uid, stored)) return stored;
 
-      // After the lobby asks once during the current browser session, keep the
-      // resolved nickname (including the default alias) and stop prompting again
-      // until the browser session ends.
+       
+       
+       
       if (seenThisSession && stored) return stored;
 
-      // Registered accounts already have a deliberate profile nickname and do
-      // not need the guest nickname prompt.
+       
+       
       if (sessionUser && sessionUser.kind === "registered") {
         const registeredNick = String(sessionUser.nickname || "").trim();
         if (registeredNick) return registeredNick;
@@ -1660,9 +1660,9 @@
             this._autoReconnectActionAt = now;
             const reconnectGameId = String(this.gameId || "");
             try {
-              // A browser may report itself online while its previous WebSocket
-              // is still half-open. Rebind the existing live subscription so
-              // its initial official value restores the current board state.
+               
+               
+               
               if (typeof this._bindGameLiveSubscription === "function") this._bindGameLiveSubscription(reconnectGameId);
             } catch (e) {}
             try {
@@ -1987,8 +1987,8 @@
               const delay = this._activityAdaptiveDelay(now - base, LOBBY_PULSE_ACTIVE_MS, LOBBY_PULSE_IDLE_MS, LOBBY_PULSE_LONG_IDLE_MS, LOBBY_PULSE_IDLE_AFTER_MS, LOBBY_PULSE_LONG_IDLE_AFTER_MS);
               return hidden ? Math.max(delay, APP_PULSE_BACKGROUND_MS) : Math.max(delay, APP_PULSE_SLOW_LATER_MS);
             }
-            // game-live owns player/spectator liveness. The HTTP recovery path
-            // refreshes persisted app state only occasionally while app-live is unavailable.
+             
+             
             if (this._isUnifiedOnlineGamePage && this._isUnifiedOnlineGamePage()) {
               return hidden ? APP_PULSE_SLOW_BACKGROUND_MS : APP_PULSE_SLOW_IDLE_MS;
             }
@@ -2028,9 +2028,9 @@
           const lobbyPage = this._isUnifiedLobbyPage ? this._isUnifiedLobbyPage(page) : (String(page || "").toLowerCase() === "loby" || String(page || "").toLowerCase() === "lobby");
           const pvcPage = isPvCGamePage();
           const onlineGamePage = this._isUnifiedOnlineGamePage ? this._isUnifiedOnlineGamePage() : (isGamePage() && !pvcPage);
-          // Persisted active game ids are useful when opening an online game page,
-          // but must not hijack lobby/mode/dashboard pulses. Non-game pages stay
-          // available and do not run a periodic pulse.
+           
+           
+           
           const rawGid = String(this.gameId || this._presenceRoomId || (onlineGamePage ? (this._getPersistedActiveGameId() || "") : "")).trim();
           const gid = pvcPage ? "" : rawGid;
           let status = this._presenceStatus || (gid ? (this.isSpectator ? "available" : "inPvP") : (pvcPage ? "vsComputer" : "available"));
@@ -2170,9 +2170,9 @@
             this._lastOfficialLobbyView = view;
             this._lastOfficialLobbyViewAt = nowTs();
             if (view.players && typeof view.players === "object") this._lastPlayersFullSyncAt = nowTs();
-            // Active matches are rendered as explicit return cards in the lobby.
-            // Automatic navigation is reserved for newly accepted invitations,
-            // which are delivered through inviteResults.
+             
+             
+             
             if (view.players && this._lobbyPlayersCb) {
               try { this._lobbyPlayersCb(this._makeCompatSnapshot(view.players)); } catch (e) {}
             }
@@ -2572,8 +2572,8 @@
                 this._applySessionState({ presenceStatus: "available", presenceRole: "app", presenceRoomId: null });
                 try { window.DhametAppLive.refreshPresence(true); } catch (e) {}
               }
-              // Socket closure and the server-side disconnect grace replace
-              // unload writes. Another tab can retain the shared connection.
+               
+               
               return true;
             }
             const payload = typeof this._buildUnifiedAppPulsePayload === "function"
@@ -2583,8 +2583,8 @@
             const gid = String(payload.gameId || payload.roomId || this.gameId || this._presenceRoomId || "").trim();
             const softPageExit = /^(pagehide|beforeunload|visibility-hidden|tab-hidden)$/i.test(why);
 
-            // Leaving a local computer game is a presence transition, not a global
-            // leave. It should mark the browser available without starting a timer.
+             
+             
             if (/^pvc-exit$/i.test(why)) {
               payload.kind = "app-pulse";
               payload.leave = false;
@@ -2593,9 +2593,9 @@
               payload.roomId = null;
               payload.gameId = null;
               payload.scope = "presence-only";
-            // Refreshing the page, switching tabs, or closing one window must not
-            // mean that a player resigned/left the active match. Keep the active
-            // game identity alive and let normal absence TTL handle real disconnects.
+                                                                                  
+                                                                                 
+                                                                                      
             } else if (softPageExit && gid && !this.isSpectator) {
               payload.kind = "app-pulse";
               payload.leave = false;
@@ -2735,8 +2735,8 @@
               this._spectatorRef = null;
               this._spectatorJoinedAt = 0;
               try {
-                // No direct remove on logout/user switch. Presence expiry
-                // and leave beacons are handled by /dhamet/api/lobby/pulse.
+                 
+                 
                 this._sendUnifiedAppLeaveBeacon && this._sendUnifiedAppLeaveBeacon("user-switch");
               } catch (e) {}
             }
@@ -2819,8 +2819,8 @@
         },
 
     _startPresenceHeartbeat: function () {
-          // The app-wide WebSocket carries presence and invite events on every
-          // authenticated page. HTTP pulse remains only as a failure fallback.
+           
+           
           try {
             if (this._startAppLive && this._startAppLive()) {
               try { window.DhametAppLive.refreshPresence(true); } catch (e) {}
@@ -2853,10 +2853,10 @@
                 internalNav = !!(ts && Date.now() - ts < 2500);
               } catch (e) {}
 
-              // Page unload must not perform direct realtime removals
-              // or roomList touches from the browser. External exits are sent as a
-              // best-effort unified pulse beacon; internal navigation lets the next
-              // page send its immediate foreground pulse.
+               
+               
+               
+               
               try {
                 if (isPvCGamePage()) this._sendUnifiedAppLeaveBeacon("pvc-exit");
                 else if (!internalNav) this._sendUnifiedAppLeaveBeacon("pagehide");
@@ -2923,8 +2923,8 @@
         },
 
     _bindInvitePreferenceListener: function () {
-          // Invite preference is local UI state committed by the unified
-          // app pulse. Do not open a realtime players/<uid>/acceptsInvites listener.
+           
+           
           try {
             this._restoreInviteToggleFromCache && this._restoreInviteToggleFromCache();
           } catch (e) {}
@@ -2942,8 +2942,8 @@
         },
 
     _setAcceptsInvites: async function (enabled) {
-          // Invite preference is persisted by the unified app pulse,
-          // not by a direct players/<uid> client update.
+           
+           
           try {
             this._lastAcceptsInvites = !!enabled;
             try { localStorage.setItem(INVITE_PREF_CACHE_KEY, enabled ? "1" : "0"); } catch (e) {}
@@ -3352,8 +3352,8 @@
             this._outInviteWatchStarted = true;
             if (!this._outInviteWatchMap) this._outInviteWatchMap = {};
             try { this._refreshOutgoingInviteWatches(); } catch (e) {}
-            // Invite results arrive through the app-wide live channel. The local
-            // list is retained only for reload recovery and UI correlation.
+                                                                                 
+                                                                            
           } catch (e) {}
         },
 
@@ -3389,8 +3389,8 @@
               kept.push(it);
             }
             try { this._saveOutgoingInvites(kept); } catch (e) {}
-            // No cloud polling here. The app-wide live channel delivers the
-            // accepted/rejected result and the server retains it until ACK.
+                                                                            
+                                                                            
           } catch (e) {}
         },
 
@@ -3398,9 +3398,9 @@
           const gid = String(gameId || "").trim();
           if (!gid) return false;
 
-          // Presence may already report an active room while this browser is
-          // still on the lobby page. Suppress navigation only for an actual
-          // in-page match session, never for lobby presence alone.
+           
+           
+           
           if (isGamePage() && this.isActive && this.gameId) return false;
           if (this._acceptedGameNavigationId === gid) return true;
           this._acceptedGameNavigationId = gid;
@@ -3431,9 +3431,9 @@
 
     _touchRoomListActivity: function (force) {
           try {
-            // Game requests now touch player presence and room activity server-side.
-            // The browser only postpones the next lightweight game-presence pulse;
-            // it must not send an extra /dhamet/api/lobby/pulse after every move/control event.
+             
+             
+             
             if (typeof this._noteOnlineGameTransportActivity === "function") {
               this._noteOnlineGameTransportActivity(force ? "game-activity" : "game-touch");
             }
@@ -3484,10 +3484,10 @@
             const expiresAt = Number(inv.expiresAt || 0) || (createdAt ? createdAt + INVITE_TTL_MS : 0);
             if (expiresAt && nowTs() >= expiresAt) return { ok: false };
     
-            // Browser pre-validation is intentionally shallow and must not perform
-            // resync/lobby reads before accept. The authoritative accept endpoint
-            // validates the invite, sender presence, recipient identity, and
-            // pending GameRoom state server-side.
+             
+             
+             
+             
             return { ok: true, invite: inv, game: null };
           } catch (e) {
             return { ok: false };
@@ -3548,10 +3548,10 @@
                 nick: this.myNick,
               });
             } catch (e) {
-              // A timeout or transport/server failure is ambiguous: the
-              // authoritative accept may already have committed. Never send a
-              // destructive reject from this path. Refresh the official lobby
-              // once so an accepted room can navigate normally.
+               
+               
+               
+               
               try { await this._recoverAmbiguousInviteAccept(); } catch (_e) {}
               const definitive = this._isDefinitiveInviteAcceptFailure(e);
               showOnlineNotice(definitive

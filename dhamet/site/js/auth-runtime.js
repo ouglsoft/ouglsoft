@@ -1,7 +1,7 @@
-/*
- * Dhamet authentication client.
- * Official browser API: window.CloudflareAuth / window.DhametAuth.
- */
+  
+                                
+                                                                   
+   
 (function () {
   'use strict';
 
@@ -75,9 +75,9 @@
   function persistUser(user) {
     cachedUser = normalizeUser(user);
     try {
-      // Registered accounts may be cached for a smoother shell startup. Guest
-      // identity is owned only by the HttpOnly browser-session cookie and must
-      // never survive a full browser-session restart through localStorage.
+       
+       
+       
       if (cachedUser && !cachedUser.isAnonymous) localStorage.setItem('dhamet.cf.user.v1', JSON.stringify(cachedUser));
       else localStorage.removeItem('dhamet.cf.user.v1');
     } catch (_) {}

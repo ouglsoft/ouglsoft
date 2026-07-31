@@ -1,11 +1,11 @@
-/*
- * Dhamet game runtime.
- *
- * Owns the browser-side Game object, turn orchestration, forced opening, local
- * move application, PvC result tracking, and page-level game glue.
- * It coordinates the mode, AI, UI, and shared-rule modules that are loaded
- * before it.
- */
+  
+                       
+  
+                                                                               
+                                                                   
+                                                                           
+             
+   
 const DhametRulesShared = globalThis.DhametRules;
 const DhametStateShared = globalThis.DhametState;
 const DhametTurnResolutionShared = globalThis.DhametTurnResolution;
@@ -68,8 +68,6 @@ const KING = DhametRulesShared.KING;
 
 const N_CELLS = BOARD_N * BOARD_N;
 const ACTION_ENDCHAIN = N_CELLS * N_CELLS;
-const ACTION_SOUFLA_REMOVE = ACTION_ENDCHAIN + 1;
-const ACTION_SOUFLA_FORCE = ACTION_ENDCHAIN + 2;
 const N_ACTIONS = ACTION_ENDCHAIN + 3;
 
 const APP_BASE_PATH = (() => {
@@ -613,8 +611,8 @@ function expireUnclaimedSouflaOnMoveStart() {
   const pending = Game.availableSouflaForHuman;
   if (!pending || Game._souflaApplying) return false;
   if (Number(pending.penalizer) !== Number(Game.player)) return false;
-  // The right must be exercised before the penalizer starts a new move. Once
-  // the first board-changing segment begins, the previous soufla is waived.
+   
+   
   Game.availableSouflaForHuman = null;
   if (Game.souflaPending === pending) Game.souflaPending = null;
   Game.awaitingPenalty = false;
@@ -730,8 +728,8 @@ function consumeTurnClearForMove() {
 }
 
 function hasUnresolvedSoufla() {
-  // A claimable but unopened Soufla right does not pause the turn. The right
-  // expires naturally when its owner starts a board-changing move.
+   
+   
   return !!(!Game._souflaApplying && (Game.awaitingPenalty || Game.souflaPending));
 }
 
@@ -750,9 +748,9 @@ const Turn = {
       UI.log({ kind: "promote", idx: promoted.idx, side: promoted.side, actor: resolveTurnActorLabel(promoted.side), ts: Date.now() });
     }
 
-    // Promotion becomes active at the start of this turn. A pending soufla
-    // right must be resolved before any terminal result is evaluated, because
-    // the violating position is not yet the final legal consequence of the turn.
+     
+     
+     
     if (hasUnresolvedSoufla()) {
       this.ctx = null;
       Game.killTimer.hardStop();
@@ -790,8 +788,8 @@ const Turn = {
     UI.updateStatus();
 
     if (isForcedOpeningActive() && Game.player === humanSide()) {
-      // Mandatory-opening paths are corrective guidance only. Keep them hidden
-      // until the player taps a wrong piece or an invalid destination.
+       
+       
       if (Visual && typeof Visual.clearForcedOpeningArrow === "function") {
         Visual.clearForcedOpeningArrow(true);
       }
@@ -965,8 +963,8 @@ const Turn = {
     );
     if (!pending) return null;
 
-    // Browser and online integration expect a Map while the pure shared rules
-    // layer exposes a serializable [index, length][] list.
+     
+     
     pending.longestByPiece = new Map(
       Array.isArray(pending.longestByPiece) ? pending.longestByPiece : [],
     );
@@ -1095,8 +1093,8 @@ function pushHistoryBeforeMove() {
   const ctx = typeof Turn !== "undefined" && Turn ? Turn.ctx : null;
   if (ctx && ctx.historyPushed) return false;
 
-  // One history entry represents one complete player turn, not each segment of
-  // a capture chain.  The turn-start snapshot is the exact rollback target.
+   
+   
   const snap = ctx && ctx.snapshot
     ? JSON.parse(JSON.stringify(ctx.snapshot))
     : snapshotState({ includeTurnCtx: false });
@@ -1694,9 +1692,9 @@ function applySouflaDecision(requestedDecision, pending) {
     } catch {}
   }
 
-  // Commit the logical result synchronously before installing the visual
-  // effects. The board is redrawn once, after the complete penalty state and
-  // all Soufla effects are ready.
+   
+   
+   
   Game.awaitingPenalty = false;
   Game.souflaPending = null;
   Game.availableSouflaForHuman = null;
@@ -1745,9 +1743,9 @@ function switchPlayer() {
       Visual.markTurnBoundary();
   } catch {}
   Game.killTimer.hardStop();
-  // Terminal rules are evaluated by Turn.start() after deferred promotions
-  // for the new side have been activated. Checking here would inspect a
-  // stale pre-promotion board and can declare a false no-move loss.
+   
+   
+   
   UI.updateStatus();
 }
 
@@ -2071,10 +2069,10 @@ const PvCResultRecorder = (() => {
       terminalType = "strict";
       terminalConfidence = "high";
     } else if (["disconnect", "abort", "cancel", "leave", "resign"].includes(reason) && resolvedWinner == null) {
-      // Non-natural computer-game endings are deliberately never adjudicated or
-      // submitted. The player can continue to a natural ending when they want a
-      // counted result; abandoning or cancelling the local game remains local
-      // and uncounted, with no browser search and no Cloudflare result request.
+       
+       
+       
+       
       const response = { ok: true, counted: false, reason: "non_counted_ending" };
       reset();
       logResult(response);
@@ -2154,7 +2152,7 @@ const AI = DhametAIEngine.create({
 globalThis.AI = AI;
 if (typeof window !== "undefined") window.AI = AI;
 
-/* Moved from pages/game.html to keep page markup declarative. */
+ 
 
       const DhametDOMShared = window.DhametDOM || {};
       const qs = DhametDOMShared.qs || ((sel, root = document) => root.querySelector(sel));
@@ -2303,11 +2301,11 @@ if (typeof window !== "undefined") window.AI = AI;
           };
           push(base);
 
-          // Arabic "player" prefix variants
+           
           if (/^لاعب\s+/u.test(base)) push(base.replace(/^لاعب\s+/u, "").trim());
           else push("لاعب " + base);
 
-          // English/French prefix variants (in case UI language differs from log language)
+           
           if (/^Player\s+/i.test(base)) push(base.replace(/^Player\s+/i, "").trim());
           else push("Player " + base);
 
@@ -2328,7 +2326,7 @@ if (typeof window !== "undefined") window.AI = AI;
             }
           } catch (_) {}
 
-          // Also pick up names rendered in the UI (they may include a "you" tag)
+           
           try {
             const ids = ["pTopName", "pBotName", "pTopNameM", "pBotNameM"];
             for (const id of ids) {

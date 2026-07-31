@@ -4,16 +4,16 @@ import '../../shared/dhamet-state.js';
 import '../../shared/dhamet-presence.js';
 import '../../shared/dhamet-lobby.js';
 
-/*
- * Lobby/invite API routes for Cloudflare Worker.
- *
- * This module orchestrates PvP lobby invitation creation and responses. It does
- * not contain Dhamet move rules, UI, DOM, WebSocket fanout, AI, scoring, or
- * account statistics. Pending/active GameRecords are still stored in per-game
- * Durable Objects; transient invites and room list entries stay in the global
- * realtime scope. Spectator join/leave is operational and official, but it never
- * changes board rules or move history.
- */
+  
+                                                 
+  
+                                                                                
+                                                                            
+                                                                              
+                                                                              
+                                                                                 
+                                       
+   
 
 export function createLobbyRouteHandlers(deps) {
   const requireSession = deps && deps.requireSession;

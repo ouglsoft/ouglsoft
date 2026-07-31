@@ -1,10 +1,10 @@
-/*
- * Dhamet Online PvP runtime.
- *
- * Owns PvP in-match orchestration, move submission, outbox reconciliation,
- * resync, in-match controls, online soufla, spectator/chat/RTC hooks, and
- * coordination with the GameRoom transport and lobby runtime.
- */
+  
+                             
+  
+                                                                           
+                                                                          
+                                                              
+   
 (function () {
   const S = window.__ZAMAT_ONLINE_SHARED__;
   const Online = window.Online;
@@ -135,7 +135,7 @@
   }
 
   function lobbyStatusInfo(player, activePlayerRooms, uid) {
-    // Guard retained for regression: busy display depends on !!roomListRoomId && roomId matching.
+     
     const resolver = window.DhametPresence && typeof window.DhametPresence.resolvePublicPresenceState === "function"
       ? window.DhametPresence.resolvePublicPresenceState
       : null;
@@ -737,8 +737,8 @@
         },
 
     _writeFullGamePresence: function (ctx, force) {
-          // The app channel owns global presence and game-live owns match
-          // presence. This method only publishes a material state transition.
+           
+           
           try {
             this._rememberPresenceWrite && this._rememberPresenceWrite("game", this._buildGamePresencePayload());
             if (window.DhametAppLive && typeof window.DhametAppLive.refreshPresence === "function") {
@@ -753,7 +753,7 @@
         },
 
     _startGamePresenceHeartbeat: function () {
-          // The authenticated game-live socket is the heartbeat. No HTTP timer.
+           
           this._gamePresenceHeartbeatTimer = null;
           return true;
         },
@@ -763,8 +763,8 @@
         },
 
     _startOpponentAbsenceWatcher: function () {
-          // Presence transitions arrive in official game snapshots from the
-          // game-live socket. No independent polling request is required.
+           
+           
           this._oppAbsenceWatchTimer = null;
           try { this._checkOpponentAbsence(); } catch (e) {}
           return true;
@@ -969,7 +969,7 @@
             if (window.DhametMatchCoordinator) DhametMatchCoordinator.resetPresentation({ draw: true });
           } catch (e) {}
     
-          this._applySessionState({ gameRef: this._makeOfficialGameRef(gameId) }); // Official /dhamet/api/game/live and /dhamet/api/game/resync endpoints provide live state.
+          this._applySessionState({ gameRef: this._makeOfficialGameRef(gameId) });  
     
           let synced = false;
           try { synced = await this._applyEntryOfficialState(gameId, initialGame, "inviter-entry"); } catch (e) { synced = false; }
@@ -1211,8 +1211,8 @@
               /request-timeout|network|failed to fetch|fetch failed|load failed|connection|offline/.test(code) ||
               (status === 0 && (errorName === "aborterror" || errorName === "typeerror"));
             if (deliveryUnknown) {
-              // The server may already have committed and delivered this invite.
-              // Never resend here: reconcile through the existing single lobby pulse.
+               
+               
               try { this._scheduleUnifiedAppPulseNoLaterThan && this._scheduleUnifiedAppPulseNoLaterThan(1000); } catch (_) {}
               return;
             }
@@ -1233,10 +1233,10 @@
             this._trackOutgoingInvite({ gameId, toUid: opponentUid, inviteKey, createdAt, expiresAt });
           } catch (e) {}
     
-          // The sender cannot know that the other browser accepted until it
-          // asks the official lobby endpoint. Reuse the single unified pulse
-          // timer with a short 5/10/15/20-second backoff while this invite is
-          // pending; no parallel watcher or realtime listener is created.
+           
+           
+           
+           
           try {
             const fastDelay = this._getPendingOutgoingInvitePulseDelay ? this._getPendingOutgoingInvitePulseDelay() : 5 * 1000;
             this._scheduleUnifiedAppPulseNoLaterThan && this._scheduleUnifiedAppPulseNoLaterThan(fastDelay || 5 * 1000);
@@ -1390,12 +1390,12 @@
             if (window.DhametMatchCoordinator) DhametMatchCoordinator.resetPresentation({ draw: true });
           } catch (e) {}
     
-          this._applySessionState({ gameRef: this._makeOfficialGameRef(gameId) }); // Official /dhamet/api/game/live and /dhamet/api/game/resync endpoints provide live state.
+          this._applySessionState({ gameRef: this._makeOfficialGameRef(gameId) });  
     
     
-          // Game activation is official in /dhamet/api/lobby/invite. Joining performs
-          // one authoritative resync only; it validates the room and applies the
-          // initial board state without a separate roomList/presence refresh.
+           
+           
+           
           let joinedOk = false;
           try {
             joinedOk = await this._applyEntryOfficialState(gameId, initialGame, "join-entry");
@@ -1437,10 +1437,10 @@
         },
 
     _releaseUiHoldSoon: function () {
-          // Role/input blocking is owned by the entry transition itself. Once an
-          // official state has been accepted, release it synchronously so a
-          // missed animation frame can never leave the board or navigation
-          // controls permanently locked.
+           
+           
+           
+           
           try { this._applyUiHold(false); } catch (e) {}
           try { if (window.UI && typeof UI.updateAll === "function") UI.updateAll(); } catch (e) {}
           return true;
@@ -1559,9 +1559,9 @@
               ? this._lastGameData
               : null;
           if (!endedGame) {
-            // Resolve ambiguous transport responses against the official room
-            // once before showing an error. This prevents a false failure notice
-            // when the end action committed but the response was interrupted.
+             
+             
+             
             try {
               await this.syncNow({ reason: "end-confirm", repairPresence: false, notifyFailure: false });
               if (this._lastGameData && this._lastGameData.status === "ended") endedGame = this._lastGameData;
@@ -1588,9 +1588,9 @@
             players: endedGame.players || null,
           });
 
-          // A confirmed manual end has one explicit completion path on every
-          // viewport. Do not depend on whether a post-match modal happened to
-          // open or close; the initiating player goes directly to mode.html.
+           
+           
+           
           await this._exitOnlineSessionTo("mode.html");
           return true;
         },
@@ -2274,10 +2274,10 @@
             !this.isSpectator &&
             availableFor === Number(this.mySide)
           );
-          // An official Soufla right is optional until its owner presses the
-          // Soufla button. Merely receiving that right must never pause the
-          // turn or block board input. Preserve an already-open choice modal,
-          // but otherwise expose only the claimable right.
+           
+           
+           
+           
           const choiceOpen = !!(claimable && Game.awaitingPenalty && Game.souflaPending);
           Game.awaitingPenalty = choiceOpen;
           Game.souflaPending = choiceOpen ? pending : null;
@@ -2327,9 +2327,9 @@
                 : null;
             const lastSide = curSide != null ? -curSide : lm && typeof lm.by === "number" ? lm.by : null;
 
-            // Previous-move markers are presentation metadata. A malformed or
-            // unavailable visual helper must never discard an already verified
-            // official board or leave the canvas without its pieces.
+             
+             
+             
             try {
               if (lm && lm.kind === "undo" && typeof Visual !== "undefined" && Visual) {
                 const fr = lm.undoneFrom != null ? lm.undoneFrom : null;
@@ -2438,9 +2438,9 @@
               try { Logger.warn("official_soufla_visual_ignored", { gameId: this.gameId, error: String(error && (error.message || error)) }); } catch (_) {}
             }
 
-            // Resume only after the authoritative board and turn-owned state
-            // have been installed. This canonical path performs the one redraw
-            // that reveals the pieces and releases the board for the correct side.
+             
+             
+             
             this._resumeOfficialTurn();
 
             try {
@@ -2479,9 +2479,9 @@
             }
             return true;
           } catch (error) {
-            // Once a verified official board has been restored, never leave the
-            // canvas empty merely because turn orchestration or presentation
-            // metadata failed. Draw it while the normal sync fallback retries.
+             
+             
+             
             if (officialBoardInstalled) {
               try {
                 if (typeof UI !== "undefined" && UI && typeof UI.updateAll === "function") UI.updateAll();
@@ -2720,8 +2720,8 @@
           } catch (e) {}
           this._gameConnInfoRef = null;
           this._gameConnInfoHandler = null;
-          // No direct presenceRef.remove(). Leave/expiry is handled by
-          // /dhamet/api/lobby/pulse and smart cleanup.
+           
+           
           this.presenceRef = null;
           this._gamePresenceJoinedAt = 0;
           try { this._stopMoveCommitWatchdog(); } catch (e) {}
@@ -2801,9 +2801,9 @@
             };
     
             if (!this._voice.enabled) {
-              // Speaker is enabled by default, but the RTC session itself starts
-              // only when a player opens the microphone. Toggling the speaker
-              // before that should not start WebRTC or request permissions.
+               
+               
+               
               this._voice.speakerMuted = !this._voice.speakerMuted;
               try { this.refreshPvpControls(); } catch (e) {}
               return;
@@ -3355,10 +3355,10 @@
                   reconnectTimers: new Map(),
                   role: this.isSpectator ? "spectator" : "player",
                 };
-                // Voice chat is opt-in. Do not join RTC or ask for microphone at
-                // match start; the first microphone click starts the session.
-                // Watch multiplexed RTC updates on game-live so this player can
-                // auto-listen if the opponent starts talking first.
+                 
+                 
+                 
+                 
                 if (!this.isSpectator && typeof this._voiceWatchRemoteStart === "function") this._voiceWatchRemoteStart();
               } catch (e) {}
             }
@@ -3720,8 +3720,8 @@
                       if (!msg) continue;
                       await this._voiceHandleSignal(fromUid, msg);
                     }
-                    // A duplicate means a previous ACK was lost or not committed.
-                    // Re-ACK it without re-running its WebRTC side effects.
+                     
+                     
                     ackIds.push(signalId);
                   } catch (e) {}
                 }
@@ -4604,8 +4604,8 @@
               if (type === "actor_i18n" && it.key) return [{ kind: "actor_i18n", actor, key: it.key, vars: it.vars || {}, ts, displayId: it.id || "" }];
               if (type === "i18n" && it.key) return [{ kind: "i18n", key: it.key, vars: it.vars || {}, ts, displayId: it.id || "" }];
 
-              // Legacy display records are decoded, but opaque identifiers and
-              // unknown structured objects are never exposed to the player.
+               
+               
               if (typeof it.text === "string") {
                 const dec = decodeSharedLogText(it.text);
                 if (dec) {
@@ -5496,12 +5496,12 @@
             return;
           }
 
-          // A spectator follows every match event, but never receives player
-          // controls or wording that makes the spectator a party to the request.
+           
+           
           if (this.isSpectator) {
             const state = String(ur.status || "").toLowerCase();
-            // Do not expose the pending request to spectators. They receive only
-            // the final accepted or rejected result.
+             
+             
             if (state === "rejected") {
               const noticeKey = [state, ur.requesterUid || "", ur.responderUid || "", ur.respondedAt || ur.requestedAt || ""].join("|");
               if (noticeKey && noticeKey !== this._lastSpectatorUndoNoticeKey) {
@@ -5854,7 +5854,6 @@
                          <span>${spectatorLabel}${!isPrivateRoom ? ` (${Number(r.spectatorCount || 0)})` : ""}</span>
                        </button>`
                     : "";
-                  const roomStateLabel = r.reconnecting ? window.I18N.translateArgs("lobby.reconnectingRoom") : "";
                   const roomStateClass = r.reconnecting
                     ? "is-reconnecting"
                     : (r.ownerOnly ? "is-private" : "is-live");
@@ -6051,9 +6050,9 @@
             try { this._lastGameAccess = e && e.data ? e.data : null; } catch (_) {}
             try { this._lastOfficialReadError = e || new Error("official-entry-read-failed"); } catch (_) {}
           }
-          // Entry must never promote a cached lobby/game copy to official state
-          // after a failed authoritative read. Keep the page blocked and retry
-          // instead of applying a potentially stale or incomplete board.
+           
+           
+           
           return null;
         },
 
@@ -6144,7 +6143,7 @@
     
           if (!amPlayer || forceSpectator) {
             if (forceSpectator && amPlayer) {
-              // A player should always return to the match; do not register a player as spectator.
+                                                                                                   
             } else {
               if (statusText !== "active") {
                 await this._showUnavailableGameAndLeave();
@@ -6216,7 +6215,7 @@
             phase: window.DhametMatchCoordinator ? DhametMatchCoordinator.phases.ONLINE_SPECTATOR : null,
             reason: "online-spectator-enter",
           });
-          this._applySessionState({ gameRef: this._makeOfficialGameRef(gameId) }); // Official /dhamet/api/game/live and /dhamet/api/game/resync endpoints provide live state.
+          this._applySessionState({ gameRef: this._makeOfficialGameRef(gameId) });  
     
           const asyncContext = this._captureAsyncContext(gameId);
           this._setOnlineButtonsState(true, { keepBlocked: true });
@@ -6399,10 +6398,10 @@
               this._lastOfficialIngestFailureReason = "pending-local-commit";
               return false;
             }
-            // The official state is still at the pre-move boundary after all
-            // retries were exhausted. Roll the speculative browser state back
-            // to that authoritative snapshot instead of leaving the turn and
-            // board locked indefinitely.
+             
+             
+             
+             
             try { this._pendingSteps = []; } catch (_) {}
             try { this._clearCaptureDraft && this._clearCaptureDraft(); } catch (_) {}
             try { this._markLocalCommitSettled(); } catch (_) {}
@@ -6435,9 +6434,9 @@
               typeof coordinator.compareCursor === "function" &&
               typeof coordinator.getRemoteCursor === "function"
             ) {
-              // A mixed cached document can briefly pair the new online runtime
-              // with the previous coordinator. Inspect its public cursor without
-              // mutating it, then use acceptRemote only after a successful apply.
+               
+               
+               
               const nextCursor = coordinator.normalizeCursor(cursor);
               const currentCursor = coordinator.getRemoteCursor();
               const differentExpectedGame = gateOptions.expectedGameId && nextCursor.gameId && nextCursor.gameId !== String(gateOptions.expectedGameId);
@@ -6539,9 +6538,9 @@
 
           if (!commitOfficialCursor()) return false;
 
-          // Publish transport and match metadata only after the authoritative
-          // board/turn state has been installed. A failed visual application
-          // must not make the browser claim a move index it is not displaying.
+           
+           
+           
           this._lastGameData = data;
           this.moveIndex = remoteMi;
           this.ply = Number(data.ply || 0) || 0;

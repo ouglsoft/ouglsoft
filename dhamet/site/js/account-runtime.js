@@ -1,4 +1,4 @@
-/* Dhamet account/profile/stat client v1. */
+ 
 (function () {
   'use strict';
   function safeJson(text) { try { return JSON.parse(text); } catch (_) { return null; } }

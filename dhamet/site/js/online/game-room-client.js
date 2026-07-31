@@ -1,12 +1,12 @@
-/*
- * Dhamet GameRoom client v1.
- *
- * Browser-only online transport for match moves. It deliberately knows nothing
- * about board rendering or local game rules. It accepts already-built
- * move intents, Soufla decisions, official control actions, lobby
- * view reads, spectator, chat, and RTC signaling actions from the mode controller, then sends only minimal official
- * intent payloads to Cloudflare GameRoom.
- */
+  
+                             
+  
+                                                                               
+                                                                      
+                                                                  
+                                                                                                                    
+                                          
+   
 (function () {
   'use strict';
 
@@ -71,8 +71,8 @@
     }
     normalized = normalized || {};
 
-    // Never send client snapshots or client-side soufla decisions as official
-    // GameRoom truth. The server reads the stored game and applies shared rules.
+     
+     
     return {
       gameId: normalized.gameId,
       clientMoveId: normalized.clientMoveId,
@@ -192,9 +192,9 @@
   }
 
   function createLobbyInvite(payload) {
-    // Invite creation is a committed write, not a disposable lobby poll. Give the
-    // official endpoint enough time to return its committed result; aborting it at
-    // the 1.6-second lobby polling deadline caused a false failure after delivery.
+     
+     
+     
     return fetchJson('/dhamet/api/lobby/invite', createLobbyInvitePayload(payload), { timeoutMs: 10000 });
   }
 

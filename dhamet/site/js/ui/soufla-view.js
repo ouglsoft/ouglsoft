@@ -226,9 +226,9 @@
     }
 
     function pickOffenderForClickedIdx(clickedIdx) {
-      // The violation belongs to the piece, not to the square it occupied when
-      // the capture was ignored. Resolve every recorded offender to the cell
-      // currently occupied by that same piece after the offending move.
+       
+       
+       
       for (const offenderIdx of offenderSet) {
         let currentIdx = offenderIdx;
         try {
@@ -437,8 +437,8 @@
     const by = Number(lastMove.by);
     const isSpectator = !!(deps && deps.isSpectator);
 
-    // The player who selected the penalty already saw and confirmed it in the
-    // selection dialog. Do not show that player a second confirmation message.
+     
+     
     if (!isSpectator && mySide != null && mySide === by) return false;
 
     const kind = decision.kind === "remove" ? "remove" : "force";

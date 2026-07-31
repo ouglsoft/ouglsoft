@@ -1,9 +1,9 @@
-/*
- * Shared Cloudflare security/token helpers.
- *
- * Official owner for base64url conversion and cryptographically random tokens.
- * Password hashing and session semantics remain in cloudflare/src/index.js.
- */
+  
+                                            
+  
+                                                                               
+                                                                            
+   
 
 export function base64url(bytes) {
   let bin = '';

@@ -1,9 +1,9 @@
-/*
- * Dhamet shared utility helpers v1.
- *
- * Runtime-neutral helpers only. Domain-specific normalization remains in the
- * relevant shared module so this file does not become a catch-all layer.
- */
+  
+                                    
+  
+                                                                             
+                                                                         
+   
 (function (root) {
   'use strict';
 
@@ -42,9 +42,9 @@
 
   function cleanDisplayText(value, max) {
     let s = cleanText(value, max || 160);
-    // Display names and room labels are plain text, never markup. Removing the
-    // HTML/template metacharacters at the authority boundary protects all clients,
-    // while output escaping below also protects old stored records.
+     
+     
+     
     s = s.replace(/[<>&"'`]/g, '').replace(/\s+/g, ' ').trim();
     if (max && s.length > max) s = s.slice(0, max).trim();
     return s;

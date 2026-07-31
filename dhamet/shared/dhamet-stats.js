@@ -1,11 +1,11 @@
-/*
- * Dhamet shared statistics helpers v2.
- *
- * Single runtime-neutral source for result eligibility, score calculation,
- * PvC reward tiers, cumulative statistics, round identity, and leaderboard
- * ordering. It contains no DOM, storage, network, Cloudflare, AI search, or
- * duplicated move rules.
- */
+  
+                                       
+  
+                                                                           
+                                                                           
+                                                                            
+                         
+   
 (function (root) {
   'use strict';
 
@@ -17,8 +17,8 @@
   const TOP = Rules ? Rules.TOP : +1;
   const BOT = Rules ? Rules.BOT : -1;
 
-  // Store score internally in quarter-points. This keeps the 50% and 25% PvC
-  // tiers exact without floating-point accumulation.
+   
+   
   const SCORE_UNIT = 4;
   const SCORING_POLICY_VERSION = 2;
   const PVC_REWARD_POLICY_VERSION = 1;
@@ -29,14 +29,14 @@
   const LAST_AI_LEVEL = 'expert';
 
   const POLICIES = Object.freeze({
-    pvp: Object.freeze({ winUnits: 16, drawUnits: 8, lossUnits: -8 }), // +4 / +2 / -2
+    pvp: Object.freeze({ winUnits: 16, drawUnits: 8, lossUnits: -8 }),                
     pvc: Object.freeze({
-      beginner: Object.freeze({ winUnits: 4, drawUnits: 0, lossUnits: -4 }),   // +1 / 0 / -1
-      easy: Object.freeze({ winUnits: 4, drawUnits: 0, lossUnits: -4 }),       // +1 / 0 / -1
-      medium: Object.freeze({ winUnits: 8, drawUnits: 4, lossUnits: -4 }),     // +2 / +1 / -1
-      hard: Object.freeze({ winUnits: 12, drawUnits: 4, lossUnits: -8 }),      // +3 / +1 / -2
-      strong: Object.freeze({ winUnits: 12, drawUnits: 4, lossUnits: -8 }),    // +3 / +1 / -2
-      expert: Object.freeze({ winUnits: 12, drawUnits: 4, lossUnits: -8 }),    // +3 / +1 / -2
+      beginner: Object.freeze({ winUnits: 4, drawUnits: 0, lossUnits: -4 }),                 
+      easy: Object.freeze({ winUnits: 4, drawUnits: 0, lossUnits: -4 }),                     
+      medium: Object.freeze({ winUnits: 8, drawUnits: 4, lossUnits: -4 }),                    
+      hard: Object.freeze({ winUnits: 12, drawUnits: 4, lossUnits: -8 }),                     
+      strong: Object.freeze({ winUnits: 12, drawUnits: 4, lossUnits: -8 }),                   
+      expert: Object.freeze({ winUnits: 12, drawUnits: 4, lossUnits: -8 }),                   
     }),
   });
 
@@ -122,8 +122,8 @@
     if (Number.isFinite(Number(s[key]))) return int(s[key]);
     const pointsKey = normalizeMode(mode) === 'pvc' ? 'pvcPoints' : 'pvpPoints';
     if (Number.isFinite(Number(s[pointsKey]))) return Math.round(num(s[pointsKey]) * SCORE_UNIT);
-    // Legacy profiles did not split points. Preserve their total as PvP, which
-    // was the only official ranked mode in the immediately preceding release.
+     
+     
     return normalizeMode(mode) === 'pvp' ? scoreUnitsFromStats(s) : 0;
   }
 
@@ -192,8 +192,8 @@
     const level = normalizeAiLevel(opts.aiLevel);
     const previous = pvcLevelStats(opts.stats || {}, level);
     const tier = pvcRewardTier(level, previous.games);
-    // All configured bases are divisible by four; the integer formula remains
-    // exact for 100%, 50%, and 25% tiers.
+     
+     
     const units = Math.trunc(baseUnits * tier.numerator / tier.denominator);
     return {
       mode,
@@ -309,7 +309,7 @@
     const previousTotalUnits = scoreUnitsFromStats(src);
     let pvpUnits = splitScoreUnitsFromStats(src, 'pvp');
     let pvcUnits = splitScoreUnitsFromStats(src, 'pvc');
-    // Avoid double-counting legacy points during the first split migration.
+     
     if (!Number.isFinite(Number(src.pvpScoreUnits)) && !Number.isFinite(Number(src.pvcScoreUnits))) {
       pvpUnits = previousTotalUnits;
       pvcUnits = 0;
@@ -317,10 +317,10 @@
     if (mode === 'pvc') pvcUnits += delta.units;
     else pvpUnits += delta.units;
 
-    // The global score never falls below zero. Split balances are signed net
-    // contributions so a loss in one mode can still reduce points earned in
-    // the other mode. If the combined balance crosses below zero, trim only
-    // the active mode by the excess to preserve pvp+pvc=total exactly.
+     
+     
+     
+     
     let totalUnits = pvpUnits + pvcUnits;
     if (totalUnits < 0) {
       if (mode === 'pvc') pvcUnits -= totalUnits;

@@ -1,11 +1,11 @@
-/*
- * Dhamet shared lobby/invite helpers v1.
- *
- * Runtime-neutral helpers for PvP lobby invitations and room activation. This
- * module builds the initial official GameRecord for a pending online game and
- * normalizes invite/room-list data. It contains no DOM, WebSocket, Cloudflare
- * storage, account scoring, AI, or UI behavior.
- */
+  
+                                         
+  
+                                                                              
+                                                                              
+                                                                              
+                                                
+   
 (function (root) {
   'use strict';
 

@@ -2,14 +2,14 @@ import '../../shared/dhamet-utils.js';
 import '../../shared/dhamet-stats.js';
 import '../../shared/dhamet-live.js';
 
-/*
- * Game API routes for Cloudflare Worker.
- *
- * This module contains only HTTP route orchestration for GameRoom endpoints.
- * It does not contain Dhamet rules, Durable Object storage logic, DOM, UI, AI,
- * lobby, chat, or media behavior. Official PvP state remains inside the
- * per-game Durable Object and shared/dhamet-authority.js. Chat and RTC signaling records are official operational records in the same GameRoom, not board-rule logic. Official PvP result statistics are recorded by this route after GameRoom returns a terminal official result.
- */
+  
+                                         
+  
+                                                                             
+                                                                               
+                                                                        
+                                                                                                                                                                                                                                                                                   
+   
 
 export function createGameRouteHandlers(deps) {
   const requireSession = deps && deps.requireSession;
@@ -84,9 +84,9 @@ export function createGameRouteHandlers(deps) {
     const game = data && data.game && typeof data.game === 'object' ? data.game : null;
     const terminal = !!(game && String(game.status || '') === 'ended');
     if (options && options.removeRoomOnEnd && forwarded.res && forwarded.res.ok && data && data.ok !== false && terminal) {
-      // Close the lobby room and release both participants before any secondary
-      // result-accounting work. A slow statistics write must never keep an
-      // already-ended room visible or leave its players marked as busy.
+       
+       
+       
       data.globalMatchCleanup = await cleanupGlobalEndedMatch(env, forwarded.gameId || (body && body.gameId), game);
       data.roomListRemoved = !!data.globalMatchCleanup;
     }
