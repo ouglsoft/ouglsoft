@@ -1,4 +1,4 @@
-name: Deploy Dhamet Worker
+name: Deploy Dhamet Production
 
 on:
   push:
@@ -7,21 +7,110 @@ on:
     paths:
       - "dhamet/worker/**"
       - "dhamet/shared/**"
-      - "deploy/**"
+      - "dhamet/site/**"
+      - "site/**"
+      - "functions/**"
+      - "deploy/deploy-worker.mjs"
+      - "deploy/deploy-pages.mjs"
+      - "deploy/prepare-pages.mjs"
       - "package.json"
       - "package-lock.json"
       - ".github/workflows/deploy-dhamet-worker.yml"
   workflow_dispatch:
+    inputs:
+      target:
+        description: "Component to deploy manually"
+        required: true
+        default: "worker"
+        type: choice
+        options:
+          - worker
+          - pages
+          - all
 
 permissions:
   contents: read
 
 concurrency:
-  group: dhamet-worker-production
-  cancel-in-progress: true
+  group: dhamet-production
+  cancel-in-progress: false
 
 jobs:
-  deploy:
+  changes:
+    name: Resolve deployment scope
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      worker: ${{ steps.scope.outputs.worker }}
+      pages: ${{ steps.scope.outputs.pages }}
+    steps:
+      - name: Checkout repository history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Classify changed files
+        id: scope
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BEFORE_SHA: ${{ github.event.before }}
+          MANUAL_TARGET: ${{ inputs.target || 'worker' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          worker=false
+          pages=false
+
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            case "$MANUAL_TARGET" in
+              worker) worker=true ;;
+              pages) pages=true ;;
+              all) worker=true; pages=true ;;
+              *) echo "Unsupported manual target: $MANUAL_TARGET" >&2; exit 1 ;;
+            esac
+          else
+            base="$BEFORE_SHA"
+            if [[ -z "$base" || "$base" =~ ^0+$ ]] || ! git cat-file -e "${base}^{commit}" 2>/dev/null; then
+              base="$(git rev-list --max-parents=0 HEAD | tail -n 1)"
+            fi
+
+            while IFS= read -r changed; do
+              case "$changed" in
+                dhamet/worker/*|dhamet/shared/*|deploy/deploy-worker.mjs|package-lock.json)
+                  worker=true
+                  ;;
+                package.json)
+                  if ! node - "$base" <<'NODE'
+          const fs = require('node:fs');
+          const { execFileSync } = require('node:child_process');
+          const base = process.argv[2];
+          const previous = JSON.parse(execFileSync('git', ['show', `${base}:package.json`], { encoding: 'utf8' }));
+          const current = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+          delete previous.dhametBuild;
+          delete current.dhametBuild;
+          process.exit(JSON.stringify(previous) === JSON.stringify(current) ? 0 : 1);
+          NODE
+                  then
+                    worker=true
+                  fi
+                  ;;
+              esac
+              case "$changed" in
+                site/*|functions/*|dhamet/site/*|dhamet/shared/*|deploy/deploy-pages.mjs|deploy/prepare-pages.mjs|package.json|package-lock.json)
+                  pages=true
+                  ;;
+              esac
+            done < <(git diff --name-only "$base" "$GITHUB_SHA")
+          fi
+
+          echo "worker=$worker" >> "$GITHUB_OUTPUT"
+          echo "pages=$pages" >> "$GITHUB_OUTPUT"
+          echo "Deployment scope: worker=$worker pages=$pages"
+
+  deploy-worker:
+    name: Deploy Worker
+    needs: changes
+    if: needs.changes.outputs.worker == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
@@ -43,3 +132,35 @@ jobs:
 
       - name: Apply migrations and deploy Worker
         run: npm run deploy:worker
+
+  deploy-pages:
+    name: Deploy Pages
+    needs:
+      - changes
+      - deploy-worker
+    if: >-
+      always() &&
+      needs.changes.result == 'success' &&
+      needs.changes.outputs.pages == 'true' &&
+      (needs.deploy-worker.result == 'success' || needs.deploy-worker.result == 'skipped')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install deployment dependency
+        run: npm ci
+
+      - name: Prepare and deploy Pages
+        run: npm run deploy:pages
