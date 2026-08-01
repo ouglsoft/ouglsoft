@@ -38,3 +38,58 @@ jobs:
 
       - name: Delete expired D1 data in bounded batches
         run: npx wrangler d1 execute dhamet2_test --remote --config dhamet/worker/wrangler.toml --file dhamet/worker/maintenance/cleanup.sql
+
+  cleanup-actions-history:
+    name: Keep latest Actions run per workflow
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - name: Delete older completed workflow runs
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const workflows = await github.paginate(github.rest.actions.listRepoWorkflows, {
+              owner,
+              repo,
+              per_page: 100,
+            });
+            let deleted = 0;
+            const failures = [];
+
+            for (const workflow of workflows) {
+              const runs = await github.paginate(github.rest.actions.listWorkflowRuns, {
+                owner,
+                repo,
+                workflow_id: workflow.id,
+                per_page: 100,
+              });
+              runs.sort((a, b) => {
+                const time = Date.parse(b.created_at || '') - Date.parse(a.created_at || '');
+                return time || String(b.id).localeCompare(String(a.id));
+              });
+              const olderCompleted = runs.slice(1).filter((run) => run.status === 'completed');
+
+              for (let offset = 0; offset < olderCompleted.length; offset += 10) {
+                const batch = olderCompleted.slice(offset, offset + 10);
+                await Promise.all(batch.map(async (run) => {
+                  try {
+                    await github.rest.actions.deleteWorkflowRun({ owner, repo, run_id: run.id });
+                    deleted += 1;
+                  } catch (error) {
+                    failures.push(`${workflow.name} #${run.run_number}: ${error.message}`);
+                  }
+                }));
+              }
+            }
+
+            core.info(`Deleted ${deleted} older completed workflow runs.`);
+            if (failures.length) {
+              failures.forEach((failure) => core.warning(failure));
+              core.setFailed(`Failed to delete ${failures.length} workflow runs.`);
+            }
