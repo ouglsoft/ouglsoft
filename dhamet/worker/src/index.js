@@ -4,7 +4,7 @@ import { json, bad, requestBody, now, jsonHeaders, redirect } from './lib/http.j
 import { base64url, fromBase64url, randomToken } from './lib/security.js';
 import { createGameRouteHandlers } from './routes/game.js';
 import { createLobbyRouteHandlers } from './routes/lobby.js';
-import { authorizeBackupControl, maybeBlockNewOfficialOnlineWork, readBackupControl, writeBackupControl } from './lib/backup-route.js';
+import { authorizeBackupControl, createBackupEntryUrl, maybeBlockNewOfficialOnlineWork, readBackupControl, writeBackupControl } from './lib/backup-route.js';
 import '../shared/dhamet-privacy.js';
 import '../shared/dhamet-stats.js';
 export { RealtimeObject } from './durable/realtime-object.js';
@@ -1152,24 +1152,18 @@ function publicBackendRouteControl(control) {
   };
 }
 
-function backupEntryUrl(control, emergencyMode) {
-  const target = new URL((control && control.backupUrl) || 'https://dhamet2.ouglsoft.com/pages/loby.html?emergency=1');
-  target.searchParams.set('emergency', emergencyMode || '1');
-  return target.toString();
-}
-
 async function onlineEntryEndpoint(request, env) {
   const url = new URL(request.url);
   const forced = String(url.searchParams.get('backend') || '').trim().toLowerCase();
   const officialUrl = new URL('/dhamet/pages/loby.html', url.origin).toString();
   if (forced === 'backup' || forced === 'backup-test' || forced === 'dhamet2') {
     const configured = await readBackupControl(env);
-    return Response.redirect(backupEntryUrl(configured, 'test'), 302);
+    return Response.redirect(createBackupEntryUrl(configured, 'test'), 302);
   }
   if (forced === 'cloudflare' || forced === 'official') return Response.redirect(officialUrl, 302);
   const control = await readBackupControl(env);
-  if (control.available === false) return Response.redirect(backupEntryUrl(control, 'transient'), 302);
-  return Response.redirect(control.enabled ? backupEntryUrl(control, '1') : officialUrl, 302);
+  if (control.available === false) return Response.redirect(createBackupEntryUrl(control, 'transient'), 302);
+  return Response.redirect(control.enabled ? createBackupEntryUrl(control, '1') : officialUrl, 302);
 }
 
 async function backendRouteStatusEndpoint(env) {

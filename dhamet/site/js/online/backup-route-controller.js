@@ -22,6 +22,18 @@
   var redirecting = false;
   var resolvingEntry = false;
 
+  function createBackupEntryToken() {
+    try {
+      var bytes = new Uint8Array(18);
+      root.crypto.getRandomValues(bytes);
+      return 'v1.' + Array.prototype.map.call(bytes, function (value) {
+        return value.toString(16).padStart(2, '0');
+      }).join('');
+    } catch (_) {
+      return 'v1.' + Date.now().toString(36) + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+    }
+  }
+
   function safeUrl(value) {
     try {
       var url = new URL(String(value || DEFAULT_BACKUP_URL), DEFAULT_BACKUP_URL);
@@ -48,6 +60,7 @@
     var target = new URL(safeUrl(url));
     var mode = emergencyMode === true ? 'test' : (emergencyMode === false ? '1' : String(emergencyMode || '1'));
     target.searchParams.set('emergency', mode);
+    target.searchParams.set('entry', createBackupEntryToken());
     location.replace(target.toString());
     return true;
   }

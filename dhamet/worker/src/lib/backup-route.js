@@ -106,6 +106,16 @@ export function invalidateBackupControlCache() {
   cachedAt = 0;
 }
 
+export function createBackupEntryUrl(control, emergencyMode = '1') {
+  const target = new URL((control && control.backupUrl) || DEFAULT_BACKUP_URL);
+  const bytes = new Uint8Array(18);
+  crypto.getRandomValues(bytes);
+  const token = Array.from(bytes, (value) => value.toString(16).padStart(2, '0')).join('');
+  target.searchParams.set('emergency', String(emergencyMode || '1'));
+  target.searchParams.set('entry', `v1.${token}`);
+  return target.toString();
+}
+
 export async function readBackupControl(env, options = {}) {
   const at = Date.now();
   if (!options.bypassCache && cachedControl && at - cachedAt < CONTROL_CACHE_MS) return cachedControl;
