@@ -258,8 +258,11 @@
     var backBtn = document.createElement('button');
     backBtn.type = 'button';
     backBtn.className = 'z-mobile-shell-btn is-back';
-    backBtn.setAttribute('data-shell-action', options.backAction || 'back');
-    backBtn.innerHTML = '<img class="directional-exit-icon" src="' + baseHref() + '/assets/icons/logout.svg" alt="" aria-hidden="true">';
+    var shellAction = options.backAction || 'back';
+    var shellIcon = shellAction === 'logout' ? 'logout.svg' : 'return.svg';
+    var shellIconClass = shellAction === 'logout' ? 'directional-exit-icon' : 'directional-nav-icon';
+    backBtn.setAttribute('data-shell-action', shellAction);
+    backBtn.innerHTML = '<img class="' + shellIconClass + '" src="' + baseHref() + '/assets/icons/' + shellIcon + '" alt="" aria-hidden="true">';
     if (options.hideBack) backBtn.hidden = true;
     backBtn.addEventListener('click', options.onBack);
 

@@ -16,5 +16,5 @@
     "dhametPublicPath": "/dhamet",
     "dhametWorkerRoute": "ouglsoft.com/dhamet/api/*"
   },
-  "dhametBuild": "computer-pvs-2.13.53-v41-capacity-monitor-20min-fast-confirm"
+  "dhametBuild": "computer-pvs-2.13.53-v42-capacity-monitor-20min-fast-confirm-icons"
 }
