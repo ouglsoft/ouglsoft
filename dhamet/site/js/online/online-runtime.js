@@ -724,6 +724,27 @@
           } catch (e) {}
         },
 
+    refreshTranslatedUi: function () {
+          try {
+            const view = this._lastOfficialLobbyView && typeof this._lastOfficialLobbyView === "object"
+              ? this._lastOfficialLobbyView
+              : null;
+            if (view && view.roomList && this._lobbyRoomsCb) {
+              this._lobbyRoomsCb(this._makeCompatSnapshot(view.roomList));
+            } else if (view && view.players && this._lobbyPlayersCb) {
+              this._lobbyPlayersCb(this._makeCompatSnapshot(view.players));
+            } else if (this._lobbyPlayersLastSnap && this._lobbyPlayersCb) {
+              this._lobbyPlayersCb(this._lobbyPlayersLastSnap);
+            }
+            if (view && view.invites && this._inviteOfficialHandler) {
+              this._inviteOfficialHandler(view.invites);
+            }
+          } catch (e) {}
+          try { this.refreshPresenceUi && this.refreshPresenceUi(); } catch (e) {}
+          try { this.refreshPvpControls && this.refreshPvpControls(); } catch (e) {}
+          try { window.UI && typeof window.UI.updateStatus === "function" && window.UI.updateStatus(); } catch (e) {}
+        },
+
     _buildGamePresencePayload: function () {
           const ts = nowTs();
           if (!this._gamePresenceJoinedAt) this._gamePresenceJoinedAt = ts;

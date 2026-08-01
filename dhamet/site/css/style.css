@@ -2485,13 +2485,20 @@ body.z-game-page:not(.z-mobile-on) .controls-box .btn .btn-ico {
 
 
  
-.directional-nav-icon,
+.directional-nav-icon {
+  transform: none;
+  transform-origin: center;
+}
+
+html[dir="ltr"] .directional-nav-icon {
+  transform: scaleX(-1);
+}
+
 .directional-exit-icon {
   transform: scaleX(-1);
   transform-origin: center;
 }
 
-html[dir="ltr"] .directional-nav-icon,
 html[dir="ltr"] .directional-exit-icon {
   transform: none;
 }

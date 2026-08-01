@@ -368,14 +368,14 @@ body.z-mobile-on .z-mobile-shell-btn {
 }
 
 body.z-mobile-on .z-mobile-shell-btn img {
-  width: 18px;
-  height: 18px;
+  width: 24px;
+  height: 24px;
   display: block;
 }
 
 body.z-mobile-on .z-mobile-shell-btn.is-back img {
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
 }
 
 body.z-mobile-on .z-mobile-shell-menu {

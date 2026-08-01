@@ -356,14 +356,14 @@
       "wait": "الدور على اللاعب الآخر. انتظر قليلًا.",
       "aiThinkingMove": "الحاسوب يختار نقلته…",
       "aiThinkingSoufla": "الحاسوب يختار عقوبة السوفلة…",
-      "aiThinkingMoveWaitLine": "انتظر قليلًا بينما يختار الحاسوب النقلة المناسبة.",
+      "aiThinkingMoveWaitLine": "يحلّل الحاسوب وضع الرقعة ويختار نقلته.",
       "currentLevel": "المستوى الحالي",
-      "aiThinkingMoveLevelDuration": "المستوى: ${level} (مدة تفكير الحاسوب من ${min} إلى ${max} ثانية لكل نقلة)",
+      "aiThinkingMoveLevelDuration": "في مستوى ${level}، يستغرق ذلك عادةً من ${min} إلى ${max} ثانية.",
       "turn": "الدور الآن على:",
       "forcedChainIncomplete": "ما زال هناك أسر متاح. أكمل السلسلة ثم اضغط مؤقت إنهاء الأسر.",
       "forcedMove": "نقلة الافتتاح المطلوبة: من ${from} إلى ${to}",
       "moveSendFail": "فشل إرسال النقلة، يرجى الضغط على زر التحديث ثم إعادة النقلة.",
-      "aiThinkingMoveLevelNote": "ملاحظة: كلما كان المستوى أعلى، قد يستغرق التفكير وقتًا أطول."
+      "aiThinkingMoveLevelNote": "انتظر قليلًا؛ ستظهر النقلة تلقائيًا عند اكتمال الاختيار."
     },
     "players": {
       "player": "لاعب",
@@ -904,14 +904,14 @@
       "wait": "It is the other player’s turn. Please wait.",
       "aiThinkingMove": "The computer is choosing a move…",
       "aiThinkingSoufla": "The computer is choosing a Soufla penalty…",
-      "aiThinkingMoveWaitLine": "Please wait while the computer chooses its move.",
+      "aiThinkingMoveWaitLine": "The computer is analysing the position and choosing its move.",
       "currentLevel": "Current level",
-      "aiThinkingMoveLevelDuration": "Level: ${level} (computer thinking time from ${min} to ${max} seconds per move)",
+      "aiThinkingMoveLevelDuration": "At level ${level}, this usually takes ${min} to ${max} seconds.",
       "turn": "Turn:",
       "forcedChainIncomplete": "Another capture is available. Finish the chain, then press the end-capture timer.",
       "forcedMove": "Required opening move: ${from} → ${to}",
       "moveSendFail": "The move could not be sent. Press Refresh, then make the move again.",
-      "aiThinkingMoveLevelNote": "Note: higher levels may take longer to think."
+      "aiThinkingMoveLevelNote": "Please wait; the move will appear automatically when it is ready."
     },
     "players": {
       "player": "Player",
@@ -1452,14 +1452,14 @@
       "wait": "C’est au tour de l’autre joueur. Veuillez patienter.",
       "aiThinkingMove": "L’ordinateur choisit son coup…",
       "aiThinkingSoufla": "L’ordinateur choisit la sanction de Soufla…",
-      "aiThinkingMoveWaitLine": "Veuillez patienter pendant que l’ordinateur choisit son coup.",
+      "aiThinkingMoveWaitLine": "L’ordinateur analyse la position et choisit son coup.",
       "currentLevel": "Niveau actuel",
-      "aiThinkingMoveLevelDuration": "Niveau : ${level} (temps de réflexion de l’ordinateur de ${min} à ${max} secondes par coup)",
+      "aiThinkingMoveLevelDuration": "Au niveau ${level}, cela prend généralement de ${min} à ${max} secondes.",
       "turn": "Au tour de :",
       "forcedChainIncomplete": "Une autre prise est disponible. Terminez la chaîne, puis appuyez sur le minuteur de fin de prise.",
       "forcedMove": "Coup d’ouverture requis : ${from} → ${to}",
       "moveSendFail": "Échec de l’envoi du coup. Appuyez sur Actualiser, puis rejouez-le.",
-      "aiThinkingMoveLevelNote": "Remarque : plus le niveau est élevé, plus la réflexion peut durer."
+      "aiThinkingMoveLevelNote": "Veuillez patienter ; le coup apparaîtra automatiquement lorsqu’il sera prêt."
     },
     "players": {
       "player": "Joueur",

@@ -62,6 +62,22 @@ function readStoredTheme() {
   return theme === "dark" ? "dark" : "light";
 }
 
+function isGameThemePage() {
+  try {
+    var path = String(location.pathname || "").toLowerCase();
+    if (path.endsWith("/pages/game.html") || path.endsWith("/game.html") || path.endsWith("/pages/game") || path.endsWith("/game")) return true;
+    return !!(document.body && document.body.classList && document.body.classList.contains("z-game-page"));
+  } catch (_) {
+    return false;
+  }
+}
+
+function applyStoredThemeForCurrentPage() {
+  try {
+    document.documentElement.classList.toggle("dark", isGameThemePage() && readStoredTheme() === "dark");
+  } catch (_) {}
+}
+
 function isPhoneLike() {
   var w = Math.max(0, window.innerWidth || 0), h = Math.max(0, window.innerHeight || 0);
   var sw = Math.max(0, window.screen && window.screen.width || 0), sh = Math.max(0, window.screen && window.screen.height || 0);
@@ -81,11 +97,11 @@ function isPhoneLike() {
   return touch > 0 && screenShort > 0 && screenShort <= 600;
 }
 
-try { document.documentElement.classList.toggle("dark", readStoredTheme() === "dark"); } catch (_) {}
+applyStoredThemeForCurrentPage();
 try {
   window.addEventListener("pageshow", function () {
     window.setTimeout(function () {
-      try { document.documentElement.classList.toggle("dark", readStoredTheme() === "dark"); } catch (_) {}
+      applyStoredThemeForCurrentPage();
     }, 0);
   });
 } catch (_) {}
@@ -1034,7 +1050,7 @@ const btnRegister = qs("#btnRegister", root);
       }));
     
       function applyTheme() {
-        try { document.documentElement.classList.toggle("dark", AppPref.getTheme() === "dark"); } catch (_) {}
+        try { document.documentElement.classList.toggle("dark", isGamePage() && AppPref.getTheme() === "dark"); } catch (_) {}
       }
     
       function setTopbarDirAndLang(lang) {
@@ -1079,6 +1095,13 @@ const btnRegister = qs("#btnRegister", root);
         syncFooterText(document);
         syncCompanyPublicLinks(document, lang);
         ensureMobileNavToggle(qs(".z-topbar"), lang);
+        if (!isGamePage()) {
+          try {
+            if (window.Online && typeof window.Online.refreshTranslatedUi === "function") {
+              window.Online.refreshTranslatedUi();
+            }
+          } catch (_) {}
+        }
       }
 
       function _navMarkInternal() {
