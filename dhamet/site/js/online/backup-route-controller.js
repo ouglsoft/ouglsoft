@@ -10,12 +10,15 @@
 
   var DEFAULT_BACKUP_URL = 'https://dhamet2.ouglsoft.com/pages/loby.html?emergency=1';
   var OFFICIAL_LOBBY_URL = '/dhamet/pages/loby.html';
+  var OFFICIAL_GAME_URL = '/dhamet/pages/game.html';
   var STATUS_URL = '/dhamet/api/backend-route';
   var FIREBASE_MIRROR_URL = 'https://dhamet2-default-rtdb.firebaseio.com/system/backupRoute.json';
   var WORKER_ATTEMPTS = 2;
-  var WORKER_TIMEOUT_MS = 650;
-  var RETRY_DELAY_MS = 80;
-  var MIRROR_TIMEOUT_MS = 750;
+  var WORKER_TIMEOUT_MS = 1400;
+  var RETRY_DELAY_MS = 120;
+  var MIRROR_TIMEOUT_MS = 1000;
+  var ACTIVE_GAME_TIMEOUT_MS = 2000;
+  var ACTIVE_GAME_TTL_MS = 12 * 60 * 60 * 1000;
   var redirecting = false;
   var resolvingEntry = false;
 
@@ -54,6 +57,82 @@
     redirecting = true;
     location.replace(OFFICIAL_LOBBY_URL);
     return true;
+  }
+
+  function persistUid() {
+    try {
+      var auth = root.CloudflareAuth || root.DhametAuth;
+      var user = auth && typeof auth.currentUser === 'function' ? auth.currentUser() : null;
+      return String(user && user.uid || '').replace(/[^A-Za-z0-9._:@-]/g, '').slice(0, 120);
+    } catch (_) { return ''; }
+  }
+
+  function activeGameRecord() {
+    try {
+      var gameId = String(sessionStorage.getItem('zamat.activeGameId') || '').trim();
+      var ts = Number(sessionStorage.getItem('zamat.activeGameTs') || 0) || 0;
+      var uid = persistUid();
+      if (!gameId && uid) {
+        gameId = String(localStorage.getItem('zamat.activeGameId.' + uid) || '').trim();
+        ts = Number(localStorage.getItem('zamat.activeGameTs.' + uid) || 0) || 0;
+      }
+      if (!gameId || !ts || Date.now() - ts > ACTIVE_GAME_TTL_MS) return null;
+      return { gameId: gameId, uid: uid };
+    } catch (_) { return null; }
+  }
+
+  function clearActiveGameRecord(record) {
+    try {
+      sessionStorage.removeItem('zamat.activeGameId');
+      sessionStorage.removeItem('zamat.activeGameTs');
+    } catch (_) {}
+    try {
+      var uid = String(record && record.uid || persistUid() || '');
+      if (uid) {
+        localStorage.removeItem('zamat.activeGameId.' + uid);
+        localStorage.removeItem('zamat.activeGameTs.' + uid);
+      }
+      localStorage.removeItem('zamat.activeGameId');
+      localStorage.removeItem('zamat.activeGameTs');
+    } catch (_) {}
+  }
+
+  function redirectToActiveGame(gameId) {
+    if (redirecting) return true;
+    redirecting = true;
+    location.replace(OFFICIAL_GAME_URL + '?pvp=1&gid=' + encodeURIComponent(String(gameId || '')));
+    return true;
+  }
+
+  async function resumeActiveOfficialGame() {
+    var record = activeGameRecord();
+    if (!record) return false;
+    var controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    var timer = controller ? setTimeout(function () { try { controller.abort(); } catch (_) {} }, ACTIVE_GAME_TIMEOUT_MS) : null;
+    try {
+      var response = await fetch('/dhamet/api/game/resync', {
+        method: 'POST',
+        credentials: 'same-origin',
+        cache: 'no-store',
+        headers: { accept: 'application/json', 'content-type': 'application/json' },
+        body: JSON.stringify({ gameId: record.gameId }),
+        signal: controller ? controller.signal : undefined,
+      });
+      var data = await response.json().catch(function () { return {}; });
+      var game = data && data.game && typeof data.game === 'object' ? data.game : null;
+      if (response.ok && data.ok !== false && data.role === 'player' && game && String(game.status || '') === 'active') {
+        return redirectToActiveGame(record.gameId);
+      }
+      var definitive = response.status === 401 || response.status === 403 || response.status === 404 || response.status === 410 ||
+        (game && String(game.status || '') !== 'active') ||
+        String(data && data.error || '') === 'game/not-found' || String(data && data.error || '') === 'game/not-a-participant';
+      if (definitive) clearActiveGameRecord(record);
+      return false;
+    } catch (_) {
+      return false;
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
   }
 
   function fetchJson(url, timeoutMs) {
@@ -118,6 +197,8 @@
     resolvingEntry = true;
     var mirrorPromise = null;
     try {
+      if (await resumeActiveOfficialGame()) return true;
+      if (manualBackupRequested()) return redirectToBackup(DEFAULT_BACKUP_URL, 'test');
       for (var attempt = 0; attempt < WORKER_ATTEMPTS; attempt += 1) {
         try {
           var control = await readWorkerControl();
@@ -159,8 +240,7 @@
     link.addEventListener('click', function (event) {
       event.preventDefault();
       event.stopImmediatePropagation();
-      if (manualBackupRequested()) redirectToBackup(DEFAULT_BACKUP_URL, 'test');
-      else resolveOnlineEntry();
+      resolveOnlineEntry();
     }, true);
   }
 

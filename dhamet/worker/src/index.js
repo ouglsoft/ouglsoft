@@ -236,7 +236,7 @@ async function requireSession(env, request) {
 
 async function ensureProfileNode(env, user) {
   try {
-    if (!env.REALTIME) return;
+    if (!env.REALTIME || !user || user.kind === 'guest' || /^guest[_-]/i.test(String(user.id || ''))) return;
     const id = env.REALTIME.idFromName('global');
     const stub = env.REALTIME.get(id);
     await stub.fetch('https://realtime.internal/api/rtdb/write', {
@@ -482,9 +482,12 @@ async function authUpdatePassword(request, env) {
   if (password.length < 6) return bad('weak-password', 400, 'auth/weak-password');
   const salt = randomToken(16);
   const h = await hashPassword(password, salt);
-  await requireDb(env).prepare(`UPDATE users SET password_hash = ?1, password_salt = ?2, password_iterations = ?3, providers = CASE WHEN providers LIKE '%password%' THEN providers ELSE providers || ',password' END, updated_at = ?4 WHERE id = ?5`)
-    .bind(h, salt, PBKDF2_ITERATIONS, now(), s.user.id)
-    .run();
+  const db = requireDb(env);
+  await db.batch([
+    db.prepare(`UPDATE users SET password_hash = ?1, password_salt = ?2, password_iterations = ?3, providers = CASE WHEN providers LIKE '%password%' THEN providers ELSE providers || ',password' END, updated_at = ?4 WHERE id = ?5`)
+      .bind(h, salt, PBKDF2_ITERATIONS, now(), s.user.id),
+    db.prepare('DELETE FROM sessions WHERE user_id = ?1 AND token_hash <> ?2').bind(s.user.id, s.tokenHash),
+  ]);
   return json({ ok: true });
 }
 

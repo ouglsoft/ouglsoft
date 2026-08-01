@@ -80,6 +80,85 @@ const ROOM_LIVE_RETRY_MS = 60 * 1000;
 const ROOM_RECONNECT_GRACE_MS = 90 * 1000;
 const SPECTATOR_RECONNECT_GRACE_MS = 90 * 1000;
 const STATS_ROOT_KEYS = new Set(['profiles', 'leaderboardV1', 'leaderboardOrderV2', 'leaderboardOrderSchema']);
+const STATS_PROFILE_PREFIX = 'stats:profile:';
+const STATS_LEADERBOARD_PREFIX = 'stats:leaderboard:';
+const STATS_ORDER_PREFIX = 'stats:leaderboard-order:';
+const STATS_ORDER_META_KEY = 'stats:leaderboard-order-meta';
+const STATS_ORDER_CHUNK_SIZE = 500;
+const STATS_MARKER_PREFIX = 'stats:marker:';
+const STATS_MARKER_CLEANUP_CURSOR_KEY = 'stats:marker-cleanup-cursor';
+const STATS_MARKER_CLEANUP_BATCH = 500;
+
+function isGuestUid(value) {
+  return /^guest[_-]/i.test(cleanPath(value || ''));
+}
+
+function valuesFromStoragePrefix(entries, prefix) {
+  const out = {};
+  if (!entries || typeof entries.entries !== 'function') return out;
+  for (const [key, value] of entries.entries()) {
+    const uid = cleanPath(String(key || '').slice(prefix.length));
+    if (!uid || isGuestUid(uid) || !value || typeof value !== 'object') continue;
+    out[uid] = value;
+  }
+  return out;
+}
+
+function orderFromStorageChunks(entries) {
+  if (!entries || typeof entries.entries !== 'function') return [];
+  const chunks = Array.from(entries.entries())
+    .filter(([key, value]) => String(key || '').startsWith(STATS_ORDER_PREFIX) && Array.isArray(value))
+    .sort((a, b) => String(a[0]).localeCompare(String(b[0])));
+  return chunks.flatMap(([, value]) => value.map((uid) => cleanPath(uid)).filter((uid) => uid && !isGuestUid(uid)));
+}
+
+function orderChunks(order) {
+  const clean = Array.from(new Set((Array.isArray(order) ? order : []).map((uid) => cleanPath(uid)).filter((uid) => uid && !isGuestUid(uid))));
+  const chunks = [];
+  for (let index = 0; index < clean.length; index += STATS_ORDER_CHUNK_SIZE) {
+    chunks.push(clean.slice(index, index + STATS_ORDER_CHUNK_SIZE));
+  }
+  return chunks;
+}
+
+function statsMarkerUidPrefix(uid) {
+  return STATS_MARKER_PREFIX + encodeURIComponent(cleanPath(uid || '')) + ':';
+}
+
+function statsMarkerKey(uid, matchKey) {
+  const cleanUid = cleanPath(uid || '');
+  const cleanMatchKey = cleanPath(matchKey || '');
+  if (!cleanUid || !cleanMatchKey || isGuestUid(cleanUid)) return '';
+  return statsMarkerUidPrefix(cleanUid) + encodeURIComponent(cleanMatchKey);
+}
+
+function stripProfileMarkers(profile, uid, markerWrites) {
+  const next = profile && typeof profile === 'object' ? clone(profile) : {};
+  for (const bucketKey of ['statsMarkersV1', 'statsMarkersV2']) {
+    const markers = next[bucketKey] && typeof next[bucketKey] === 'object' ? next[bucketKey] : {};
+    for (const [matchKey, marker] of Object.entries(markers)) {
+      const key = statsMarkerKey(uid, matchKey);
+      if (key && marker && typeof marker === 'object') markerWrites[key] = marker;
+    }
+    delete next[bucketKey];
+  }
+  return next;
+}
+
+async function storagePutBatches(storage, writes) {
+  const entries = Object.entries(writes || {});
+  for (let index = 0; index < entries.length; index += 100) {
+    await storage.put(Object.fromEntries(entries.slice(index, index + 100)));
+  }
+}
+
+async function storageDeleteBatches(storage, keys) {
+  if (!storage || typeof storage.delete !== 'function') return;
+  const unique = Array.from(new Set((Array.isArray(keys) ? keys : []).filter(Boolean)));
+  for (let index = 0; index < unique.length; index += 100) {
+    await storage.delete(unique.slice(index, index + 100));
+  }
+}
 
 function splitPersistedRoot(rootValue) {
   const root = rootValue && typeof rootValue === 'object' ? rootValue : {};
@@ -177,7 +256,15 @@ export class RealtimeObject {
 
   async _load() {
     if (this._loaded) return;
-    const stored = await this.ctx.storage.get(['state', 'statsState', 'root', 'versions', 'pendingOfficialStats']);
+    const stored = await this.ctx.storage.get(['state', 'statsState', 'root', 'versions', 'pendingOfficialStats', STATS_ORDER_META_KEY, STATS_MARKER_CLEANUP_CURSOR_KEY]);
+    const listPrefix = typeof this.ctx.storage.list === 'function'
+      ? (prefix) => this.ctx.storage.list({ prefix })
+      : async () => new Map();
+    const [profileEntries, leaderboardEntries, orderEntries] = await Promise.all([
+      listPrefix(STATS_PROFILE_PREFIX),
+      listPrefix(STATS_LEADERBOARD_PREFIX),
+      listPrefix(STATS_ORDER_PREFIX),
+    ]);
     const packed = stored && stored.get ? stored.get('state') : null;
     const packedStats = stored && stored.get ? stored.get('statsState') : null;
     const legacyRoot = stored && stored.get ? stored.get('root') : null;
@@ -186,19 +273,62 @@ export class RealtimeObject {
       ? packed
       : { root: legacyRoot && typeof legacyRoot === 'object' ? legacyRoot : {}, versions: legacyVersions && typeof legacyVersions === 'object' ? legacyVersions : { '': now() } };
     const merged = mergePersistedState(baseState, packedStats);
-    this.root = merged.root;
+    const splitRoot = splitPersistedRoot(merged.root);
+    const legacyStats = splitRoot.stats;
+    const persistedProfiles = valuesFromStoragePrefix(profileEntries, STATS_PROFILE_PREFIX);
+    const persistedLeaderboard = valuesFromStoragePrefix(leaderboardEntries, STATS_LEADERBOARD_PREFIX);
+    this._guestStatsStorageKeys = [
+      ...Array.from(profileEntries && typeof profileEntries.keys === 'function' ? profileEntries.keys() : []),
+      ...Array.from(leaderboardEntries && typeof leaderboardEntries.keys === 'function' ? leaderboardEntries.keys() : []),
+    ].filter((key) => {
+      const text = String(key || '');
+      const prefix = text.startsWith(STATS_PROFILE_PREFIX) ? STATS_PROFILE_PREFIX : STATS_LEADERBOARD_PREFIX;
+      return isGuestUid(text.slice(prefix.length));
+    });
+    const profiles = Object.assign({}, legacyStats.profiles && typeof legacyStats.profiles === 'object' ? legacyStats.profiles : {}, persistedProfiles);
+    const leaderboard = Object.assign({}, legacyStats.leaderboardV1 && typeof legacyStats.leaderboardV1 === 'object' ? legacyStats.leaderboardV1 : {}, persistedLeaderboard);
+    for (const uid of Object.keys(profiles)) if (isGuestUid(uid)) delete profiles[uid];
+    for (const uid of Object.keys(leaderboard)) if (isGuestUid(uid)) delete leaderboard[uid];
+    const migratedMarkerWrites = {};
+    for (const uid of Object.keys(profiles)) profiles[uid] = stripProfileMarkers(profiles[uid], uid, migratedMarkerWrites);
+    const chunkedOrder = orderFromStorageChunks(orderEntries);
+    const legacyOrder = Array.isArray(legacyStats.leaderboardOrderV2) ? legacyStats.leaderboardOrderV2 : [];
+    const orderMeta = stored && stored.get ? stored.get(STATS_ORDER_META_KEY) : null;
+    const chunkCount = Array.from(orderEntries && typeof orderEntries.keys === 'function' ? orderEntries.keys() : []).length;
+    const chunkedOrderComplete = !!(orderMeta && Number(orderMeta.schema || 0) === 2 && Number(orderMeta.chunks || 0) === chunkCount && Number(orderMeta.count || 0) === chunkedOrder.length);
+    const storedOrder = (chunkedOrderComplete ? chunkedOrder : legacyOrder)
+      .map((uid) => cleanPath(uid))
+      .filter((uid) => uid && !isGuestUid(uid) && leaderboard[uid]);
+    const rankedUids = Object.keys(leaderboard).filter((uid) => Number(leaderboard[uid] && leaderboard[uid].rankedGames || 0) >= 1);
+    const storedOrderComplete = new Set(storedOrder).size === rankedUids.length && rankedUids.every((uid) => storedOrder.includes(uid));
+    const order = storedOrderComplete
+      ? Array.from(new Set(storedOrder))
+      : this._leaderboardOrder(leaderboard, null, false).order;
+    this.root = Object.assign({}, splitRoot.realtime, {
+      profiles,
+      leaderboardV1: leaderboard,
+      leaderboardOrderV2: Array.from(new Set(order)),
+      leaderboardOrderSchema: 2,
+    });
     this.versions = merged.versions;
-    const splitRoot = splitPersistedRoot(this.root);
-    const splitVersions = splitPersistedVersions(this.versions, splitRoot);
-    this._persistedState = clone({ root: splitRoot.realtime, versions: splitVersions.realtime });
-    this._persistedStatsState = clone({ root: splitRoot.stats, versions: splitVersions.stats });
+    const currentSplit = splitPersistedRoot(this.root);
+    const splitVersions = splitPersistedVersions(this.versions, currentSplit);
+    this._persistedState = clone({ root: currentSplit.realtime, versions: splitVersions.realtime });
+    this._persistedStatsProfiles = clone(persistedProfiles);
+    this._persistedStatsLeaderboard = clone(persistedLeaderboard);
+    this._persistedStatsOrder = clone(chunkedOrder);
+    this._persistedStatsOrderChunkCount = orderChunks(chunkedOrder).length;
+    this._pendingStatsMarkerWrites = migratedMarkerWrites;
+    this._pendingStatsMarkerDeletes = [];
+    this._statsMarkerCleanupCursor = String(stored && stored.get ? stored.get(STATS_MARKER_CLEANUP_CURSOR_KEY) || '' : '');
     const pending = stored && stored.get ? stored.get('pendingOfficialStats') : null;
     this.pendingOfficialStats = pending && typeof pending === 'object' ? pending : {};
     this._persistedPendingOfficialStats = clone(this.pendingOfficialStats || {});
     this._legacyStorageLoaded = !packed && (!!legacyRoot || !!legacyVersions);
     this._stateStorageMigrationPending = this._legacyStorageLoaded || !!(packed && packed.root && Object.keys(splitPersistedRoot(packed.root).stats).length);
-    this._statsStorageMigrationPending = !packedStats && Object.keys(splitRoot.stats).length > 0;
+    this._statsStorageMigrationPending = !!packedStats || Object.keys(legacyStats).length > 0 || this._guestStatsStorageKeys.length > 0 || Object.keys(migratedMarkerWrites).length > 0 || !sameValue(profiles, persistedProfiles) || !sameValue(leaderboard, persistedLeaderboard) || !sameValue(order, chunkedOrder);
     this._loaded = true;
+    if (this._stateStorageMigrationPending || this._statsStorageMigrationPending) await this._save();
   }
   _officialPlayerUids(game) {
     const players = game && game.players && typeof game.players === 'object' ? game.players : {};
@@ -346,27 +476,119 @@ export class RealtimeObject {
     const splitRoot = splitPersistedRoot(this.root || {});
     const splitVersions = splitPersistedVersions(this.versions || { '': now() }, splitRoot);
     const nextState = { root: splitRoot.realtime, versions: splitVersions.realtime };
-    const nextStatsState = { root: splitRoot.stats, versions: splitVersions.stats };
+    const nextProfiles = splitRoot.stats.profiles && typeof splitRoot.stats.profiles === 'object' ? clone(splitRoot.stats.profiles) : {};
+    const nextLeaderboard = splitRoot.stats.leaderboardV1 && typeof splitRoot.stats.leaderboardV1 === 'object' ? clone(splitRoot.stats.leaderboardV1) : {};
+    for (const uid of Object.keys(nextProfiles)) if (isGuestUid(uid)) delete nextProfiles[uid];
+    for (const uid of Object.keys(nextLeaderboard)) if (isGuestUid(uid)) delete nextLeaderboard[uid];
+    const nextOrder = (Array.isArray(splitRoot.stats.leaderboardOrderV2) ? splitRoot.stats.leaderboardOrderV2 : [])
+      .map((uid) => cleanPath(uid))
+      .filter((uid) => uid && !isGuestUid(uid) && nextLeaderboard[uid]);
     const nextPending = this.pendingOfficialStats || {};
     const stateChanged = forceState || this._stateStorageMigrationPending || !sameValue(this._persistedState || null, nextState);
-    const statsChanged = forceStats || this._statsStorageMigrationPending || !sameValue(this._persistedStatsState || null, nextStatsState);
     const pendingChanged = forcePending || !sameValue(this._persistedPendingOfficialStats || null, nextPending);
     const writes = {};
     if (stateChanged) writes.state = nextState;
-    if (statsChanged && Object.keys(nextStatsState.root).length) writes.statsState = nextStatsState;
     if (pendingChanged && Object.keys(nextPending).length) writes.pendingOfficialStats = nextPending;
-    if (Object.keys(writes).length) await this.ctx.storage.put(writes);
+    const statsWrites = {};
+    const statsDeletes = Array.isArray(this._guestStatsStorageKeys) ? this._guestStatsStorageKeys.slice() : [];
+    Object.assign(statsWrites, this._pendingStatsMarkerWrites || {});
+    statsDeletes.push(...(Array.isArray(this._pendingStatsMarkerDeletes) ? this._pendingStatsMarkerDeletes : []));
+    const previousProfiles = this._persistedStatsProfiles || {};
+    const previousLeaderboard = this._persistedStatsLeaderboard || {};
+    for (const uid of new Set([...Object.keys(previousProfiles), ...Object.keys(nextProfiles)])) {
+      const before = previousProfiles[uid];
+      const after = nextProfiles[uid];
+      if (!after) statsDeletes.push(STATS_PROFILE_PREFIX + uid);
+      else if (forceStats || !sameValue(before, after)) statsWrites[STATS_PROFILE_PREFIX + uid] = after;
+    }
+    for (const uid of new Set([...Object.keys(previousLeaderboard), ...Object.keys(nextLeaderboard)])) {
+      const before = previousLeaderboard[uid];
+      const after = nextLeaderboard[uid];
+      if (!after) statsDeletes.push(STATS_LEADERBOARD_PREFIX + uid);
+      else if (forceStats || !sameValue(before, after)) statsWrites[STATS_LEADERBOARD_PREFIX + uid] = after;
+    }
+    const orderChanged = forceStats || this._statsStorageMigrationPending || !sameValue(this._persistedStatsOrder || [], nextOrder);
+    if (orderChanged) {
+      const chunks = orderChunks(nextOrder);
+      chunks.forEach((chunk, index) => {
+        statsWrites[STATS_ORDER_PREFIX + String(index).padStart(8, '0')] = chunk;
+      });
+      const previousChunkCount = Number(this._persistedStatsOrderChunkCount || 0) || 0;
+      for (let index = chunks.length; index < previousChunkCount; index += 1) {
+        statsDeletes.push(STATS_ORDER_PREFIX + String(index).padStart(8, '0'));
+      }
+      statsWrites[STATS_ORDER_META_KEY] = { schema: 2, chunkSize: STATS_ORDER_CHUNK_SIZE, count: nextOrder.length, chunks: chunks.length, updatedAt: now() };
+    }
+    const statsChanged = this._statsStorageMigrationPending || Object.keys(statsWrites).length > 0 || statsDeletes.length > 0;
+    await storagePutBatches(this.ctx.storage, Object.assign({}, writes, statsWrites));
     const deletes = [];
-    if (statsChanged && !Object.keys(nextStatsState.root).length) deletes.push('statsState');
+    if (this._statsStorageMigrationPending) deletes.push('statsState');
     if (pendingChanged && !Object.keys(nextPending).length) deletes.push('pendingOfficialStats');
     if (this._legacyStorageLoaded) deletes.push('root', 'versions');
-    if (deletes.length && typeof this.ctx.storage.delete === 'function') await this.ctx.storage.delete(deletes);
+    await storageDeleteBatches(this.ctx.storage, deletes.concat(statsDeletes));
     if (stateChanged) { this._persistedState = clone(nextState); this._stateStorageMigrationPending = false; }
-    if (statsChanged) { this._persistedStatsState = clone(nextStatsState); this._statsStorageMigrationPending = false; }
+    if (statsChanged) {
+      this._persistedStatsProfiles = clone(nextProfiles);
+      this._persistedStatsLeaderboard = clone(nextLeaderboard);
+      this._persistedStatsOrder = clone(nextOrder);
+      this._persistedStatsOrderChunkCount = orderChunks(nextOrder).length;
+      this._guestStatsStorageKeys = [];
+      this._pendingStatsMarkerWrites = {};
+      this._pendingStatsMarkerDeletes = [];
+      this._statsStorageMigrationPending = false;
+    }
     if (pendingChanged) this._persistedPendingOfficialStats = clone(nextPending);
     if (this._legacyStorageLoaded) this._legacyStorageLoaded = false;
     if (!this._inAlarm) await this._scheduleMaintenance(this._nextMaintenanceDelay(maintenanceDelayMs));
     return { stateChanged, statsChanged, pendingChanged, wrote: stateChanged || statsChanged || pendingChanged };
+  }
+
+  async _statsMarkerExists(uid, matchKey) {
+    const key = statsMarkerKey(uid, matchKey);
+    if (!key) return false;
+    if (this._pendingStatsMarkerWrites && this._pendingStatsMarkerWrites[key]) return true;
+    try {
+      return !!(await this.ctx.storage.get(key));
+    } catch (_) {
+      return false;
+    }
+  }
+
+  _queueStatsMarker(uid, matchKey, marker) {
+    const key = statsMarkerKey(uid, matchKey);
+    if (!key || !marker || typeof marker !== 'object') return false;
+    this._pendingStatsMarkerWrites = this._pendingStatsMarkerWrites || {};
+    this._pendingStatsMarkerWrites[key] = clone(marker);
+    return true;
+  }
+
+  async _queueStatsMarkerDeletesForUid(uid) {
+    const cleanUid = cleanPath(uid || '');
+    if (!cleanUid || isGuestUid(cleanUid) || typeof this.ctx.storage.list !== 'function') return;
+    try {
+      const entries = await this.ctx.storage.list({ prefix: statsMarkerUidPrefix(cleanUid) });
+      this._pendingStatsMarkerDeletes = this._pendingStatsMarkerDeletes || [];
+      this._pendingStatsMarkerDeletes.push(...Array.from(entries.keys()));
+    } catch (_) {}
+  }
+
+  async _cleanupPersistedStatsMarkers(atValue) {
+    if (typeof this.ctx.storage.list !== 'function') return { scanned: 0, deleted: 0 };
+    const at = Number(atValue || now()) || now();
+    const options = { prefix: STATS_MARKER_PREFIX, limit: STATS_MARKER_CLEANUP_BATCH };
+    if (this._statsMarkerCleanupCursor) options.startAfter = this._statsMarkerCleanupCursor;
+    const entries = await this.ctx.storage.list(options);
+    const keys = Array.from(entries.keys());
+    const expired = [];
+    for (const [key, marker] of entries.entries()) {
+      if (Number(marker && marker.purgeAt || 0) > 0 && Number(marker.purgeAt) <= at) expired.push(key);
+    }
+    await storageDeleteBatches(this.ctx.storage, expired);
+    const nextCursor = keys.length >= STATS_MARKER_CLEANUP_BATCH ? String(keys[keys.length - 1] || '') : '';
+    if (nextCursor) await this.ctx.storage.put(STATS_MARKER_CLEANUP_CURSOR_KEY, nextCursor);
+    else await this.ctx.storage.delete(STATS_MARKER_CLEANUP_CURSOR_KEY);
+    this._statsMarkerCleanupCursor = nextCursor;
+    return { scanned: keys.length, deleted: expired.length };
   }
 
   async _scheduleMaintenance(delayMs) {
@@ -772,6 +994,10 @@ export class RealtimeObject {
       if (sameValue(current, nextValue)) return [];
       this.root = setAt(this.root, path, nextValue);
       changed.push(path);
+    }
+    for (const changedPath of changed) {
+      const match = /^profiles\/([^/]+)$/.exec(String(changedPath || ''));
+      if (match && getAt(this.root, changedPath) == null) await this._queueStatsMarkerDeletesForUid(match[1]);
     }
     if (changed.some((changedPath) => changedPath === 'leaderboardV1' || changedPath.startsWith('leaderboardV1/'))) {
       const data = this.root && this.root.leaderboardV1 && typeof this.root.leaderboardV1 === 'object' ? this.root.leaderboardV1 : {};
@@ -2834,9 +3060,9 @@ export class RealtimeObject {
 
     if (mode === 'pvc' && rows.length === 1) {
       const uid = cleanPath(rows[0] && rows[0].uid || '');
+      if (isGuestUid(uid)) return json({ ok: true, skipped: true, roundId: matchKey, matchId: matchKey, recorded: [], ignored: [{ uid, reason: 'guest-not-ranked' }] });
       const profile = uid && profiles[uid] && typeof profiles[uid] === 'object' ? clone(profiles[uid]) : {};
-      const existingMarkers = profile.statsMarkersV2 && typeof profile.statsMarkersV2 === 'object' ? profile.statsMarkersV2 : {};
-      if (uid && existingMarkers[matchKey]) {
+      if (uid && await this._statsMarkerExists(uid, matchKey)) {
         return json({ ok: true, skipped: true, roundId: matchKey, matchId: matchKey, recorded: [], ignored: [{ uid, reason: 'already-recorded' }] });
       }
       const currentRate = profile.pvcResultRateV1 && typeof profile.pvcResultRateV1 === 'object' ? clone(profile.pvcResultRateV1) : {};
@@ -2857,13 +3083,16 @@ export class RealtimeObject {
       const uid = cleanPath(input && input.uid || '');
       const playerSide = Number(input && input.side);
       const outcome = StatsCore.normalizeOutcome(input && input.outcome);
+      if (isGuestUid(uid)) {
+        ignored.push({ uid, reason: 'guest-not-ranked' });
+        continue;
+      }
       if (!uid || (playerSide !== 1 && playerSide !== -1) || !outcome) {
         ignored.push({ uid, reason: 'invalid-player-result' });
         continue;
       }
       const profile = profiles[uid] && typeof profiles[uid] === 'object' ? clone(profiles[uid]) : {};
-      const markers = profile.statsMarkersV2 && typeof profile.statsMarkersV2 === 'object' ? clone(profile.statsMarkersV2) : {};
-      if (markers[matchKey]) {
+      if (await this._statsMarkerExists(uid, matchKey)) {
         ignored.push({ uid, reason: 'already-recorded' });
         continue;
       }
@@ -2874,7 +3103,7 @@ export class RealtimeObject {
         ? display(input.nickname || profile.nickname || '', 80)
         : String(input.nickname || profile.nickname || '').replace(/[<>&"'`]/g, '').slice(0, 80);
       const icon = String(input.icon || profile.icon || 'assets/icons/users/user1.png').slice(0, 200);
-      markers[matchKey] = {
+      const statsMarker = {
         schema: 3,
         mode,
         roundId: matchKey,
@@ -2901,8 +3130,8 @@ export class RealtimeObject {
       profile.updatedAt = at;
       profile.lastActiveAt = at;
       profile.stats = stats;
-      profile.statsMarkersV2 = markers;
       profiles[uid] = profile;
+      this._queueStatsMarker(uid, matchKey, statsMarker);
       leaderboard[uid] = StatsCore.leaderboardEntry(uid, stats, profile);
       order = this._insertLeaderboardUid(order, uid, leaderboard);
       recorded.push({
@@ -3232,6 +3461,9 @@ export class RealtimeObject {
             }
             if (!Object.keys(markers).length) delete profile[markerKey];
           }
+        }
+        if (Object.keys(profiles).length || this._statsMarkerCleanupCursor) {
+          await this._cleanupPersistedStatsMarkers(at);
         }
       }
       if (games && await this._deleteGameStorageIfUnused()) {

@@ -6,9 +6,7 @@
     "prepare:pages": "node deploy/prepare-pages.mjs",
     "deploy:pages": "node deploy/deploy-pages.mjs",
     "deploy:worker": "node deploy/deploy-worker.mjs",
-    "deploy": "npm run deploy:worker && npm run deploy:pages",
-    "preview": "npm run prepare:pages && wrangler pages dev .deploy/site --functions functions",
-    "test": "node --test tests/*.test.mjs"
+    "deploy": "npm run deploy:worker && npm run deploy:pages"
   },
   "devDependencies": {
     "wrangler": "4.110.0"
@@ -18,5 +16,5 @@
     "dhametPublicPath": "/dhamet",
     "dhametWorkerRoute": "ouglsoft.com/dhamet/api/*"
   },
-  "dhametBuild": "computer-pvs-2.13.47-v35-i18n-dead-code-comment-cleanup"
+  "dhametBuild": "computer-pvs-2.13.48-v36-stats-sessions-cleanup-routing"
 }
