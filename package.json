@@ -16,5 +16,5 @@
     "dhametPublicPath": "/dhamet",
     "dhametWorkerRoute": "ouglsoft.com/dhamet/api/*"
   },
-  "dhametBuild": "computer-pvs-2.13.50-v38-mobile-lobby-back-layout"
+  "dhametBuild": "computer-pvs-2.13.51-v39-workflow-coordination-actions-cleanup"
 }
