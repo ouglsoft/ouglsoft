@@ -506,6 +506,12 @@ const control = {
 
 const persisted = await persistControl(control);
 const finalControl = persisted.worker && persisted.worker.control ? persisted.worker.control : control;
+const confirmationPending = forceMode === 'auto'
+  && confirmation && confirmation.state === 'pending' && confirmation.confirmed !== true
+  && String(finalControl.mode || control.mode) !== 'backup-emergency';
+if (confirmationPending) {
+  setGithubOutput('confirmation_pending', 'true');
+}
 const shouldDisableMonitor = forceMode === 'auto'
   && decision.backup === true
   && confirmation && confirmation.confirmed === true
@@ -526,5 +532,6 @@ console.log(JSON.stringify({
   validUntil: Number(finalControl.validUntil || control.validUntil) ? new Date(Number(finalControl.validUntil || control.validUntil)).toISOString() : null,
   workerApplied: persisted.worker.applied !== false,
   firebaseApplied: persisted.firebase.applied !== false,
+  confirmationPending,
   disableMonitor: shouldDisableMonitor,
 }, null, 2));
