@@ -1,26 +1,14 @@
-name: Deploy OuglSoft Pages
+name: Deploy OuglSoft Pages Manually
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - "site/**"
-      - "functions/**"
-      - "dhamet/site/**"
-      - "dhamet/shared/**"
-      - "deploy/**"
-      - "package.json"
-      - "package-lock.json"
-      - ".github/workflows/deploy-ouglsoft-pages.yml"
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: ouglsoft-pages-production
-  cancel-in-progress: true
+  group: dhamet-production
+  cancel-in-progress: false
 
 jobs:
   deploy:
