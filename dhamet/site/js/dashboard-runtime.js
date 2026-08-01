@@ -151,12 +151,30 @@
     return String(n);
   }
 
+  function setProfileAvatar(img, src) {
+    if (!img) return;
+    var nextSrc = String(src || "").trim();
+    if (!nextSrc) return;
+    var currentSrc = String(img.getAttribute("src") || "");
+    if (currentSrc === nextSrc && img.complete && img.naturalWidth > 0) {
+      img.hidden = false;
+      return;
+    }
+    img.hidden = true;
+    var reveal = function () {
+      if (String(img.getAttribute("src") || "") === nextSrc) img.hidden = false;
+    };
+    img.addEventListener("load", reveal, { once: true });
+    img.setAttribute("src", nextSrc);
+    if (img.complete && img.naturalWidth > 0) reveal();
+  }
+
   function setProfile(profile, session) {
     var src = (profile && profile.icon) || (session && session.icon) || '';
     var nick = (profile && profile.nickname) || (session && session.nickname) || '—';
     var img = qs('#dashProfileIcon');
     var name = qs('#dashProfileName');
-    if (img) img.src = pageIconPath(src);
+    setProfileAvatar(img, pageIconPath(src));
     if (name) name.textContent = String(nick || '—');
   }
 
@@ -646,6 +664,7 @@
     try {
       if (window.ZAuth && typeof ZAuth.initCloudflareAuth === "function") ZAuth.initCloudflareAuth();
     } catch (_) {}
+    setProfile({}, s);
     bind(s);
     load(s.uid);
     window.addEventListener("beforeunload", function () {

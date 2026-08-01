@@ -1,64 +1,69 @@
-# ظّامت — التطبيق الأصلي
+# Dhamet
 
-التطبيق الرسمي الكامل للعبة ظّامت الموريتانية. يتيح اللعب ضد الحاسوب، واللعب عبر الإنترنت، وإنشاء الحسابات، وحفظ النتائج والإحصاءات الرسمية.
+Dhamet is a browser-based implementation of the Mauritanian strategy game. It provides computer play, online matches, player accounts, profiles, recorded results, statistics, and rankings.
 
-## الوظائف الرئيسية
+## Features
 
-- اللعب ضد الحاسوب بمستويات متعددة.
-- اللعب عبر الإنترنت من خلال الدعوات وغرف المباريات.
-- استئناف المباراة الأصلية النشطة عند العودة إلى التطبيق.
-- حسابات اللاعبين والملفات الشخصية.
-- النتائج والإحصاءات والترتيب المرتبطة بالحسابات المسجلة.
-- دعم العربية والإنجليزية والفرنسية.
-- دعم الهواتف والحواسيب وتبديل اتجاه شاشة اللعب على الأجهزة المتوافقة.
+- Play against the computer at multiple difficulty levels.
+- Create, send, receive, accept, and decline online match invitations.
+- Join active matches as a player or spectator when a seat is available.
+- Resume an active online match from the same browser session.
+- Create and manage a player account and profile.
+- Record account-linked results, statistics, points, and rankings.
+- Apply mandatory opening moves, captures, capture chains, Soufla, promotion, wins, and draws.
+- Use Arabic, English, and French interfaces.
+- Use responsive layouts for desktop and mobile browsers.
+- Change the board orientation on supported mobile devices.
 
-## البنية التقنية
+## Architecture
 
-- واجهة الويب: Cloudflare Pages.
-- واجهة الخدمة: Cloudflare Worker.
-- حالة المباريات الشبكية والإحصاءات والترتيب الرسمي: Durable Objects.
-- الحسابات والجلسات ورموز الاستعادة وحالة التوجيه: Cloudflare D1.
-- الكود المشترك بين الواجهة والخادم: `dhamet/shared/`.
+- Cloudflare Pages serves the website and game interface.
+- A Cloudflare Worker provides authentication, account, routing, result, and match APIs.
+- Durable Objects manage live online match state, account-linked statistics, and rankings.
+- Cloudflare D1 stores accounts, sessions, recovery tokens, OAuth state, and routing control data.
+- Shared client and server rules are stored in `dhamet/shared/`.
 
-المباريات التي يديرها هذا التطبيق هي المباريات الرسمية. عند تعذر بدء خدمة اللعب الأصلية يمكن توجيه مباريات جديدة إلى التطبيق الاحتياطي، من دون نقل هوية اللاعب أو حالة المباراة بين النظامين. تُفحص المباراة الأصلية النشطة وتُستأنف قبل أي تحويل.
+## Requirements
 
-## التشغيل والبناء
+- Node.js 22 or a compatible release
+- A Cloudflare account with access to Pages, Workers, Durable Objects, and D1
+- A configured D1 binding and Durable Object bindings in `dhamet/worker/wrangler.toml`
 
-يتطلب المشروع Node.js 22 أو إصدارًا متوافقًا معه.
+## Build
 
 ```bash
 npm ci
 npm run prepare:pages
 ```
 
-ينشئ أمر التحضير ملفات Pages داخل `.deploy/site` ويستبدل رموز رقم البناء في ملفات التطبيق.
+The prepared Pages output is written to `.deploy/site`.
 
-## النشر
+## Deployment
 
-يُضبط حساب Cloudflare من خلال أسرار وبيئة النشر، ولا تُحفظ المفاتيح داخل المستودع.
+Deploy the Worker and Pages project:
 
 ```bash
 npm run deploy:worker
 npm run deploy:pages
 ```
 
-يمكن نشر المكوّنين بالترتيب نفسه عبر:
+Deploy both components in sequence:
 
 ```bash
 npm run deploy
 ```
 
-يحتاج النشر إلى `CLOUDFLARE_API_TOKEN` و`CLOUDFLARE_ACCOUNT_ID`. كما يجب أن يطابق ربط D1 وDurable Objects إعدادات `wrangler.toml` وبيئة الإنتاج.
+Set `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` in the deployment environment. Keep the D1 and Durable Object bindings aligned with the production configuration.
 
-## بنية المستودع
+## Project Structure
 
-- `dhamet/site/`: واجهة تطبيق ظّامت.
-- `dhamet/worker/`: Worker وDurable Objects ومسارات الخدمة.
-- `dhamet/shared/`: البروتوكول والقواعد المشتركة بين العميل والخادم.
-- `deploy/`: تجهيز ملفات النشر ونشر Worker وPages.
-- `.github/workflows/`: النشر، مراقبة السعة، وتنظيف البيانات المنتهية.
-- `site/`: صفحات موقع OuglSoft العامة.
+- `dhamet/site/`: game interface and browser runtime
+- `dhamet/worker/`: Worker routes, Durable Objects, migrations, and maintenance SQL
+- `dhamet/shared/`: rules and protocol shared by the client and server
+- `deploy/`: Pages and Worker deployment scripts
+- `.github/workflows/`: deployment, capacity monitoring, and expired-data cleanup
+- `site/`: public OuglSoft website pages
 
-## الأمان والبيانات
+## Security
 
-يجب إبقاء منطق المباريات الرسمية والتحقق من الحركات والنتائج في الخادم، وعدم الاعتماد على مدخلات العميل وحدها. لا تُضاف مفاتيح Cloudflare أو رموز الوصول أو بيانات الاعتماد إلى الملفات المنشورة أو إلى سجل Git.
+Validate online moves, match state, results, and account operations on the server. Store Cloudflare credentials and access tokens in deployment secrets, not in source files or published assets.
