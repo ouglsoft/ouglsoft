@@ -135,6 +135,11 @@
     }
   }
 
+  async function redirectToBackupAfterActiveGameCheck(url, emergencyMode) {
+    if (await resumeActiveOfficialGame()) return true;
+    return redirectToBackup(url, emergencyMode);
+  }
+
   function fetchJson(url, timeoutMs) {
     var controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
     var timer = null;
@@ -197,14 +202,13 @@
     resolvingEntry = true;
     var mirrorPromise = null;
     try {
-      if (await resumeActiveOfficialGame()) return true;
-      if (manualBackupRequested()) return redirectToBackup(DEFAULT_BACKUP_URL, 'test');
+      if (manualBackupRequested()) return redirectToBackupAfterActiveGameCheck(DEFAULT_BACKUP_URL, 'test');
       for (var attempt = 0; attempt < WORKER_ATTEMPTS; attempt += 1) {
         try {
           var control = await readWorkerControl();
-          if (control.confirmed) return redirectToBackup(control.backupUrl, '1');
+          if (control.confirmed) return redirectToBackupAfterActiveGameCheck(control.backupUrl, '1');
           if (control.available) return redirectToOfficial();
-          return redirectToBackup(control.backupUrl, 'transient');
+          return redirectToBackupAfterActiveGameCheck(control.backupUrl, 'transient');
         } catch (_) {
            
            
@@ -213,7 +217,7 @@
         }
       }
       var mirror = await (mirrorPromise || readFirebaseMirror());
-      return redirectToBackup(mirror.backupUrl, mirror.confirmed ? '1' : 'transient');
+      return redirectToBackupAfterActiveGameCheck(mirror.backupUrl, mirror.confirmed ? '1' : 'transient');
     } finally {
       resolvingEntry = false;
     }

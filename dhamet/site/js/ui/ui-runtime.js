@@ -1113,11 +1113,11 @@ const Input = {
         if (allowedStart == null || idx !== allowedStart || pieceOwner(v) !== Game.player) {
           if (openingOptions.length > 1 && typeof Visual.setForcedOpeningArrows === "function") {
             Visual.setForcedOpeningArrows(openingOptions.map((item) => ({ from: item.from, to: item.toFirst })), true);
-            Visual.setHighlightCells(openingOptions.map((item) => idxToRC(item.from)));
-            Visual.draw();
           } else {
             Visual.setForcedOpeningArrow(hintFrom, hintTo);
           }
+          Visual.setHighlightCells([]);
+          Visual.draw();
           UI.status(
             t("status.forcedMove", {
               from: rcStr(hintFrom),
@@ -2824,4 +2824,3 @@ function init() {
 window.addEventListener("load", () => {
   init();
 });
-

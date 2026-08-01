@@ -627,6 +627,8 @@
   const NICK_KEY = "zamat.nick";
   const NICK_EXPLICIT_KEY = "zamat.nickExplicit";
   const NICK_SESSION_SEEN_KEY = "zamat.nickSessionSeen.v1";
+  const NICK_BROWSER_RECORD_KEY = "zamat.onlineName.browserSession.v1";
+  const NICK_BROWSER_SESSION_COOKIE = "dhamet_online_name_session";
 
   const MIGRATION_VERSION_KEY = "zamat.migrationVersion";
 
@@ -701,7 +703,96 @@
     }
   }
 
+  let browserNameSessionIdValue = "";
+
+  function randomBrowserNameSessionId() {
+    try {
+      if (globalThis.crypto && typeof globalThis.crypto.getRandomValues === "function") {
+        const bytes = new Uint8Array(18);
+        globalThis.crypto.getRandomValues(bytes);
+        return Array.from(bytes, (value) => value.toString(16).padStart(2, "0")).join("");
+      }
+    } catch (e) {}
+    return String(Date.now()) + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+  }
+
+  function readBrowserNameCookie() {
+    try {
+      const prefix = encodeURIComponent(NICK_BROWSER_SESSION_COOKIE) + "=";
+      const rows = String(document.cookie || "").split(/;\s*/);
+      for (const row of rows) if (row.indexOf(prefix) === 0) return decodeURIComponent(row.slice(prefix.length));
+    } catch (e) {}
+    return "";
+  }
+
+  function browserNameSessionId() {
+    if (browserNameSessionIdValue) return browserNameSessionIdValue;
+    let id = readBrowserNameCookie();
+    if (!id) {
+      id = randomBrowserNameSessionId();
+      try {
+        const secure = location && location.protocol === "https:" ? "; Secure" : "";
+        document.cookie = encodeURIComponent(NICK_BROWSER_SESSION_COOKIE) + "=" + encodeURIComponent(id) + "; Path=/dhamet; SameSite=Lax" + secure;
+      } catch (e) {}
+    }
+    browserNameSessionIdValue = id;
+    return id;
+  }
+
+  function readBrowserNickRecord() {
+    const sessionId = browserNameSessionId();
+    try {
+      const raw = localStorage.getItem(NICK_BROWSER_RECORD_KEY);
+      const record = raw ? JSON.parse(raw) : null;
+      if (!record || String(record.sessionId || "") !== sessionId) {
+        if (raw) localStorage.removeItem(NICK_BROWSER_RECORD_KEY);
+        try {
+          sessionStorage.removeItem(NICK_KEY);
+          sessionStorage.removeItem(NICK_EXPLICIT_KEY);
+          sessionStorage.removeItem(NICK_SESSION_SEEN_KEY);
+        } catch (e) {}
+        return null;
+      }
+      const nickname = String(record.nickname || "").trim();
+      if (!nickname || record.seen !== true) return null;
+      return {
+        sessionId,
+        nickname,
+        explicit: record.explicit === true,
+        seen: true,
+      };
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function writeBrowserNickRecord(nick, explicit, seen) {
+    const nickname = String(nick || "").trim();
+    if (!nickname || seen !== true) return;
+    try {
+      localStorage.setItem(NICK_BROWSER_RECORD_KEY, JSON.stringify({
+        sessionId: browserNameSessionId(),
+        nickname,
+        explicit: explicit === true,
+        seen: true,
+      }));
+    } catch (e) {}
+  }
+
+  function syncNickSessionFromBrowser() {
+    const record = readBrowserNickRecord();
+    if (!record) return null;
+    try {
+      sessionStorage.setItem(NICK_KEY, record.nickname);
+      sessionStorage.setItem(NICK_SESSION_SEEN_KEY, "1");
+      if (record.explicit) sessionStorage.setItem(NICK_EXPLICIT_KEY, "1");
+      else sessionStorage.removeItem(NICK_EXPLICIT_KEY);
+    } catch (e) {}
+    return record;
+  }
+
   runMigrationsOnline();
+  syncNickSessionFromBrowser();
 
   const PresenceBudget = (typeof window !== "undefined" && window.DhametPresence && window.DhametPresence.POLICY)
     ? window.DhametPresence.POLICY
@@ -792,28 +883,13 @@
 
   function getSavedNick() {
     try {
-      const seenKey = typeof NICK_SESSION_SEEN_KEY !== "undefined" ? NICK_SESSION_SEEN_KEY : "zamat.nickSessionSeen.v1";
       const sessionUser = getSessionUser();
-      const stored = String(sessionStorage.getItem(NICK_KEY) || "").trim();
-      const explicit = String(sessionStorage.getItem(NICK_EXPLICIT_KEY) || "") === "1";
-      const seenThisSession = String(sessionStorage.getItem(seenKey) || "") === "1";
-
-       
-       
-      if (explicit && stored && !isGeneratedGuestNickname(sessionUser && sessionUser.uid, stored)) return stored;
-
-       
-       
-       
-      if (seenThisSession && stored) return stored;
-
-       
-       
       if (sessionUser && sessionUser.kind === "registered") {
         const registeredNick = String(sessionUser.nickname || "").trim();
         if (registeredNick) return registeredNick;
       }
-      return "";
+      const record = syncNickSessionFromBrowser();
+      return record ? record.nickname : "";
     } catch (e) {
       return "";
     }
@@ -827,6 +903,8 @@
       else sessionStorage.removeItem(NICK_EXPLICIT_KEY);
       if (seen) sessionStorage.setItem(seenKey, "1");
     } catch (e) {}
+
+    writeBrowserNickRecord(nick, explicit, seen);
 
     try {
       localStorage.removeItem(NICK_KEY);
@@ -1270,18 +1348,10 @@
 
   function hasExplicitNick(uid) {
     try {
-      const seenKey = typeof NICK_SESSION_SEEN_KEY !== "undefined" ? NICK_SESSION_SEEN_KEY : "zamat.nickSessionSeen.v1";
       const sessionUser = getSessionUser();
       if (sessionUser && sessionUser.kind === "registered" && String(sessionUser.nickname || "").trim()) return true;
-
-      const stored = String(sessionStorage.getItem(NICK_KEY) || "").trim();
-      const seenThisSession = String(sessionStorage.getItem(seenKey) || "") === "1";
-      if (seenThisSession && stored) return true;
-
-      const flag = String(sessionStorage.getItem(NICK_EXPLICIT_KEY) || "") === "1";
-      if (!flag) return false;
-      const resolvedUid = String(uid || (sessionUser && sessionUser.uid) || (auth && auth.currentUser && auth.currentUser.uid) || "").trim();
-      return !!stored && !isGeneratedGuestNickname(resolvedUid, stored);
+      const record = syncNickSessionFromBrowser();
+      return !!(record && record.seen && record.nickname);
     } catch (e) {
       return false;
     }
