@@ -540,10 +540,10 @@ function ensureOrientButton() {
     }
     controls.classList.add('is-mobile-portrait');
     var shellBar = qs('.z-mobile-shell .z-mobile-shell-spacer');
-    var backBtn = shellBar ? qs('.z-mobile-shell-btn.is-back', shellBar) : null;
+    var langBtn = shellBar ? qs('.z-mobile-shell-btn.is-lang', shellBar) : null;
     if (shellBar) {
       shellBar.classList.add('has-invite-receive-toggle');
-      if (controls.parentNode !== shellBar) shellBar.insertBefore(controls, backBtn || null);
+      if (controls.parentNode !== shellBar) shellBar.insertBefore(controls, langBtn || null);
       return;
     }
     if (box && controls.parentNode !== box) box.appendChild(controls);

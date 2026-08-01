@@ -16,5 +16,5 @@
     "dhametPublicPath": "/dhamet",
     "dhametWorkerRoute": "ouglsoft.com/dhamet/api/*"
   },
-  "dhametBuild": "computer-pvs-2.13.49-v37-mobile-lobby-opening-session-colors"
+  "dhametBuild": "computer-pvs-2.13.50-v38-mobile-lobby-back-layout"
 }
