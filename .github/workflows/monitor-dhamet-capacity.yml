@@ -2,7 +2,7 @@ name: Monitor Dhamet Cloudflare Capacity
 
 on:
   schedule:
-    - cron: "2-59/5 * * * *"
+    - cron: "2,22,42 * * * *"
   workflow_dispatch:
     inputs:
       force_mode:
@@ -29,7 +29,7 @@ jobs:
 
     if: github.event_name == 'workflow_dispatch' || vars.DHAMET_AUTO_MONITOR_ENABLED == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     env:
       FORCE_MODE: ${{ inputs.force_mode || 'auto' }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -43,7 +43,7 @@ jobs:
 
 
       DHAMET_CONFIRMATION_REQUIRED_RUNS: ${{ vars.DHAMET_CONFIRMATION_REQUIRED_RUNS || '3' }}
-      DHAMET_CONFIRMATION_MIN_GAP_MS: ${{ vars.DHAMET_CONFIRMATION_MIN_GAP_MS || '240000' }}
+      DHAMET_CONFIRMATION_MIN_GAP_MS: "120000"
       DHAMET_CONFIRMATION_MAX_GAP_MS: ${{ vars.DHAMET_CONFIRMATION_MAX_GAP_MS || '720000' }}
       FIREBASE_ROUTE_CONTROL_URL: ${{ vars.FIREBASE_ROUTE_CONTROL_URL || 'https://dhamet2-default-rtdb.firebaseio.com/system/backupRoute.json' }}
       FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
@@ -58,12 +58,31 @@ jobs:
           node-version: 22
 
       - name: Read Cloudflare GraphQL analytics and update online routing
-        id: capacity
+        id: capacity_initial
         run: node monitor/cloudflare-backup-router.mjs
 
+      - name: Confirm detected threshold after two minutes
+        id: capacity_confirmation_2
+        if: steps.capacity_initial.outputs.confirmation_pending == 'true'
+        run: |
+          sleep 120
+          node monitor/cloudflare-backup-router.mjs
+
+      - name: Confirm detected threshold a third time
+        id: capacity_confirmation_3
+        if: steps.capacity_confirmation_2.outputs.confirmation_pending == 'true'
+        run: |
+          sleep 120
+          node monitor/cloudflare-backup-router.mjs
+
       - name: Disable capacity monitor until the next quota reset
-        if: steps.capacity.outputs.disable_monitor == 'true'
+        if: >-
+          steps.capacity_initial.outputs.disable_monitor == 'true' ||
+          steps.capacity_confirmation_2.outputs.disable_monitor == 'true' ||
+          steps.capacity_confirmation_3.outputs.disable_monitor == 'true'
         uses: actions/github-script@v7
+        env:
+          DISABLE_REASON: ${{ steps.capacity_confirmation_3.outputs.disable_reason || steps.capacity_confirmation_2.outputs.disable_reason || steps.capacity_initial.outputs.disable_reason }}
         with:
           script: |
             await github.request('PUT /repos/{owner}/{repo}/actions/workflows/{workflow_id}/disable', {
@@ -71,7 +90,7 @@ jobs:
               repo: context.repo.repo,
               workflow_id: 'monitor-dhamet-capacity.yml',
             });
-            core.info(`Capacity monitor disabled: ${{ steps.capacity.outputs.disable_reason }}`);
+            core.info(`Capacity monitor disabled: ${process.env.DISABLE_REASON}`);
 
       - name: Report monitor failure
         if: failure()
