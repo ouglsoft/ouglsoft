@@ -1,8 +1,8 @@
 ;(function(){
 
- 
- 
- 
+// Build-level browser storage migration.
+// Clear an incompatible pre-rebuild automatic PvC snapshot once, while preserving user settings,
+// manual saves, account data, language, theme, and compatible sessions from later engine builds.
 (function () {
   var BUILD = "__DHAMET_BUILD__";
   try {
@@ -30,9 +30,9 @@
     var prev = null;
     try { prev = localStorage.getItem(key); } catch (_) { prev = null; }
     if (prev !== BUILD) {
-       
-       
-       
+      // A missing/legacy marker means the stored automatic game can contain the
+      // state from the removed computer engine. Sessions created by the clean PVS engine are schema-
+      // compatible across maintenance releases and must not be discarded.
       if (!prev || String(prev).indexOf("computer-pvs-1.") !== 0) {
         try { sessionStorage.removeItem("zamat.session.game.pvc.v1"); } catch (_) {}
       }
@@ -62,22 +62,6 @@ function readStoredTheme() {
   return theme === "dark" ? "dark" : "light";
 }
 
-function isGameThemePage() {
-  try {
-    var path = String(location.pathname || "").toLowerCase();
-    if (path.endsWith("/pages/game.html") || path.endsWith("/game.html") || path.endsWith("/pages/game") || path.endsWith("/game")) return true;
-    return !!(document.body && document.body.classList && document.body.classList.contains("z-game-page"));
-  } catch (_) {
-    return false;
-  }
-}
-
-function applyStoredThemeForCurrentPage() {
-  try {
-    document.documentElement.classList.toggle("dark", isGameThemePage() && readStoredTheme() === "dark");
-  } catch (_) {}
-}
-
 function isPhoneLike() {
   var w = Math.max(0, window.innerWidth || 0), h = Math.max(0, window.innerHeight || 0);
   var sw = Math.max(0, window.screen && window.screen.width || 0), sh = Math.max(0, window.screen && window.screen.height || 0);
@@ -85,23 +69,23 @@ function isPhoneLike() {
   var ua = "", touch = 0;
   try { touch = Math.max(0, navigator.maxTouchPoints || 0); ua = String(navigator.userAgent || navigator.vendor || ""); } catch (_) {}
 
-   
-   
-   
+  // Device classification must be stable while hovering, scrolling, opening a
+  // scrollbar, or resizing a desktop window.  Generic touch capability is not
+  // sufficient: many Windows laptops and large monitors expose touch input.
   if (/Android.+Mobile|iPhone|iPod|Windows Phone|Opera Mini|IEMobile|Mobile Safari/i.test(ua)) return true;
   if (/iPad|Tablet|Silk|Android(?!.*Mobile)/i.test(ua)) return screenShort <= 1024;
 
-   
-   
+  // A desktop-class UA stays in the desktop layout even when it has a coarse
+  // pointer.  Only genuinely phone-sized physical screens use the mobile DOM.
   if (/Windows NT|Macintosh|X11|CrOS|Linux x86_64/i.test(ua)) return touch > 0 && screenShort > 0 && screenShort <= 600;
   return touch > 0 && screenShort > 0 && screenShort <= 600;
 }
 
-applyStoredThemeForCurrentPage();
+try { document.documentElement.classList.toggle("dark", readStoredTheme() === "dark"); } catch (_) {}
 try {
   window.addEventListener("pageshow", function () {
     window.setTimeout(function () {
-      applyStoredThemeForCurrentPage();
+      try { document.documentElement.classList.toggle("dark", readStoredTheme() === "dark"); } catch (_) {}
     }, 0);
   });
 } catch (_) {}
@@ -130,7 +114,7 @@ window.dataLayer = window.dataLayer || [];
 if (typeof window.gtag !== "function") window.gtag = function () { window.dataLayer.push(arguments); };
 try {
   window.gtag("js", new Date());
-  window.gtag("config", "G-3511LJEQ1R");
+  window.gtag("config", "G-F9LYBE5ZM6");
 } catch (_) {}
 
 window.ZIconManifest = ["assets/icons/users/user1.png", "assets/icons/users/user2.png", "assets/icons/users/user3.png", "assets/icons/users/user4.png", "assets/icons/users/user5.png", "assets/icons/users/user6.png", "assets/icons/users/user7.png", "assets/icons/users/user8.png", "assets/icons/users/user9.png", "assets/icons/users/user11.png", "assets/icons/users/user12.png", "assets/icons/users/user13.png", "assets/icons/users/user14.png", "assets/icons/users/user15.png", "assets/icons/users/user16.png", "assets/icons/users/user17.png", "assets/icons/users/user18.png", "assets/icons/users/user19.png", "assets/icons/users/user20.png", "assets/icons/users/autouser1.png", "assets/icons/users/autouser2.png", "assets/icons/users/computeruser.png"];
@@ -339,8 +323,8 @@ function persistNickIcon(session){
       try { stored = String(sessionStorage.getItem(NICK_LS_KEY) || "").trim(); } catch {}
       try { explicit = String(sessionStorage.getItem(NICK_EXPLICIT_KEY) || "") === "1"; } catch {}
 
-       
-       
+      // Preserve a nickname explicitly chosen during this browser session, but
+      // clear the generated guest placeholder that older builds marked explicit.
       if (generatedGuestNick && (!explicit || !stored || stored === nickname)) {
         try { sessionStorage.removeItem(NICK_LS_KEY); } catch {}
         try { sessionStorage.removeItem(NICK_EXPLICIT_KEY); } catch {}
@@ -1050,7 +1034,7 @@ const btnRegister = qs("#btnRegister", root);
       }));
     
       function applyTheme() {
-        try { document.documentElement.classList.toggle("dark", isGamePage() && AppPref.getTheme() === "dark"); } catch (_) {}
+        try { document.documentElement.classList.toggle("dark", AppPref.getTheme() === "dark"); } catch (_) {}
       }
     
       function setTopbarDirAndLang(lang) {
@@ -1095,13 +1079,6 @@ const btnRegister = qs("#btnRegister", root);
         syncFooterText(document);
         syncCompanyPublicLinks(document, lang);
         ensureMobileNavToggle(qs(".z-topbar"), lang);
-        if (!isGamePage()) {
-          try {
-            if (window.Online && typeof window.Online.refreshTranslatedUi === "function") {
-              window.Online.refreshTranslatedUi();
-            }
-          } catch (_) {}
-        }
       }
 
       function _navMarkInternal() {
