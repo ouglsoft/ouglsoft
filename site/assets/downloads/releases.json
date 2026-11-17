@@ -1,0 +1,64 @@
+{
+  "apps": {
+    "zad-al-muslim": {
+      "url": "/assets/downloads/apps/zad-al-muslim.apk",
+      "file": "assets/downloads/apps/zad-al-muslim.apk",
+      "filename": "zad-al-muslim.apk",
+      "version": "2.2.1",
+      "version_code": 221,
+      "min_sdk": 26,
+      "package": "com.ouglsoft.zadalmuslim",
+      "updated": "",
+      "size": "",
+      "sha256": ""
+    },
+    "nouakchott-cadastre": {
+      "url": "/assets/downloads/apps/nouakchott-cadastre.apk",
+      "file": "assets/downloads/apps/nouakchott-cadastre.apk",
+      "filename": "nouakchott-cadastre.apk",
+      "version": "1.16.3",
+      "version_code": 42,
+      "min_sdk": 23,
+      "package": "com.ouglsoft.nouakchottcadastre",
+      "updated": "",
+      "size": "",
+      "sha256": ""
+    },
+    "almoathen-shinqiti": {
+      "url": "/assets/downloads/apps/almoathen-shinqiti.apk",
+      "file": "assets/downloads/apps/almoathen-shinqiti.apk",
+      "filename": "almoathen-shinqiti.apk",
+      "version": "2.3.1",
+      "version_code": 231,
+      "min_sdk": 26,
+      "package": "com.ouglsoft.almoathenshinqiti",
+      "updated": "",
+      "size": "",
+      "sha256": ""
+    },
+    "my-agenda": {
+      "url": "/assets/downloads/apps/my-agenda.apk",
+      "file": "assets/downloads/apps/my-agenda.apk",
+      "filename": "my-agenda.apk",
+      "version": "1.0.0",
+      "version_code": 1,
+      "min_sdk": 26,
+      "package": "app.ajendati",
+      "updated": "",
+      "size": "",
+      "sha256": ""
+    },
+    "safe-to-spend": {
+      "url": "/assets/downloads/apps/safe-to-spend.apk",
+      "file": "assets/downloads/apps/safe-to-spend.apk",
+      "filename": "safe-to-spend.apk",
+      "version": "1.2.15",
+      "version_code": 135,
+      "min_sdk": 23,
+      "package": "com.ouglsoft.safetospend",
+      "updated": "",
+      "size": "1.71 MB",
+      "sha256": "40aabc1aa6e575d37937fad069181d65b48177da4fd47d0ec89880324bbdd0bc"
+    }
+  }
+}
