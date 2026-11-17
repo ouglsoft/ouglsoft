@@ -7,7 +7,7 @@
     "deploy:pages": "node deploy/deploy-pages.mjs",
     "deploy:worker": "node deploy/deploy-worker.mjs",
     "deploy": "npm run deploy:worker && npm run deploy:pages",
-    "test:routing": "node --test tests/backup-route-entry.test.mjs"
+    "preview": "npm run prepare:pages && wrangler pages dev .deploy/site --functions functions"
   },
   "devDependencies": {
     "wrangler": "4.110.0"
@@ -17,5 +17,5 @@
     "dhametPublicPath": "/dhamet",
     "dhametWorkerRoute": "ouglsoft.com/dhamet/api/*"
   },
-  "dhametBuild": "computer-pvs-2.13.54-v45-production-routing"
+  "dhametBuild": "computer-pvs-2.13.37-analytics-v16"
 }
