@@ -303,6 +303,11 @@ body.menu-open { overflow: hidden; }
 .platform-tag { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; font-size: .75rem; font-weight: 600; background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--accent); }
 :root[data-theme="dark"] .platform-tag { color: color-mix(in srgb, var(--accent) 35%, #fff); }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .pcard-cat, :root:not([data-theme="light"]) .platform-tag { color: color-mix(in srgb, var(--accent) 35%, #fff); } }
+/* cards with a direct play button: a stretched link covers the card, the button sits above it */
+.pcard-stretch, .prow-stretch { position: absolute; inset: 0; z-index: 1; border-radius: inherit; }
+.pcard-stretch:focus-visible, .prow-stretch:focus-visible { outline-offset: -6px; border-radius: inherit; }
+.pcard-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; }
+.pcard-open, .prow-open { position: relative; z-index: 2; }
 
 /* ---------- feature / service cards ---------- */
 .card-grid { display: grid; gap: 20px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
