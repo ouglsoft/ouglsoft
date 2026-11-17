@@ -1,0 +1,2108 @@
+/* ========================================================================== 
+   DHAMET UNIFIED THEME — ELECTRIC DESERT
+   Single source of truth for every application color, gradient and elevation.
+   Loaded after the legacy layout styles so desktop, mobile portrait and mobile
+   landscape share the same visual identity without changing game geometry.
+   ========================================================================== */
+
+:root {
+  --rgb-white: 255 255 255;
+  --rgb-black: 0 0 0;
+  --rgb-neutral-50: 248 250 252;
+  --rgb-neutral-200: 226 232 240;
+  --rgb-neutral-300: 203 213 225;
+  --rgb-neutral-400: 148 163 184;
+  --rgb-neutral-500: 100 116 139;
+  --rgb-neutral-600: 71 85 105;
+  --rgb-neutral-700: 51 65 85;
+  --rgb-neutral-800: 30 41 59;
+  --rgb-neutral-900: 15 23 42;
+  --rgb-neutral-950: 2 6 23;
+  --rgb-success-100: 226 249 239;
+  --rgb-success-500: 71 215 155;
+  --rgb-success-600: 22 132 91;
+  --rgb-success-700: 14 101 68;
+  --rgb-success-800: 10 72 49;
+  --rgb-gold-400: 255 216 117;
+  --rgb-gold-500: 255 200 87;
+  --rgb-gold-600: 255 176 32;
+  --rgb-gold-700: 185 113 0;
+  --rgb-gold-800: 112 68 0;
+  --rgb-danger-300: 255 160 168;
+  --rgb-danger-400: 255 107 120;
+  --rgb-danger-500: 201 56 66;
+  --rgb-danger-600: 164 39 50;
+  --rgb-danger-700: 124 27 38;
+  --rgb-danger-800: 80 18 27;
+  --rgb-violet-mid: 139 92 246;
+  --rgb-violet-bright: 180 92 255;
+  --color-surface-inverse: rgb(var(--rgb-neutral-900));
+  --color-on-dark: rgb(var(--rgb-white));
+  --color-on-primary: rgb(var(--rgb-white));
+  --color-on-accent: rgb(var(--rgb-white));
+  --color-on-warning: rgb(var(--rgb-neutral-900));
+  --color-success: rgb(var(--rgb-success-600));
+  --color-success-soft: rgb(var(--rgb-success-500) / .14);
+  --color-warning: rgb(var(--rgb-gold-600));
+  --color-warning-soft: rgb(var(--rgb-gold-600) / .14);
+  --color-danger: rgb(var(--rgb-danger-500));
+  --color-danger-soft: rgb(var(--rgb-danger-500) / .13);
+  --color-focus: rgb(var(--rgb-light-primary-400) / .36);
+  --game-move-top: rgb(var(--rgb-secondary-600));
+  --game-move-bottom: rgb(var(--rgb-light-primary-600));
+  --game-capture: rgb(var(--rgb-gold-600));
+  --game-danger: rgb(var(--rgb-danger-500));
+  --game-soufla-green: rgb(var(--rgb-success-600));
+  --game-soufla-red: rgb(var(--rgb-danger-500));
+  --board-point: rgb(var(--rgb-light-primary-500));
+  --mark-danger: rgb(var(--rgb-danger-500));
+  --mark-danger-strong: rgb(var(--rgb-danger-600));
+  --mark-move: rgb(var(--rgb-secondary-600));
+  --mark-move-strong: rgb(var(--rgb-secondary-700));
+  --mark-undo: rgb(var(--rgb-gold-600));
+  --mark-label-bg: rgb(var(--rgb-white) / .88);
+  --mark-overlay-light: rgb(var(--rgb-white) / .76);
+  --mark-overlay-dark: rgb(var(--rgb-black) / .60);
+  --piece-highlight: rgb(var(--rgb-white));
+  --piece-crown-light: rgb(var(--rgb-gold-400));
+  --piece-crown-mid: rgb(var(--rgb-gold-500));
+  --piece-crown-dark: rgb(var(--rgb-gold-600));
+  --piece-crown-edge: rgb(var(--rgb-gold-800));
+  --gradient-warning: linear-gradient(135deg, rgb(var(--rgb-gold-700)) 0%, rgb(var(--rgb-gold-600)) 56%, rgb(var(--rgb-gold-400)) 100%);
+  --gradient-danger: linear-gradient(135deg, rgb(var(--rgb-danger-600)) 0%, rgb(var(--rgb-danger-400)) 100%);
+  --gradient-success: linear-gradient(135deg, rgb(var(--rgb-success-700)) 0%, rgb(var(--rgb-success-500)) 100%);
+  --gradient-profile: linear-gradient(135deg, rgb(var(--rgb-light-primary-700)) 0%, rgb(var(--rgb-light-primary-500)) 58%, rgb(var(--rgb-secondary-500)) 100%);
+  --gradient-action-sync: linear-gradient(145deg, rgb(var(--rgb-secondary-700)) 0%, rgb(var(--rgb-secondary-500)) 100%);
+  --gradient-action-soufla: linear-gradient(145deg, rgb(var(--rgb-gold-700)) 0%, rgb(var(--rgb-gold-600)) 56%, rgb(var(--rgb-danger-400)) 100%);
+  --gradient-action-undo: linear-gradient(145deg, rgb(var(--rgb-gold-600)) 0%, rgb(var(--rgb-gold-500)) 100%);
+  --gradient-action-settings: linear-gradient(145deg, rgb(var(--rgb-neutral-700)) 0%, rgb(var(--rgb-neutral-500)) 100%);
+  --gradient-action-save: linear-gradient(145deg, rgb(var(--rgb-success-700)) 0%, rgb(var(--rgb-success-500)) 100%);
+  --gradient-action-resume: linear-gradient(145deg, rgb(var(--rgb-light-primary-700)) 0%, rgb(var(--rgb-light-primary-500)) 100%);
+  --gradient-action-new: linear-gradient(145deg, rgb(var(--rgb-light-primary-600)) 0%, rgb(var(--rgb-secondary-400)) 100%);
+  --gradient-action-chat: linear-gradient(145deg, rgb(var(--rgb-light-primary-600)) 0%, rgb(var(--rgb-secondary-500)) 100%);
+  --gradient-action-audio: linear-gradient(145deg, rgb(var(--rgb-secondary-600)) 0%, rgb(var(--rgb-light-primary-400)) 100%);
+  --gradient-action-mic: linear-gradient(145deg, rgb(var(--rgb-danger-600)) 0%, rgb(var(--rgb-danger-400)) 100%);
+  --gradient-action-danger: linear-gradient(145deg, rgb(var(--rgb-danger-600)) 0%, rgb(var(--rgb-danger-400)) 100%);
+  --mode-card-text: rgb(var(--rgb-ink));
+  --mode-card-muted: rgb(var(--rgb-muted-ink));
+  --mode-card-border: rgb(var(--rgb-white) / .74);
+  --mode-card-glow: rgb(var(--rgb-white) / .40);
+  --mode-icon-bg: rgb(var(--rgb-white) / .76);
+  --mode-icon-border: rgb(var(--rgb-light-primary-400) / .24);
+  --mode-icon-filter: none;
+  --mode-badge-bg: rgb(var(--rgb-white) / .84);
+  --mode-badge-text: rgb(var(--rgb-light-primary-700));
+  --lobby-rooms-accent: rgb(var(--rgb-light-primary-500));
+  --lobby-players-accent: rgb(var(--rgb-secondary-600));
+  --row-room-badge-bg: rgb(var(--rgb-light-primary-500) / .12);
+  --row-room-badge-text: rgb(var(--rgb-light-primary-700));
+  --row-player-badge-bg: rgb(var(--rgb-secondary-500) / .12);
+  --row-player-badge-text: rgb(var(--rgb-secondary-700));
+  --shadow-xs: 0 4px 12px rgb(var(--rgb-light-primary-700) / .06);
+  --shadow-sm-unified: 0 10px 26px rgb(var(--rgb-light-primary-700) / .10);
+  --shadow-md-unified: 0 18px 42px rgb(var(--rgb-light-primary-700) / .15), 0 3px 10px rgb(var(--rgb-light-primary-700) / .05);
+  --shadow-lg-unified: 0 28px 68px rgb(var(--rgb-light-primary-700) / .20);
+  --shadow-primary: 0 18px 38px rgb(var(--rgb-light-primary-500) / .24);
+  --shadow-secondary: 0 16px 34px rgb(var(--rgb-secondary-600) / .20);
+  --shadow-warning: 0 14px 30px rgb(var(--rgb-gold-700) / .18);
+  --radius-card: 22px;
+  --radius-control: 14px;
+  --fs-title: 30px;
+  --primary-green: var(--color-success);
+  --primary-gold: var(--color-warning);
+  --primary-red: var(--color-danger);
+  --sand-beige: var(--color-bg-alt);
+  --desert-orange: var(--color-primary);
+  --desert-brown: var(--color-primary);
+  --sky-blue: var(--color-secondary);
+  --dark-blue: var(--color-surface-inverse);
+  --light-sand: var(--color-bg-alt);
+  --bg: var(--color-bg);
+  --bg-soft: var(--color-bg-alt);
+  --panel: var(--color-surface);
+  --panel-weak: var(--color-surface-muted);
+  --panel-strong: var(--color-surface-solid);
+  --text: var(--color-text);
+  --text-strong: var(--color-text-strong);
+  --muted: var(--color-text-muted);
+  --accent: var(--color-primary);
+  --accent-2: var(--color-secondary);
+  --accent-soft: var(--color-primary-soft);
+  --danger: var(--color-danger);
+  --warn: var(--color-warning);
+  --ok: var(--color-success);
+  --grid: var(--game-board-grid);
+  --diag: var(--game-board-diag);
+  --border: var(--color-border);
+  --border-strong: var(--color-border-strong);
+  --arrow-green: var(--game-move-top);
+  --arrow-yellow: var(--game-capture);
+  --arrow-red: var(--game-danger);
+  --shadow-sm: var(--shadow-sm-unified);
+  --shadow: var(--shadow-md-unified);
+  --shadow-lg: var(--shadow-lg-unified);
+  --radius: var(--radius-card);
+  --radius-sm: var(--radius-control);
+  --btn-start: rgb(var(--rgb-light-primary-600));
+  --btn-end: rgb(var(--rgb-secondary-400));
+  --btn-text: var(--color-on-primary);
+  --btn-border: rgb(var(--rgb-white) / .24);
+  --btn-shadow: var(--shadow-primary);
+  --board-grid: var(--game-board-grid);
+  --board-diag: var(--game-board-diag);
+  --board-bg-start: var(--game-board-start);
+  --board-bg-end: var(--game-board-end);
+  --board-depth-shadow: rgb(var(--rgb-light-primary-700) / .20);
+  --surface-elev-1: var(--color-surface);
+  --surface-elev-2: var(--color-surface-solid);
+  --surface-stroke: var(--color-border);
+  --surface-stroke-strong: var(--color-border-strong);
+  --icon-dark-bg: var(--color-surface-solid);
+  --piece-shadow: rgb(15 23 42 / .30);
+  --rgb-sand-50: 248 250 250;
+  --rgb-sand-100: 238 244 244;
+  --rgb-sand-200: 221 232 232;
+  --rgb-sand-300: 198 215 214;
+  --rgb-light-primary-200: 205 224 233;
+  --rgb-light-primary-300: 155 193 208;
+  --rgb-light-primary-400: 63 133 157;
+  --rgb-light-primary-500: 23 89 118;
+  --rgb-light-primary-600: 18 71 96;
+  --rgb-light-primary-700: 13 54 76;
+  --rgb-light-primary-800: 9 41 60;
+  --rgb-primary-100: 235 245 249;
+  --rgb-primary-200: 211 230 238;
+  --rgb-primary-300: 159 200 216;
+  --rgb-primary-400: 79 151 178;
+  --rgb-primary-500: 32 104 134;
+  --rgb-primary-600: 22 80 106;
+  --rgb-primary-700: 15 59 82;
+  --rgb-primary-800: 11 43 62;
+  --rgb-primary-900: 7 27 40;
+  --rgb-secondary-100: 222 245 241;
+  --rgb-secondary-200: 181 226 219;
+  --rgb-secondary-300: 100 199 187;
+  --rgb-secondary-400: 40 174 161;
+  --rgb-secondary-500: 15 139 130;
+  --rgb-secondary-600: 10 111 105;
+  --rgb-secondary-700: 7 83 80;
+  --rgb-ink: 19 38 55;
+  --rgb-muted-ink: 75 91 104;
+  --rgb-dark-surface: 11 34 49;
+  --rgb-dark-surface-alt: 8 27 40;
+  --rgb-dark-border: 38 83 99;
+  --rgb-dark-muted: 178 205 213;
+  --color-bg: rgb(var(--rgb-sand-50));
+  --color-bg-alt: rgb(var(--rgb-sand-100));
+  --color-surface: rgb(var(--rgb-white) / .94);
+  --color-surface-solid: rgb(var(--rgb-white) / .99);
+  --color-surface-raised: rgb(var(--rgb-white));
+  --color-surface-muted: rgb(var(--rgb-sand-100) / .92);
+  --color-text: rgb(var(--rgb-ink));
+  --color-text-strong: rgb(var(--rgb-ink));
+  --color-text-muted: rgb(var(--rgb-muted-ink));
+  --color-primary: rgb(var(--rgb-light-primary-500));
+  --color-primary-hover: rgb(var(--rgb-light-primary-600));
+  --color-primary-soft: rgb(var(--rgb-light-primary-500) / .12);
+  --color-secondary: rgb(var(--rgb-secondary-600));
+  --color-secondary-hover: rgb(var(--rgb-secondary-700));
+  --color-secondary-soft: rgb(var(--rgb-secondary-500) / .13);
+  --color-border: rgb(var(--rgb-light-primary-300) / .46);
+  --color-border-strong: rgb(var(--rgb-light-primary-500) / .42);
+  --gradient-surface: linear-gradient(150deg, rgb(var(--rgb-white) / .99) 0%, rgb(var(--rgb-sand-100) / .97) 58%, rgb(var(--rgb-light-primary-200) / .82) 100%);
+  --gradient-game-panel: linear-gradient(150deg, rgb(var(--rgb-white) / .99) 0%, rgb(var(--rgb-sand-100) / .96) 56%, rgb(var(--rgb-secondary-100) / .84) 100%);
+  --gradient-mode-pvc: linear-gradient(145deg, rgb(var(--rgb-white)) 0%, rgb(var(--rgb-light-primary-200) / .94) 64%, rgb(var(--rgb-secondary-100) / .86) 100%);
+  --gradient-mode-pvp: linear-gradient(145deg, rgb(var(--rgb-white)) 0%, rgb(var(--rgb-secondary-100) / .96) 62%, rgb(var(--rgb-light-primary-200) / .84) 100%);
+  --gradient-lobby-rooms: linear-gradient(150deg, rgb(var(--rgb-white)) 0%, rgb(var(--rgb-light-primary-200) / .88) 100%);
+  --gradient-lobby-players: linear-gradient(150deg, rgb(var(--rgb-white)) 0%, rgb(var(--rgb-secondary-100) / .95) 100%);
+  --gradient-row-room: linear-gradient(140deg, rgb(var(--rgb-white)) 0%, rgb(var(--rgb-light-primary-200) / .78) 100%);
+  --gradient-row-player: linear-gradient(140deg, rgb(var(--rgb-white)) 0%, rgb(var(--rgb-secondary-100) / .88) 100%);
+  --rgb-board-dark: 17 36 50;
+  --rgb-board-dark-alt: 45 80 96;
+  --rgb-board-grid-light: 25 57 76;
+  --rgb-board-diag-light: 176 105 45;
+  --rgb-board-grid-dark: 218 236 239;
+  --rgb-board-diag-dark: 255 202 114;
+  --game-board-grid: rgb(var(--rgb-board-grid-light));
+  --game-board-diag: rgb(var(--rgb-board-diag-light));
+  --game-board-start: rgb(var(--rgb-board-light));
+  --game-board-end: rgb(var(--rgb-board-light-alt));
+  --piece-white-light: rgb(var(--rgb-white));
+  --piece-white-mid: rgb(240 247 248);
+  --piece-white-dark: rgb(199 220 226);
+  --piece-white-dot: rgb(var(--rgb-light-primary-700));
+  --piece-black-light: rgb(43 76 92);
+  --piece-black-mid: rgb(22 49 65);
+  --piece-black-dark: rgb(8 27 39);
+  --piece-black-dot: rgb(var(--rgb-secondary-200));
+  --gradient-primary: linear-gradient(135deg, rgb(21 86 114) 0%, rgb(24 125 132) 58%, rgb(53 160 145) 100%);
+  --gradient-secondary: linear-gradient(135deg, rgb(25 75 96) 0%, rgb(28 112 119) 58%, rgb(64 151 140) 100%);
+  --gradient-game-control: linear-gradient(145deg, rgb(19 69 94) 0%, rgb(25 108 119) 58%, rgb(49 143 132) 100%);
+  --gradient-game-control-danger: linear-gradient(145deg, rgb(128 40 48) 0%, rgb(177 61 70) 100%);
+  --gradient-modal-header: linear-gradient(135deg, rgb(18 66 90) 0%, rgb(24 105 116) 58%, rgb(48 143 132) 100%);
+  /* ------------------------------------------------------------------------
+     RAW PALETTE
+     Concrete color channels are intentionally confined to this file.
+     ------------------------------------------------------------------------ */
+  /* ------------------------------------------------------------------------
+     SEMANTIC COLOR ROLES — LIGHT
+     ------------------------------------------------------------------------ */
+  /* ------------------------------------------------------------------------
+     GAME / CANVAS ROLES
+     JavaScript resolves these values through js/theme-colors.js.
+     ------------------------------------------------------------------------ */
+  /* ------------------------------------------------------------------------
+     GRADIENTS, SHADOWS, SHAPE AND TYPE
+     ------------------------------------------------------------------------ */
+  /* ------------------------------------------------------------------------
+     LEGACY COMPATIBILITY ALIASES
+     Existing layouts use these names; their values are now centrally owned.
+     ------------------------------------------------------------------------ */
+  --rgb-board-light: 250 253 253;
+  --rgb-board-light-alt: 222 241 244;
+}
+
+:root.dark {
+  --color-surface-inverse: rgb(var(--rgb-primary-100));
+  --color-success: rgb(var(--rgb-success-500));
+  --color-success-soft: rgb(var(--rgb-success-500) / .16);
+  --color-warning: rgb(var(--rgb-gold-500));
+  --color-warning-soft: rgb(var(--rgb-gold-500) / .16);
+  --color-danger: rgb(var(--rgb-danger-400));
+  --color-danger-soft: rgb(var(--rgb-danger-400) / .16);
+  --color-focus: rgb(var(--rgb-primary-400) / .52);
+  --game-move-top: rgb(var(--rgb-secondary-400));
+  --game-move-bottom: rgb(var(--rgb-primary-400));
+  --game-capture: rgb(var(--rgb-gold-500));
+  --game-danger: rgb(var(--rgb-danger-400));
+  --game-soufla-green: rgb(var(--rgb-success-500));
+  --game-soufla-red: rgb(var(--rgb-danger-400));
+  --gradient-profile: linear-gradient(135deg, rgb(var(--rgb-primary-700)) 0%, rgb(var(--rgb-primary-500)) 58%, rgb(var(--rgb-violet-mid)) 100%);
+  --gradient-action-sync: linear-gradient(145deg, rgb(var(--rgb-secondary-700)) 0%, rgb(var(--rgb-secondary-400)) 100%);
+  --gradient-action-soufla: linear-gradient(145deg, rgb(var(--rgb-gold-700)) 0%, rgb(var(--rgb-gold-500)) 56%, rgb(var(--rgb-danger-400)) 100%);
+  --gradient-action-undo: linear-gradient(145deg, rgb(var(--rgb-gold-700)) 0%, rgb(var(--rgb-gold-500)) 100%);
+  --gradient-action-settings: linear-gradient(145deg, rgb(var(--rgb-neutral-700)) 0%, rgb(var(--rgb-neutral-500)) 100%);
+  --gradient-action-save: linear-gradient(145deg, rgb(var(--rgb-success-700)) 0%, rgb(var(--rgb-success-500)) 100%);
+  --gradient-action-resume: linear-gradient(145deg, rgb(var(--rgb-primary-700)) 0%, rgb(var(--rgb-primary-400)) 100%);
+  --gradient-action-new: linear-gradient(145deg, rgb(var(--rgb-primary-600)) 0%, rgb(var(--rgb-violet-mid)) 100%);
+  --gradient-action-chat: linear-gradient(145deg, rgb(var(--rgb-primary-600)) 0%, rgb(var(--rgb-secondary-400)) 100%);
+  --gradient-action-audio: linear-gradient(145deg, rgb(var(--rgb-secondary-700)) 0%, rgb(var(--rgb-secondary-400)) 100%);
+  --gradient-action-mic: linear-gradient(145deg, rgb(var(--rgb-danger-600)) 0%, rgb(var(--rgb-danger-400)) 100%);
+  --gradient-action-danger: linear-gradient(145deg, rgb(var(--rgb-danger-600)) 0%, rgb(var(--rgb-danger-400)) 100%);
+  --mode-card-text: rgb(var(--rgb-white));
+  --mode-card-muted: rgb(var(--rgb-white) / .82);
+  --mode-card-border: rgb(var(--rgb-white) / .22);
+  --mode-card-glow: rgb(var(--rgb-white) / .12);
+  --mode-icon-bg: rgb(var(--rgb-white) / .14);
+  --mode-icon-border: rgb(var(--rgb-white) / .28);
+  --mode-icon-filter: brightness(0) invert(1);
+  --mode-badge-bg: rgb(var(--rgb-white) / .14);
+  --mode-badge-text: rgb(var(--rgb-white));
+  --lobby-rooms-accent: rgb(var(--rgb-primary-400));
+  --lobby-players-accent: rgb(var(--rgb-secondary-400));
+  --row-room-badge-bg: rgb(var(--rgb-primary-400) / .16);
+  --row-room-badge-text: rgb(var(--rgb-primary-100));
+  --row-player-badge-bg: rgb(var(--rgb-secondary-400) / .16);
+  --row-player-badge-text: rgb(var(--rgb-secondary-100));
+  --shadow-xs: 0 4px 14px rgb(var(--rgb-black) / .22);
+  --shadow-sm-unified: 0 12px 30px rgb(var(--rgb-black) / .32);
+  --shadow-md-unified: 0 20px 48px rgb(var(--rgb-black) / .44), inset 0 1px 0 rgb(var(--rgb-white) / .04);
+  --shadow-lg-unified: 0 30px 76px rgb(var(--rgb-black) / .55);
+  --shadow-primary: 0 16px 36px rgb(var(--rgb-primary-900) / .56);
+  --shadow-secondary: 0 16px 36px rgb(var(--rgb-black) / .44);
+  --shadow-warning: 0 14px 32px rgb(var(--rgb-black) / .38);
+  --btn-start: rgb(var(--rgb-primary-400));
+  --btn-end: rgb(var(--rgb-violet-bright));
+  --board-depth-shadow: rgb(var(--rgb-black) / .56);
+  --color-bg: rgb(var(--rgb-primary-900));
+  --color-bg-alt: rgb(var(--rgb-dark-surface-alt));
+  --color-surface: rgb(var(--rgb-dark-surface) / .95);
+  --color-surface-solid: rgb(var(--rgb-dark-surface));
+  --color-surface-raised: rgb(var(--rgb-primary-800));
+  --color-surface-muted: rgb(var(--rgb-primary-800) / .88);
+  --color-text: rgb(var(--rgb-primary-100));
+  --color-text-strong: rgb(var(--rgb-white));
+  --color-text-muted: rgb(var(--rgb-dark-muted));
+  --color-primary: rgb(var(--rgb-primary-300));
+  --color-primary-hover: rgb(var(--rgb-primary-200));
+  --color-primary-soft: rgb(var(--rgb-primary-300) / .16);
+  --color-secondary: rgb(var(--rgb-secondary-300));
+  --color-secondary-hover: rgb(var(--rgb-secondary-200));
+  --color-secondary-soft: rgb(var(--rgb-secondary-300) / .16);
+  --color-border: rgb(var(--rgb-dark-border) / .92);
+  --color-border-strong: rgb(var(--rgb-primary-300) / .48);
+  --gradient-primary: linear-gradient(135deg, rgb(var(--rgb-primary-700)) 0%, rgb(var(--rgb-primary-500)) 58%, rgb(var(--rgb-secondary-500)) 100%);
+  --gradient-secondary: linear-gradient(135deg, rgb(var(--rgb-secondary-700)) 0%, rgb(var(--rgb-secondary-500)) 58%, rgb(var(--rgb-primary-400)) 100%);
+  --gradient-surface: linear-gradient(150deg, rgb(var(--rgb-dark-surface) / .99) 0%, rgb(var(--rgb-primary-800) / .96) 58%, rgb(var(--rgb-secondary-700) / .28) 100%);
+  --gradient-game-panel: linear-gradient(150deg, rgb(var(--rgb-dark-surface) / .99) 0%, rgb(var(--rgb-primary-800) / .96) 58%, rgb(var(--rgb-secondary-700) / .32) 100%);
+  --gradient-mode-pvc: linear-gradient(145deg, rgb(var(--rgb-primary-800)) 0%, rgb(var(--rgb-primary-600)) 64%, rgb(var(--rgb-secondary-700)) 100%);
+  --gradient-mode-pvp: linear-gradient(145deg, rgb(var(--rgb-secondary-700)) 0%, rgb(var(--rgb-secondary-600)) 62%, rgb(var(--rgb-primary-700)) 100%);
+  --gradient-lobby-rooms: linear-gradient(150deg, rgb(var(--rgb-primary-800)) 0%, rgb(var(--rgb-primary-700)) 100%);
+  --gradient-lobby-players: linear-gradient(150deg, rgb(var(--rgb-dark-surface)) 0%, rgb(var(--rgb-secondary-700) / .52) 100%);
+  --gradient-row-room: linear-gradient(140deg, rgb(var(--rgb-primary-800)) 0%, rgb(var(--rgb-primary-700)) 100%);
+  --gradient-row-player: linear-gradient(140deg, rgb(var(--rgb-dark-surface)) 0%, rgb(var(--rgb-secondary-700) / .48) 100%);
+  --gradient-game-control: linear-gradient(145deg, rgb(var(--rgb-primary-700)) 0%, rgb(var(--rgb-primary-500)) 58%, rgb(var(--rgb-secondary-600)) 100%);
+  --gradient-modal-header: linear-gradient(135deg, rgb(var(--rgb-primary-700)) 0%, rgb(var(--rgb-primary-500)) 58%, rgb(var(--rgb-secondary-600)) 100%);
+  --rgb-board-dark: 20 42 58;
+  --rgb-board-dark-alt: 58 96 112;
+  --rgb-board-grid-dark: 222 238 242;
+  --rgb-board-diag-dark: 255 202 114;
+  --game-board-start: rgb(var(--rgb-board-dark));
+  --game-board-end: rgb(var(--rgb-board-dark-alt));
+  --game-board-grid: rgb(var(--rgb-board-grid-dark));
+  --game-board-diag: rgb(var(--rgb-board-diag-dark));
+  --board-point: rgb(98 229 216);
+  --board-highlight: rgb(var(--rgb-white) / .28);
+  --board-shadow: rgb(var(--rgb-black) / .54);
+  --mark-move: rgb(72 228 205);
+  --mark-move-strong: rgb(133 255 235);
+  --mark-danger: rgb(255 107 120);
+  --mark-danger-strong: rgb(255 160 168);
+  --mark-undo: rgb(255 202 114);
+  --mark-label-bg: rgb(8 31 44 / .94);
+  --mark-overlay-dark: rgb(var(--rgb-black) / .72);
+  --piece-white-light: rgb(255 255 255);
+  --piece-white-mid: rgb(239 248 248);
+  --piece-white-dark: rgb(194 224 229);
+  --piece-white-dot: rgb(83 211 196);
+  --piece-black-light: rgb(34 68 84);
+  --piece-black-mid: rgb(13 38 52);
+  --piece-black-dark: rgb(4 21 31);
+  --piece-black-dot: rgb(255 202 114);
+  --piece-white-edge: rgb(8 57 80);
+  --piece-white-edge-soft: rgb(52 157 184);
+  --piece-black-edge: rgb(154 52 18);
+  --piece-black-edge-soft: rgb(194 65 12);
+}
+
+/* ========================================================================== 
+   GLOBAL VISUAL FOUNDATION
+   ========================================================================== */
+
+html,
+body {
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+
+body::before {
+  background-image: linear-gradient(135deg, transparent 0 46%, rgb(var(--rgb-primary-500) / .035) 46% 47%, transparent 47% 100%),
+    linear-gradient(45deg, transparent 0 48%, rgb(var(--rgb-secondary-500) / .030) 48% 49%, transparent 49% 100%),
+    radial-gradient(circle at 12% 10%, rgb(var(--rgb-primary-400) / .18), transparent 30%),
+    radial-gradient(circle at 88% 14%, rgb(var(--rgb-secondary-400) / .15), transparent 28%),
+    radial-gradient(circle at 50% 105%, rgb(var(--rgb-gold-500) / .11), transparent 32%);
+  background-size: 64px 64px, 64px 64px, cover, cover, cover;
+  background-position: center;
+  background-repeat: repeat, repeat, no-repeat, no-repeat, no-repeat;
+  opacity: 1;
+}
+
+::selection {
+  background: var(--color-primary-soft);
+  color: var(--color-text-strong);
+}
+
+:focus-visible {
+  outline: 3px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+h1,
+.z-page-title,
+.z-dash-title {
+  color: var(--color-text-strong);
+  font-size: clamp(1.55rem, 2.4vw, 2rem);
+  font-weight: 800;
+  letter-spacing: -.025em;
+  text-wrap: balance;
+}
+
+h2,
+h3,
+.z-mode-text h2,
+.z-lobby-h2 {
+  color: var(--color-text-strong);
+  letter-spacing: -.012em;
+}
+
+.muted,
+.z-mode-sub,
+.z-lobby-subtitle {
+  color: var(--color-text-muted);
+}
+
+/* ========================================================================== 
+   SHARED SURFACES, CONTROLS AND BUTTON HIERARCHY
+   ========================================================================== */
+
+.z-auth-card,
+.z-auth-seo-card,
+.z-reset-card,
+.z-dash-summary,
+.z-dash-details,
+.z-dash-actions-panel,
+.z-lobby-panel,
+.dialog,
+.status,
+.stats,
+.online-box,
+.controls-box,
+.log,
+.clock {
+  position: relative;
+  overflow: hidden;
+  border-color: var(--color-border) !important;
+  background: var(--gradient-surface) !important;
+  box-shadow: var(--shadow-md-unified) !important;
+}
+
+.z-auth-card,
+.z-auth-seo-card,
+.z-reset-card,
+.z-dash-summary,
+.z-dash-details,
+.z-dash-actions-panel,
+.z-lobby-panel,
+.dialog {
+  border-radius: var(--radius-card) !important;
+}
+
+.z-auth-card::before,
+.z-auth-seo-card::before,
+.z-reset-card::before,
+.z-dash-summary::before,
+.z-dash-details::before,
+.z-dash-actions-panel::before,
+.z-lobby-panel::before,
+.dialog::before,
+.status::before,
+.stats::before,
+.online-box::before,
+.controls-box::before,
+.log::before,
+.clock::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(180deg, rgb(var(--rgb-white) / .18), transparent 42%),
+    radial-gradient(circle at top right, rgb(var(--rgb-white) / .14), transparent 34%);
+  z-index: 0;
+}
+
+.z-auth-card > *,
+.z-auth-seo-card > *,
+.z-reset-card > *,
+.z-dash-summary > *,
+.z-dash-details > *,
+.z-dash-actions-panel > *,
+.z-lobby-panel > *,
+.dialog > *,
+.status > *,
+.stats > *,
+.online-box > *,
+.controls-box > *,
+.log > *,
+.clock > * {
+  position: relative;
+  z-index: 1;
+}
+
+input,
+select,
+textarea,
+button,
+.btn {
+  border-radius: var(--radius-control);
+}
+
+input,
+select,
+textarea {
+  color: var(--color-text) !important;
+  background: var(--color-surface-solid) !important;
+  border-color: var(--color-border) !important;
+  box-shadow: inset 0 1px 0 rgb(var(--rgb-white) / .24);
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: var(--color-primary) !important;
+  box-shadow: 0 0 0 3px var(--color-primary-soft) !important;
+}
+
+.btn,
+button {
+  border-color: var(--color-border);
+  transition: transform .16s ease, box-shadow .16s ease, filter .16s ease, border-color .16s ease, background .16s ease;
+}
+
+.btn.primary,
+button.primary,
+.z-dash-play-btn,
+.z-lobby-back {
+  background: var(--gradient-primary) !important;
+  color: var(--color-on-primary) !important;
+  border-color: rgb(var(--rgb-white) / .22) !important;
+  box-shadow: var(--shadow-primary) !important;
+}
+
+.btn.secondary,
+button.secondary,
+.z-lobby-refresh-btn,
+.z-invite-receive-toggle {
+  color: var(--color-secondary) !important;
+  background: var(--color-secondary-soft) !important;
+  border-color: rgb(var(--rgb-secondary-500) / .30) !important;
+  box-shadow: var(--shadow-xs) !important;
+}
+
+.btn.ok,
+.btn.success,
+button.success {
+  color: var(--color-on-primary) !important;
+  background: var(--gradient-success) !important;
+  border-color: rgb(var(--rgb-success-500) / .36) !important;
+}
+
+.btn.warn,
+.btn.warning,
+button.warning {
+  color: var(--color-on-warning) !important;
+  background: var(--gradient-warning) !important;
+  border-color: rgb(var(--rgb-gold-500) / .44) !important;
+  box-shadow: var(--shadow-warning) !important;
+}
+
+.btn.danger,
+button.danger,
+.btn.end,
+#btnEndLocalMatch,
+#btnEndOnline,
+#btnLeaveRoom,
+#btnDashLogout {
+  color: var(--color-on-primary) !important;
+  background: var(--gradient-danger) !important;
+  border-color: rgb(var(--rgb-danger-400) / .34) !important;
+}
+
+.btn.ghost,
+.btn.guest,
+button.ghost {
+  color: var(--color-text-strong) !important;
+  background: var(--color-surface-muted) !important;
+  border-color: var(--color-border) !important;
+  box-shadow: var(--shadow-xs) !important;
+}
+
+@media (hover: hover) {
+  .btn:hover:not(:disabled),
+  button:hover:not(:disabled) {
+    transform: translateY(-1px);
+    filter: brightness(1.035);
+  }
+  .z-lobby-panel:hover,
+.z-dash-summary:hover,
+.z-dash-details:hover {
+    border-color: var(--color-border-strong) !important;
+  }
+}
+
+/* ========================================================================== 
+   AUTHENTICATION / FIRST IMPRESSION
+   ========================================================================== */
+
+.z-auth-wrap {
+  position: relative;
+}
+
+.z-auth-main {
+  align-items: center;
+}
+
+.z-auth-card {
+  border-color: var(--color-border-strong) !important;
+  box-shadow: var(--shadow-lg-unified) !important;
+}
+
+.z-auth-card::before {
+  background: radial-gradient(circle at top right, var(--color-primary-soft), transparent 46%) !important;
+}
+
+.z-auth-seo-card {
+  box-shadow: var(--shadow-sm-unified) !important;
+}
+
+.z-auth-login-heading,
+.z-auth-card h2 {
+  font-size: clamp(1.25rem, 2vw, 1.65rem);
+  font-weight: 800;
+}
+
+.z-auth-google-top {
+  color: var(--color-text-strong) !important;
+  background: var(--color-surface-solid) !important;
+  border-color: var(--color-border) !important;
+  box-shadow: var(--shadow-sm-unified) !important;
+}
+
+.z-auth-links a {
+  color: var(--color-primary) !important;
+  font-weight: 700;
+}
+
+.z-auth-brand img,
+.z-reset-brand img {
+  filter: drop-shadow(0 16px 28px rgb(var(--rgb-primary-500) / .22));
+}
+
+/* ========================================================================== 
+   MODE SELECTION — TWO DISTINCT GAME EXPERIENCES
+   ========================================================================== */
+
+.z-mode-grid {
+  perspective: 1000px;
+}
+
+.z-mode-card {
+  position: relative;
+  border: 1px solid var(--mode-card-border) !important;
+  color: var(--mode-card-text) !important;
+  box-shadow: var(--shadow-lg-unified) !important;
+  isolation: isolate;
+  overflow: hidden;
+}
+
+.z-mode-card.pvc {
+  background: var(--gradient-mode-pvc) !important;
+}
+
+.z-mode-card.pvp {
+  background: var(--gradient-mode-pvp) !important;
+}
+
+.z-mode-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(circle at top right, var(--mode-card-glow), transparent 34%),
+    linear-gradient(180deg, rgb(var(--rgb-white) / .14), transparent 38%);
+  z-index: 0;
+}
+
+.z-mode-card::after {
+  content: "";
+  position: absolute;
+  inset-inline: 16px;
+  inset-block-end: 12px;
+  height: 4px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, transparent, rgb(var(--rgb-white) / .28), transparent);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.z-mode-card > * {
+  position: relative;
+  z-index: 1;
+}
+
+.z-mode-card,
+.z-mode-card h2,
+.z-mode-card p {
+  color: var(--mode-card-text) !important;
+}
+
+
+
+
+
+@media (min-width: 900px) {
+  .z-mode-card.pvc {
+    transform: translateY(-6px);
+  }
+  .z-mode-card.pvp {
+    transform: translateY(8px);
+  }
+  @media (hover: hover) {
+    .z-mode-card.pvc:hover {
+      transform: translateY(-10px) scale(1.012);
+    }
+    .z-mode-card.pvp:hover {
+      transform: translateY(4px) scale(1.012);
+    }
+  }
+}
+
+/* ========================================================================== 
+   DASHBOARD / PLAYER PROFILE
+   ========================================================================== */
+
+.z-dash-profile-card {
+  position: relative;
+  overflow: hidden;
+  padding: 16px !important;
+  color: var(--color-on-primary) !important;
+  background: var(--gradient-profile) !important;
+  border: 1px solid rgb(var(--rgb-white) / .20) !important;
+  box-shadow: var(--shadow-lg-unified) !important;
+}
+
+.z-dash-profile-card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(45deg, transparent 0 24px, rgb(var(--rgb-white) / .045) 24px 25px);
+}
+
+.z-dash-profile-card > * {
+  position: relative;
+  z-index: 1;
+}
+
+.z-dash-profile-card .z-dash-profile-label,
+.z-dash-profile-card .z-dash-profile-sep,
+.z-dash-profile-card .z-dash-profile-name,
+.z-dash-profile-card .z-dash-profile-text {
+  color: var(--color-on-primary) !important;
+}
+
+.z-dash-profile-icon {
+  filter: drop-shadow(0 12px 24px rgb(var(--rgb-black) / .24));
+}
+
+.z-dash-summary-table th,
+.z-dash-details-table thead th,
+.z-dash-details-table tbody th {
+  color: var(--color-text-strong) !important;
+  background: linear-gradient(135deg, var(--color-primary-soft), var(--color-secondary-soft)) !important;
+}
+
+.z-dash-summary-table-rank {
+  color: var(--color-primary) !important;
+  background: var(--color-primary-soft) !important;
+  border-color: var(--color-border-strong) !important;
+}
+
+.z-dash-summary-card {
+  background: linear-gradient(145deg, var(--color-surface-solid), var(--color-surface-muted)) !important;
+  border-color: var(--color-border) !important;
+  box-shadow: var(--shadow-sm-unified) !important;
+}
+
+/* ========================================================================== 
+   LOBBY / LIVE PRESENCE
+   ========================================================================== */
+
+.z-lobby-panel {
+  position: relative;
+  overflow: hidden;
+}
+
+.z-lobby-panel:first-child {
+  background: var(--gradient-lobby-rooms) !important;
+  border-top: 4px solid var(--lobby-rooms-accent) !important;
+}
+
+.z-lobby-panel:nth-child(2) {
+  background: var(--gradient-lobby-players) !important;
+  border-top: 4px solid var(--lobby-players-accent) !important;
+}
+
+.z-lobby-panel::after {
+  content: "";
+  position: absolute;
+  inset-inline-end: -36px;
+  inset-block-start: -36px;
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgb(var(--rgb-white) / .24), transparent 68%);
+  pointer-events: none;
+}
+
+.z-lobby-h2 {
+  gap: 10px;
+  background: rgb(var(--rgb-white) / .54);
+}
+
+.z-lobby-h2::before {
+  content: "";
+  width: 18px;
+  height: 18px;
+  border-radius: 7px;
+  background: currentColor;
+  box-shadow: inset 0 0 0 4px rgb(var(--rgb-white) / .38);
+}
+
+.z-lobby-list .z-row {
+  position: relative;
+  border-color: var(--color-border) !important;
+  box-shadow: var(--shadow-xs) !important;
+  border-radius: 18px !important;
+  overflow: hidden;
+}
+
+.z-lobby-list.rooms .z-row {
+  background: var(--gradient-row-room) !important;
+}
+
+.z-lobby-list.players .z-row {
+  background: var(--gradient-row-player) !important;
+}
+
+.z-lobby-list.players .z-row::before {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--color-success);
+  box-shadow: 0 0 0 4px var(--color-success-soft);
+}
+
+.z-self {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 24px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: .74rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.z-self {
+  background: var(--row-player-badge-bg);
+  color: var(--row-player-badge-text);
+}
+
+.z-invite-receive-toggle[aria-pressed="true"] {
+  color: var(--color-on-primary) !important;
+  background: var(--gradient-secondary) !important;
+}
+
+.z-empty,
+.z-loading {
+  color: var(--color-text-muted) !important;
+  background: var(--color-surface-muted) !important;
+  border-color: var(--color-border) !important;
+}
+
+/* ========================================================================== 
+   GAME SCREEN — BOARD, TURN, STATS AND ACTIONS
+   ========================================================================== */
+
+body.z-game-page .app {
+  background: transparent;
+}
+
+.board-wrap {
+  position: relative;
+  border: 1px solid var(--color-border-strong) !important;
+  border-radius: calc(var(--radius-card) + 2px) !important;
+  background: linear-gradient(145deg, var(--color-surface-solid), var(--color-surface-muted)) !important;
+  box-shadow: var(--shadow-lg-unified) !important;
+}
+
+canvas#board {
+  border-radius: calc(var(--radius-card) - 5px) !important;
+  background: linear-gradient(180deg, var(--game-board-start), var(--game-board-end)) !important;
+}
+
+.side {
+  border-color: var(--color-border) !important;
+  background: var(--gradient-game-panel) !important;
+  box-shadow: var(--shadow-md-unified) !important;
+}
+
+.status {
+  position: relative;
+  overflow: hidden;
+  border-color: var(--color-border-strong) !important;
+  background: linear-gradient(135deg, var(--color-primary-soft), var(--color-secondary-soft)) !important;
+}
+
+.status::before {
+  content: "";
+  position: absolute;
+  inset-inline-start: 0;
+  inset-block: 0;
+  width: 4px;
+  background: var(--gradient-primary);
+}
+
+.stats th,
+.stats-mobile-table th {
+  color: var(--color-text-strong) !important;
+  background: linear-gradient(135deg, var(--color-primary-soft), var(--color-secondary-soft)) !important;
+}
+
+.stats td,
+.stats-mobile-table td {
+  background: var(--color-surface-solid) !important;
+}
+
+.clock {
+  color: var(--color-warning) !important;
+  border-color: rgb(var(--rgb-gold-500) / .34) !important;
+  background: var(--color-warning-soft) !important;
+  box-shadow: var(--shadow-warning) !important;
+}
+
+.online-box {
+  border-color: rgb(var(--rgb-secondary-500) / .30) !important;
+  background: linear-gradient(135deg, var(--color-secondary-soft), var(--color-surface)) !important;
+}
+
+.controls-box,
+.controls-wrap,
+.controls-pool {
+  border-color: var(--color-border) !important;
+}
+
+.log {
+  color: var(--color-text);
+  background: linear-gradient(145deg, var(--color-surface), var(--color-surface-muted)) !important;
+}
+
+.log-item {
+  border-color: var(--color-border) !important;
+}
+
+#btnSettings,
+#btnUndo,
+#btnSave,
+#btnResume,
+#btnNew,
+#btnRefreshLocal,
+#btnSync,
+#btnChat,
+#btnSpk,
+#btnMic {
+  color: var(--color-text-strong) !important;
+  background: var(--color-surface-muted) !important;
+  border-color: var(--color-border) !important;
+  box-shadow: var(--shadow-xs) !important;
+}
+
+#btnUndo {
+  color: var(--color-warning) !important;
+  border-color: rgb(var(--rgb-gold-500) / .34) !important;
+  background: var(--color-warning-soft) !important;
+}
+
+#btnSync,
+#btnRefreshLocal {
+  color: var(--color-secondary) !important;
+  border-color: rgb(var(--rgb-secondary-500) / .30) !important;
+  background: var(--color-secondary-soft) !important;
+}
+
+.sync-issue-notice {
+  color: var(--color-danger) !important;
+  background: var(--color-danger-soft) !important;
+  border-color: rgb(var(--rgb-danger-500) / .34) !important;
+}
+
+/* ========================================================================== 
+   MODALS, ALERTS AND FEEDBACK
+   ========================================================================== */
+
+.dialog {
+  border-color: var(--color-border-strong) !important;
+  box-shadow: var(--shadow-lg-unified) !important;
+}
+
+.z-auth-msg.ok {
+  color: var(--color-success) !important;
+  background: var(--color-success-soft) !important;
+  border-color: rgb(var(--rgb-success-500) / .34) !important;
+}
+
+.z-auth-msg.error {
+  color: var(--color-danger) !important;
+  background: var(--color-danger-soft) !important;
+  border-color: rgb(var(--rgb-danger-500) / .34) !important;
+}
+
+/* ========================================================================== 
+   MOBILE: SHARED IDENTITY FOR PORTRAIT AND LANDSCAPE
+   Layout dimensions remain controlled by mobile.css.
+   ========================================================================== */
+
+body.z-mobile-on {
+  --fs-title: 22px;
+  --m-card-radius: 20px;
+  background: var(--color-bg) !important;
+}
+
+body.z-mobile-on[data-mobile-orientation="landscape"] {
+  --fs-title: 20px;
+  --m-card-radius: 18px;
+}
+
+body.z-mobile-on .z-auth-card,
+body.z-mobile-on .z-auth-seo-card,
+body.z-mobile-on .z-mode-card,
+body.z-mobile-on .z-lobby-panel,
+body.z-mobile-on .z-dash-summary,
+body.z-mobile-on .z-dash-details,
+body.z-mobile-on .z-dash-actions-panel {
+  border-radius: var(--m-card-radius) !important;
+}
+
+body.z-mobile-on .z-mode-card {
+  color: var(--mode-card-text) !important;
+  border-color: var(--mode-card-border) !important;
+  box-shadow: var(--shadow-md-unified) !important;
+}
+
+body.z-mobile-on[data-mobile-page="mode"] .z-mode-card.pvc {
+  background: var(--gradient-mode-pvc) !important;
+}
+
+body.z-mobile-on[data-mobile-page="mode"] .z-mode-card.pvp {
+  background: var(--gradient-mode-pvp) !important;
+}
+
+body.z-mobile-on[data-mobile-page="mode"] .z-mode-card,
+body.z-mobile-on[data-mobile-page="mode"] .z-mode-card h2,
+body.z-mobile-on[data-mobile-page="mode"] .z-mode-card p {
+  color: var(--mode-card-text) !important;
+}
+
+body.z-mobile-on[data-mobile-page="game"] .side,
+body.z-mobile-on.z-game-page .side {
+  background: var(--gradient-game-panel) !important;
+  border-color: var(--color-border-strong) !important;
+}
+
+body.z-mobile-on[data-mobile-orientation="portrait"].z-game-page .board-wrap,
+body.z-mobile-on[data-mobile-orientation="landscape"].z-game-page .board-wrap {
+  box-shadow: var(--shadow-md-unified) !important;
+}
+
+body.z-mobile-on[data-mobile-orientation="landscape"] .z-mode-card.pvc,
+body.z-mobile-on[data-mobile-orientation="landscape"] .z-mode-card.pvp {
+  transform: none;
+}
+
+body.z-mobile-on .z-mobile-shell-menu {
+  color: var(--color-on-primary) !important;
+  background: var(--gradient-primary) !important;
+  border-color: rgb(var(--rgb-white) / .22) !important;
+  box-shadow: var(--shadow-primary) !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: .01ms !important;
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+
+/* Compact title scale is explicit so the desktop refresh does not crowd either
+   mobile orientation. */
+
+body.z-mobile-on h1,
+body.z-mobile-on .z-page-title,
+body.z-mobile-on .z-dash-title {
+  font-size: 22px !important;
+}
+
+body.z-mobile-on[data-mobile-orientation="landscape"] h1,
+body.z-mobile-on[data-mobile-orientation="landscape"] .z-page-title,
+body.z-mobile-on[data-mobile-orientation="landscape"] .z-dash-title {
+  font-size: 19px !important;
+}
+
+.z-auth-card {
+  background: linear-gradient(155deg, rgb(var(--rgb-white) / .99) 0%, rgb(var(--rgb-light-primary-200) / .60) 50%, rgb(var(--rgb-secondary-100) / .74) 100%) !important;
+  border: 1px solid rgb(var(--rgb-light-primary-400) / .28) !important;
+}
+
+.z-auth-card::after,
+.z-auth-seo-card::after {
+  content: "";
+  position: absolute;
+  inset-inline-end: -48px;
+  inset-block-start: -48px;
+  width: 160px;
+  height: 160px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgb(var(--rgb-white) / .32), transparent 70%);
+  pointer-events: none;
+}
+
+.z-auth-seo-card {
+  background: linear-gradient(145deg, rgb(var(--rgb-white) / .97), rgb(var(--rgb-sand-100) / .94), rgb(var(--rgb-light-primary-200) / .58)) !important;
+}
+
+.z-auth-page #btnLogin,
+.z-auth-page #btnRegister,
+.z-auth-page #btnRecover,
+.z-auth-page #btnLoginGoogle {
+  background: var(--gradient-primary) !important;
+  color: var(--color-on-primary) !important;
+  border-color: rgb(var(--rgb-white) / .24) !important;
+  box-shadow: var(--shadow-primary) !important;
+}
+
+.z-auth-page #btnGuest {
+  border-color: rgb(var(--rgb-white) / .18) !important;
+}
+
+.z-auth-row label,
+.z-auth-seo-para,
+.z-auth-seo-list li,
+.z-auth-foot a,
+.z-auth-links a {
+  color: var(--color-text-strong) !important;
+}
+
+.z-auth-links a,
+.z-auth-foot a {
+  opacity: .96;
+}
+
+.z-auth-msg {
+  background: rgb(var(--rgb-white) / .86) !important;
+  color: var(--color-text) !important;
+}
+
+html.dark .z-auth-card {
+  background: linear-gradient(150deg, rgb(var(--rgb-primary-800) / .98), rgb(var(--rgb-dark-surface-alt) / .97), rgb(var(--rgb-primary-700) / .86)) !important;
+}
+
+html.dark .z-auth-seo-card {
+  background: linear-gradient(150deg, rgb(var(--rgb-dark-surface) / .98), rgb(var(--rgb-primary-800) / .94), rgb(var(--rgb-secondary-700) / .24)) !important;
+}
+
+.z-mode-card,
+.z-mode-card h2 {
+  color: var(--color-text-strong) !important;
+}
+
+.z-mode-text {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.z-mode-card h2 {
+  order: 1;
+}
+
+.z-mode-card p {
+  order: 3;
+}
+
+.z-lobby-panel:first-child,
+.z-lobby-panel:nth-child(2) {
+  box-shadow: var(--shadow-lg-unified) !important;
+}
+
+.z-lobby-panel:first-child .z-lobby-h2,
+.z-lobby-panel:nth-child(2) .z-lobby-h2 {
+  background: rgb(var(--rgb-white) / .76);
+}
+
+.z-loading,
+.z-empty {
+  box-shadow: var(--shadow-xs);
+}
+
+html.dark .z-mode-card,
+html.dark .z-mode-card h2,
+html.dark .z-mode-card p {
+  color: rgb(var(--rgb-white)) !important;
+}
+
+html.dark .z-mode-card p {
+  color: rgb(var(--rgb-white) / .86) !important;
+}
+
+/* Login and lobby actions use one strong, harmonious family instead of pale tints. */
+
+.z-auth-page #btnLogin,
+.z-auth-page #btnRegister,
+.z-auth-page #btnRecover,
+.z-auth-page #btnLoginGoogle,
+.z-lobby-panel .btn.primary,
+.z-lobby-panel .btn.secondary,
+.z-lobby-panel .btn.ok,
+.z-lobby-panel button.primary,
+.z-lobby-panel button.secondary,
+.z-lobby-panel button.ok,
+.z-lobby-refresh-btn,
+.z-invite-receive-toggle {
+  color: rgb(var(--rgb-white)) !important;
+  background: var(--gradient-primary) !important;
+  border-color: rgb(var(--rgb-white) / .22) !important;
+  box-shadow: 0 12px 28px rgb(var(--rgb-light-primary-700) / .24) !important;
+}
+
+.z-auth-page #btnGuest {
+  color: rgb(var(--rgb-white)) !important;
+}
+
+.z-lobby-panel .btn:disabled,
+.z-lobby-panel button:disabled {
+  opacity: .48 !important;
+  filter: saturate(.55) !important;
+}
+
+/* Modal family: clearly new surface, header, close control and footer hierarchy. */
+
+.modal,
+.dialog {
+  overflow: hidden !important;
+}
+
+.modal::before {
+  content: "";
+  position: absolute;
+  inset-inline-end: -52px;
+  inset-block-start: -52px;
+  width: 170px;
+  height: 170px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgb(var(--rgb-secondary-300) / .18), transparent 70%);
+  pointer-events: none;
+}
+
+.modal-header {
+  min-height: 54px;
+  padding: 13px 18px !important;
+  color: rgb(var(--rgb-white)) !important;
+  border-bottom: 1px solid rgb(var(--rgb-white) / .18) !important;
+}
+
+.modal-title {
+  color: rgb(var(--rgb-white)) !important;
+  font-weight: 900 !important;
+  letter-spacing: -.02em;
+}
+
+.modal-close {
+  width: 34px !important;
+  height: 34px !important;
+  color: rgb(var(--rgb-white)) !important;
+  background: rgb(var(--rgb-white) / .14) !important;
+  border: 1px solid rgb(var(--rgb-white) / .22) !important;
+  box-shadow: inset 0 1px 0 rgb(var(--rgb-white) / .16);
+}
+
+.modal-body {
+  background: linear-gradient(180deg, rgb(var(--rgb-white) / .22), transparent) !important;
+}
+
+.modal-footer {
+  border-top: 1px solid var(--color-border) !important;
+  background: rgb(var(--rgb-white) / .52) !important;
+}
+
+html.dark .modal-footer {
+  background: rgb(var(--rgb-primary-900) / .38) !important;
+}
+
+.modal-footer .btn,
+.modal-footer button {
+  min-width: 112px;
+  font-weight: 800;
+}
+
+.modal-body th {
+  color: var(--color-primary) !important;
+  border-color: var(--color-border) !important;
+}
+
+.modal-body td {
+  border-color: var(--color-border) !important;
+}
+
+.modal-body input,
+.modal-body select,
+.modal-body textarea {
+  border-color: var(--color-border) !important;
+  background: var(--color-surface-solid) !important;
+}
+
+/* Mobile shell icons stay crisp in dark mode. */
+
+html.dark body.z-mobile-on .z-mobile-shell-btn {
+  color: rgb(var(--rgb-white)) !important;
+  background: linear-gradient(145deg, rgb(var(--rgb-primary-800)), rgb(var(--rgb-primary-600))) !important;
+  border-color: rgb(var(--rgb-primary-300) / .40) !important;
+  box-shadow: 0 10px 26px rgb(var(--rgb-black) / .38) !important;
+}
+
+html.dark body.z-mobile-on .z-mobile-shell-btn img {
+  filter: brightness(0) invert(1) drop-shadow(0 1px 1px rgb(var(--rgb-black) / .32)) !important;
+  opacity: 1 !important;
+}
+
+/* Game controls: one coherent color family, with destructive actions only in red. */
+
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid .btn,
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid .soufla-row .btn,
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnSync,
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnRefreshLocal,
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnUndo,
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnSettings,
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnSave,
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnResume,
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnNew,
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnChat,
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnSpk,
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnMic {
+  border: 1px solid rgb(var(--rgb-white) / .18) !important;
+  box-shadow: 0 9px 20px rgb(var(--rgb-primary-900) / .24), inset 0 1px 0 rgb(var(--rgb-white) / .20) !important;
+}
+
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnSync.z-sync-issue,
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnEndLocalMatch,
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnEndOnline,
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnLeaveRoom {
+  background: var(--gradient-game-control-danger) !important;
+}
+
+
+
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid .btn:not(#btnSoufla) .btn-text {
+  display: none !important;
+}
+
+/* Portrait buttons are reduced by about 40%; icons consume essentially the full tile. */
+
+body.z-mobile-on[data-mobile-orientation="portrait"][data-mobile-page="game"] .z-mobile-game-controls-grid {
+  gap: 4px !important;
+}
+
+/* Landscape retains button height; the icon fills the available vertical area. */
+
+body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="game"] .z-mobile-game-controls-grid .btn,
+body.z-mobile-on[data-mobile-orientation="landscape"][data-mobile-page="game"] .z-mobile-game-controls-grid .soufla-row {
+  min-height: 50px !important;
+  height: 50px !important;
+  padding: 0 !important;
+}
+
+/* Capture timer is always above the end-capture button while the chain is active. */
+
+/* Desktop game controls use the same restrained ocean family as mobile. */
+
+body.z-game-page:not(.z-mobile-on) .side .btn,
+body.z-game-page:not(.z-mobile-on) .controls-box .btn,
+body.z-game-page:not(.z-mobile-on) #btnUndo,
+body.z-game-page:not(.z-mobile-on) #btnSettings,
+body.z-game-page:not(.z-mobile-on) #btnSave,
+body.z-game-page:not(.z-mobile-on) #btnResume,
+body.z-game-page:not(.z-mobile-on) #btnNew,
+body.z-game-page:not(.z-mobile-on) #btnRefreshLocal,
+body.z-game-page:not(.z-mobile-on) #btnSync,
+body.z-game-page:not(.z-mobile-on) #btnChat,
+body.z-game-page:not(.z-mobile-on) #btnSpk,
+body.z-game-page:not(.z-mobile-on) #btnMic {
+  color: rgb(var(--rgb-white)) !important;
+  background: var(--gradient-game-control) !important;
+  border-color: rgb(var(--rgb-white) / .18) !important;
+  box-shadow: 0 10px 24px rgb(var(--rgb-primary-900) / .22), inset 0 1px 0 rgb(var(--rgb-white) / .20) !important;
+}
+
+body.z-game-page:not(.z-mobile-on) #btnEndKill,
+body.z-game-page:not(.z-mobile-on) #btnEndLocalMatch,
+body.z-game-page:not(.z-mobile-on) #btnEndOnline,
+body.z-game-page:not(.z-mobile-on) #btnLeaveRoom,
+body.z-game-page:not(.z-mobile-on) #btnSync.z-sync-issue {
+  color: rgb(var(--rgb-white)) !important;
+  background: var(--gradient-game-control-danger) !important;
+}
+
+
+
+.z-auth-page #btnLogin,
+.z-auth-page #btnRegister,
+.z-auth-page #btnRecover,
+.z-auth-page #btnLoginGoogle,
+.z-lobby-panel .btn:not(.danger):not(.end),
+.z-lobby-panel button:not(.danger):not(.end) {
+  background: var(--gradient-primary) !important;
+  color: rgb(var(--rgb-white)) !important;
+  border-color: rgb(var(--rgb-white) / .22) !important;
+  box-shadow: 0 10px 24px rgb(10 48 66 / .22), inset 0 1px 0 rgb(var(--rgb-white) / .22) !important;
+}
+
+.z-auth-page #btnGuest {
+  background: linear-gradient(145deg, rgb(33 52 67), rgb(41 79 91)) !important;
+}
+
+.z-lobby-list.players .z-row::before {
+  content: none !important;
+  display: none !important;
+}
+
+.z-row-status-dot.is-available,
+.z-player-row.is-available .z-row-status-dot {
+  background: rgb(28 159 92) !important;
+  box-shadow: 0 0 0 4px rgb(28 159 92 / .15) !important;
+}
+
+.z-row-status-dot.is-busy,
+.z-player-row.is-busy .z-row-status-dot {
+  background: rgb(204 67 74) !important;
+  box-shadow: 0 0 0 4px rgb(204 67 74 / .14) !important;
+}
+
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid .btn,
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid .soufla-row .btn,
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnSync,
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnRefreshLocal,
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnUndo,
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnSettings,
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnSave,
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnResume,
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnNew,
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnChat,
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnSpk,
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid #btnMic {
+  background: var(--gradient-game-control) !important;
+  color: rgb(var(--rgb-white)) !important;
+}
+
+body.z-mobile-on[data-mobile-orientation="portrait"][data-mobile-page="game"] .z-mobile-game-controls-grid .btn,
+body.z-mobile-on[data-mobile-orientation="portrait"][data-mobile-page="game"] .z-mobile-game-controls-grid .soufla-row {
+  min-height: 31px !important;
+  height: 31px !important;
+  padding: 0 !important;
+  border-radius: 10px !important;
+}
+
+
+
+
+
+html.dark body.z-mobile-on .z-mobile-shell-btn img{
+  filter: brightness(0) invert(1) drop-shadow(0 1px 2px rgb(var(--rgb-black) / .48)) !important;
+  opacity: 1 !important;
+}
+
+.modal-backdrop {
+  background: rgb(5 24 34 / .78) !important;
+  backdrop-filter: blur(14px) saturate(1.1) !important;
+}
+
+.modal,
+.dialog {
+  background: linear-gradient(155deg, rgb(var(--rgb-white) / .99), rgb(229 240 240 / .98), rgb(213 231 233 / .96)) !important;
+  border: 1px solid rgb(42 118 125 / .36) !important;
+  border-radius: 24px !important;
+  box-shadow: 0 34px 92px rgb(7 40 55 / .38), inset 0 1px 0 rgb(var(--rgb-white) / .34) !important;
+}
+
+html.dark .modal,
+html.dark .dialog {
+  background: linear-gradient(155deg, rgb(12 38 52 / .99), rgb(13 50 61 / .98), rgb(18 65 69 / .96)) !important;
+  border-color: rgb(88 181 173 / .34) !important;
+}
+
+.modal-header {
+  background: var(--gradient-modal-header) !important;
+}
+
+.modal-body {
+  color: var(--color-text) !important;
+}
+
+/* Language controls: readable native select and mobile language menu. */
+
+#authLangSel,
+#langSel,
+#zLangSel,
+.z-auth-lang select,
+.z-topbar select,
+.z-mobile-shell-menu,
+.z-mobile-game-shell-menu {
+  color: rgb(var(--rgb-white)) !important;
+  background: linear-gradient(145deg, rgb(var(--rgb-primary-800)), rgb(var(--rgb-primary-600))) !important;
+  border-color: rgb(var(--rgb-primary-300) / .38) !important;
+}
+
+#authLangSel option,
+#langSel option,
+#zLangSel option,
+.z-auth-lang select option,
+.z-topbar select option {
+  color: rgb(var(--rgb-white)) !important;
+  background: rgb(var(--rgb-primary-800)) !important;
+}
+
+.z-mobile-shell-menu [data-lang],
+.z-mobile-game-shell-menu [data-lang] {
+  color: rgb(var(--rgb-white)) !important;
+  background: transparent !important;
+}
+
+.z-mobile-shell-menu [data-lang].is-active,
+.z-mobile-game-shell-menu [data-lang].is-active {
+  background: rgb(var(--rgb-white) / .15) !important;
+}
+
+/* Stronger page guidance text. */
+
+.z-mode-sub,
+.z-lobby-subtitle {
+  color: var(--color-text-strong) !important;
+  opacity: .96 !important;
+  font-weight: 700 !important;
+  line-height: 1.65;
+}
+
+.z-mode-card h2 {
+  color: var(--color-text-strong) !important;
+}
+
+.z-mode-card p {
+  color: var(--color-text) !important;
+  opacity: .96 !important;
+  font-weight: 650 !important;
+}
+
+html.dark .z-mode-card h2,
+html.dark .z-mode-card p,
+html.dark .z-mode-sub,
+html.dark .z-lobby-subtitle {
+  color: rgb(var(--rgb-white)) !important;
+}
+
+/* Light board: same hue family, slightly brighter only. */
+
+/* Active capture timer: explicit red outline and 20% height increase only while live. */
+
+/* Dark mode icon treatment outside game controls: preserve glyph, remove white discs. */
+
+html.dark body.z-mobile-on .z-mobile-shell-btn img,
+html.dark body.z-mobile-on[data-mobile-page="auth"] .btn-ico,
+html.dark body.z-mobile-on[data-mobile-page="lobby"] .btn-ico,
+html.dark body.z-mobile-on[data-mobile-page="dashboard"] .btn-ico,
+html.dark body:not(.z-game-page) .btn-ico {
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  filter: brightness(0) invert(1) drop-shadow(0 1px 1px rgb(var(--rgb-black) / .30)) !important;
+  opacity: 1 !important;
+}
+
+html.dark body.z-mobile-on .z-mobile-shell-btn,
+html.dark body.z-mobile-on[data-mobile-page="auth"] .btn,
+html.dark body.z-mobile-on[data-mobile-page="lobby"] .btn,
+html.dark body.z-mobile-on[data-mobile-page="dashboard"] .btn {
+  overflow: visible;
+}
+
+/* Mode icons retain their real SVG silhouette in dark mode. The surrounding
+   tile is translucent, never an opaque white square. */
+
+
+
+
+
+/* Login footer content and external links remain readable over dark surfaces. */
+
+html.dark .z-auth-foot,
+html.dark .z-auth-foot a,
+html.dark body.z-mobile-on .z-mobile-footer,
+html.dark body.z-mobile-on .z-mobile-footer-rights,
+html.dark body.z-mobile-on .z-mobile-footer-nav,
+html.dark body.z-mobile-on .z-mobile-footer-nav a {
+  color: rgb(var(--rgb-white)) !important;
+}
+
+html.dark body.z-mobile-on .z-mobile-footer-nav a {
+  background: rgb(8 37 51 / .76) !important;
+  border-color: rgb(var(--rgb-secondary-300) / .22) !important;
+}
+
+html.dark body.z-mobile-on .z-mobile-footer-rights {
+  background: rgb(8 37 51 / .88) !important;
+}
+
+/* Brighter light board with explicit contrast roles for lines, routes, markers
+   and pieces. Hue identity stays in the existing blue/teal/ocher family. */
+
+:root:not(.dark) {
+  --mark-label-bg: rgb(var(--rgb-white) / .94);
+  --mark-overlay-light: rgb(var(--rgb-white) / .88);
+  --piece-white-light: rgb(var(--rgb-white));
+  --piece-white-mid: rgb(244 249 248);
+  --piece-white-dark: rgb(211 226 230);
+  --rgb-board-grid-light: 18 62 82;
+  --rgb-board-diag-light: 138 71 25;
+  --game-board-grid: rgb(var(--rgb-board-grid-light));
+  --game-board-diag: rgb(var(--rgb-board-diag-light));
+  --board-point: rgb(12 88 105);
+  --board-highlight: rgb(var(--rgb-white) / .78);
+  --board-shadow: rgb(15 45 61 / .24);
+  --mark-move: rgb(0 123 122);
+  --mark-move-strong: rgb(0 89 92);
+  --mark-danger: rgb(212 49 61);
+  --mark-danger-strong: rgb(148 20 31);
+  --mark-undo: rgb(174 101 8);
+  --piece-white-dot: rgb(20 73 95);
+  --piece-black-light: rgb(48 88 102);
+  --piece-black-mid: rgb(18 53 68);
+  --piece-black-dark: rgb(6 26 38);
+  --piece-black-dot: rgb(96 226 207);
+  --game-board-start: rgb(var(--rgb-board-light));
+  --game-board-end: rgb(var(--rgb-board-light-alt));
+  --board-bg-start: var(--game-board-start);
+  --board-bg-end: var(--game-board-end);
+  --piece-white-edge: rgb(var(--rgb-primary-900));
+  --piece-white-edge-soft: rgb(var(--rgb-light-primary-600));
+  --piece-black-edge: rgb(154 52 18);
+  --piece-black-edge-soft: rgb(194 65 12);
+}
+
+canvas#board {
+  border-color: var(--game-board-grid) !important;
+  box-shadow: inset 0 0 0 1px rgb(var(--rgb-white) / .18), 0 14px 34px rgb(var(--rgb-primary-900) / .20) !important;
+}
+
+/* Soufla must use the same icon treatment as the other game buttons.
+   No dedicated white plate, no extra background, no enlarged desktop tile. */
+
+
+
+
+
+
+
+
+
+body.z-game-page .soufla-row .btn,
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-controls-grid .soufla-row .btn {
+  overflow: hidden !important;
+}
+
+
+
+/* Lobby titles act as real card headers, similar to table heads. */
+
+.z-lobby-panel {
+  padding-top: 0 !important;
+}
+
+.z-lobby-h2 {
+  letter-spacing: -.01em;
+  box-shadow: inset 0 1px 0 rgb(var(--rgb-white) / .22), 0 8px 18px rgb(var(--rgb-black) / .08) !important;
+}
+
+.z-lobby-panel:first-child .z-lobby-h2 {
+  background: linear-gradient(135deg, rgb(var(--rgb-light-primary-700)) 0%, rgb(var(--rgb-light-primary-500)) 60%, rgb(var(--rgb-secondary-500)) 100%) !important;
+  color: rgb(var(--rgb-white)) !important;
+}
+
+.z-lobby-panel:nth-child(2) .z-lobby-h2 {
+  background: linear-gradient(135deg, rgb(var(--rgb-secondary-700)) 0%, rgb(var(--rgb-secondary-500)) 60%, rgb(var(--rgb-light-primary-500)) 100%) !important;
+  color: rgb(var(--rgb-white)) !important;
+}
+
+html.dark .z-lobby-panel:first-child .z-lobby-h2,
+html.dark .z-lobby-panel:nth-child(2) .z-lobby-h2 {
+  border-bottom: 1px solid rgb(var(--rgb-white) / .12);
+}
+
+/* Auth page in dark mode: keep every entry and footer link readable and on-brand. */
+
+html.dark .z-auth-page #btnLogin,
+html.dark .z-auth-page #btnRegister,
+html.dark .z-auth-page #btnRecover,
+html.dark .z-auth-page #btnLoginGoogle,
+html.dark body.z-mobile-on[data-mobile-page="auth"] #btnLogin,
+html.dark body.z-mobile-on[data-mobile-page="auth"] #btnRegister,
+html.dark body.z-mobile-on[data-mobile-page="auth"] #btnRecover,
+html.dark body.z-mobile-on[data-mobile-page="auth"] #btnLoginGoogle {
+  background: var(--gradient-primary) !important;
+  color: rgb(var(--rgb-white)) !important;
+  border-color: rgb(var(--rgb-white) / .18) !important;
+  box-shadow: 0 10px 24px rgb(var(--rgb-black) / .24), inset 0 1px 0 rgb(var(--rgb-white) / .16) !important;
+}
+
+html.dark .z-auth-page #btnGuest,
+html.dark body.z-mobile-on[data-mobile-page="auth"] #btnGuest {
+  background: linear-gradient(145deg, rgb(22 43 58), rgb(29 75 91)) !important;
+  color: rgb(var(--rgb-white)) !important;
+}
+
+html.dark .z-auth-links a,
+html.dark .z-auth-links button,
+html.dark .z-auth-foot,
+html.dark .z-auth-foot a,
+html.dark body.z-mobile-on[data-mobile-page="auth"] .z-mobile-auth-links a,
+html.dark body.z-mobile-on[data-mobile-page="auth"] .z-mobile-footer-rights,
+html.dark body.z-mobile-on[data-mobile-page="auth"] .z-mobile-footer-rights a,
+html.dark body.z-mobile-on[data-mobile-page="auth"] .z-mobile-footer-nav a {
+  color: rgb(var(--rgb-white)) !important;
+}
+
+/* Dark mode mode-selection icons: keep a visible glyph, not a pale square. */
+
+
+
+
+
+html.dark body.z-mobile-on[data-mobile-page="mode"] .z-mode-card p {
+  color: rgb(var(--rgb-white) / .88) !important;
+}
+
+/* Light board: a little brighter, while lines, diagonals, routes and pieces stay clearer. */
+
+/* A single structural header model applies to desktop and mobile. */
+
+.z-lobby-panel {
+  padding: 0 14px 14px !important;
+  gap: 0 !important;
+}
+
+.z-lobby-h2 {
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  width: calc(100% + 28px) !important;
+  min-height: 52px;
+  margin: 0 -14px 14px !important;
+  padding: 12px 16px !important;
+  border-radius: 24px 24px 0 0 !important;
+  color: rgb(var(--rgb-white)) !important;
+  font-size: 1rem !important;
+  font-weight: 900 !important;
+  line-height: 1.25;
+  text-align: center;
+  box-sizing: border-box;
+}
+
+.z-lobby-h2::before,
+.z-lobby-h2::after {
+  content: none !important;
+  display: none !important;
+}
+
+body.z-mobile-on[data-mobile-page="lobby"] .z-lobby-panel {
+  padding: 0 12px 12px !important;
+  gap: 0 !important;
+}
+
+body.z-mobile-on[data-mobile-page="lobby"] .z-lobby-h2 {
+  width: calc(100% + 24px) !important;
+  min-height: 44px;
+  margin: 0 -12px 10px !important;
+  padding: 9px 12px !important;
+  border-radius: 20px 20px 0 0 !important;
+  font-size: var(--fs-body) !important;
+}
+
+/* Player rows stay on one line: avatar, name, status, action. */
+
+.z-player-row {
+  min-height: 42px;
+  flex-wrap: nowrap !important;
+}
+
+.z-player-row .z-row-main {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.z-player-row .z-row-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.z-player-row .z-avatar {
+  flex: 0 0 auto;
+}
+
+.z-player-row .z-player-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 900;
+}
+
+.z-player-status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  min-height: 22px;
+  padding: 3px 8px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-size: .72rem;
+  font-weight: 850;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.z-player-status.is-available {
+  color: rgb(var(--rgb-success-700));
+  background: rgb(var(--rgb-success-500) / .14);
+  border-color: rgb(var(--rgb-success-600) / .22);
+}
+
+.z-player-status.is-computer {
+  color: rgb(var(--rgb-light-primary-700));
+  background: rgb(var(--rgb-light-primary-500) / .12);
+  border-color: rgb(var(--rgb-light-primary-500) / .22);
+}
+
+.z-player-status.is-online {
+  color: rgb(var(--rgb-gold-800));
+  background: rgb(var(--rgb-gold-500) / .18);
+  border-color: rgb(var(--rgb-gold-700) / .24);
+}
+
+.z-player-status.is-no-invites {
+  color: rgb(var(--rgb-danger-700));
+  background: rgb(var(--rgb-danger-500) / .12);
+  border-color: rgb(var(--rgb-danger-500) / .22);
+}
+
+.z-player-row .z-row-actions {
+  flex: 0 0 auto;
+  margin-inline-start: auto;
+}
+
+html.dark .z-player-status.is-available {
+  color: rgb(var(--rgb-success-100));
+  background: rgb(var(--rgb-success-500) / .18);
+}
+
+html.dark .z-player-status.is-computer {
+  color: rgb(var(--rgb-light-primary-200));
+  background: rgb(var(--rgb-light-primary-400) / .18);
+}
+
+html.dark .z-player-status.is-online {
+  color: rgb(var(--rgb-gold-400));
+  background: rgb(var(--rgb-gold-500) / .18);
+}
+
+html.dark .z-player-status.is-no-invites,
+html.dark .z-player-row .z-invite-btn.is-invite-disabled,
+html.dark .z-player-row .z-invite-btn:disabled {
+  color: rgb(var(--rgb-danger-300)) !important;
+}
+
+body.z-mobile-on[data-mobile-page="lobby"] .z-player-row {
+  min-height: 40px;
+  padding: 5px 7px;
+}
+
+body.z-mobile-on[data-mobile-page="lobby"] .z-player-row .z-row-title {
+  gap: 5px;
+}
+
+body.z-mobile-on[data-mobile-page="lobby"] .z-player-status {
+  min-height: 19px;
+  padding: 2px 6px;
+  font-size: .64rem;
+}
+
+body.z-mobile-on[data-mobile-page="lobby"] .z-player-row .z-row-actions .btn {
+  min-width: 62px;
+  min-height: 29px;
+  padding: 4px 7px;
+  font-size: .72rem;
+}
+
+/* Disabled invitations must read as unavailable, not as an active action. */
+
+.z-player-row .z-invite-btn.is-invite-disabled,
+.z-player-row .z-invite-btn:disabled {
+  opacity: 1 !important;
+  color: rgb(var(--rgb-danger-700)) !important;
+  background: linear-gradient(145deg, rgb(var(--rgb-neutral-200) / .92), rgb(var(--rgb-danger-300) / .46)) !important;
+  border-color: rgb(var(--rgb-danger-500) / .34) !important;
+  box-shadow: inset 0 1px 0 rgb(var(--rgb-white) / .42) !important;
+  cursor: not-allowed !important;
+  filter: saturate(.72) !important;
+}
+
+html.dark .z-player-row .z-invite-btn.is-invite-disabled,
+html.dark .z-player-row .z-invite-btn:disabled {
+  color: rgb(var(--rgb-danger-300)) !important;
+  background: linear-gradient(145deg, rgb(var(--rgb-neutral-800) / .96), rgb(var(--rgb-danger-800) / .72)) !important;
+  border-color: rgb(var(--rgb-danger-400) / .42) !important;
+}
+
+/* Desktop keeps the original pictogram and its label. Mobile uses the
+   localized word only, because Soufla has no universally recognizable icon. */
+
+/* Online refresh uses the same transparent icon treatment as other controls. */
+
+
+
+
+
+/* Keep the orientation control above the bottom drawer handle and away from
+   the gameplay control grid. */
+
+/* This selector deliberately outranks the general lobby action gradient.
+   Disabled invitations are neutral and unmistakably unavailable on every size. */
+
+.z-lobby-panel .z-player-row .z-row-actions .z-invite-btn.is-invite-disabled:disabled,
+body.z-mobile-on[data-mobile-page="lobby"] .z-lobby-panel .z-player-row .z-row-actions .z-invite-btn.is-invite-disabled:disabled {
+  opacity: 1 !important;
+  color: rgb(var(--rgb-neutral-600)) !important;
+  background: linear-gradient(145deg, rgb(var(--rgb-neutral-200)) 0%, rgb(var(--rgb-neutral-300)) 100%) !important;
+  border-color: rgb(var(--rgb-neutral-400) / .62) !important;
+  box-shadow: inset 0 1px 0 rgb(var(--rgb-white) / .58) !important;
+  filter: saturate(.35) !important;
+  cursor: not-allowed !important;
+  transform: none !important;
+}
+
+html.dark .z-lobby-panel .z-player-row .z-row-actions .z-invite-btn.is-invite-disabled:disabled,
+html.dark body.z-mobile-on[data-mobile-page="lobby"] .z-lobby-panel .z-player-row .z-row-actions .z-invite-btn.is-invite-disabled:disabled {
+  color: rgb(var(--rgb-neutral-300)) !important;
+  background: linear-gradient(145deg, rgb(var(--rgb-neutral-800)) 0%, rgb(var(--rgb-neutral-700)) 100%) !important;
+  border-color: rgb(var(--rgb-neutral-500) / .68) !important;
+  box-shadow: inset 0 1px 0 rgb(var(--rgb-white) / .08) !important;
+}
+
+/* The orientation control sits on the physical bottom edge with no gap below it. */
+
+/* The orientation control occupies the bottom edge but must remain above the
+   drawer handle, whose full-width surface stays available everywhere else. */
+
+/* The mobile login artwork replaces only the stretched mobile brand image.
+   Desktop keeps the compact application icon. */
+
+.z-auth-mobile-hero {
+  display: none;
+}
+
+body.z-mobile-on[data-mobile-page="auth"] .z-auth-brand {
+  position: relative;
+}
+
+body.z-mobile-on[data-mobile-page="auth"] .z-auth-brand-icon {
+  display: none !important;
+}
+
+body.z-mobile-on[data-mobile-page="auth"] .z-auth-mobile-hero {
+  display: block !important;
+  width: 100% !important;
+  height: 100% !important;
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  max-width: none !important;
+  max-height: none !important;
+  object-fit: fill !important;
+  border-radius: 0 !important;
+}
+
+/* Keep the orientation action at its existing position, but always above the
+   bottom drawer handle and its pointer layer. */
+
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-drawer-handle {
+  z-index: 1 !important;
+}
+
+/* The dimensional mode still uses the same canvas and must never make it
+   transparent while a redraw is pending or fails. */
+
+body.board-depth canvas#board {
+  background: linear-gradient(180deg, var(--board-bg-start) 0%, var(--board-bg-end) 100%) !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+
+.z-mode-card h2 {
+  font-size: clamp(1.28rem, 2.1vw, 1.62rem) !important;
+  line-height: 1.3 !important;
+  font-weight: 950 !important;
+  margin-block: 0 7px !important;
+}
+
+.z-mode-card p {
+  font-size: clamp(.94rem, 1.45vw, 1.06rem) !important;
+  line-height: 1.65 !important;
+}
+
+/* Strong, opposing outlines keep the flat pieces separate from every board line. */
+
+/* One compact orientation control on every mobile page and in both rotations. */
+
+/* The title/subtitle pair shares one overlay and sits slightly above the
+   visual centre of the mobile login artwork. */
+
+/* Very light application-derived board gradient in light mode. */
+
+/* The log itself owns vertical scrolling in every layout. */
+
+.log,
+body.z-mobile-on[data-mobile-page="game"] .z-mobile-game-drawer .log {
+  overflow-y: auto !important;
+  overscroll-behavior-y: contain;
+  touch-action: pan-y;
+  scrollbar-gutter: stable;
+}
+
+/* Restore the original orientation control exactly: compact translucent shell
+   and the original 20px two-device glyph. The same shared component is used on
+   every mobile page. */
+
+/* Strong, comfortable 2D piece separation in the two difficult combinations. */
+
+/* On phones the timer row itself is the one end-capture control. There is no
+   small white clock layered over a hidden button. */
+
+
+/* Unified capture timer colors: white glyphs everywhere; desktop timer uses the shared game-control green. */
+.timer-row,
+.timer-row .clock,
+.timer-row #killClock,
+.timer-row .clock .muted {
+  color: rgb(var(--rgb-white)) !important;
+}
+
+body.z-game-page:not(.z-mobile-on) .timer-row {
+  background: var(--gradient-game-control) !important;
+  border-color: rgb(var(--rgb-white) / .18) !important;
+  box-shadow: 0 10px 24px rgb(var(--rgb-primary-900) / .22), inset 0 1px 0 rgb(var(--rgb-white) / .20) !important;
+}
+
+body.z-game-page:not(.z-mobile-on) .timer-row.is-live {
+  background: var(--gradient-game-control-danger) !important;
+}
+
+body.z-game-page:not(.z-mobile-on) .timer-row .clock {
+  background: transparent !important;
+  border-color: transparent !important;
+  color: rgb(var(--rgb-white)) !important;
+  text-shadow: 0 1px 2px rgb(var(--rgb-black) / .42) !important;
+}
+
+body.z-game-page:not(.z-mobile-on) .timer-row #btnEndKill {
+  color: rgb(var(--rgb-white)) !important;
+  background: var(--gradient-game-control-danger) !important;
+  border-color: rgb(var(--rgb-white) / .18) !important;
+}

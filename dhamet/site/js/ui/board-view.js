@@ -1,0 +1,756 @@
+(function (global) {
+  "use strict";
+
+  var geometry = global.DhametBoardGeometry;
+  if (!geometry || typeof geometry.cellCenter !== "function") {
+    throw new Error("board-geometry.js must load before board-view.js");
+  }
+
+  function boardSize(opts) { return geometry.boardSize(opts || {}); }
+  function toViewRC(r, c, opts) { return geometry.toViewRC(r, c, opts || {}); }
+  function idxToRC(idx, opts) { return geometry.idxToRC(idx, opts || {}); }
+  function rcToIdx(r, c, opts) { return geometry.rcToIdx(r, c, opts || {}); }
+
+  function getDocElement(opts) {
+    opts = opts || {};
+    if (opts.documentElement) return opts.documentElement;
+    if (typeof document !== "undefined" && document.documentElement) return document.documentElement;
+    return null;
+  }
+
+  function isDark(opts) {
+    var root = getDocElement(opts);
+    return !!(root && root.classList && root.classList.contains("dark"));
+  }
+
+  function getComputedRoot(opts) {
+    var root = getDocElement(opts);
+    if (root && typeof getComputedStyle === "function") return getComputedStyle(root);
+    return { getPropertyValue: function () { return ""; } };
+  }
+
+  function themeColor(name) {
+    if (global.DhametTheme && typeof global.DhametTheme.get === "function") {
+      return global.DhametTheme.get(name);
+    }
+    var root = getComputedRoot({});
+    return root && root.getPropertyValue ? (root.getPropertyValue(name) || "").trim() : "";
+  }
+
+  function themeChannels(name, alpha) {
+    if (global.DhametTheme && typeof global.DhametTheme.channels === "function") {
+      return global.DhametTheme.channels(name, alpha);
+    }
+    var channels = themeColor(name);
+    if (!channels) return "";
+    return alpha == null ? "rgb(" + channels + ")" : "rgb(" + channels + " / " + alpha + ")";
+  }
+
+  function piecePalette() {
+    return {
+      whiteLight: themeColor("--piece-white-light"),
+      whiteMid: themeColor("--piece-white-mid"),
+      whiteDark: themeColor("--piece-white-dark"),
+      whiteEdge: themeColor("--piece-white-edge"),
+      whiteEdgeSoft: themeColor("--piece-white-edge-soft"),
+      whiteDot: themeColor("--piece-white-dot"),
+      blackLight: themeColor("--piece-black-light"),
+      blackMid: themeColor("--piece-black-mid"),
+      blackDark: themeColor("--piece-black-dark"),
+      blackEdge: themeColor("--piece-black-edge"),
+      blackEdgeSoft: themeColor("--piece-black-edge-soft"),
+      blackDot: themeColor("--piece-black-dot"),
+      shadow: themeColor("--piece-shadow"),
+      highlight: themeColor("--piece-highlight"),
+      crownLight: themeColor("--piece-crown-light"),
+      crownMid: themeColor("--piece-crown-mid"),
+      crownDark: themeColor("--piece-crown-dark"),
+      crownEdge: themeColor("--piece-crown-edge"),
+      danger: themeColor("--mark-danger"),
+      primary: themeColor("--color-primary"),
+      success: themeColor("--color-success"),
+    };
+  }
+
+  var DIMENSIONAL_PIECE_HEIGHT_RATIO = 0.75;
+
+  function cssValue(cssRoot, name, fallback) {
+    var value = cssRoot && cssRoot.getPropertyValue ? (cssRoot.getPropertyValue(name) || "").trim() : "";
+    return value || fallback;
+  }
+
+  function dimensionalPalette(opts) {
+    var root = getComputedRoot(opts);
+    var gridFallback = themeColor("--game-board-grid");
+    var grid = cssValue(root, "--board-grid", gridFallback);
+    return {
+      base: cssValue(root, "--board-bg-end", themeColor("--game-board-end")),
+      surface: cssValue(root, "--board-bg-start", themeColor("--game-board-start")),
+      diag: cssValue(root, "--board-diag", themeColor("--game-board-diag")),
+      grid: cssValue(root, "--board-grid", gridFallback),
+      point: cssValue(root, "--board-point", grid),
+      highlight: cssValue(root, "--board-highlight", themeChannels("--rgb-white", ".28")),
+      shadow: cssValue(root, "--board-shadow", themeChannels("--rgb-black", ".28")),
+    };
+  }
+
+  function drawDimensionalBoardSurface(ctx, W, H, opts) {
+    var pal = dimensionalPalette(opts);
+    var dark = isDark(opts);
+    var minSide = Math.min(W, H);
+    ctx.save();
+
+    var base = ctx.createLinearGradient(0, 0, 0, H);
+    base.addColorStop(0, pal.surface);
+    base.addColorStop(1, pal.base);
+    ctx.fillStyle = base;
+    ctx.fillRect(0, 0, W, H);
+
+    var softShadow = ctx.createRadialGradient(W * 0.5, H * 0.58, minSide * 0.05, W * 0.5, H * 0.58, Math.max(W, H) * 0.82);
+    softShadow.addColorStop(0, dark ? themeChannels("--rgb-black", ".08") : themeChannels("--rgb-neutral-900", ".05"));
+    softShadow.addColorStop(1, "transparent");
+    ctx.fillStyle = softShadow;
+    ctx.fillRect(0, 0, W, H);
+
+    var sheen = ctx.createLinearGradient(0, 0, W, 0);
+    sheen.addColorStop(0, "transparent");
+    sheen.addColorStop(0.42, pal.highlight);
+    sheen.addColorStop(0.60, "transparent");
+    ctx.globalAlpha = dark ? 0.18 : 0.26;
+    ctx.fillStyle = sheen;
+    ctx.fillRect(0, 0, W, H);
+    ctx.globalAlpha = 1;
+
+    ctx.lineWidth = Math.max(0.55, minSide * 0.0008);
+    ctx.strokeStyle = dark ? themeChannels("--rgb-white", ".03") : themeChannels("--rgb-neutral-950", ".03");
+    var grainGap = Math.max(24, minSide * 0.045);
+    for (var gy = grainGap; gy < H; gy += grainGap) {
+      ctx.beginPath();
+      ctx.moveTo(0, gy);
+      ctx.lineTo(W, gy + Math.sin(gy / 73) * Math.max(0.6, minSide * 0.001));
+      ctx.stroke();
+    }
+
+    var frameWidth = Math.max(3, minSide * 0.006);
+    ctx.lineWidth = frameWidth;
+    ctx.strokeStyle = dark ? themeChannels("--rgb-neutral-50", ".70") : themeChannels("--rgb-neutral-950", ".30");
+    ctx.shadowColor = pal.shadow;
+    ctx.shadowBlur = Math.max(5, minSide * 0.009);
+    ctx.shadowOffsetY = Math.max(2, minSide * 0.003);
+    ctx.strokeRect(frameWidth / 2, frameWidth / 2, W - frameWidth, H - frameWidth);
+
+    ctx.shadowColor = "transparent";
+    ctx.lineWidth = Math.max(1, minSide * 0.0014);
+    ctx.strokeStyle = dark ? themeChannels("--rgb-white", ".08") : themeChannels("--rgb-white", ".55");
+    ctx.strokeRect(frameWidth + 1, frameWidth + 1, W - (frameWidth + 1) * 2, H - (frameWidth + 1) * 2);
+    ctx.strokeStyle = dark ? themeChannels("--rgb-neutral-950", ".42") : themeChannels("--rgb-neutral-600", ".14");
+    ctx.strokeRect(frameWidth + 3, frameWidth + 3, W - (frameWidth + 3) * 2, H - (frameWidth + 3) * 2);
+    ctx.restore();
+  }
+
+  function cellCenter(idx, opts) {
+    opts = opts || {};
+    if (typeof opts.cellCenter === "function") return opts.cellCenter(idx);
+    var canvas = opts.canvas || opts.activeCanvas || null;
+    if (!canvas) return [0, 0, 0, 0];
+    return geometry.cellCenter(idx, canvas, opts) || [0, 0, 0, 0];
+  }
+
+  function segmentToPoints(segment, opts) {
+    if (!Array.isArray(segment) || segment.length < 2) return [];
+    if (segment.length > 2) return segment.slice();
+    var a = segment[0];
+    var b = segment[1];
+    if (!Array.isArray(a) || !Array.isArray(b)) return segment.slice();
+    var rules = opts && opts.rules ? opts.rules : global.DhametRules;
+    if (rules && typeof rules.lineCells === "function") {
+      try {
+        var from = rcToIdx(a[0], a[1], opts);
+        var to = rcToIdx(b[0], b[1], opts);
+        var cells = rules.lineCells(from, to);
+        if (Array.isArray(cells) && cells.length) {
+          return [a].concat(cells.map(function (idx) { return idxToRC(idx, opts); }));
+        }
+      } catch (_) {}
+    }
+    var dr = Math.sign(Number(b[0]) - Number(a[0]));
+    var dc = Math.sign(Number(b[1]) - Number(a[1]));
+    var r = Number(a[0]);
+    var c = Number(a[1]);
+    var out = [];
+    if (!Number.isFinite(r) || !Number.isFinite(c)) return [];
+    while (true) {
+      out.push([r, c]);
+      if (r === Number(b[0]) && c === Number(b[1])) break;
+      r += dr;
+      c += dc;
+      if (out.length > 32) break;
+    }
+    return out;
+  }
+
+  function diagLinesFromSegments(segments, opts) {
+    if (!Array.isArray(segments)) return [];
+    return segments.map(function (segment) { return segmentToPoints(segment, opts || {}); }).filter(function (line) { return line.length > 1; });
+  }
+
+  function allDiagLines(opts) {
+    opts = opts || {};
+    var a = opts.diagA || (global.DhametRules && global.DhametRules.DIAG_A_SEGMENTS) || global.DIAG_A_SEGMENTS || [];
+    var b = opts.diagB || (global.DhametRules && global.DhametRules.DIAG_B_SEGMENTS) || global.DIAG_B_SEGMENTS || [];
+    return [diagLinesFromSegments(a, opts), diagLinesFromSegments(b, opts)];
+  }
+
+  function drawLineSet(ctx, lines, stepX, stepY, opts) {
+    for (var li = 0; li < lines.length; li++) {
+      var line = lines[li];
+      ctx.beginPath();
+      for (var i = 0; i < line.length; i++) {
+        var p = line[i];
+        var view = toViewRC(p[0], p[1], opts);
+        var x = view[1] * stepX + stepX / 2;
+        var y = view[0] * stepY + stepY / 2;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+    }
+  }
+
+  function drawGrid(ctx, W, H, opts) {
+    opts = opts || {};
+    var dimensional = opts.boardStyle === "3d";
+    if (dimensional) {
+      try {
+        drawDimensionalBoardSurface(ctx, W, H, opts);
+      } catch (_) {
+        dimensional = false;
+        ctx.clearRect(0, 0, W, H);
+      }
+    }
+
+    var n = boardSize(opts);
+    ctx.save();
+    var stepX = W / n;
+    var stepY = H / n;
+    var cssRoot = getComputedRoot(opts);
+    var minSide = Math.min(W, H);
+    var dark = isDark(opts);
+    var pal = dimensional ? dimensionalPalette(opts) : null;
+
+    if (dimensional) {
+      ctx.shadowColor = dark ? themeChannels("--rgb-black", ".18") : themeChannels("--rgb-neutral-900", ".12");
+      ctx.shadowBlur = Math.max(1.6, minSide * 0.0036);
+      ctx.shadowOffsetY = Math.max(0.7, minSide * 0.0012);
+      ctx.strokeStyle = pal.diag;
+    } else {
+      ctx.strokeStyle =
+        (cssRoot.getPropertyValue("--board-diag") || "").trim() ||
+        (cssRoot.getPropertyValue("--diag") || "").trim() ||
+        themeColor("--board-diag");
+    }
+    ctx.lineWidth = Math.max(2.2, minSide * 0.0032);
+    var lines = allDiagLines(opts);
+    drawLineSet(ctx, lines[0], stepX, stepY, opts);
+    drawLineSet(ctx, lines[1], stepX, stepY, opts);
+
+    ctx.strokeStyle = dimensional
+      ? pal.grid
+      : (cssRoot.getPropertyValue("--board-grid") || "").trim() ||
+        (cssRoot.getPropertyValue("--grid") || "").trim() ||
+        themeColor("--board-grid");
+    ctx.lineWidth = Math.max(1.8, minSide * 0.0025);
+    for (var r = 0; r < n; r++) {
+      var y = r * stepY + stepY / 2;
+      ctx.beginPath();
+      ctx.moveTo(stepX / 2, y);
+      ctx.lineTo(W - stepX / 2, y);
+      ctx.stroke();
+    }
+    for (var c = 0; c < n; c++) {
+      var x = c * stepX + stepX / 2;
+      ctx.beginPath();
+      ctx.moveTo(x, stepY / 2);
+      ctx.lineTo(x, H - stepY / 2);
+      ctx.stroke();
+    }
+
+    ctx.shadowBlur = dimensional ? Math.max(1, minSide * 0.0025) : 0;
+    ctx.fillStyle = dimensional ? pal.point : opts.pointFill || themeColor("--board-point");
+    for (var rr = 0; rr < n; rr++) {
+      for (var cc = 0; cc < n; cc++) {
+        var px = cc * stepX + stepX / 2;
+        var py = rr * stepY + stepY / 2;
+        ctx.beginPath();
+        ctx.arc(px, py, Math.max(2.8, minSide * 0.0042), 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    ctx.restore();
+  }
+
+  function drawCoords(ctx, W, H, opts) {
+    opts = opts || {};
+    var n = boardSize(opts);
+    var stepX = W / n;
+    var stepY = H / n;
+    var style = opts.style || null;
+    var dark = isDark(opts);
+    ctx.save();
+    if (!style) {
+      ctx.fillStyle = dark ? themeColor("--color-on-dark") : themeColor("--color-text-strong");
+      ctx.font = "900 16px Calibri, Carlito, Segoe UI, sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      for (var r = 0; r < n; r++) {
+        for (var c = 0; c < n; c++) {
+          var view = toViewRC(r, c, opts);
+          var x = view[1] * stepX + stepX / 2;
+          var y = view[0] * stepY + stepY / 2;
+          ctx.fillText(view[0] + "." + view[1], x, y);
+        }
+      }
+      ctx.restore();
+      return;
+    }
+
+    ctx.font = style.font || "900 17px Calibri, Carlito, Segoe UI, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    var minSide = Math.min(stepX, stepY);
+    var radius = Math.max(10, minSide * (style.radiusMul || 0.22));
+    var bg = dark ? style.bgDark || themeColor("--mark-overlay-dark") : style.bgLight || themeColor("--mark-overlay-light");
+    var fill = dark ? style.fillDark || themeColor("--color-on-dark") : style.fillLight || themeColor("--color-text-strong");
+    var stroke = dark ? style.strokeDark || themeChannels("--rgb-black", ".95") : style.strokeLight || themeChannels("--rgb-white", "1");
+
+    for (var rr = 0; rr < n; rr++) {
+      for (var cc = 0; cc < n; cc++) {
+        var view2 = toViewRC(rr, cc, opts);
+        var cx = view2[1] * stepX + stepX / 2;
+        var cy = view2[0] * stepY + stepY / 2;
+        ctx.beginPath();
+        ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+        ctx.fillStyle = bg;
+        ctx.fill();
+        ctx.lineWidth = style.lineWidth != null ? style.lineWidth : 4;
+        ctx.strokeStyle = stroke;
+        ctx.strokeText(view2[0] + "." + view2[1], cx, cy);
+        ctx.fillStyle = fill;
+        ctx.fillText(view2[0] + "." + view2[1], cx, cy);
+      }
+    }
+    ctx.restore();
+  }
+
+  function drawCellHighlight(ctx, r, c, opts) {
+    opts = opts || {};
+    var canvas = opts.canvas;
+    if (!canvas) return;
+    var n = boardSize(opts);
+    var stepX = canvas.width / n;
+    var stepY = canvas.height / n;
+    var minSide = Math.min(stepX, stepY);
+    var view = toViewRC(r, c, opts);
+    var cx = view[1] * stepX + stepX / 2;
+    var cy = view[0] * stepY + stepY / 2;
+    var radius = minSide * 0.28;
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(Math.PI / 4);
+    ctx.fillStyle = opts.fill || themeColor("--mark-danger");
+    ctx.globalAlpha = 0.18;
+    ctx.fillRect(-radius, -radius, 2 * radius, 2 * radius);
+    ctx.globalAlpha = 1;
+    ctx.lineWidth = Math.max(3.5, minSide * 0.05);
+    ctx.strokeStyle = opts.stroke || themeColor("--mark-danger-strong");
+    ctx.strokeRect(-radius, -radius, 2 * radius, 2 * radius);
+    ctx.restore();
+  }
+
+  function pieceFill(value, opts) {
+    opts = opts || {};
+    var colors = piecePalette();
+    var owner = typeof opts.pieceOwner === "function" ? opts.pieceOwner(value) : global.pieceOwner ? global.pieceOwner(value) : value > 0 ? 1 : -1;
+    var bot = opts.BOT != null ? opts.BOT : global.BOT;
+    return owner === bot
+      ? [colors.whiteLight, colors.whiteDark]
+      : [colors.blackDark, colors.blackLight];
+  }
+
+  function drawDimensionalFallbackPiece(ctx, x, anchorY, width, height, isWhite) {
+    var colors = piecePalette();
+    var edge = isWhite ? colors.whiteEdge : colors.blackEdge;
+    var edgeSoft = isWhite ? colors.whiteEdgeSoft : colors.blackEdgeSoft;
+    var outerContrast = isWhite
+      ? themeChannels("--rgb-primary-900", "1")
+      : themeChannels("--rgb-white", "1");
+    var light = isWhite ? colors.whiteLight : colors.blackLight;
+    var mid = isWhite ? colors.whiteMid : colors.blackMid;
+    var dark = isWhite ? colors.whiteDark : colors.blackDark;
+    var baseY = anchorY - height * 0.03;
+    var topY = anchorY - height * 0.84;
+    var headR = width * 0.18;
+    var collarY = topY + headR * 1.10;
+    var stemTop = collarY + height * 0.015;
+    var stemBottom = anchorY - height * 0.25;
+
+    var bodyGrad = ctx.createLinearGradient(x - width * 0.38, topY, x + width * 0.38, baseY);
+    bodyGrad.addColorStop(0, light);
+    bodyGrad.addColorStop(0.46, mid);
+    bodyGrad.addColorStop(1, dark);
+    var headGrad = ctx.createRadialGradient(x - headR * 0.38, topY - headR * 0.34, headR * 0.12, x, topY, headR * 1.12);
+    headGrad.addColorStop(0, light);
+    headGrad.addColorStop(0.56, mid);
+    headGrad.addColorStop(1, dark);
+    var baseGrad = ctx.createLinearGradient(x, anchorY - height * 0.22, x, baseY + height * 0.04);
+    baseGrad.addColorStop(0, light);
+    baseGrad.addColorStop(0.38, mid);
+    baseGrad.addColorStop(1, dark);
+
+    ctx.save();
+    ctx.shadowColor = themeChannels("--rgb-neutral-950", ".46");
+    ctx.shadowBlur = Math.max(5, width * 0.12);
+    ctx.shadowOffsetY = Math.max(3, height * 0.07);
+    ctx.fillStyle = themeChannels("--rgb-neutral-950", isWhite ? ".20" : ".34");
+    ctx.beginPath();
+    ctx.ellipse(x, baseY + height * 0.035, width * 0.43, height * 0.075, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.shadowColor = "transparent";
+    ctx.fillStyle = bodyGrad;
+    ctx.strokeStyle = outerContrast;
+    ctx.lineJoin = "round";
+    ctx.lineWidth = Math.max(2.2, width * 0.045);
+
+    // Broad double base, similar to a classical chess pawn.
+    ctx.beginPath();
+    ctx.moveTo(x - width * 0.39, baseY);
+    ctx.quadraticCurveTo(x - width * 0.43, baseY - height * 0.08, x - width * 0.31, anchorY - height * 0.18);
+    ctx.quadraticCurveTo(x, anchorY - height * 0.23, x + width * 0.31, anchorY - height * 0.18);
+    ctx.quadraticCurveTo(x + width * 0.43, baseY - height * 0.08, x + width * 0.39, baseY);
+    ctx.closePath();
+    ctx.fillStyle = baseGrad;
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.ellipse(x, anchorY - height * 0.21, width * 0.30, height * 0.075, 0, 0, Math.PI * 2);
+    ctx.fillStyle = bodyGrad;
+    ctx.fill();
+    ctx.strokeStyle = edgeSoft;
+    ctx.lineWidth = Math.max(1.6, width * 0.03);
+    ctx.stroke();
+
+    // Curved pawn stem.
+    ctx.beginPath();
+    ctx.moveTo(x - width * 0.12, stemTop);
+    ctx.bezierCurveTo(x - width * 0.11, stemTop + height * 0.12, x - width * 0.23, stemBottom - height * 0.07, x - width * 0.27, stemBottom);
+    ctx.quadraticCurveTo(x, stemBottom + height * 0.055, x + width * 0.27, stemBottom);
+    ctx.bezierCurveTo(x + width * 0.23, stemBottom - height * 0.07, x + width * 0.11, stemTop + height * 0.12, x + width * 0.12, stemTop);
+    ctx.closePath();
+    ctx.fillStyle = bodyGrad;
+    ctx.fill();
+    ctx.strokeStyle = edge;
+    ctx.lineWidth = Math.max(2, width * 0.04);
+    ctx.stroke();
+
+    // Collar and spherical head.
+    ctx.beginPath();
+    ctx.ellipse(x, collarY, width * 0.24, height * 0.092, 0, 0, Math.PI * 2);
+    ctx.fillStyle = bodyGrad;
+    ctx.fill();
+    ctx.strokeStyle = edgeSoft;
+    ctx.lineWidth = Math.max(1.5, width * 0.028);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.arc(x, topY, headR, 0, Math.PI * 2);
+    ctx.fillStyle = headGrad;
+    ctx.fill();
+    ctx.strokeStyle = edge;
+    ctx.lineWidth = Math.max(2.2, width * 0.042);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.arc(x - headR * 0.34, topY - headR * 0.34, headR * 0.25, 0, Math.PI * 2);
+    ctx.fillStyle = isWhite ? themeChannels("--rgb-white", ".72") : themeChannels("--rgb-white", ".26");
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function drawDimensionalPieces(ctx, board, opts) {
+    var canvas = opts.canvas;
+    var n = boardSize(opts);
+    var stepX = canvas.width / n;
+    var stepY = canvas.height / n;
+    var unit = Math.min(stepX, stepY);
+    var ownerFn = opts.pieceOwner || global.pieceOwner;
+    var kindFn = opts.pieceKind || global.pieceKind;
+    var bot = opts.BOT != null ? opts.BOT : global.BOT;
+    // Canvas-native pieces are the single dimensional rendering path.
+
+    for (var r = 0; r < n; r++) {
+      for (var c = 0; c < n; c++) {
+        var v = board[r] && board[r][c];
+        if (!v) continue;
+        var view = toViewRC(r, c, opts);
+        var x = view[1] * stepX + stepX / 2;
+        var y = view[0] * stepY + stepY / 2;
+        var isWhite = ownerFn && ownerFn(v) === bot;
+        var pieceWidth = Math.max(22, unit * 0.82);
+        var pieceHeight = pieceWidth * DIMENSIONAL_PIECE_HEIGHT_RATIO;
+        drawDimensionalFallbackPiece(ctx, x, y, pieceWidth, pieceHeight, isWhite);
+
+        var kind = kindFn ? kindFn(v) : Math.abs(Number(v));
+        if (kind === 2 || Math.abs(Number(v)) === 2) {
+            ctx.save();
+            var crownY = y - pieceHeight * 0.56;
+            ctx.fillStyle = themeColor("--piece-crown-mid");
+            ctx.strokeStyle = themeColor("--piece-crown-edge");
+            ctx.lineWidth = Math.max(1.5, pieceWidth * 0.025);
+            ctx.beginPath();
+            ctx.moveTo(x - pieceWidth * 0.22, crownY + pieceHeight * 0.11);
+            ctx.lineTo(x - pieceWidth * 0.15, crownY - pieceHeight * 0.09);
+            ctx.lineTo(x, crownY + pieceHeight * 0.04);
+            ctx.lineTo(x + pieceWidth * 0.15, crownY - pieceHeight * 0.09);
+            ctx.lineTo(x + pieceWidth * 0.22, crownY + pieceHeight * 0.11);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+            ctx.restore();
+        }
+      }
+    }
+  }
+
+  function drawPieces(ctx, board, opts) {
+    opts = opts || {};
+    var canvas = opts.canvas;
+    if (!canvas || !board) return;
+    if (opts.boardStyle === "3d") {
+      try {
+        drawDimensionalPieces(ctx, board, opts);
+        return;
+      } catch (_) {
+        /* Fall through to the canonical 2D pieces instead of leaving an empty board. */
+      }
+    }
+
+    var n = boardSize(opts);
+    var stepX = canvas.width / n;
+    var stepY = canvas.height / n;
+    var ownerFn = opts.pieceOwner || global.pieceOwner;
+    var kindFn = opts.pieceKind || global.pieceKind;
+    var bot = opts.BOT != null ? opts.BOT : global.BOT;
+    var colors = piecePalette();
+    for (var r = 0; r < n; r++) {
+      for (var c = 0; c < n; c++) {
+        var v = board[r] && board[r][c];
+        if (!v) continue;
+        var view = toViewRC(r, c, opts);
+        var x = view[1] * stepX + stepX / 2;
+        var y = view[0] * stepY + stepY / 2;
+        var rad = Math.max(1, Math.min(stepX, stepY) / 2 - 26);
+        var fill = pieceFill(v, opts);
+        var isWhitePiece = !!(ownerFn && ownerFn(v) === bot);
+        var grad = ctx.createRadialGradient(x - rad * 0.3, y - rad * 0.3, rad * 0.2, x, y, rad);
+        grad.addColorStop(0, fill[0]);
+        grad.addColorStop(1, fill[1]);
+        ctx.save();
+        ctx.shadowColor = themeChannels("--rgb-neutral-950", ".34");
+        ctx.shadowBlur = Math.max(3, rad * 0.22);
+        ctx.shadowOffsetY = Math.max(1, rad * 0.08);
+        ctx.beginPath();
+        ctx.arc(x, y, rad, 0, Math.PI * 2);
+        ctx.fillStyle = grad;
+        ctx.fill();
+        ctx.shadowColor = "transparent";
+        ctx.lineWidth = Math.max(4, rad * 0.20);
+        ctx.strokeStyle = isWhitePiece ? colors.whiteEdge : colors.blackEdge;
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(x, y, Math.max(1, rad - Math.max(2, rad * 0.11)), 0, Math.PI * 2);
+        ctx.lineWidth = Math.max(2, rad * 0.09);
+        ctx.strokeStyle = isWhitePiece ? colors.whiteEdgeSoft : colors.blackEdgeSoft;
+        ctx.stroke();
+        var kind = kindFn ? kindFn(v) : Math.abs(Number(v));
+        if (kind === 2 || Math.abs(Number(v)) === 2) {
+          ctx.beginPath();
+          ctx.arc(x, y, rad * 0.8, 0, Math.PI * 2);
+          ctx.lineWidth = 4;
+          ctx.strokeStyle = colors.crownMid;
+          ctx.stroke();
+        }
+        var dotR = rad * 0.3;
+        ctx.beginPath();
+        ctx.arc(x, y, dotR, 0, Math.PI * 2);
+        ctx.fillStyle = isWhitePiece ? colors.whiteDot : colors.blackDot;
+        ctx.fill();
+        ctx.restore();
+      }
+    }
+  }
+
+  function drawStackedNumbers(ctx, labels, opts) {
+    opts = opts || {};
+    if (!labels || !labels.length) return;
+    var canvas = opts.canvas;
+    if (!canvas) return;
+    var n = boardSize(opts);
+    var stepX = canvas.width / n;
+    var stepY = canvas.height / n;
+    var minSide = Math.min(stepX, stepY);
+    var offs = Math.max(7, minSide * 0.18);
+    var pats = [[0,0],[1,0],[-1,0],[0,1],[0,-1],[1,1],[-1,1],[1,-1],[-1,-1],[2,0],[-2,0],[0,2],[0,-2]];
+    var used = new Map();
+    ctx.save();
+    ctx.font = "bold " + Math.max(16, (minSide * 0.34) | 0) + "px Calibri, Carlito, Segoe UI, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    for (var k = 0; k < labels.length; k++) {
+      var lab = labels[k];
+      var idx = lab && lab.idx != null ? Number(lab.idx) : null;
+      if (idx == null || !Number.isFinite(idx)) continue;
+      var txt = lab && lab.text != null ? String(lab.text) : "";
+      if (!txt) continue;
+      var count = used.has(idx) ? used.get(idx) : 0;
+      used.set(idx, count + 1);
+      var pat = pats[count] || [0, 0];
+      var rc = idxToRC(idx, opts);
+      var view = toViewRC(rc[0], rc[1], opts);
+      var x = view[1] * stepX + stepX / 2 + pat[0] * offs;
+      var y = view[0] * stepY + stepY / 2 + pat[1] * offs;
+      ctx.lineWidth = Math.max(3, minSide * 0.06);
+      ctx.strokeStyle = lab && lab.stroke ? String(lab.stroke) : themeChannels("--rgb-black", ".78");
+      ctx.strokeText(txt, x, y);
+      ctx.fillStyle = lab && lab.fill ? String(lab.fill) : themeColor("--mark-label-bg");
+      ctx.fillText(txt, x, y);
+    }
+    ctx.restore();
+  }
+
+  function drawArrow(ctx, fromIdx, toIdx, color, opts) {
+    opts = opts || {};
+    var from = cellCenter(fromIdx, opts);
+    var to = cellCenter(toIdx, opts);
+    var x1 = from[0], y1 = from[1], x2 = to[0], y2 = to[1];
+    var activeStyle = opts.activeStyle || null;
+    var base = activeStyle && activeStyle.arrow ? activeStyle.arrow : null;
+    var st = opts.arrowStyle || opts.style || base || {};
+    var lw = st.lineWidth != null ? st.lineWidth : 6;
+    var head = st.head != null ? st.head : Math.max(16, lw * 3);
+
+    ctx.save();
+    ctx.strokeStyle = color || themeColor("--mark-move");
+    ctx.lineWidth = lw;
+    ctx.lineCap = "round";
+    var c0 = String(ctx.strokeStyle || "").toLowerCase().trim();
+    var undoColor = String(themeColor("--mark-undo") || "").toLowerCase().trim();
+    var dangerColor = String(themeColor("--mark-danger") || "").toLowerCase().trim();
+    var dangerStrong = String(themeColor("--mark-danger-strong") || "").toLowerCase().trim();
+    var isYellow = c0 === undoColor;
+    var isRed = c0 === dangerColor || c0 === dangerStrong;
+    var layer = isYellow ? 2 : isRed ? 0 : 1;
+    var offStep = Math.max(1.6, lw * 0.55);
+    var off = layer === 2 ? offStep : layer === 0 ? -offStep : 0;
+
+    try {
+      var stacks = opts.arrowStacks || null;
+      if (stacks) {
+        var a = fromIdx < toIdx ? fromIdx : toIdx;
+        var b = fromIdx < toIdx ? toIdx : fromIdx;
+        var key = a + ":" + b + ":" + layer;
+        var n = (stacks.get(key) | 0) || 0;
+        stacks.set(key, (n | 0) + 1);
+        var lane = n === 0 ? 0 : n % 2 ? Math.ceil(n / 2) : -Math.ceil(n / 2);
+        var laneSpacing = st.laneSpacing != null ? st.laneSpacing : Math.max(2.4, lw * 0.9);
+        off += lane * laneSpacing;
+      }
+    } catch (_) {}
+
+    if (off) {
+      var dx = x2 - x1;
+      var dy = y2 - y1;
+      var len = Math.hypot(dx, dy) || 1;
+      var px = -dy / len;
+      var py = dx / len;
+      x1 += px * off;
+      y1 += py * off;
+      x2 += px * off;
+      y2 += py * off;
+    }
+
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.stroke();
+    var ang = Math.atan2(y2 - y1, x2 - x1);
+    ctx.beginPath();
+    ctx.moveTo(x2, y2);
+    ctx.lineTo(x2 - head * Math.cos(ang - Math.PI / 6), y2 - head * Math.sin(ang - Math.PI / 6));
+    ctx.lineTo(x2 - head * Math.cos(ang + Math.PI / 6), y2 - head * Math.sin(ang + Math.PI / 6));
+    ctx.closePath();
+    ctx.fillStyle = ctx.strokeStyle;
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function drawPath(ctx, fromIdx, pathList, color, opts) {
+    var cur = fromIdx;
+    var list = Array.isArray(pathList) ? pathList : [];
+    for (var i = 0; i < list.length; i++) {
+      drawArrow(ctx, cur, list[i], color, opts);
+      cur = list[i];
+    }
+  }
+
+  function drawX(ctx, idx, color, opts) {
+    opts = opts || {};
+    var center = cellCenter(idx, opts);
+    var x = center[0], y = center[1], stepX = center[2], stepY = center[3];
+    var rad = Math.max(1, Math.min(stepX, stepY) / 2 - 25);
+    var s = Math.max(6, rad * 0.9);
+    ctx.save();
+    ctx.strokeStyle = color || themeColor("--mark-danger");
+    ctx.lineWidth = 6;
+    ctx.beginPath();
+    ctx.moveTo(x - s, y - s);
+    ctx.lineTo(x + s, y + s);
+    ctx.moveTo(x - s, y + s);
+    ctx.lineTo(x + s, y - s);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawCrownPulse(ctx, idx, opts) {
+    var center = cellCenter(idx, opts || {});
+    var x = center[0], y = center[1], stepX = center[2], stepY = center[3];
+    var r = (Math.min(stepX, stepY) / 2) * 0.9;
+    ctx.save();
+    ctx.strokeStyle = themeColor("--mark-undo");
+    ctx.lineWidth = 4;
+    ctx.globalAlpha = 0.8;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+
+  var api = Object.freeze({
+    diagLinesFromSegments: diagLinesFromSegments,
+    drawGrid: drawGrid,
+    drawCoords: drawCoords,
+    drawCellHighlight: drawCellHighlight,
+    pieceFill: pieceFill,
+    drawPieces: drawPieces,
+    drawStackedNumbers: drawStackedNumbers,
+    drawArrow: drawArrow,
+    drawPath: drawPath,
+    drawX: drawX,
+    drawCrownPulse: drawCrownPulse,
+  });
+
+  global.DhametBoardView = api;
+  if (typeof module !== "undefined" && module.exports) module.exports = api;
+})(typeof globalThis !== "undefined" ? globalThis : this);
