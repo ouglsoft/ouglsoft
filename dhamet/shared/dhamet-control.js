@@ -45,7 +45,7 @@
       kind,
       gameId: cleanString(src.gameId || actionSrc.gameId, 160),
       clientActionId: cleanString(src.clientActionId || src.clientRequestId || actionSrc.clientActionId || actionSrc.clientRequestId, 160),
-      baseMoveIndex: Number(src.baseMoveIndex != null ? src.baseMoveIndex : actionSrc.baseMoveIndex),
+      baseMoveIndex: Utils.validIndex(src.baseMoveIndex != null ? src.baseMoveIndex : actionSrc.baseMoveIndex),
       actor: cleanString(src.actor || src.uid || actionSrc.actor || actionSrc.uid, 160) || null,
       by: side(src.by != null ? src.by : actionSrc.by, null),
       nick: cleanDisplay(src.nick || src.requesterNick || actionSrc.nick || actionSrc.requesterNick, 80),
@@ -143,7 +143,9 @@
     const prev = states[String(prevPly)];
     const payload = State && typeof State.normalizeStatePayload === 'function' ? State.normalizeStatePayload(prev || {}) : prev;
     if (!payload || !payload.snapshot) return null;
-    return { ply: prevPly, state: payload };
+    // The soufla right the game held in that position, stored beside the state.
+    const soufla = prev && prev.soufla && typeof prev.soufla === 'object' ? clone(prev.soufla) : null;
+    return { ply: prevPly, state: payload, soufla };
   }
 
   function undoFxFromSnapshot(snapshot) {

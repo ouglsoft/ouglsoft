@@ -9,6 +9,18 @@
 (function (root) {
   'use strict';
 
+  // Version of the exchange between a browser page and the GameRoom Worker. The page and
+  // the Worker are deployed separately, so the number is raised by any change that would make
+  // an older page and a newer Worker (or the reverse) disagree about a move, a Soufla decision,
+  // an undo or the end of a match. Pages from before the number existed count as version 1.
+  var PROTOCOL = 1;
+  var PROTOCOL_HEADER = 'x-dhamet-protocol';
+
+  function acceptsProtocol(value) {
+    if (value == null || value === '') return PROTOCOL === 1;
+    return Number(value) === PROTOCOL;
+  }
+
   function cleanId(value) {
     return String(value == null ? '' : value).trim().replace(/^\/+|\/+$/g, '').replace(/\/+/, '/').slice(0, 160);
   }
@@ -53,6 +65,9 @@
   function publicApi() {
     return {
       version: 'dhamet-live-v1',
+      protocol: PROTOCOL,
+      protocolHeader: PROTOCOL_HEADER,
+      acceptsProtocol: acceptsProtocol,
       normalizeLivePayload: normalizeLivePayload,
       canSubscribeGame: canSubscribeGame,
       playerSide: playerSide,

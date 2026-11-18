@@ -1,12 +1,13 @@
 import '../shared/dhamet-utils.js';
 import { cleanPath } from './lib/realtime-tree.js';
-import { json, bad, requestBody, now, jsonHeaders, redirect } from './lib/http.js';
+import { json, bad, requestBody, now, jsonHeaders, redirect, logIgnored } from './lib/http.js';
 import { base64url, fromBase64url, randomToken } from './lib/security.js';
 import { createGameRouteHandlers } from './routes/game.js';
 import { createLobbyRouteHandlers } from './routes/lobby.js';
 import { authorizeBackupControl, maybeBlockNewOfficialOnlineWork, readBackupControl, writeBackupControl } from './lib/backup-route.js';
 import '../shared/dhamet-privacy.js';
 import '../shared/dhamet-stats.js';
+import '../shared/dhamet-live.js';
 export { RealtimeObject } from './durable/realtime-object.js';
 
 /*
@@ -20,6 +21,9 @@ export { RealtimeObject } from './durable/realtime-object.js';
  *   This isolates active matches, chat, WebRTC signaling, and spectators without
  *   changing the existing board rules or client-side move legality code.
  */
+
+const LiveCore = globalThis.DhametLive;
+if (!LiveCore) throw new Error('Worker requires shared DhametLive');
 
 const SESSION_COOKIE = 'dhm_session';
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 30;
@@ -254,7 +258,7 @@ async function ensureProfileNode(env, user) {
         },
       }),
     });
-  } catch (_) {}
+  } catch (err) { logIgnored('account', 'profile-node-sync-failed', err, { uid: String(user && user.id || '') }); }
 }
 
 async function authMe(request, env) {
@@ -325,7 +329,7 @@ async function cleanupGuestSessionBeforeAuthChange(env, request) {
   const uid = String(user.id);
   try {
     await requireDb(env).prepare('DELETE FROM sessions WHERE user_id = ?1').bind(uid).run();
-  } catch (_) {}
+  } catch (err) { logIgnored('account', 'guest-sessions-delete-failed', err, { uid }); }
   const presence = await removePresenceForUid(env, uid);
   return { ok: presence.ok !== false, uid, presence };
 }
@@ -499,7 +503,7 @@ async function authDelete(request, env) {
     return json({ ok: false, error: 'auth/delete-cleanup-failed', cleanup: realtimeCleanup || null }, 500);
   }
   await db.batch([
-    db.prepare('UPDATE users SET deleted_at = ?1, email = NULL, nickname = NULL, display_name = NULL, icon = NULL, google_sub = NULL WHERE id = ?2').bind(deletedAt, row.id),
+    db.prepare('UPDATE users SET deleted_at = ?1, email = NULL, nickname = NULL, display_name = NULL, icon = NULL, google_sub = NULL, password_hash = NULL, password_salt = NULL, password_iterations = NULL WHERE id = ?2').bind(deletedAt, row.id),
     db.prepare('DELETE FROM sessions WHERE user_id = ?1').bind(row.id),
   ]);
   return json({ ok: true, cleanup: realtimeCleanup }, 200, { 'set-cookie': clearSessionCookie(request) });
@@ -792,7 +796,7 @@ async function cleanupDeletedUserRealtime(env, uid, deletedAt) {
       path: 'privacy/deletedUsers/' + uid,
       value: { uid, deletedAt, cleanedAt: now(), removedCount: removed.length, gameCount: gameCleanups.length, authoritative: true, serverValidated: true },
     });
-  } catch (_) {}
+  } catch (err) { logIgnored('privacy', 'deleted-user-marker-failed', err, { uid }); }
 
   return { ok: failed.length === 0, uid, removed, gameCleanups, failed };
 }
@@ -909,8 +913,11 @@ async function accountPvcResultEndpoint(request, env) {
   // Results use a compact payload only; no replay, sample, or model data is accepted.
   if (contentLength > 16_384) return json({ ok: false, error: 'pvc/result-too-large' }, 413);
   const body = await requestBody(request);
+  // A result is submitted only for a registered account. A session that is not
+  // one (an expired one replaced by a guest session) is "unauthorized", not a
+  // success: the client keeps the result and sends it again after signing in.
   if (!user || user.kind !== 'registered') {
-    return json({ ok: true, counted: false, reason: 'not_registered' });
+    return json({ ok: false, error: 'auth/session-expired' }, 401);
   }
 
   const ownerUid = cleanPath(body && body.ownerUid || '');
@@ -1213,59 +1220,69 @@ async function healthEndpoint(env) {
   }
 }
 
+// Every route is awaited here, so a failure that happens after the handler returned its
+// promise (an expired session, a storage error) is thrown inside this function and is
+// answered by the catch of fetch() below instead of escaping it.
+async function routeRequest(request, env, ctx) {
+  const url = normalizePublicUrl(request, env);
+  if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: jsonHeaders });
+  if (url.pathname === '/api/online-entry' && request.method === 'GET') return onlineEntryEndpoint(request, env);
+  if (url.pathname === '/api/backend-route' && request.method === 'GET') return backendRouteStatusEndpoint(env);
+  if (url.pathname === '/api/backend-route/control' && request.method === 'POST') return backendRouteControlEndpoint(request, env);
+  const backupBlock = await maybeBlockNewOfficialOnlineWork(request, url, env, json);
+  if (backupBlock) return backupBlock;
+  const authLimitedPaths = new Set(['/api/auth/guest', '/api/auth/register', '/api/auth/login', '/api/auth/request-reset', '/api/auth/reset-password']);
+  if (authLimitedPaths.has(url.pathname)) {
+    const limited = await durableRateLimitResponse(request, env, 'auth:' + url.pathname, 30, 60 * 1000);
+    if (limited) return limited;
+  }
+  if (url.pathname === '/api/account/leaderboard') {
+    const limited = await durableRateLimitResponse(request, env, 'leaderboard', 120, 60 * 1000);
+    if (limited) return limited;
+  }
+  if (request.method === 'POST' && url.pathname.startsWith('/api/game/') && !LiveCore.acceptsProtocol(request.headers.get(LiveCore.protocolHeader))) {
+    return json({ ok: false, error: 'app/version-mismatch', protocol: LiveCore.protocol }, 409);
+  }
+  if (url.pathname === '/api/health') return healthEndpoint(env);
+  if (url.pathname === '/api/auth/me') return authMe(request, env);
+  if (url.pathname === '/api/auth/guest' && request.method === 'POST') return authGuest(request, env);
+  if (url.pathname === '/api/auth/register' && request.method === 'POST') return authRegister(request, env);
+  if (url.pathname === '/api/auth/login' && request.method === 'POST') return authLogin(request, env);
+  if (url.pathname === '/api/auth/logout' && request.method === 'POST') return authLogout(request, env);
+  if (url.pathname === '/api/auth/reauth' && request.method === 'POST') return authReauth(request, env);
+  if (url.pathname === '/api/auth/update-profile' && request.method === 'POST') return authUpdateProfile(request, env);
+  if (url.pathname === '/api/auth/update-email' && request.method === 'POST') return authUpdateEmail(request, env);
+  if (url.pathname === '/api/auth/update-password' && request.method === 'POST') return authUpdatePassword(request, env);
+  if (url.pathname === '/api/auth/delete' && request.method === 'POST') return authDelete(request, env);
+  if (url.pathname === '/api/auth/request-reset' && request.method === 'POST') return authRequestReset(request, env);
+  if (url.pathname === '/api/auth/reset-password' && request.method === 'POST') return authResetPassword(request, env);
+  if (url.pathname === '/api/auth/google/start') return googleStart(request, env);
+  if (url.pathname === '/api/auth/google/callback') return googleCallback(request, env);
+  if (url.pathname === '/api/account/profile' && request.method === 'GET') return accountProfileEndpoint(request, env);
+  if (url.pathname === '/api/account/leaderboard' && request.method === 'GET') return accountLeaderboardEndpoint(request, env);
+  if (url.pathname === '/api/account/pvc-result' && request.method === 'POST') return accountPvcResultEndpoint(request, env, ctx);
+  if (url.pathname === '/api/turn') return turnEndpoint(request, env);
+  if (url.pathname === '/api/game/move' && request.method === 'POST') return gameMoveEndpoint(request, env, ctx);
+  if (url.pathname === '/api/game/resync' && request.method === 'POST') return gameResyncEndpoint(request, env, ctx);
+  if (url.pathname === '/api/game/soufla' && request.method === 'POST') return gameSouflaEndpoint(request, env, ctx);
+  if (url.pathname === '/api/game/control' && request.method === 'POST') return gameControlEndpoint(request, env, ctx);
+  if (url.pathname === '/api/game/end' && request.method === 'POST') return gameEndEndpoint(request, env, ctx);
+  if (url.pathname === '/api/game/chat' && request.method === 'POST') return gameChatEndpoint(request, env);
+  if (url.pathname === '/api/game/rtc' && request.method === 'POST') return gameRtcEndpoint(request, env);
+  if (url.pathname === '/api/game/live') return gameLiveEndpoint(request, env);
+  if (url.pathname === '/api/lobby/live') return lobbyLiveEndpoint(request, env);
+  if (url.pathname === '/api/lobby/invite' && request.method === 'POST') return lobbyInviteEndpoint(request, env);
+  if (url.pathname === '/api/lobby/spectator' && request.method === 'POST') return lobbySpectatorEndpoint(request, env);
+  if (url.pathname === '/api/lobby/pulse' && request.method === 'POST') return lobbyPulseEndpoint(request, env, ctx);
+  if (url.pathname === '/api/lobby/view' && (request.method === 'GET' || request.method === 'POST')) return lobbyViewEndpoint(request, env);
+  if (url.pathname.startsWith('/api/rtdb/')) return json({ ok: false, error: 'realtime/generic-api-removed' }, 410);
+  return json({ ok: false, error: 'not-found' }, 404);
+}
+
 export default {
   async fetch(request, env, ctx) {
     try {
-      const url = normalizePublicUrl(request, env);
-      if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: jsonHeaders });
-      if (url.pathname === '/api/online-entry' && request.method === 'GET') return onlineEntryEndpoint(request, env);
-      if (url.pathname === '/api/backend-route' && request.method === 'GET') return backendRouteStatusEndpoint(env);
-      if (url.pathname === '/api/backend-route/control' && request.method === 'POST') return backendRouteControlEndpoint(request, env);
-      const backupBlock = await maybeBlockNewOfficialOnlineWork(request, url, env, json);
-      if (backupBlock) return backupBlock;
-      const authLimitedPaths = new Set(['/api/auth/guest', '/api/auth/register', '/api/auth/login', '/api/auth/request-reset', '/api/auth/reset-password']);
-      if (authLimitedPaths.has(url.pathname)) {
-        const limited = await durableRateLimitResponse(request, env, 'auth:' + url.pathname, 12, 60 * 1000);
-        if (limited) return limited;
-      }
-      if (url.pathname === '/api/account/leaderboard') {
-        const limited = await durableRateLimitResponse(request, env, 'leaderboard', 60, 60 * 1000);
-        if (limited) return limited;
-      }
-      if (url.pathname === '/api/health') return healthEndpoint(env);
-      if (url.pathname === '/api/auth/me') return authMe(request, env);
-      if (url.pathname === '/api/auth/guest' && request.method === 'POST') return authGuest(request, env);
-      if (url.pathname === '/api/auth/register' && request.method === 'POST') return authRegister(request, env);
-      if (url.pathname === '/api/auth/login' && request.method === 'POST') return authLogin(request, env);
-      if (url.pathname === '/api/auth/logout' && request.method === 'POST') return authLogout(request, env);
-      if (url.pathname === '/api/auth/reauth' && request.method === 'POST') return authReauth(request, env);
-      if (url.pathname === '/api/auth/update-profile' && request.method === 'POST') return authUpdateProfile(request, env);
-      if (url.pathname === '/api/auth/update-email' && request.method === 'POST') return authUpdateEmail(request, env);
-      if (url.pathname === '/api/auth/update-password' && request.method === 'POST') return authUpdatePassword(request, env);
-      if (url.pathname === '/api/auth/delete' && request.method === 'POST') return authDelete(request, env);
-      if (url.pathname === '/api/auth/request-reset' && request.method === 'POST') return authRequestReset(request, env);
-      if (url.pathname === '/api/auth/reset-password' && request.method === 'POST') return authResetPassword(request, env);
-      if (url.pathname === '/api/auth/google/start') return googleStart(request, env);
-      if (url.pathname === '/api/auth/google/callback') return googleCallback(request, env);
-      if (url.pathname === '/api/account/profile' && request.method === 'GET') return accountProfileEndpoint(request, env);
-      if (url.pathname === '/api/account/leaderboard' && request.method === 'GET') return accountLeaderboardEndpoint(request, env);
-      if (url.pathname === '/api/account/pvc-result' && request.method === 'POST') return accountPvcResultEndpoint(request, env, ctx);
-      if (url.pathname === '/api/turn') return turnEndpoint(request, env);
-      if (url.pathname === '/api/game/move' && request.method === 'POST') return gameMoveEndpoint(request, env, ctx);
-      if (url.pathname === '/api/game/resync' && request.method === 'POST') return gameResyncEndpoint(request, env, ctx);
-      if (url.pathname === '/api/game/soufla' && request.method === 'POST') return gameSouflaEndpoint(request, env, ctx);
-      if (url.pathname === '/api/game/control' && request.method === 'POST') return gameControlEndpoint(request, env, ctx);
-      if (url.pathname === '/api/game/end' && request.method === 'POST') return gameEndEndpoint(request, env, ctx);
-      if (url.pathname === '/api/game/chat' && request.method === 'POST') return gameChatEndpoint(request, env);
-      if (url.pathname === '/api/game/rtc' && request.method === 'POST') return gameRtcEndpoint(request, env);
-      if (url.pathname === '/api/game/live') return gameLiveEndpoint(request, env);
-      if (url.pathname === '/api/lobby/live') return lobbyLiveEndpoint(request, env);
-      if (url.pathname === '/api/lobby/invite' && request.method === 'POST') return lobbyInviteEndpoint(request, env);
-      if (url.pathname === '/api/lobby/spectator' && request.method === 'POST') return lobbySpectatorEndpoint(request, env);
-      if (url.pathname === '/api/lobby/pulse' && request.method === 'POST') return lobbyPulseEndpoint(request, env, ctx);
-      if (url.pathname === '/api/lobby/view' && (request.method === 'GET' || request.method === 'POST')) return lobbyViewEndpoint(request, env);
-      if (url.pathname.startsWith('/api/rtdb/')) return json({ ok: false, error: 'realtime/generic-api-removed' }, 410);
-      return json({ ok: false, error: 'not-found' }, 404);
+      return await routeRequest(request, env, ctx);
     } catch (err) {
       const status = err && err.status ? err.status : 500;
       const code = err && err.code ? err.code : (status === 401 ? 'auth/unauthorized' : 'server-error');

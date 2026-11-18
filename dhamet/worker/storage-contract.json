@@ -1,0 +1,8 @@
+{
+  "_note": "What the stored data depends on. A deploy that changes any of this can leave the players' results where the new Worker cannot find them, so deploy/deploy-worker.mjs and the tests refuse it. Change this file only on purpose, after reading the note in storage-contract.mjs.",
+  "worker": "dhamet-api",
+  "durableObject": { "binding": "REALTIME", "class": "RealtimeObject" },
+  "d1": { "binding": "DB", "databaseName": "dhamet2_test", "databaseId": "3f957678-fd6c-4164-8302-f5fa4b8acf16" },
+  "migrationTags": ["v1"],
+  "d1Migrations": ["0001_initial.sql", "0004_remove_obsolete_tables.sql", "0005_google_reauth.sql", "0006_backup_route.sql"]
+}

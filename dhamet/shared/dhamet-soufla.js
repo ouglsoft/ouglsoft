@@ -98,7 +98,7 @@
       type: 'soufla_decision',
       gameId: String(src.gameId || ''),
       clientDecisionId: String(src.clientDecisionId || src.clientMoveId || '').slice(0, 160),
-      baseMoveIndex: Number(src.baseMoveIndex || 0) || 0,
+      baseMoveIndex: Utils.validIndex(src.baseMoveIndex),
       actor: src.actor == null && src.uid == null ? null : String(src.actor || src.uid).slice(0, 160),
       by: normalizeSide(src.by != null ? src.by : decision.by),
       decision,

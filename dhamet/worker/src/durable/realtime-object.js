@@ -116,6 +116,119 @@ function splitPersistedVersions(versionsValue, rootSplit) {
   return { realtime, stats };
 }
 
+// The stats domain (profiles and leaderboard) is stored one entry per player
+// instead of as one value, so a result writes only the entries it changed and
+// no single stored value grows with the number of players. The entries are
+// `st/profiles/<uid>`, `st/leaderboardV1/<uid>` and `st/<key>` for the rest;
+// each carries its value and the versions of its paths. The meta entry is
+// written last when the layout is first created, and its presence is what
+// makes the entries authoritative over the older combined `statsState` value.
+//
+// The older combined value is never deleted: if the Worker is rolled back to a
+// release that only knows `statsState`, that release still finds the players (as
+// of the migration) and keeps recording into it. Rolled forward again, whatever
+// that release recorded is taken back in by `recoverNewerLegacyStats` (an entry
+// wins only when its version is newer than both the stored entry and the moment
+// of the migration, so a player removed since is not brought back).
+const STATS_CHUNKED_KEYS = new Set(['profiles', 'leaderboardV1']);
+const STATS_CHUNK_PREFIX = 'st/';
+const STATS_META_KEY = 'statsMeta';
+const STATS_LAYOUT = 3;
+const STORAGE_BATCH = 100;
+
+function isPlainMap(value) {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function statsChunkTarget(path) {
+  const parts = String(path).split('/');
+  const top = parts[0];
+  if (STATS_CHUNKED_KEYS.has(top) && parts.length >= 2) return { key: STATS_CHUNK_PREFIX + top + '/' + parts[1], rel: parts.slice(2).join('/') };
+  return { key: STATS_CHUNK_PREFIX + top, rel: parts.slice(1).join('/') };
+}
+
+// Splits the stats root and its versions into stored entries.
+function statsToChunks(statsRoot, statsVersions) {
+  const entries = new Map();
+  const entry = (key) => {
+    let e = entries.get(key);
+    if (!e) { e = { vers: {} }; entries.set(key, e); }
+    return e;
+  };
+  for (const [top, value] of Object.entries(statsRoot || {})) {
+    const children = isPlainMap(value) ? Object.keys(value) : null;
+    if (STATS_CHUNKED_KEYS.has(top) && children && !children.some((k) => k.includes('/'))) {
+      entry(STATS_CHUNK_PREFIX + top).map = true;
+      for (const child of children) entry(STATS_CHUNK_PREFIX + top + '/' + child).v = value[child];
+    } else {
+      entry(STATS_CHUNK_PREFIX + top).v = value;
+    }
+  }
+  for (const [path, version] of Object.entries(statsVersions || {})) {
+    if (path === '') continue;
+    const target = statsChunkTarget(path);
+    entry(target.key).vers[target.rel] = version;
+  }
+  const json = new Map();
+  for (const [key, e] of entries) json.set(key, JSON.stringify(e));
+  return { entries, json };
+}
+
+// The inverse of statsToChunks: stored entries back to the stats root and versions.
+function statsFromChunks(stored) {
+  const root = {};
+  const versions = {};
+  for (const [key, e] of stored) {
+    if (!e || typeof e !== 'object') continue;
+    const rest = key.slice(STATS_CHUNK_PREFIX.length);
+    const slash = rest.indexOf('/');
+    const top = slash < 0 ? rest : rest.slice(0, slash);
+    const child = slash < 0 ? null : rest.slice(slash + 1);
+    const base = child == null ? top : top + '/' + child;
+    for (const [rel, version] of Object.entries(e.vers || {})) versions[rel ? base + '/' + rel : base] = version;
+    if (child == null) {
+      if (e.map) { if (!isPlainMap(root[top])) root[top] = {}; }
+      else if ('v' in e) root[top] = e.v;
+    } else if ('v' in e) {
+      if (!isPlainMap(root[top])) root[top] = {};
+      root[top][child] = e.v;
+    }
+  }
+  return { root, versions };
+}
+
+// Takes back the players a release that only knows the combined `statsState` value recorded
+// after the per-entry layout was created. `seen` is the newest legacy version already
+// taken in (at first, the time of the migration).
+function recoverNewerLegacyStats(chunkStats, legacy, seen) {
+  const unchanged = { stats: chunkStats, changed: false, seen };
+  if (!legacy || !isPlainMap(legacy.root) || !isPlainMap(legacy.versions)) return unchanged;
+  const root = clone(chunkStats.root);
+  const versions = Object.assign({}, chunkStats.versions);
+  let newest = seen;
+  for (const [path, stamp] of Object.entries(legacy.versions)) {
+    const parts = path.split('/');
+    const version = Number(stamp) || 0;
+    if (parts.length !== 2 || !STATS_CHUNKED_KEYS.has(parts[0])) continue;
+    if (version <= seen || version <= (Number(versions[path]) || 0)) continue;
+    const value = getAt(legacy.root, path);
+    if (value === undefined || value === null) continue;
+    if (!isPlainMap(root[parts[0]])) root[parts[0]] = {};
+    root[parts[0]][parts[1]] = clone(value);
+    versions[path] = version;
+    versions[parts[0]] = Math.max(Number(versions[parts[0]]) || 0, version);
+    newest = Math.max(newest, version);
+  }
+  if (newest === seen) return unchanged;
+  // The stored order no longer matches the players; it is rebuilt from them.
+  for (const key of ['leaderboardOrderV2', 'leaderboardOrderSchema']) { delete root[key]; delete versions[key]; }
+  return { stats: { root, versions }, changed: true, seen: newest };
+}
+
+async function storageInBatches(storage, keys, action) {
+  for (let at = 0; at < keys.length; at += STORAGE_BATCH) await action(keys.slice(at, at + STORAGE_BATCH));
+}
+
 function mergePersistedState(realtimeState, statsState) {
   const realtime = realtimeState && typeof realtimeState === 'object' ? realtimeState : {};
   const stats = statsState && typeof statsState === 'object' ? statsState : {};
@@ -139,7 +252,7 @@ function normalizeGameMoveBody(body) {
   return body;
 }
 
-// Undo snapshots are retained for the lifetime of the active game; no silent truncation is performed.
+// The rollback history of an active game is bounded by the authority (UNDO_HISTORY_PLIES), so every write of a game stays the same size however long it runs.
 export class RealtimeObject {
   constructor(ctx, env) {
     this.ctx = ctx;
@@ -177,9 +290,25 @@ export class RealtimeObject {
 
   async _load() {
     if (this._loaded) return;
-    const stored = await this.ctx.storage.get(['state', 'statsState', 'root', 'versions', 'pendingOfficialStats']);
+    const stored = await this.ctx.storage.get(['state', 'statsState', STATS_META_KEY, 'root', 'versions', 'pendingOfficialStats']);
     const packed = stored && stored.get ? stored.get('state') : null;
-    const packedStats = stored && stored.get ? stored.get('statsState') : null;
+    const statsMeta = stored && stored.get ? stored.get(STATS_META_KEY) : null;
+    // A layout newer than this release knows is not read as chunks (the combined value
+    // is used instead) so that no entry is misread after a rollback.
+    const metaLayout = Number(statsMeta && statsMeta.layout) || 0;
+    const statsLayoutReady = metaLayout > 0 && metaLayout <= STATS_LAYOUT;
+    const legacyStats = stored && stored.get ? stored.get('statsState') : null;
+    let chunkStats = null;
+    let packedStats = legacyStats;
+    this._legacySeen = 0;
+    this._legacySeenNext = 0;
+    if (statsLayoutReady) {
+      chunkStats = statsFromChunks(await this.ctx.storage.list({ prefix: STATS_CHUNK_PREFIX }));
+      this._legacySeen = Number(statsMeta.legacySeen) || 0;
+      const recovered = recoverNewerLegacyStats(chunkStats, legacyStats, this._legacySeen);
+      packedStats = recovered.stats;
+      if (recovered.changed) this._legacySeenNext = recovered.seen;
+    }
     const legacyRoot = stored && stored.get ? stored.get('root') : null;
     const legacyVersions = stored && stored.get ? stored.get('versions') : null;
     const baseState = packed && typeof packed === 'object'
@@ -191,13 +320,14 @@ export class RealtimeObject {
     const splitRoot = splitPersistedRoot(this.root);
     const splitVersions = splitPersistedVersions(this.versions, splitRoot);
     this._persistedState = clone({ root: splitRoot.realtime, versions: splitVersions.realtime });
-    this._persistedStatsState = clone({ root: splitRoot.stats, versions: splitVersions.stats });
+    this._statsLayoutReady = statsLayoutReady;
+    this._statsLegacyStored = !!legacyStats;
+    this._persistedStatsJson = chunkStats ? statsToChunks(chunkStats.root, chunkStats.versions).json : new Map();
     const pending = stored && stored.get ? stored.get('pendingOfficialStats') : null;
     this.pendingOfficialStats = pending && typeof pending === 'object' ? pending : {};
     this._persistedPendingOfficialStats = clone(this.pendingOfficialStats || {});
     this._legacyStorageLoaded = !packed && (!!legacyRoot || !!legacyVersions);
     this._stateStorageMigrationPending = this._legacyStorageLoaded || !!(packed && packed.root && Object.keys(splitPersistedRoot(packed.root).stats).length);
-    this._statsStorageMigrationPending = !packedStats && Object.keys(splitRoot.stats).length > 0;
     this._loaded = true;
   }
   _officialPlayerUids(game) {
@@ -339,6 +469,49 @@ export class RealtimeObject {
     return nextAt == null ? DEFAULT_MAINTENANCE_MS : Math.max(5 * 1000, nextAt - at);
   }
 
+  // What must be written so the stored stats entries match `next`. Until the
+  // per-entry layout exists in storage, the first write creates it (and only
+  // happens when there are stats to keep, or an older combined value to carry over).
+  _planStatsStorage(next, force) {
+    if (!this._statsLayoutReady) {
+      const needed = next.entries.size > 0 || this._statsLegacyStored;
+      return { changed: needed, migrate: needed, puts: Array.from(next.entries.keys()), deletes: [] };
+    }
+    const persisted = this._persistedStatsJson || new Map();
+    const puts = [];
+    for (const [key, json] of next.json) {
+      if (force || persisted.get(key) !== json) puts.push(key);
+    }
+    const deletes = Array.from(persisted.keys()).filter((key) => !next.json.has(key));
+    return { changed: puts.length > 0 || deletes.length > 0, migrate: false, puts, deletes };
+  }
+
+  async _writeStatsStorage(plan, next) {
+    if (!plan.changed) return;
+    const storage = this.ctx.storage;
+    if (plan.migrate) {
+      // The older combined value stays authoritative until the meta entry is
+      // written, so an interrupted migration leaves nothing half-applied.
+      const leftovers = await storage.list({ prefix: STATS_CHUNK_PREFIX });
+      await storageInBatches(storage, Array.from(leftovers.keys()), (keys) => storage.delete(keys));
+    }
+    await storageInBatches(storage, plan.puts, (keys) => {
+      const batch = {};
+      for (const key of keys) batch[key] = next.entries.get(key);
+      return storage.put(batch);
+    });
+    if (plan.migrate) {
+      this._legacySeen = this._statsLegacyStored ? now() : 0;
+      await storage.put(STATS_META_KEY, { layout: STATS_LAYOUT, legacySeen: this._legacySeen });
+      this._statsLayoutReady = true;
+    } else if (this._legacySeenNext > this._legacySeen) {
+      this._legacySeen = this._legacySeenNext;
+      await storage.put(STATS_META_KEY, { layout: STATS_LAYOUT, legacySeen: this._legacySeen });
+    }
+    await storageInBatches(storage, plan.deletes, (keys) => storage.delete(keys));
+    this._persistedStatsJson = next.json;
+  }
+
   async _save(maintenanceDelayMs, options = {}) {
     const forceState = !!(options && options.forceState);
     const forceStats = !!(options && options.forceStats);
@@ -346,23 +519,22 @@ export class RealtimeObject {
     const splitRoot = splitPersistedRoot(this.root || {});
     const splitVersions = splitPersistedVersions(this.versions || { '': now() }, splitRoot);
     const nextState = { root: splitRoot.realtime, versions: splitVersions.realtime };
-    const nextStatsState = { root: splitRoot.stats, versions: splitVersions.stats };
+    const nextStats = statsToChunks(splitRoot.stats, splitVersions.stats);
     const nextPending = this.pendingOfficialStats || {};
     const stateChanged = forceState || this._stateStorageMigrationPending || !sameValue(this._persistedState || null, nextState);
-    const statsChanged = forceStats || this._statsStorageMigrationPending || !sameValue(this._persistedStatsState || null, nextStatsState);
+    const statsPlan = this._planStatsStorage(nextStats, forceStats);
+    const statsChanged = statsPlan.changed;
     const pendingChanged = forcePending || !sameValue(this._persistedPendingOfficialStats || null, nextPending);
     const writes = {};
     if (stateChanged) writes.state = nextState;
-    if (statsChanged && Object.keys(nextStatsState.root).length) writes.statsState = nextStatsState;
     if (pendingChanged && Object.keys(nextPending).length) writes.pendingOfficialStats = nextPending;
     if (Object.keys(writes).length) await this.ctx.storage.put(writes);
+    await this._writeStatsStorage(statsPlan, nextStats);
     const deletes = [];
-    if (statsChanged && !Object.keys(nextStatsState.root).length) deletes.push('statsState');
     if (pendingChanged && !Object.keys(nextPending).length) deletes.push('pendingOfficialStats');
     if (this._legacyStorageLoaded) deletes.push('root', 'versions');
     if (deletes.length && typeof this.ctx.storage.delete === 'function') await this.ctx.storage.delete(deletes);
     if (stateChanged) { this._persistedState = clone(nextState); this._stateStorageMigrationPending = false; }
-    if (statsChanged) { this._persistedStatsState = clone(nextStatsState); this._statsStorageMigrationPending = false; }
     if (pendingChanged) this._persistedPendingOfficialStats = clone(nextPending);
     if (this._legacyStorageLoaded) this._legacyStorageLoaded = false;
     if (!this._inAlarm) await this._scheduleMaintenance(this._nextMaintenanceDelay(maintenanceDelayMs));
@@ -450,7 +622,6 @@ export class RealtimeObject {
     return this._socketAuthorizedAgainstRoot(sess, this.root || {});
   }
 
-  _headers() { return jsonHeaders; }
 
   _snapshotForPaths(paths) {
     const list = Array.isArray(paths) ? paths : [paths];
@@ -705,7 +876,7 @@ export class RealtimeObject {
     }
     if (url.pathname.endsWith('/api/rate/consume') || url.pathname.endsWith('/rate/consume')) {
       const body = await requestBody(request);
-      return this._consumePersistentRate(body);
+      return this._consumeRequestRate(body);
     }
     if (url.pathname.endsWith('/read')) {
       const path = cleanPath(url.searchParams.get('path') || '');
@@ -2157,6 +2328,7 @@ export class RealtimeObject {
     const terminal = !!(game && String(game.status || '') === 'ended');
     const leaseDue = !!(!terminal && game && String(game.status || '') === 'active' && now() - (Number(game.roomLeaseRenewedAt || game.acceptedAt || game.createdAt || 0) || 0) >= ROOM_LEASE_RENEW_MS);
     if (leaseDue) game.roomLeaseRenewedAt = now();
+    const versionsBefore = Object.assign({}, this.versions);
     this.root = setAt(this.root || {}, path, game);
     if (terminal && gid) {
       for (const transientPath of [
@@ -2174,7 +2346,16 @@ export class RealtimeObject {
     }
     const uniqueChanged = Array.from(new Set(changed));
     bumpVersions(this.versions, uniqueChanged);
-    await this._save();
+    try {
+      await this._save();
+    } catch (err) {
+      // Nothing is published that is not stored. Memory returns to the stored
+      // position, so a retry of the same action is applied instead of being answered
+      // as the duplicate of a move that was never saved.
+      this.root = beforeRoot;
+      this.versions = versionsBefore;
+      throw err;
+    }
     await this._broadcast(uniqueChanged, beforeRoot, terminal ? {
       authorizeAgainstRoot: beforeRoot,
       closeRevokedAfter: true,
@@ -2421,20 +2602,18 @@ export class RealtimeObject {
     return json({ ok: true, committed: true, game, moveIndex: reduced.moveIndex || game.moveIndex || 0, ply: reduced.ply || game.ply || 0 });
   }
 
-  async _consumePersistentRate(body) {
-    const at = now();
+  // Request-rate window of one client identity. It lives in the object's memory only:
+  // a window lasts at most a minute or so, so nothing is written to storage per request,
+  // and losing it when the object is evicted merely starts a fresh window.
+  _consumeRequestRate(body) {
     const limit = Math.max(1, Math.min(10000, Number(body && body.limit || 1) || 1));
     const windowMs = Math.max(1000, Math.min(24 * 60 * 60 * 1000, Number(body && body.windowMs || 60000) || 60000));
     const category = String(body && body.category || 'request').slice(0, 80);
-    const previous = this.root && this.root.kind === 'rate-limit' && this.root.window && typeof this.root.window === 'object' ? this.root.window : null;
-    const startedAt = previous && at - Number(previous.startedAt || 0) < windowMs ? Number(previous.startedAt) : at;
-    const count = previous && startedAt === Number(previous.startedAt) ? Number(previous.count || 0) + 1 : 1;
-    const resetAt = startedAt + windowMs;
-    this.root = { kind: 'rate-limit', category, window: { startedAt, count, limit, windowMs, resetAt }, purgeAt: resetAt + 5 * 60 * 1000 };
-    bumpVersions(this.versions, ['']);
-    await this._save(windowMs + 5 * 60 * 1000);
-    if (count > limit) return json({ ok: false, error: 'request/rate-limited', category, retryAfterMs: Math.max(1, resetAt - at) }, 429, { 'retry-after': String(Math.max(1, Math.ceil((resetAt - at) / 1000))) });
-    return json({ ok: true, category, remaining: Math.max(0, limit - count), resetAt });
+    const state = this._consumeBurst(category, limit, windowMs);
+    if (!state.ok) {
+      return json({ ok: false, error: 'request/rate-limited', category, retryAfterMs: state.retryAfterMs }, 429, { 'retry-after': String(Math.max(1, Math.ceil(state.retryAfterMs / 1000))) });
+    }
+    return json({ ok: true, category, remaining: state.remaining });
   }
 
   async _authorizeTurn(body) {
@@ -3018,6 +3197,7 @@ export class RealtimeObject {
     const maintenanceChangedPaths = new Set();
     let shouldReschedule = true;
     try {
+      // Rate objects written by earlier versions are removed once their window has passed.
       if (this.root && this.root.kind === 'rate-limit') {
         const purgeAt = Number(this.root.purgeAt || 0) || 0;
         if (!purgeAt || purgeAt <= at) {

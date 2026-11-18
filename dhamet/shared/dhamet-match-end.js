@@ -30,8 +30,9 @@
     minNormalInitialPieces: 40,
     minCapturedRatio: 0.85,
     minFallbackPly: 48,
+    // The search is bounded by a count of positions only, so the same position
+    // gets the same outcome on every device and on the server.
     maxSearchNodes: 600,
-    maxSearchMs: 30,
     searchDepthByPieces: Object.freeze([
       Object.freeze({ maxPieces: 4, depth: 12 }),
       Object.freeze({ maxPieces: 6, depth: 10 }),
@@ -76,7 +77,7 @@
       kind,
       gameId: cleanString(src.gameId || actionSrc.gameId, 160),
       clientEndId: cleanString(src.clientEndId || src.clientActionId || src.clientRequestId || actionSrc.clientEndId || actionSrc.clientActionId || actionSrc.clientRequestId, 160),
-      baseMoveIndex: Number(src.baseMoveIndex != null ? src.baseMoveIndex : actionSrc.baseMoveIndex),
+      baseMoveIndex: Utils.validIndex(src.baseMoveIndex != null ? src.baseMoveIndex : actionSrc.baseMoveIndex),
       actor: cleanString(src.actor || src.uid || actionSrc.actor || actionSrc.uid, 160) || null,
       by: side(src.by != null ? src.by : actionSrc.by, null),
       nick: cleanDisplay(src.nick || src.byNick || actionSrc.nick || actionSrc.byNick, 80),
@@ -151,14 +152,16 @@
     return State.activateDeferredPromotions(board, pending, mover);
   }
 
-  function naturalOutcome(board, mover, unresolvedTurn) {
+  // Only called for a settled position: assessInterruptedPosition resolves a
+  // pending soufla / open chain first, so no outcome is read before that.
+  function naturalOutcome(board, mover) {
     const counts = countBoard(board);
     if (counts.top === 0) return { terminal: true, winner: BOT, outcome: 'win', reason: 'no_pieces' };
     if (counts.bot === 0) return { terminal: true, winner: TOP, outcome: 'win', reason: 'no_pieces' };
     if (counts.top === 1 && counts.bot === 1 && counts.topKings === 1 && counts.botKings === 1) {
       return { terminal: true, winner: null, outcome: 'draw', reason: 'one_king_each' };
     }
-    if (!unresolvedTurn && (mover === TOP || mover === BOT) && Rules && typeof Rules.hasAnyLegalMove === 'function') {
+    if ((mover === TOP || mover === BOT) && Rules && typeof Rules.hasAnyLegalMove === 'function') {
       if (!Rules.hasAnyLegalMove(board, mover)) {
         return { terminal: true, winner: opponent(mover), outcome: 'win', reason: 'no_legal_moves' };
       }
@@ -251,9 +254,8 @@
   }
 
   function solveForced(position, pending, mover, depth, context, path) {
-    if (context.nodes >= context.maxNodes || nowMs() >= context.deadline) {
+    if (context.nodes >= context.maxNodes) {
       context.exhausted = true;
-      context.timedOut = nowMs() >= context.deadline;
       return UNKNOWN;
     }
     context.nodes += 1;
@@ -329,8 +331,6 @@
       nodes: 0,
       maxNodes: POLICY.maxSearchNodes,
       exhausted: false,
-      timedOut: false,
-      deadline: nowMs() + POLICY.maxSearchMs,
       memo: new Map(),
     };
     const result = solveForced(position, pending, mover, depth, context, new Set());
@@ -339,7 +339,6 @@
       winner: result.winner,
       nodes: context.nodes,
       exhausted: context.exhausted,
-      timedOut: context.timedOut,
       depth,
     };
   }
@@ -358,8 +357,6 @@
     }
     const activeBoard = activated.board;
     const activePending = activated.deferredPromotions || [];
-    const unresolved = hasUnresolvedTurn(game);
-    const natural = naturalOutcome(activeBoard, mover, unresolved);
     const current = countBoard(activeBoard);
     const initial = countBoard(initialBoard(game));
     const gate = endgameGate(game, current, initial);
@@ -371,6 +368,21 @@
       sideToMove: mover,
     });
 
+    // The soufla comes first: while its owner has not claimed or given up the
+    // right, the position is not final and no result (draw, no pieces, no
+    // moves) may be read from it.
+    if (hasUnresolvedTurn(game)) {
+      return {
+        count: false,
+        winner: null,
+        outcome: 'unrated',
+        reason: 'administrative_unresolved_turn',
+        basis: 'unclear',
+        confidence: 'high',
+        metrics,
+      };
+    }
+    const natural = naturalOutcome(activeBoard, mover);
     if (natural.terminal) {
       return {
         count: true,
@@ -379,17 +391,6 @@
         reason: natural.reason,
         basis: 'natural',
         confidence: 'certain',
-        metrics,
-      };
-    }
-    if (unresolved) {
-      return {
-        count: false,
-        winner: null,
-        outcome: 'unrated',
-        reason: 'administrative_unresolved_turn',
-        basis: 'unclear',
-        confidence: 'high',
         metrics,
       };
     }
@@ -409,7 +410,6 @@
     metrics.searchDepth = search.depth;
     metrics.searchNodes = search.nodes;
     metrics.searchExhausted = !!search.exhausted;
-    metrics.searchTimedOut = !!search.timedOut;
     if (search.outcome === 'win' && (search.winner === TOP || search.winner === BOT)) {
       return {
         count: true,

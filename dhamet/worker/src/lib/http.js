@@ -31,3 +31,12 @@ export async function requestBody(request) {
 }
 
 export function now() { return Date.now(); }
+
+// A failure that does not stop the request (the data is written again next time, or the
+// request has no other way to react) is recorded instead of being swallowed, so that a
+// storage or binding problem shows in the Worker logs.
+export function logIgnored(area, event, error, extra) {
+  try {
+    console.error(JSON.stringify(Object.assign({ level: 'warn', area, event, message: String(error && error.message || error || '') }, extra || {})));
+  } catch (_) { /* logging must never fail the request */ }
+}

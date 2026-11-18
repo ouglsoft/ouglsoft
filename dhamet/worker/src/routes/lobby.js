@@ -1,4 +1,5 @@
 import '../../shared/dhamet-utils.js';
+import { logIgnored } from '../lib/http.js';
 import '../../shared/dhamet-rules.js';
 import '../../shared/dhamet-state.js';
 import '../../shared/dhamet-presence.js';
@@ -209,7 +210,7 @@ export function createLobbyRouteHandlers(deps) {
     if (game && typeof game === 'object' && cleanString(game.status, 40) === 'active' && gameHasPlayer(game, id)) {
       const entry = createRoomListEntryFromGame(game);
       if (entry) {
-        try { await writeRealtime(env, 'global', { op: 'set', path: 'roomList/' + roomId, value: entry }); } catch (_) {}
+        try { await writeRealtime(env, 'global', { op: 'set', path: 'roomList/' + roomId, value: entry }); } catch (err) { logIgnored('lobby', 'room-list-write-failed', err, { roomId }); }
       }
       return { busy: true, presence: p, roomId, game, roomListEntry: entry || room || null, source: entry ? 'game-rebuilt-room-list' : 'game-record' };
     }
@@ -426,7 +427,7 @@ export function createLobbyRouteHandlers(deps) {
       inviteKey,
     });
     if (!accepted.res.ok || !accepted.data || accepted.data.ok === false) {
-      await internalJson(env, 'global', '/api/lobby/release-match-claim', { gameId, uids: participantUids }).catch(() => null);
+      await internalJson(env, 'global', '/api/lobby/release-match-claim', { gameId, uids: participantUids }).catch((err) => logIgnored('lobby', 'release-match-claim-failed', err, { gameId }));
       return json(accepted.data || { ok: false, error: 'invite/accept-failed' }, accepted.res.status || 500);
     }
 
@@ -597,7 +598,7 @@ export function createLobbyRouteHandlers(deps) {
         updates['players/' + uid + '/updatedAt'] = at;
       }
       if (Object.keys(updates).length) await writeRealtime(env, 'global', { op: 'update', path: '', updates, value: updates });
-    } catch (_) {}
+    } catch (err) { logIgnored('lobby', 'spectator-presence-update-failed', err); }
 
     return json({
       ok: true,
@@ -844,7 +845,7 @@ export function createLobbyRouteHandlers(deps) {
           spectatorLeave = { ok: false, error: 'pulse/spectator-leave-failed' };
         }
       }
-      try { await writeRealtime(env, 'global', { op: 'remove', path: 'players/' + uid }); } catch (_) {}
+      try { await writeRealtime(env, 'global', { op: 'remove', path: 'players/' + uid }); } catch (err) { logIgnored('lobby', 'player-presence-remove-failed', err, { uid }); }
       return json({
         ok: true,
         committed: true,

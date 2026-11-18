@@ -31,6 +31,10 @@
 
   const TOP = Rules.TOP;
   const BOT = Rules.BOT;
+  // How many plies back an undo can reach. The game record keeps its starting
+  // position and this many recent positions, so that every write stays the same
+  // size however long the match runs.
+  const UNDO_HISTORY_PLIES = 8;
 
   const clone = Utils.cloneJson;
   const nowMs = Utils.nowMs;
@@ -46,6 +50,16 @@
 
   function normalizeGame(game) {
     return State.normalizeGameRecord(game);
+  }
+
+  // Every action states the position it was made in. A missing or invalid value is an
+  // explicit error (never a skipped check); a different value means the position has
+  // moved on, so the action is not applied.
+  function checkBaseMoveIndex(record, normalized) {
+    const base = normalized ? normalized.baseMoveIndex : null;
+    if (!Number.isInteger(base) || base < 0) return { ok: false, error: 'action/missing-base-move-index', game: record };
+    if (Number(record.moveIndex || 0) !== base) return { ok: true, committed: false, reason: 'stale-base', game: record };
+    return null;
   }
 
   function normalizeMovePayload(payload) {
@@ -234,6 +248,55 @@
       : null;
   }
 
+  // Records the position reached at `ply` in the rollback history, together
+  // with the soufla right the game holds in it, and drops the positions no undo
+  // can reach any more (older ones, and any left ahead by an undo). An undo
+  // returns the board and the soufla right together.
+  function recordStateHistory(nextGame, ply, statePayload) {
+    const states = nextGame.states && typeof nextGame.states === 'object' ? nextGame.states : {};
+    const kept = {};
+    for (const key of Object.keys(states)) {
+      const at = Number(key);
+      if (key === '0' || (at < ply && at >= ply - UNDO_HISTORY_PLIES)) kept[key] = states[key];
+    }
+    kept[String(ply)] = Object.assign({}, statePayload, { soufla: nextGame.soufla ? clone(nextGame.soufla) : null });
+    nextGame.states = kept;
+  }
+
+  // Records an evaluated result on the game; a terminal one ends the game.
+  function recordResult(nextGame, result, ts) {
+    if (!result) return;
+    nextGame.result = result;
+    if (!result.terminal) return;
+    nextGame.status = 'ended';
+    nextGame.winner = result.winner || null;
+    nextGame.endedAt = Number(result.endedAt || ts) || ts;
+    nextGame.endedReason = result.reason || (nextGame.winner == null ? 'draw' : 'natural_win');
+    nextGame.endedBy = null;
+    nextGame.undoRequest = null;
+    nextGame.soufla = null;
+  }
+
+  // Playing a move instead of claiming a pending soufla gives that right up
+  // (1.7.7). Giving it up settles the position the right was attached to, so
+  // the end-of-game rules are read from that position before the move is played.
+  function settleWaivedSoufla(record) {
+    if (!getSouflaPendingFromGame(record, record)) return null;
+    const mi = Number(record.moveIndex || 0) + 1;
+    const ply = Math.max(0, Number(record.ply || 0) || 0);
+    const ts = nowMs();
+    const result = evaluateResult(record.state, { mode: 'pvp', moveIndex: mi, ply, source: 'gameroom-soufla-waived', endedAt: ts });
+    if (!result || !result.terminal) return null;
+    const nextGame = clone(record);
+    nextGame.moveIndex = mi;
+    nextGame.updatedAt = ts;
+    recordResult(nextGame, result, ts);
+    const events = Events && typeof Events.createGameEndedEvent === 'function'
+      ? [Events.createGameEndedEvent({ result, moveIndex: mi, ply, winner: result.winner, reason: result.reason })]
+      : [];
+    return { ok: true, committed: true, game: nextGame, moveIndex: mi, ply, result, events };
+  }
+
   function applySouflaDecision(game, payload, context) {
     const ctx = context && typeof context === 'object' ? context : {};
     const record = normalizeGame(game);
@@ -251,10 +314,8 @@
     if (actorSide !== penalizer) return { ok: false, error: 'soufla/not-owner', game: record };
     if (side(record.turn) !== penalizer) return { ok: false, error: 'soufla/not-claim-turn', game: record };
 
-    const baseMoveIndex = Number(normalized.baseMoveIndex);
-    if (Number.isFinite(baseMoveIndex) && baseMoveIndex >= 0 && Number(record.moveIndex || 0) !== baseMoveIndex) {
-      return { ok: true, committed: false, reason: 'stale-base', game: record };
-    }
+    const baseCheck = checkBaseMoveIndex(record, normalized);
+    if (baseCheck) return baseCheck;
 
     const decision = Soufla.normalizeDecision(normalized.decision);
     const option = matchSouflaOption(pending, decision);
@@ -331,24 +392,12 @@
       ts,
     };
     nextGame.state = statePayload;
-    nextGame.states = nextGame.states && typeof nextGame.states === 'object' ? clone(nextGame.states) : {};
-    nextGame.states[String(ply)] = statePayload;
     nextGame.soufla = null;
+    recordStateHistory(nextGame, ply, statePayload);
     nextGame.undoRequest = null;
 
     const result = evaluateResult(statePayload, { mode: 'pvp', moveIndex: mi, ply, source: 'gameroom-soufla-authority', endedAt: ts });
-    if (result) {
-      nextGame.result = result;
-      if (result.terminal) {
-        nextGame.status = 'ended';
-        nextGame.winner = result.winner || null;
-        nextGame.endedAt = Number(result.endedAt || ts) || ts;
-        nextGame.endedReason = result.reason || (nextGame.winner == null ? 'draw' : 'natural_win');
-        nextGame.endedBy = null;
-        nextGame.undoRequest = null;
-        nextGame.soufla = null;
-      }
-    }
+    recordResult(nextGame, result, ts);
 
     const events = [];
     if (Events && typeof Events.createSouflaResolvedEvent === 'function') {
@@ -421,10 +470,8 @@
     if (actorSide == null) return { ok: false, error: 'control/invalid-side', game: record };
     const check = Control.canRequestUndo(record, actorSide);
     if (!check.ok) return Object.assign({ game: record }, check);
-    const baseMoveIndex = Number(normalized.baseMoveIndex);
-    if (Number.isFinite(baseMoveIndex) && baseMoveIndex >= 0 && Number(record.moveIndex || 0) !== baseMoveIndex) {
-      return { ok: true, committed: false, reason: 'stale-base', game: record };
-    }
+    const baseCheck = checkBaseMoveIndex(record, normalized);
+    if (baseCheck) return baseCheck;
     const ts = nowMs();
     const undoRequest = Control.createUndoRequest({
       requesterUid: cleanActor(ctx.actor || normalized.actor),
@@ -466,9 +513,11 @@
     const actorSide = side(normalized.by != null ? normalized.by : ctx.side);
     if (actorSide == null) return { ok: false, error: 'control/invalid-side', game: record };
     if (ur.requesterSide != null && actorSide === side(ur.requesterSide)) return { ok: false, error: 'control/requester-cannot-respond', game: record };
-    const baseMoveIndex = Number(normalized.baseMoveIndex);
-    if (Number.isFinite(baseMoveIndex) && baseMoveIndex >= 0 && Number(record.moveIndex || 0) !== baseMoveIndex) {
-      return { ok: true, committed: false, reason: 'stale-base', game: record };
+    const baseCheck = checkBaseMoveIndex(record, normalized);
+    if (baseCheck) return baseCheck;
+    // The answer applies only to the position the request was made in.
+    if (ur.moveIndex != null && Number(ur.moveIndex) !== Number(record.moveIndex || 0)) {
+      return { ok: true, committed: false, reason: 'stale-request', game: record };
     }
     const ts = nowMs();
     if (!normalized.accept) {
@@ -515,7 +564,8 @@
     nextGame.ply = prev.ply;
     nextGame.turn = side(prev.state.snapshot.player, record.turn);
     nextGame.state = prev.state;
-    nextGame.soufla = null;
+    // The right the position held before the undone move comes back with it.
+    nextGame.soufla = prev.soufla ? clone(prev.soufla) : null;
     nextGame.undoRequest = null;
     nextGame.result = null;
     nextGame.winner = null;
@@ -577,10 +627,8 @@
     if (!normalized || !normalized.kind) return { ok: false, error: 'match-end/invalid-action', game: record };
     const actorSide = side(normalized.by != null ? normalized.by : ctx.side);
     if (actorSide == null) return { ok: false, error: 'match-end/invalid-side', game: record };
-    const baseMoveIndex = Number(normalized.baseMoveIndex);
-    if (Number.isFinite(baseMoveIndex) && baseMoveIndex >= 0 && Number(record.moveIndex || 0) !== baseMoveIndex) {
-      return { ok: true, committed: false, reason: 'stale-base', game: record };
-    }
+    const baseCheck = checkBaseMoveIndex(record, normalized);
+    if (baseCheck) return baseCheck;
 
     const policy = MatchEnd.policyForEnd(normalized.kind, actorSide, normalized, record);
     if (!policy || policy.ok === false) return Object.assign({ game: record }, policy || { ok: false, error: 'match-end/unsupported-action' });
@@ -698,10 +746,8 @@
     if (side(record.turn) !== mover) return { ok: false, error: 'game/turn-mismatch', game: record };
     if (side(record.state.snapshot.player) !== mover) return { ok: false, error: 'game/snapshot-turn-mismatch', game: record };
 
-    const baseMoveIndex = Number(normalized.baseMoveIndex);
-    if (Number.isFinite(baseMoveIndex) && baseMoveIndex >= 0 && Number(record.moveIndex || 0) !== baseMoveIndex) {
-      return { ok: true, committed: false, reason: 'stale-base', game: record };
-    }
+    const baseCheck = checkBaseMoveIndex(record, normalized);
+    if (baseCheck) return baseCheck;
 
     const promotionStart = applyStartOfTurnPromotion(record.state.snapshot, pendingPromotionsFromState(record.state), mover);
     if (!promotionStart.ok) return promotionStart;
@@ -716,6 +762,10 @@
     if (!applied.ok) return { ok: false, error: applied.error || 'game/illegal-move', details: applied };
     const jumpCheck = validateJumps(move, applied);
     if (!jumpCheck.ok) return jumpCheck;
+
+    // Only a legal move counts as giving the soufla right up.
+    const waived = settleWaivedSoufla(record);
+    if (waived) return waived;
 
     const nextTurn = Rules.opponent(mover);
     const statePayload = createOfficialState(startSnapshot, applied, nextTurn, forcedCheck, promotionStart.deferredPromotions);
@@ -769,10 +819,11 @@
       authoritative: true,
     });
     nextGame.state = statePayload;
-    nextGame.states = nextGame.states && typeof nextGame.states === 'object' ? clone(nextGame.states) : {};
-    nextGame.states[String(ply)] = statePayload;
     if (serverSoufla && serverSoufla.penalizer != null) nextGame.soufla = { availableFor: serverSoufla.penalizer, pending: serverSoufla };
     else nextGame.soufla = null;
+    recordStateHistory(nextGame, ply, statePayload);
+    // An undo request belongs to the position it was made in: any new move ends it.
+    nextGame.undoRequest = null;
 
     // A detected soufla gives the opponent an immediate penalty right before
     // any new move or terminal claim is settled. The violating board is not the
@@ -781,18 +832,7 @@
     let result = !serverSoufla && Result && typeof Result.fromSnapshot === 'function'
       ? Result.fromSnapshot(statePayload.snapshot, { mode: 'pvp', moveIndex: mi, ply, source: 'gameroom-authority', endedAt: ts })
       : null;
-    if (result) {
-      nextGame.result = result;
-      if (result.terminal) {
-        nextGame.status = 'ended';
-        nextGame.winner = result.winner || null;
-        nextGame.endedAt = Number(result.endedAt || ts) || ts;
-        nextGame.endedReason = result.reason || (nextGame.winner == null ? 'draw' : 'natural_win');
-        nextGame.endedBy = null;
-        nextGame.undoRequest = null;
-        nextGame.soufla = null;
-      }
-    }
+    recordResult(nextGame, result, ts);
 
     const events = [];
     if (Events && typeof Events.createTurnAppliedEvent === 'function') {

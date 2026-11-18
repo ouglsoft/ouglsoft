@@ -1384,12 +1384,23 @@
     return buildSouflaPending(mandatory, ruleCheck, beforeSnap, by, reason);
   }
 
+  // A missing index must stay "missing": Number(null) is 0, which would make a
+  // piece standing on cell 0.0 look like the piece that moved.
+  function indexOrNull(value) {
+    return value == null || value === '' ? null : Number(value);
+  }
+
+  // The violation belongs to the piece, not to the cell it occupied when the
+  // capture duty was ignored.  Returns the cell that same piece occupies now.
+  // Single owner of this lookup: the server, the AI and the soufla window all
+  // call it.
   function resolveOffenderCurrentCell(pending, offenderIdx) {
-    offenderIdx = Number(offenderIdx);
-    if (!pending || !validIdx(offenderIdx)) return null;
-    if (Number(pending.startedFrom) === offenderIdx && validIdx(Number(pending.lastPieceIdx))) return Number(pending.lastPieceIdx);
-    if (Number(pending.lastMoveFrom) === offenderIdx && validIdx(Number(pending.lastPieceIdx))) return Number(pending.lastPieceIdx);
-    return offenderIdx;
+    const offender = indexOrNull(offenderIdx);
+    if (!pending || !validIdx(offender)) return null;
+    const movedTo = indexOrNull(pending.lastPieceIdx);
+    if (!validIdx(movedTo)) return offender;
+    const movedFrom = [pending.startedFrom, pending.lastMoveFrom].map(indexOrNull);
+    return movedFrom.includes(offender) ? movedTo : offender;
   }
 
   function applySouflaRemoval(boardAfterViolation, pending, offenderIdx) {

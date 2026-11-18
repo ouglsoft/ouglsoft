@@ -162,7 +162,7 @@
     return {
       gameId: String(src.gameId || ''),
       clientMoveId,
-      baseMoveIndex: Number(src.baseMoveIndex || 0) || 0,
+      baseMoveIndex: Utils.validIndex(src.baseMoveIndex),
       move,
       nextTurn: normalizeSide(src.nextTurn),
       state: src.state == null ? null : clone(src.state),
@@ -226,7 +226,7 @@
     return {
       gameId: String(intent.gameId || commit.gameId || ''),
       clientMoveId: String(intent.clientMoveId || commit.clientMoveId || '').slice(0, 160),
-      baseMoveIndex: Number(commit.baseMoveIndex || src.baseMoveIndex || 0) || 0,
+      baseMoveIndex: Utils.validIndex(commit.baseMoveIndex != null ? commit.baseMoveIndex : src.baseMoveIndex),
       move: move,
       intent: intent,
       meta: intent.meta || {},
