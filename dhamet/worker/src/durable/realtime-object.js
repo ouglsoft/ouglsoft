@@ -117,91 +117,91 @@ function splitPersistedVersions(versionsValue, rootSplit) {
 }
 
 // The stats domain (profiles and leaderboard) is stored one entry per player
-// instead of as one value, so a result writes only the entries it changed and
-// no single stored value grows with the number of players. The entries are
-// `st/profiles/<uid>`, `st/leaderboardV1/<uid>` and `st/<key>` for the rest;
-// each carries its value and the versions of its paths. The meta entry is
-// written last when the layout is first created, and its presence is what
-// makes the entries authoritative over the older combined `statsState` value.
-//
-// Nothing is ever removed before its replacement is complete. The migration writes
-// the entries, then the meta entry, then drops the stats from the realtime value and
-// the older `root`/`versions` keys; until the meta entry exists every older place that
-// can hold stats is read and combined (`unionStats`), so a migration cut off at any
-// step hides no player.
-//
-// The older combined value `statsState` is kept (created at the migration when it did
-// not exist): if the Worker is rolled back to a release that only knows it, that release
-// still finds the players (as of the migration) and keeps recording into it. Rolled
-// forward again, whatever that release recorded is taken back in by `mergeNewerStats`
-// (a player wins when its own last-change time is newer than the stored one, and a
-// missing player returns only if it changed after the migration, so a player removed
-// since is not brought back).
-const STATS_CHUNKED_KEYS = new Set(['profiles', 'leaderboardV1']);
-const STATS_CHUNK_PREFIX = 'st/';
-const STATS_META_KEY = 'statsMeta';
-const STATS_LAYOUT = 3;
-const STORAGE_BATCH = 100;
+// (`stats:profile:<uid>`, `stats:leaderboard:<uid>`), the ranking order in chunks, and the per-match
+// markers apart from the profiles. This is the layout of the released Worker and the only one: the
+// older places (`state`, `statsState`, `root`, `versions`) are read as well and moved into it, and
+// nothing is removed before its replacement is written, so no player stored anywhere is hidden.
+const STATS_PROFILE_PREFIX = 'stats:profile:';
+const STATS_LEADERBOARD_PREFIX = 'stats:leaderboard:';
+const STATS_ORDER_PREFIX = 'stats:leaderboard-order:';
+const STATS_ORDER_META_KEY = 'stats:leaderboard-order-meta';
+const STATS_ORDER_CHUNK_SIZE = 500;
+const STATS_MARKER_PREFIX = 'stats:marker:';
+const STATS_MARKER_CLEANUP_CURSOR_KEY = 'stats:marker-cleanup-cursor';
+const STATS_MARKER_CLEANUP_BATCH = 500;
+const STATS_ENTRY_KEYS = new Set(['profiles', 'leaderboardV1']);
+
+function isGuestUid(value) {
+  return /^guest[_-]/i.test(cleanPath(value || ''));
+}
+
+function valuesFromStoragePrefix(entries, prefix) {
+  const out = {};
+  if (!entries || typeof entries.entries !== 'function') return out;
+  for (const [key, value] of entries.entries()) {
+    const uid = cleanPath(String(key || '').slice(prefix.length));
+    if (!uid || isGuestUid(uid) || !value || typeof value !== 'object') continue;
+    out[uid] = value;
+  }
+  return out;
+}
+
+function orderFromStorageChunks(entries) {
+  if (!entries || typeof entries.entries !== 'function') return [];
+  const chunks = Array.from(entries.entries())
+    .filter(([key, value]) => String(key || '').startsWith(STATS_ORDER_PREFIX) && Array.isArray(value))
+    .sort((a, b) => String(a[0]).localeCompare(String(b[0])));
+  return chunks.flatMap(([, value]) => value.map((uid) => cleanPath(uid)).filter((uid) => uid && !isGuestUid(uid)));
+}
+
+function orderChunks(order) {
+  const clean = Array.from(new Set((Array.isArray(order) ? order : []).map((uid) => cleanPath(uid)).filter((uid) => uid && !isGuestUid(uid))));
+  const chunks = [];
+  for (let index = 0; index < clean.length; index += STATS_ORDER_CHUNK_SIZE) chunks.push(clean.slice(index, index + STATS_ORDER_CHUNK_SIZE));
+  return chunks;
+}
+
+function statsMarkerUidPrefix(uid) {
+  return STATS_MARKER_PREFIX + encodeURIComponent(cleanPath(uid || '')) + ':';
+}
+
+function statsMarkerKey(uid, matchKey) {
+  const cleanUid = cleanPath(uid || '');
+  const cleanMatchKey = cleanPath(matchKey || '');
+  if (!cleanUid || !cleanMatchKey || isGuestUid(cleanUid)) return '';
+  return statsMarkerUidPrefix(cleanUid) + encodeURIComponent(cleanMatchKey);
+}
+
+function stripProfileMarkers(profile, uid, markerWrites) {
+  const next = profile && typeof profile === 'object' ? clone(profile) : {};
+  for (const bucketKey of ['statsMarkersV1', 'statsMarkersV2']) {
+    const markers = next[bucketKey] && typeof next[bucketKey] === 'object' ? next[bucketKey] : {};
+    for (const [matchKey, marker] of Object.entries(markers)) {
+      const key = statsMarkerKey(uid, matchKey);
+      if (key && marker && typeof marker === 'object') markerWrites[key] = marker;
+    }
+    delete next[bucketKey];
+  }
+  return next;
+}
+
+async function storagePutBatches(storage, writes) {
+  const entries = Object.entries(writes || {});
+  for (let index = 0; index < entries.length; index += 100) {
+    await storage.put(Object.fromEntries(entries.slice(index, index + 100)));
+  }
+}
+
+async function storageDeleteBatches(storage, keys) {
+  if (!storage || typeof storage.delete !== 'function') return;
+  const unique = Array.from(new Set((Array.isArray(keys) ? keys : []).filter(Boolean)));
+  for (let index = 0; index < unique.length; index += 100) {
+    await storage.delete(unique.slice(index, index + 100));
+  }
+}
 
 function isPlainMap(value) {
   return !!value && typeof value === 'object' && !Array.isArray(value);
-}
-
-function statsChunkTarget(path) {
-  const parts = String(path).split('/');
-  const top = parts[0];
-  if (STATS_CHUNKED_KEYS.has(top) && parts.length >= 2) return { key: STATS_CHUNK_PREFIX + top + '/' + parts[1], rel: parts.slice(2).join('/') };
-  return { key: STATS_CHUNK_PREFIX + top, rel: parts.slice(1).join('/') };
-}
-
-// Splits the stats root and its versions into stored entries.
-function statsToChunks(statsRoot, statsVersions) {
-  const entries = new Map();
-  const entry = (key) => {
-    let e = entries.get(key);
-    if (!e) { e = { vers: {} }; entries.set(key, e); }
-    return e;
-  };
-  for (const [top, value] of Object.entries(statsRoot || {})) {
-    const children = isPlainMap(value) ? Object.keys(value) : null;
-    if (STATS_CHUNKED_KEYS.has(top) && children && !children.some((k) => k.includes('/'))) {
-      entry(STATS_CHUNK_PREFIX + top).map = true;
-      for (const child of children) entry(STATS_CHUNK_PREFIX + top + '/' + child).v = value[child];
-    } else {
-      entry(STATS_CHUNK_PREFIX + top).v = value;
-    }
-  }
-  for (const [path, version] of Object.entries(statsVersions || {})) {
-    if (path === '') continue;
-    const target = statsChunkTarget(path);
-    entry(target.key).vers[target.rel] = version;
-  }
-  const json = new Map();
-  for (const [key, e] of entries) json.set(key, JSON.stringify(e));
-  return { entries, json, statsRoot, statsVersions };
-}
-
-// The inverse of statsToChunks: stored entries back to the stats root and versions.
-function statsFromChunks(stored) {
-  const root = {};
-  const versions = {};
-  for (const [key, e] of stored) {
-    if (!e || typeof e !== 'object') continue;
-    const rest = key.slice(STATS_CHUNK_PREFIX.length);
-    const slash = rest.indexOf('/');
-    const top = slash < 0 ? rest : rest.slice(0, slash);
-    const child = slash < 0 ? null : rest.slice(slash + 1);
-    const base = child == null ? top : top + '/' + child;
-    for (const [rel, version] of Object.entries(e.vers || {})) versions[rel ? base + '/' + rel : base] = version;
-    if (child == null) {
-      if (e.map) { if (!isPlainMap(root[top])) root[top] = {}; }
-      else if ('v' in e) root[top] = e.v;
-    } else if ('v' in e) {
-      if (!isPlainMap(root[top])) root[top] = {};
-      root[top][child] = e.v;
-    }
-  }
-  return { root, versions };
 }
 
 // Every stored player carries the time of its own last change (a profile `updatedAt`, a leaderboard
@@ -229,14 +229,13 @@ function statsEntryWeight(top, value) {
 }
 
 // Takes from `other` (another stored copy of the stats) the players `base` lacks or holds in a smaller or
-// older form. Of two copies of a player the one with more games wins; with equal games the newer one. With `seen` > 0 a player missing from `base` comes back only if it changed after `seen`, so that a
-// player removed since is not brought back; `seen` = 0 means "everything missing is wanted".
-function mergeNewerStats(base, other, seen) {
-  const unchanged = { stats: base, changed: false, seen };
+// older form. Of two copies of a player the one with more games wins; with equal games the newer one.
+function mergeNewerStats(base, other) {
+  const unchanged = { stats: base, changed: false };
   if (!other || !isPlainMap(other.root)) return unchanged;
   // First pass: what would be taken. Nothing is copied when the answer is "nothing".
   const takes = [];
-  for (const top of STATS_CHUNKED_KEYS) {
+  for (const top of STATS_ENTRY_KEYS) {
     const theirs = other.root[top];
     if (!isPlainMap(theirs)) continue;
     const mineAll = isPlainMap(base.root[top]) ? base.root[top] : null;
@@ -248,7 +247,7 @@ function mergeNewerStats(base, other, seen) {
       // The entry's own time; the version of its path only when the entry carries none.
       const stamp = statsEntryStamp(top, entry) || Number(other.versions && other.versions[path]) || 0;
       let take;
-      if (mine === undefined || mine === null) take = seen === 0 || stamp > seen;
+      if (mine === undefined || mine === null) take = true;
       else {
         const theirWeight = statsEntryWeight(top, entry);
         const myWeight = statsEntryWeight(top, mine);
@@ -265,40 +264,20 @@ function mergeNewerStats(base, other, seen) {
   const theirPaths = new Map();
   for (const path of Object.keys(other.versions || {})) {
     const parts = path.split('/');
-    if (parts.length < 2 || !STATS_CHUNKED_KEYS.has(parts[0])) continue;
+    if (parts.length < 2 || !STATS_ENTRY_KEYS.has(parts[0])) continue;
     const owner = parts[0] + '/' + parts[1];
     if (!theirPaths.has(owner)) theirPaths.set(owner, []);
     theirPaths.get(owner).push(path);
   }
-  let newest = seen;
   for (const { top, uid, path, entry, stamp } of takes) {
     if (!isPlainMap(root[top])) root[top] = {};
     root[top][uid] = clone(entry);
     for (const own of theirPaths.get(path) || []) versions[own] = other.versions[own];
     versions[top] = Math.max(Number(versions[top]) || 0, Number(other.versions && other.versions[top]) || 0, stamp);
-    newest = Math.max(newest, stamp);
   }
   // The stored order no longer matches the players; it is rebuilt from them.
   for (const key of ['leaderboardOrderV2', 'leaderboardOrderSchema']) { delete root[key]; delete versions[key]; }
-  return { stats: { root, versions }, changed: true, seen: newest };
-}
-
-// Reads the stats out of every older place that can hold them and combines the copies, newest entry
-// first. Used while the per-entry layout is not complete in storage, so that a migration that was
-// interrupted, or a release that kept the stats somewhere else, can never hide players.
-function unionStats(copies) {
-  const size = (copy) => STATS_CHUNKED_KEYS.size && Array.from(STATS_CHUNKED_KEYS).reduce((n, top) => n + (isPlainMap(copy.root[top]) ? Object.keys(copy.root[top]).length : 0), 0);
-  const usable = copies.filter((copy) => copy && isPlainMap(copy.root));
-  if (!usable.length) return { root: {}, versions: {} };
-  // The fullest copy is the base and is kept exactly as it is unless another copy adds to it.
-  usable.sort((a, b) => size(b) - size(a));
-  let acc = { root: clone(usable[0].root), versions: Object.assign({}, usable[0].versions || {}) };
-  for (const copy of usable.slice(1)) acc = mergeNewerStats(acc, copy, 0).stats;
-  return acc;
-}
-
-async function storageInBatches(storage, keys, action) {
-  for (let at = 0; at < keys.length; at += STORAGE_BATCH) await action(keys.slice(at, at + STORAGE_BATCH));
+  return { stats: { root, versions }, changed: true };
 }
 
 function mergePersistedState(realtimeState, statsState) {
@@ -362,61 +341,81 @@ export class RealtimeObject {
 
   async _load() {
     if (this._loaded) return;
-    const stored = await this.ctx.storage.get(['state', 'statsState', STATS_META_KEY, 'root', 'versions', 'pendingOfficialStats']);
+    const stored = await this.ctx.storage.get(['state', 'statsState', 'root', 'versions', 'pendingOfficialStats', STATS_ORDER_META_KEY, STATS_MARKER_CLEANUP_CURSOR_KEY]);
+    const listPrefix = typeof this.ctx.storage.list === 'function' ? (prefix) => this.ctx.storage.list({ prefix }) : async () => new Map();
+    const [profileEntries, leaderboardEntries, orderEntries] = await Promise.all([
+      listPrefix(STATS_PROFILE_PREFIX),
+      listPrefix(STATS_LEADERBOARD_PREFIX),
+      listPrefix(STATS_ORDER_PREFIX),
+    ]);
     const packed = stored && stored.get ? stored.get('state') : null;
-    const statsMeta = stored && stored.get ? stored.get(STATS_META_KEY) : null;
-    // A layout newer than this release knows is not read as chunks (the combined value
-    // is used instead) so that no entry is misread after a rollback.
-    const metaLayout = Number(statsMeta && statsMeta.layout) || 0;
-    const statsLayoutReady = metaLayout > 0 && metaLayout <= STATS_LAYOUT;
-    const legacyStats = stored && stored.get ? stored.get('statsState') : null;
+    const packedStats = stored && stored.get ? stored.get('statsState') : null;
     const legacyRoot = stored && stored.get ? stored.get('root') : null;
     const legacyVersions = stored && stored.get ? stored.get('versions') : null;
-    let chunkStats = null;
-    let packedStats = legacyStats;
-    this._legacySeen = 0;
-    this._legacySeenNext = 0;
-    if (statsLayoutReady) {
-      chunkStats = statsFromChunks(await this.ctx.storage.list({ prefix: STATS_CHUNK_PREFIX }));
-      this._legacySeen = Number(statsMeta.legacySeen) || 0;
-      const recovered = mergeNewerStats(chunkStats, legacyStats, this._legacySeen);
-      packedStats = recovered.stats;
-      if (recovered.changed) this._legacySeenNext = recovered.seen;
-    } else {
-      // The per-entry layout is not complete in storage (first start of this release, or a migration
-      // that was cut off): the stats may be in the realtime value, in `statsState` or in the oldest
-      // `root`/`versions` keys, and all of them are read.
-      const olderRoot = legacyRoot && typeof legacyRoot === 'object' ? splitPersistedRoot(legacyRoot).stats : null;
-      const olderVersions = legacyVersions && typeof legacyVersions === 'object' ? splitPersistedVersions(legacyVersions, { realtime: {}, stats: olderRoot || {} }).stats : {};
-      const inState = packed && packed.root && typeof packed.root === 'object'
-        ? { root: splitPersistedRoot(packed.root).stats, versions: splitPersistedVersions(packed.versions || {}, splitPersistedRoot(packed.root)).stats }
-        : null;
-      packedStats = unionStats([
-        olderRoot ? { root: olderRoot, versions: olderVersions } : null,
-        inState,
-        legacyStats,
-      ]);
-    }
     const baseState = packed && typeof packed === 'object'
       ? packed
       : { root: legacyRoot && typeof legacyRoot === 'object' ? legacyRoot : {}, versions: legacyVersions && typeof legacyVersions === 'object' ? legacyVersions : { '': now() } };
     const merged = mergePersistedState(baseState, packedStats);
-    this.root = merged.root;
+    const splitRoot = splitPersistedRoot(merged.root);
+    const legacyStats = splitRoot.stats;
+    // The oldest `root` key is read even when `state` exists (a release that kept both): a player found
+    // only there comes in, and of two copies the one with more games wins.
+    if (packed && legacyRoot && typeof legacyRoot === 'object') {
+      Object.assign(legacyStats, mergeNewerStats({ root: legacyStats, versions: {} }, { root: splitPersistedRoot(legacyRoot).stats, versions: {} }).stats.root);
+    }
+    const persistedProfiles = valuesFromStoragePrefix(profileEntries, STATS_PROFILE_PREFIX);
+    const persistedLeaderboard = valuesFromStoragePrefix(leaderboardEntries, STATS_LEADERBOARD_PREFIX);
+    this._guestStatsStorageKeys = [
+      ...Array.from(profileEntries && typeof profileEntries.keys === 'function' ? profileEntries.keys() : []),
+      ...Array.from(leaderboardEntries && typeof leaderboardEntries.keys === 'function' ? leaderboardEntries.keys() : []),
+    ].filter((key) => {
+      const text = String(key || '');
+      const prefix = text.startsWith(STATS_PROFILE_PREFIX) ? STATS_PROFILE_PREFIX : STATS_LEADERBOARD_PREFIX;
+      return isGuestUid(text.slice(prefix.length));
+    });
+    // The stored entries and any older copy still lying around (a combined value written by a release that was
+    // put back in service): a player found in only one comes in, of two copies the one with more games wins.
+    const combined = mergeNewerStats({ root: { profiles: persistedProfiles, leaderboardV1: persistedLeaderboard }, versions: {} }, { root: legacyStats, versions: {} }).stats.root;
+    const profiles = Object.assign({}, combined.profiles);
+    const leaderboard = Object.assign({}, combined.leaderboardV1);
+    for (const uid of Object.keys(profiles)) if (isGuestUid(uid)) delete profiles[uid];
+    for (const uid of Object.keys(leaderboard)) if (isGuestUid(uid)) delete leaderboard[uid];
+    const migratedMarkerWrites = {};
+    for (const uid of Object.keys(profiles)) profiles[uid] = stripProfileMarkers(profiles[uid], uid, migratedMarkerWrites);
+    const chunkedOrder = orderFromStorageChunks(orderEntries);
+    const legacyOrder = Array.isArray(legacyStats.leaderboardOrderV2) ? legacyStats.leaderboardOrderV2 : [];
+    const orderMeta = stored && stored.get ? stored.get(STATS_ORDER_META_KEY) : null;
+    const chunkCount = Array.from(orderEntries && typeof orderEntries.keys === 'function' ? orderEntries.keys() : []).length;
+    const chunkedOrderComplete = !!(orderMeta && Number(orderMeta.schema || 0) === 2 && Number(orderMeta.chunks || 0) === chunkCount && Number(orderMeta.count || 0) === chunkedOrder.length);
+    const storedOrder = (chunkedOrderComplete ? chunkedOrder : legacyOrder).map((uid) => cleanPath(uid)).filter((uid) => uid && !isGuestUid(uid) && leaderboard[uid]);
+    const rankedUids = Object.keys(leaderboard).filter((uid) => Number(leaderboard[uid] && leaderboard[uid].rankedGames || 0) >= 1);
+    const storedOrderComplete = new Set(storedOrder).size === rankedUids.length && rankedUids.every((uid) => storedOrder.includes(uid));
+    const order = storedOrderComplete ? Array.from(new Set(storedOrder)) : this._leaderboardOrder(leaderboard, null, false).order;
+    this.root = Object.assign({}, splitRoot.realtime, {
+      profiles,
+      leaderboardV1: leaderboard,
+      leaderboardOrderV2: Array.from(new Set(order)),
+      leaderboardOrderSchema: 2,
+    });
     this.versions = merged.versions;
-    const splitRoot = splitPersistedRoot(this.root);
-    const splitVersions = splitPersistedVersions(this.versions, splitRoot);
-    this._persistedState = clone({ root: splitRoot.realtime, versions: splitVersions.realtime });
-    this._statsLayoutReady = statsLayoutReady;
-    this._statsLegacyStored = !!legacyStats;
-    // The stored entries as text, to find what a save must write. Built when a save needs it, not for a read.
-    this._storedChunkStats = chunkStats;
-    this._persistedStatsJson = null;
+    const currentSplit = splitPersistedRoot(this.root);
+    const splitVersions = splitPersistedVersions(this.versions, currentSplit);
+    this._persistedState = clone({ root: currentSplit.realtime, versions: splitVersions.realtime });
+    this._persistedStatsProfiles = clone(persistedProfiles);
+    this._persistedStatsLeaderboard = clone(persistedLeaderboard);
+    this._persistedStatsOrder = clone(chunkedOrder);
+    this._persistedStatsOrderChunkCount = orderChunks(chunkedOrder).length;
+    this._pendingStatsMarkerWrites = migratedMarkerWrites;
+    this._pendingStatsMarkerDeletes = [];
+    this._statsMarkerCleanupCursor = String(stored && stored.get ? stored.get(STATS_MARKER_CLEANUP_CURSOR_KEY) || '' : '');
     const pending = stored && stored.get ? stored.get('pendingOfficialStats') : null;
     this.pendingOfficialStats = pending && typeof pending === 'object' ? pending : {};
     this._persistedPendingOfficialStats = clone(this.pendingOfficialStats || {});
-    this._legacyStorageLoaded = !!(legacyRoot || legacyVersions);
-    this._stateStorageMigrationPending = (!packed && this._legacyStorageLoaded) || !!(packed && packed.root && Object.keys(splitPersistedRoot(packed.root).stats).length);
+    this._legacyStorageLoaded = !!legacyRoot || !!legacyVersions;
+    this._stateStorageMigrationPending = this._legacyStorageLoaded || !!(packed && packed.root && Object.keys(splitPersistedRoot(packed.root).stats).length);
+    this._statsStorageMigrationPending = !!packedStats || Object.keys(legacyStats).length > 0 || this._guestStatsStorageKeys.length > 0 || Object.keys(migratedMarkerWrites).length > 0 || !sameValue(profiles, persistedProfiles) || !sameValue(leaderboard, persistedLeaderboard) || !sameValue(order, chunkedOrder);
     this._loaded = true;
+    if (this._stateStorageMigrationPending || this._statsStorageMigrationPending) await this._save();
   }
   _officialPlayerUids(game) {
     const players = game && game.players && typeof game.players === 'object' ? game.players : {};
@@ -557,57 +556,6 @@ export class RealtimeObject {
     return nextAt == null ? DEFAULT_MAINTENANCE_MS : Math.max(5 * 1000, nextAt - at);
   }
 
-  // What must be written so the stored stats entries match `next`. Until the
-  // per-entry layout exists in storage, the first write creates it (and only
-  // happens when there are stats to keep, or an older combined value to carry over).
-  _planStatsStorage(next, force) {
-    if (!this._statsLayoutReady) {
-      const needed = next.entries.size > 0 || this._statsLegacyStored;
-      return { changed: needed, migrate: needed, puts: Array.from(next.entries.keys()), deletes: [] };
-    }
-    if (!this._persistedStatsJson) this._persistedStatsJson = this._storedChunkStats ? statsToChunks(this._storedChunkStats.root, this._storedChunkStats.versions).json : new Map();
-    const persisted = this._persistedStatsJson;
-    const puts = [];
-    for (const [key, json] of next.json) {
-      if (force || persisted.get(key) !== json) puts.push(key);
-    }
-    const deletes = Array.from(persisted.keys()).filter((key) => !next.json.has(key));
-    return { changed: puts.length > 0 || deletes.length > 0, migrate: false, puts, deletes };
-  }
-
-  async _writeStatsStorage(plan, next) {
-    if (!plan.changed) return;
-    const storage = this.ctx.storage;
-    if (plan.migrate) {
-      // Entries of an earlier, cut-off migration are replaced. Nothing else is touched: the
-      // stats stay readable from where they are until the meta entry below exists.
-      const leftovers = await storage.list({ prefix: STATS_CHUNK_PREFIX });
-      await storageInBatches(storage, Array.from(leftovers.keys()), (keys) => storage.delete(keys));
-    }
-    await storageInBatches(storage, plan.puts, (keys) => {
-      const batch = {};
-      for (const key of keys) batch[key] = next.entries.get(key);
-      return storage.put(batch);
-    });
-    if (plan.migrate) {
-      // A copy in the older combined form, so that a rollback to the previous release still finds
-      // the players. It is written before the meta entry: if the migration stops here the next start
-      // reads it together with everything else.
-      if (!this._statsLegacyStored) {
-        await storage.put('statsState', { root: next.statsRoot, versions: next.statsVersions });
-        this._statsLegacyStored = true;
-      }
-      this._legacySeen = now();
-      await storage.put(STATS_META_KEY, { layout: STATS_LAYOUT, legacySeen: this._legacySeen });
-      this._statsLayoutReady = true;
-    } else if (this._legacySeenNext > this._legacySeen) {
-      this._legacySeen = this._legacySeenNext;
-      await storage.put(STATS_META_KEY, { layout: STATS_LAYOUT, legacySeen: this._legacySeen });
-    }
-    await storageInBatches(storage, plan.deletes, (keys) => storage.delete(keys));
-    this._persistedStatsJson = next.json;
-  }
-
   async _save(maintenanceDelayMs, options = {}) {
     const forceState = !!(options && options.forceState);
     const forceStats = !!(options && options.forceStats);
@@ -615,31 +563,123 @@ export class RealtimeObject {
     const splitRoot = splitPersistedRoot(this.root || {});
     const splitVersions = splitPersistedVersions(this.versions || { '': now() }, splitRoot);
     const nextState = { root: splitRoot.realtime, versions: splitVersions.realtime };
-    const nextStats = statsToChunks(splitRoot.stats, splitVersions.stats);
+    const nextProfiles = splitRoot.stats.profiles && typeof splitRoot.stats.profiles === 'object' ? clone(splitRoot.stats.profiles) : {};
+    const nextLeaderboard = splitRoot.stats.leaderboardV1 && typeof splitRoot.stats.leaderboardV1 === 'object' ? clone(splitRoot.stats.leaderboardV1) : {};
+    for (const uid of Object.keys(nextProfiles)) if (isGuestUid(uid)) delete nextProfiles[uid];
+    for (const uid of Object.keys(nextLeaderboard)) if (isGuestUid(uid)) delete nextLeaderboard[uid];
+    const nextOrder = (Array.isArray(splitRoot.stats.leaderboardOrderV2) ? splitRoot.stats.leaderboardOrderV2 : []).map((uid) => cleanPath(uid)).filter((uid) => uid && !isGuestUid(uid) && nextLeaderboard[uid]);
     const nextPending = this.pendingOfficialStats || {};
     const stateChanged = forceState || this._stateStorageMigrationPending || !sameValue(this._persistedState || null, nextState);
-    const statsPlan = this._planStatsStorage(nextStats, forceStats);
-    const statsChanged = statsPlan.changed;
     const pendingChanged = forcePending || !sameValue(this._persistedPendingOfficialStats || null, nextPending);
-    // Order matters while the stats move to their per-entry layout: the entries and the meta entry are
-    // written first, and only then are the stats dropped from the realtime value and the older keys
-    // removed. Whatever step the Worker stops at, every player is still readable.
-    await this._writeStatsStorage(statsPlan, nextStats);
     const writes = {};
     if (stateChanged) writes.state = nextState;
     if (pendingChanged && Object.keys(nextPending).length) writes.pendingOfficialStats = nextPending;
-    if (Object.keys(writes).length) await this.ctx.storage.put(writes);
+    const statsWrites = {};
+    const statsDeletes = Array.isArray(this._guestStatsStorageKeys) ? this._guestStatsStorageKeys.slice() : [];
+    Object.assign(statsWrites, this._pendingStatsMarkerWrites || {});
+    statsDeletes.push(...(Array.isArray(this._pendingStatsMarkerDeletes) ? this._pendingStatsMarkerDeletes : []));
+    const previousProfiles = this._persistedStatsProfiles || {};
+    const previousLeaderboard = this._persistedStatsLeaderboard || {};
+    for (const uid of new Set([...Object.keys(previousProfiles), ...Object.keys(nextProfiles)])) {
+      const before = previousProfiles[uid];
+      const after = nextProfiles[uid];
+      if (!after) statsDeletes.push(STATS_PROFILE_PREFIX + uid);
+      else if (forceStats || !sameValue(before, after)) statsWrites[STATS_PROFILE_PREFIX + uid] = after;
+    }
+    for (const uid of new Set([...Object.keys(previousLeaderboard), ...Object.keys(nextLeaderboard)])) {
+      const before = previousLeaderboard[uid];
+      const after = nextLeaderboard[uid];
+      if (!after) statsDeletes.push(STATS_LEADERBOARD_PREFIX + uid);
+      else if (forceStats || !sameValue(before, after)) statsWrites[STATS_LEADERBOARD_PREFIX + uid] = after;
+    }
+    const orderChanged = forceStats || this._statsStorageMigrationPending || !sameValue(this._persistedStatsOrder || [], nextOrder);
+    if (orderChanged) {
+      const chunks = orderChunks(nextOrder);
+      chunks.forEach((chunk, index) => {
+        statsWrites[STATS_ORDER_PREFIX + String(index).padStart(8, '0')] = chunk;
+      });
+      const previousChunkCount = Number(this._persistedStatsOrderChunkCount || 0) || 0;
+      for (let index = chunks.length; index < previousChunkCount; index += 1) {
+        statsDeletes.push(STATS_ORDER_PREFIX + String(index).padStart(8, '0'));
+      }
+      statsWrites[STATS_ORDER_META_KEY] = { schema: 2, chunkSize: STATS_ORDER_CHUNK_SIZE, count: nextOrder.length, chunks: chunks.length, updatedAt: now() };
+    }
+    const statsChanged = this._statsStorageMigrationPending || Object.keys(statsWrites).length > 0 || statsDeletes.length > 0;
+    // The player entries are written before the realtime value, and nothing is deleted before everything is
+    // written: whatever step the Worker stops at, every player is still readable from where it was.
+    await storagePutBatches(this.ctx.storage, statsWrites);
+    await storagePutBatches(this.ctx.storage, writes);
     const deletes = [];
+    if (this._statsStorageMigrationPending) deletes.push('statsState');
     if (pendingChanged && !Object.keys(nextPending).length) deletes.push('pendingOfficialStats');
-    const statsSettled = this._statsLayoutReady || !(nextStats.entries.size > 0 || this._statsLegacyStored);
-    const dropOlderKeys = this._legacyStorageLoaded && statsSettled;
-    if (dropOlderKeys) deletes.push('root', 'versions');
-    if (deletes.length && typeof this.ctx.storage.delete === 'function') await this.ctx.storage.delete(deletes);
-    if (stateChanged) { this._persistedState = clone(nextState); this._stateStorageMigrationPending = false; }
+    if (this._legacyStorageLoaded) deletes.push('root', 'versions');
+    await storageDeleteBatches(this.ctx.storage, deletes.concat(statsDeletes));
+    if (stateChanged) {
+      this._persistedState = clone(nextState);
+      this._stateStorageMigrationPending = false;
+    }
+    if (statsChanged) {
+      this._persistedStatsProfiles = clone(nextProfiles);
+      this._persistedStatsLeaderboard = clone(nextLeaderboard);
+      this._persistedStatsOrder = clone(nextOrder);
+      this._persistedStatsOrderChunkCount = orderChunks(nextOrder).length;
+      this._guestStatsStorageKeys = [];
+      this._pendingStatsMarkerWrites = {};
+      this._pendingStatsMarkerDeletes = [];
+      this._statsStorageMigrationPending = false;
+    }
     if (pendingChanged) this._persistedPendingOfficialStats = clone(nextPending);
-    if (dropOlderKeys) this._legacyStorageLoaded = false;
+    if (this._legacyStorageLoaded) this._legacyStorageLoaded = false;
     if (!this._inAlarm) await this._scheduleMaintenance(this._nextMaintenanceDelay(maintenanceDelayMs));
     return { stateChanged, statsChanged, pendingChanged, wrote: stateChanged || statsChanged || pendingChanged };
+  }
+
+  async _statsMarkerExists(uid, matchKey) {
+    const key = statsMarkerKey(uid, matchKey);
+    if (!key) return false;
+    if (this._pendingStatsMarkerWrites && this._pendingStatsMarkerWrites[key]) return true;
+    try {
+      return !!(await this.ctx.storage.get(key));
+    } catch (_) {
+      return false;
+    }
+  }
+
+  _queueStatsMarker(uid, matchKey, marker) {
+    const key = statsMarkerKey(uid, matchKey);
+    if (!key || !marker || typeof marker !== 'object') return false;
+    this._pendingStatsMarkerWrites = this._pendingStatsMarkerWrites || {};
+    this._pendingStatsMarkerWrites[key] = clone(marker);
+    return true;
+  }
+
+  async _queueStatsMarkerDeletesForUid(uid) {
+    const cleanUid = cleanPath(uid || '');
+    if (!cleanUid || isGuestUid(cleanUid) || typeof this.ctx.storage.list !== 'function') return;
+    try {
+      const entries = await this.ctx.storage.list({ prefix: statsMarkerUidPrefix(cleanUid) });
+      this._pendingStatsMarkerDeletes = this._pendingStatsMarkerDeletes || [];
+      this._pendingStatsMarkerDeletes.push(...Array.from(entries.keys()));
+    } catch (_) {}
+  }
+
+  async _cleanupPersistedStatsMarkers(atValue) {
+    if (typeof this.ctx.storage.list !== 'function') return { scanned: 0, deleted: 0 };
+    const at = Number(atValue || now()) || now();
+    const options = { prefix: STATS_MARKER_PREFIX, limit: STATS_MARKER_CLEANUP_BATCH };
+    if (this._statsMarkerCleanupCursor) options.startAfter = this._statsMarkerCleanupCursor;
+    const entries = await this.ctx.storage.list(options);
+    const keys = Array.from(entries.keys());
+    const expired = [];
+    for (const [key, marker] of entries.entries()) {
+      if (Number(marker && marker.purgeAt || 0) > 0 && Number(marker.purgeAt) <= at) expired.push(key);
+    }
+    await storageDeleteBatches(this.ctx.storage, expired);
+    const nextCursor = keys.length >= STATS_MARKER_CLEANUP_BATCH ? String(keys[keys.length - 1] || '') : '';
+    if (nextCursor) await this.ctx.storage.put(STATS_MARKER_CLEANUP_CURSOR_KEY, nextCursor);
+    else await this.ctx.storage.delete(STATS_MARKER_CLEANUP_CURSOR_KEY);
+    this._statsMarkerCleanupCursor = nextCursor;
+    return { scanned: keys.length, deleted: expired.length };
   }
 
   async _scheduleMaintenance(delayMs) {
@@ -1051,6 +1091,10 @@ export class RealtimeObject {
       if (sameValue(current, nextValue)) return [];
       this.root = setAt(this.root, path, nextValue);
       changed.push(path);
+    }
+    for (const changedPath of changed) {
+      const match = /^profiles\/([^/]+)$/.exec(String(changedPath || ''));
+      if (match && getAt(this.root, changedPath) == null) await this._queueStatsMarkerDeletesForUid(match[1]);
     }
     if (changed.some((changedPath) => changedPath === 'leaderboardV1' || changedPath.startsWith('leaderboardV1/'))) {
       const data = this.root && this.root.leaderboardV1 && typeof this.root.leaderboardV1 === 'object' ? this.root.leaderboardV1 : {};
@@ -2933,7 +2977,7 @@ export class RealtimeObject {
   _holdsPlayerStats() {
     const has = (value) => !!(value && typeof value === 'object' && Object.keys(value).length);
     const root = this.root || {};
-    return has(root.profiles) || has(root.leaderboardV1) || !!this._statsLayoutReady || !!this._statsLegacyStored;
+    return has(root.profiles) || has(root.leaderboardV1) || has(this._persistedStatsProfiles) || has(this._persistedStatsLeaderboard);
   }
 
   async _deleteGameStorageIfUnused() {
@@ -3135,9 +3179,9 @@ export class RealtimeObject {
 
     if (mode === 'pvc' && rows.length === 1) {
       const uid = cleanPath(rows[0] && rows[0].uid || '');
+      if (isGuestUid(uid)) return json({ ok: true, skipped: true, roundId: matchKey, matchId: matchKey, recorded: [], ignored: [{ uid, reason: 'guest-not-ranked' }] });
       const profile = uid && profiles[uid] && typeof profiles[uid] === 'object' ? clone(profiles[uid]) : {};
-      const existingMarkers = profile.statsMarkersV2 && typeof profile.statsMarkersV2 === 'object' ? profile.statsMarkersV2 : {};
-      if (uid && existingMarkers[matchKey]) {
+      if (uid && await this._statsMarkerExists(uid, matchKey)) {
         return json({ ok: true, skipped: true, roundId: matchKey, matchId: matchKey, recorded: [], ignored: [{ uid, reason: 'already-recorded' }] });
       }
       const currentRate = profile.pvcResultRateV1 && typeof profile.pvcResultRateV1 === 'object' ? clone(profile.pvcResultRateV1) : {};
@@ -3158,13 +3202,16 @@ export class RealtimeObject {
       const uid = cleanPath(input && input.uid || '');
       const playerSide = Number(input && input.side);
       const outcome = StatsCore.normalizeOutcome(input && input.outcome);
+      if (isGuestUid(uid)) {
+        ignored.push({ uid, reason: 'guest-not-ranked' });
+        continue;
+      }
       if (!uid || (playerSide !== 1 && playerSide !== -1) || !outcome) {
         ignored.push({ uid, reason: 'invalid-player-result' });
         continue;
       }
       const profile = profiles[uid] && typeof profiles[uid] === 'object' ? clone(profiles[uid]) : {};
-      const markers = profile.statsMarkersV2 && typeof profile.statsMarkersV2 === 'object' ? clone(profile.statsMarkersV2) : {};
-      if (markers[matchKey]) {
+      if (await this._statsMarkerExists(uid, matchKey)) {
         ignored.push({ uid, reason: 'already-recorded' });
         continue;
       }
@@ -3175,7 +3222,7 @@ export class RealtimeObject {
         ? display(input.nickname || profile.nickname || '', 80)
         : String(input.nickname || profile.nickname || '').replace(/[<>&"'`]/g, '').slice(0, 80);
       const icon = String(input.icon || profile.icon || 'assets/icons/users/user1.png').slice(0, 200);
-      markers[matchKey] = {
+      const statsMarker = {
         schema: 3,
         mode,
         roundId: matchKey,
@@ -3202,8 +3249,8 @@ export class RealtimeObject {
       profile.updatedAt = at;
       profile.lastActiveAt = at;
       profile.stats = stats;
-      profile.statsMarkersV2 = markers;
       profiles[uid] = profile;
+      this._queueStatsMarker(uid, matchKey, statsMarker);
       leaderboard[uid] = StatsCore.leaderboardEntry(uid, stats, profile);
       order = this._insertLeaderboardUid(order, uid, leaderboard);
       recorded.push({
@@ -3317,7 +3364,7 @@ export class RealtimeObject {
       if (Number.isFinite(n) && n >= 0) versions[path] = n;
     }
     const incoming = { root: {}, versions };
-    for (const top of STATS_CHUNKED_KEYS) {
+    for (const top of STATS_ENTRY_KEYS) {
       const entries = given.root[top];
       if (entries === undefined || entries === null) continue;
       if (!isPlainMap(entries)) return json({ ok: false, error: 'stats/import-invalid', detail: top }, 400);
@@ -3328,7 +3375,7 @@ export class RealtimeObject {
       }
     }
     const current = this._currentStats();
-    const merged = mergeNewerStats(current, incoming, 0);
+    const merged = mergeNewerStats(current, incoming);
     const compare = (top) => {
       const before = isPlainMap(current.root[top]) ? current.root[top] : {};
       const after = isPlainMap(merged.stats.root[top]) ? merged.stats.root[top] : {};
@@ -3620,6 +3667,9 @@ export class RealtimeObject {
             }
             if (!Object.keys(markers).length) delete profile[markerKey];
           }
+        }
+        if (Object.keys(profiles).length || this._statsMarkerCleanupCursor) {
+          await this._cleanupPersistedStatsMarkers(at);
         }
       }
       if (games && await this._deleteGameStorageIfUnused()) {

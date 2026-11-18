@@ -1,172 +1,168 @@
-// Stored layout of the stats domain (profiles and leaderboard) in the Durable Object:
-// one entry per player, safe migration from the older combined value, and writes
-// limited to what changed. Runs the real RealtimeObject against an in-memory storage.
+// Stored layout of the stats domain (profiles, leaderboard, ranking order) in the Durable Object: the layout the
+// released Worker uses (one key per player, the order in chunks, a meta entry, the match markers apart), safe
+// migration from the older combined values, and writes limited to what changed. Runs the real RealtimeObject
+// against an in-memory storage.
 import assert from 'node:assert/strict';
 import { FakeStorage } from '../helpers/fake-storage.mjs';
 import { stageWorker } from '../helpers/stage-worker.mjs';
+import { T0, players, combinedValue, releasedLayout, readReleasedLayout, open as openWith, putKeys, view } from '../helpers/stats-fixtures.mjs';
 
 const { RealtimeObject } = await stageWorker().importModule('durable/realtime-object.js');
-
-const open = async (storage) => {
-  const ctx = { storage, getWebSockets: () => [], blockConcurrencyWhile: (fn) => fn() };
-  const obj = new RealtimeObject(ctx, {});
-  await obj._load();
-  return obj;
-};
-const statsOf = (obj) => {
-  const root = {}; const versions = {};
-  for (const k of ['profiles', 'leaderboardV1', 'leaderboardOrderV2', 'leaderboardOrderSchema']) if (obj.root[k] !== undefined) root[k] = obj.root[k];
-  for (const [k, v] of Object.entries(obj.versions)) if (k !== '' && /^(profiles|leaderboard)/.test(k)) versions[k] = v;
-  return { root, versions };
-};
-const putKeys = (storage, from = 0) => storage.log.slice(from).filter((e) => e.op === 'put').flatMap((e) => e.keys);
-
-const profile = (n) => ({ nickname: 'p' + n, icon: 'u' + (n % 22), stats: { wins: n, games: n * 2 } });
-const fill = (obj, count) => {
-  obj.root.profiles = {}; obj.root.leaderboardV1 = {}; obj.root.leaderboardOrderV2 = []; obj.root.leaderboardOrderSchema = 2;
-  for (let n = 0; n < count; n++) {
-    const uid = 'u' + n;
-    obj.root.profiles[uid] = profile(n); obj.root.leaderboardV1[uid] = { score: n, uid };
-    obj.root.leaderboardOrderV2.push(uid);
-    obj.versions['profiles/' + uid] = 1000 + n; obj.versions['profiles/' + uid + '/stats'] = 2000 + n; obj.versions['leaderboardV1/' + uid] = 3000 + n;
-  }
-  obj.versions.profiles = 10; obj.versions.leaderboardV1 = 11; obj.versions.leaderboardOrderV2 = 12;
-};
+const open = (storage) => openWith(RealtimeObject, storage);
 const results = {};
+const record = async (obj, id, a, b, outcome = 'win') => (await obj._recordOfficialStats({
+  mode: 'pvp', roundId: id, gameId: id,
+  players: [{ uid: a, side: 1, outcome, nickname: a }, { uid: b, side: -1, outcome: outcome === 'win' ? 'loss' : 'win', nickname: b }],
+})).json();
 
-// 1. a new object: first save creates the layout; reload gives back the same stats
+// 1. a recorded result is stored in the released layout, and a reload gives back the same stats
 {
   const storage = new FakeStorage(); const a = await open(storage);
-  fill(a, 350); await a._save();
-  assert.ok(storage.map.has('statsMeta'));
-  assert.ok(storage.map.has('statsState'), 'a copy in the older combined form is made for a rollback');
-  assert.ok([...storage.map.keys()].filter((k) => k.startsWith('st/profiles/')).length === 350);
+  for (let n = 1; n <= 30; n++) await record(a, 'r' + n, 'u' + n, 'u' + (n + 1));
+  const keys = [...storage.map.keys()];
+  assert.equal(keys.filter((k) => k.startsWith('stats:profile:')).length, 31);
+  assert.equal(keys.filter((k) => k.startsWith('stats:leaderboard:') && !k.startsWith('stats:leaderboard-order')).length, 31);
+  assert.ok(storage.map.has('stats:leaderboard-order:00000000'));
+  assert.deepEqual(storage.map.get('stats:leaderboard-order-meta').schema, 2);
+  assert.equal(storage.map.get('stats:leaderboard-order-meta').count, 31);
+  assert.equal(keys.filter((k) => k.startsWith('stats:marker:')).length, 60, 'one marker per player and match');
+  for (const [, profile] of Object.entries(readReleasedLayout(storage).profiles)) assert.ok(!('statsMarkersV2' in profile), 'markers are not kept inside the profile');
+  assert.ok(!storage.map.has('statsState') && !storage.map.has('root') && !storage.map.has('versions'));
+  const stored = readReleasedLayout(storage);
+  assert.deepEqual(stored.profiles, a.root.profiles);
+  assert.deepEqual(stored.leaderboardV1, a.root.leaderboardV1);
+  assert.deepEqual(stored.order, a.root.leaderboardOrderV2);
   const b = await open(storage);
-  assert.deepEqual(statsOf(b), statsOf(a));
+  assert.deepEqual(view(b), view(a));
+  // the same match again is recognized, from the marker kept apart
+  assert.equal((await record(b, 'r5', 'u5', 'u6')).skipped, true);
+  assert.equal(b.root.profiles.u5.stats.rankedGames, a.root.profiles.u5.stats.rankedGames);
   results.roundTrip = 'ok';
 
-  // 2. one profile changes: exactly one entry is written, nothing else
+  // 2. one player changes: exactly one entry is written, nothing else
   const mark = storage.log.length;
-  a.root.profiles.u7 = { ...a.root.profiles.u7, stats: { wins: 99, games: 100 } };
-  a.versions['profiles/u7/stats'] = 9999;
-  await a._save();
-  assert.deepEqual(putKeys(storage, mark), ['st/profiles/u7']);
-  results.onlyChangedEntryWritten = putKeys(storage, mark).length;
-  const c = await open(storage);
-  assert.deepEqual(statsOf(c), statsOf(a));
+  b.root.profiles.u7 = { ...b.root.profiles.u7, stats: { ...b.root.profiles.u7.stats, points: 4242 } };
+  await b._save();
+  assert.deepEqual(putKeys(storage, mark), ['stats:profile:u7']);
+  assert.equal((await open(storage)).root.profiles.u7.stats.points, 4242);
+  results.onlyChangedEntryWritten = 'ok';
 
-  // 3. a removed player's entry is removed from storage
-  delete a.root.profiles.u8; delete a.root.leaderboardV1.u8; delete a.versions['profiles/u8']; delete a.versions['profiles/u8/stats']; delete a.versions['leaderboardV1/u8'];
-  a.root.leaderboardOrderV2 = a.root.leaderboardOrderV2.filter((u) => u !== 'u8');
-  await a._save();
-  assert.ok(!storage.map.has('st/profiles/u8') && !storage.map.has('st/leaderboardV1/u8'));
-  assert.deepEqual(statsOf(await open(storage)), statsOf(a));
+  // 3. a removed player's entries are removed from storage and from the order
+  delete b.root.profiles.u8; delete b.root.leaderboardV1.u8;
+  b.root.leaderboardOrderV2 = b.root.leaderboardOrderV2.filter((uid) => uid !== 'u8');
+  await b._save();
+  assert.ok(!storage.map.has('stats:profile:u8') && !storage.map.has('stats:leaderboard:u8'));
+  assert.ok(!readReleasedLayout(storage).order.includes('u8'));
+  assert.ok(!('u8' in (await open(storage)).root.profiles));
   results.removedEntryDeleted = 'ok';
 
   // 4. nothing changed: nothing written
   const mark2 = storage.log.length;
-  await a._save();
-  assert.equal(putKeys(storage, mark2).filter((k) => k.startsWith('st/')).length, 0);
+  await b._save();
+  assert.equal(putKeys(storage, mark2).filter((k) => k.startsWith('stats:')).length, 0);
   results.noChangeNoWrite = 'ok';
 }
 
-// 5. migration from the older combined value
+// 5. migration from every older form: the players end up in the released layout, the older keys are removed
 {
-  const storage = new FakeStorage();
-  const seed = await open(new FakeStorage()); fill(seed, 220);
-  const legacy = { root: { profiles: seed.root.profiles, leaderboardV1: seed.root.leaderboardV1, leaderboardOrderV2: seed.root.leaderboardOrderV2, leaderboardOrderSchema: 2 }, versions: { '': 5000, ...Object.fromEntries(Object.entries(seed.versions).filter(([k]) => k !== '')) } };
-  storage.map.set('statsState', structuredClone(legacy));
-  storage.map.set('state', { root: { players: { u1: { online: true } } }, versions: { '': 5000, players: 4000 } });
-  const a = await open(storage);
-  assert.deepEqual(statsOf(a), statsOf(seed));
-  await a._save();
-  assert.ok(storage.map.has('statsMeta'));
-  assert.deepEqual(storage.map.get('statsState'), legacy, 'the older combined value is kept untouched for a rollback');
-  const b = await open(storage);
-  assert.deepEqual(statsOf(b), statsOf(seed));
-  assert.deepEqual(b.root.players, { u1: { online: true } });
+  const stats = players(220, (n) => n + 1);
+  const forms = {
+    'combined statsState value': (st) => { st.map.set('state', { root: { players: { u1: { online: true } } }, versions: { '': T0, players: T0 } }); st.map.set('statsState', combinedValue(stats)); },
+    'stats inside the realtime value': (st) => { st.map.set('state', { root: { players: { u1: { online: true } }, ...combinedValue(stats).root }, versions: combinedValue(stats).versions }); },
+    'older root/versions keys': (st) => { st.map.set('root', { players: { u1: { online: true } }, ...combinedValue(stats).root }); st.map.set('versions', combinedValue(stats).versions); },
+  };
+  for (const [name, build] of Object.entries(forms)) {
+    const storage = new FakeStorage(); build(storage);
+    const a = await open(storage);
+    assert.deepEqual(view(a), { profiles: stats.profiles, leaderboardV1: stats.leaderboardV1 }, name);
+    assert.deepEqual(a.root.players, { u1: { online: true } }, name + ': the realtime part is kept');
+    const stored = readReleasedLayout(storage);
+    assert.deepEqual(stored.profiles, stats.profiles, name);
+    assert.deepEqual(stored.leaderboardV1, stats.leaderboardV1, name);
+    assert.equal(stored.meta.count, stats.order.length, name);
+    for (const gone of ['statsState', 'root', 'versions']) assert.ok(!storage.map.has(gone), name + ': ' + gone + ' removed');
+    if (storage.map.has('state')) assert.deepEqual(Object.keys(storage.map.get('state').root), ['players'], name + ': stats no longer inside the realtime value');
+    const b = await open(storage);
+    assert.deepEqual(view(b), view(a), name + ': reload');
+    const mark = storage.log.length; await b._save();
+    assert.equal(storage.log.length, mark, name + ': once migrated, a save with no change writes nothing');
+  }
   results.migrated = 'ok';
-
-  // 5b. a release that only knows the combined value is put back in service: it finds the
-  //     players as of the migration, and records a result into the combined value
-  const rolledBack = structuredClone(storage.map.get('statsState'));
-  assert.equal(Object.keys(rolledBack.root.profiles).length, 220);
-  rolledBack.root.profiles.u5 = { ...rolledBack.root.profiles.u5, stats: { wins: 500, games: 600 } };
-  rolledBack.root.leaderboardV1.u5 = { score: 500, uid: 'u5' };
-  rolledBack.root.profiles.u900 = profile(900); rolledBack.root.leaderboardV1.u900 = { score: 900, uid: 'u900' };
-  rolledBack.versions['profiles/u5'] = Date.now() + 5000; rolledBack.versions['leaderboardV1/u5'] = Date.now() + 5000;
-  rolledBack.versions['profiles/u900'] = Date.now() + 6000; rolledBack.versions['leaderboardV1/u900'] = Date.now() + 6000;
-  storage.map.set('statsState', rolledBack);
-
-  // 5c. rolled forward again: what the older release recorded is taken back in, the rest is unchanged
-  const c = await open(storage);
-  assert.deepEqual(c.root.profiles.u5.stats, { wins: 500, games: 600 });
-  assert.ok(c.root.profiles.u900, 'a player recorded by the older release comes in');
-  assert.equal(c.root.profiles.u6.nickname, 'p6');
-  assert.equal(Object.keys(c.root.profiles).length, 221);
-  assert.notEqual(c.root.leaderboardOrderSchema, 2, 'the stored order is rebuilt, not trusted');
-  const before = storage.log.length;
-  await c._save();
-  const written = putKeys(storage, before).filter((k) => /^st\/(profiles|leaderboardV1)\/u/.test(k)).sort();
-  assert.deepEqual(written, ['st/leaderboardV1/u5', 'st/leaderboardV1/u900', 'st/profiles/u5', 'st/profiles/u900'], 'only the recovered players are written');
-  const d = await open(storage);
-  assert.deepEqual(d.root.profiles.u5.stats, { wins: 500, games: 600 });
-  assert.equal(Object.keys(d.root.profiles).length, 221);
-  // 5d. a player removed after that is not brought back by the combined value, which is still stored
-  delete d.root.profiles.u900; delete d.root.leaderboardV1.u900; delete d.versions['profiles/u900']; delete d.versions['leaderboardV1/u900'];
-  await d._save();
-  const e = await open(storage);
-  assert.ok(!('u900' in e.root.profiles), 'a removed player does not come back from the combined value');
-  assert.ok(storage.map.has('statsState'));
-  results.rollbackAndRollForward = 'ok';
 }
 
-// 5e. a layout newer than this release knows is not read as entries: the combined value is used
+// 6. the released layout read back: a stored player is never hidden by an older copy, and the copy with more games wins
 {
-  const storage = new FakeStorage();
-  storage.map.set('statsState', { root: { profiles: { u1: profile(1) }, leaderboardV1: {}, leaderboardOrderV2: [], leaderboardOrderSchema: 2 }, versions: { '': 5, 'profiles/u1': 5 } });
-  storage.map.set('statsMeta', { layout: 99 });
-  storage.map.set('st/profiles/u1', { v: { nickname: 'unreadable-future-shape' }, vers: {} });
+  const stats = players(50, (n) => 100 + n);
+  const storage = new FakeStorage(); releasedLayout(storage, stats);
+  const older = players(50, (n) => 1 + n);                      // fewer games for everybody ...
+  older.profiles.u7.updatedAt = T0 + 99_999_999;                // ... but u7 looks newer
+  older.leaderboardV1.u7.lastActivity = T0 + 99_999_999;
+  older.profiles.stranger = { nickname: 's', updatedAt: T0, stats: { points: 1, rankedGames: 1, totalGames: 1, updatedAt: T0 } };
+  older.leaderboardV1.stranger = { points: 1, rankedGames: 1, lastActivity: T0 };
+  older.order.push('stranger');
+  storage.map.set('statsState', combinedValue(older));          // a combined copy left by a release put back in service
   const a = await open(storage);
-  assert.equal(a.root.profiles.u1.nickname, 'p1');
-  results.newerLayoutNotMisread = 'ok';
+  assert.equal(a.root.leaderboardV1.u7.rankedGames, 107, 'more games wins over newer');
+  assert.ok(a.root.profiles.stranger && a.root.leaderboardV1.stranger, 'a player only in the older copy comes in');
+  assert.equal(Object.keys(a.root.profiles).length, 51);
+  assert.ok(!storage.map.has('statsState'), 'the older copy is removed once taken in');
+  const board = await (await a._readLeaderboard({ limit: 100 })).json();
+  assert.equal(board.total, 51);
+  results.moreGamesWins = 'ok';
 }
 
-// 6. a migration interrupted before the meta entry: the older value still loads, and
-//    leftovers of the interrupted attempt never come back as live data
+// 7. guests are not ranked, and the keys a guest left are cleaned
 {
-  const storage = new FakeStorage();
-  const seed = await open(new FakeStorage()); fill(seed, 150);
-  storage.map.set('statsState', { root: { profiles: seed.root.profiles, leaderboardV1: seed.root.leaderboardV1, leaderboardOrderV2: seed.root.leaderboardOrderV2, leaderboardOrderSchema: 2 }, versions: { '': 5000, ...Object.fromEntries(Object.entries(seed.versions).filter(([k]) => k !== '')) } });
+  const stats = players(10, () => 2);
+  stats.profiles.guest_abc = { nickname: 'g', updatedAt: T0, stats: { points: 9, rankedGames: 3, totalGames: 3, updatedAt: T0 } };
+  stats.leaderboardV1.guest_abc = { points: 9, rankedGames: 3, lastActivity: T0 };
+  stats.order.push('guest_abc');
+  const storage = new FakeStorage(); releasedLayout(storage, stats);
   const a = await open(storage);
-  storage.failOn = 'statsMeta';
-  await assert.rejects(() => a._save());
-  storage.failOn = null;
-  assert.ok(storage.map.has('statsState') && !storage.map.has('statsMeta'));
-  const b = await open(storage);
-  assert.deepEqual(statsOf(b), statsOf(seed));
-  delete b.root.profiles.u3; delete b.versions['profiles/u3']; delete b.versions['profiles/u3/stats'];
-  await b._save();
-  const c = await open(storage);
-  assert.ok(!('u3' in c.root.profiles), 'a removed player does not come back');
-  assert.deepEqual(statsOf(c), statsOf(b));
-  results.interruptedMigrationSafe = 'ok';
+  assert.ok(!('guest_abc' in a.root.profiles) && !('guest_abc' in a.root.leaderboardV1));
+  assert.ok(!storage.map.has('stats:profile:guest_abc') && !storage.map.has('stats:leaderboard:guest_abc'));
+  assert.ok(!readReleasedLayout(storage).order.includes('guest_abc'));
+  const res = await record(a, 'gm', 'guest_abc', 'u3');
+  assert.ok(res.ignored.some((x) => x.uid === 'guest_abc' && x.reason === 'guest-not-ranked'));
+  assert.ok(!storage.map.has('stats:profile:guest_abc'));
+  assert.equal(a.root.profiles.u3.stats.rankedGames, 3, 'the registered player still counts');
+  results.guestsNotRanked = 'ok';
 }
 
-// 7. an empty object (a game room) writes no stats entries and no meta
+// 8. the ranking order is kept in chunks of 500 with a meta entry, and a smaller ranking removes the extra chunks
+{
+  const storage = new FakeStorage(); const stats = players(1200, () => 2);
+  releasedLayout(storage, stats);
+  const a = await open(storage);
+  assert.equal(storage.map.get('stats:leaderboard-order-meta').chunks, 3);
+  const kept = new Set(a.root.leaderboardOrderV2.slice(0, 400));
+  a.root.leaderboardOrderV2 = [...kept];
+  for (const uid of Object.keys(a.root.leaderboardV1)) if (!kept.has(uid)) { delete a.root.leaderboardV1[uid]; delete a.root.profiles[uid]; }
+  await a._save();
+  assert.equal(storage.map.get('stats:leaderboard-order-meta').chunks, 1);
+  assert.ok(!storage.map.has('stats:leaderboard-order:00000001') && !storage.map.has('stats:leaderboard-order:00000002'));
+  assert.equal(readReleasedLayout(storage).order.length, 400);
+  results.orderChunks = 'ok';
+}
+
+// 9. an empty object (a game room) writes no stats keys
 {
   const storage = new FakeStorage(); const a = await open(storage);
   a.root.games = { g1: { status: 'active' } }; a.versions['games/g1'] = 1;
   await a._save();
-  assert.equal([...storage.map.keys()].filter((k) => k.startsWith('st/') || k === 'statsMeta').length, 0);
+  assert.equal([...storage.map.keys()].filter((k) => k.startsWith('stats:')).length, 0);
   results.gameRoomNoStatsWrites = 'ok';
 }
 
-// 8. a large population is written in batches within the 128-key limit
+// 10. a large population is written in batches within the 128-key limit
 {
   const storage = new FakeStorage(); const a = await open(storage);
-  fill(a, 3000); await a._save();
-  assert.deepEqual(statsOf(await open(storage)), statsOf(a));
+  const big = players(3000, (n) => n + 1);
+  a.root.profiles = big.profiles; a.root.leaderboardV1 = big.leaderboardV1; a.root.leaderboardOrderV2 = big.order;
+  await a._save();
+  const b = await open(storage);
+  assert.deepEqual(view(b), view(a));
+  assert.equal(storage.map.get('stats:leaderboard-order-meta').chunks, 6);
   results.large = 'ok';
 }
 console.log(JSON.stringify(results));

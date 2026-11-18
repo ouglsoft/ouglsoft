@@ -27,9 +27,13 @@ export class FakeStorage {
     this.log.push({ op: 'delete', keys: list });
     return list.length;
   }
-  async list({ prefix = '' } = {}) {
+  async list({ prefix = '', startAfter = null, limit = null } = {}) {
     const out = new Map();
-    for (const k of [...this.map.keys()].sort()) if (k.startsWith(prefix)) out.set(k, structuredClone(this.map.get(k)));
+    for (const k of [...this.map.keys()].sort()) {
+      if (!k.startsWith(prefix) || (startAfter !== null && k <= startAfter)) continue;
+      if (limit !== null && out.size >= limit) break;
+      out.set(k, structuredClone(this.map.get(k)));
+    }
     return out;
   }
   async deleteAll() { this.deleteAllCalls += 1; this.map.clear(); }

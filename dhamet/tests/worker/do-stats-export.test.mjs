@@ -4,6 +4,7 @@
 import assert from 'node:assert/strict';
 import { FakeStorage } from '../helpers/fake-storage.mjs';
 import { stageWorker } from '../helpers/stage-worker.mjs';
+import { releasedLayout } from '../helpers/stats-fixtures.mjs';
 
 const staged = stageWorker();
 const { RealtimeObject } = await staged.importModule('durable/realtime-object.js');
@@ -26,37 +27,24 @@ const players = (count, games = (n) => n) => {
   return { root: { profiles, leaderboardV1, leaderboardOrderV2: order, leaderboardOrderSchema: 2 }, versions };
 };
 const REALTIME = { players: { u1: { online: true } }, roomList: {} };
-const withStats = (stats) => { const st = new FakeStorage(); st.map.set('state', { root: REALTIME, versions: { '': T0 } }); st.map.set('statsState', structuredClone(stats)); return st; };
+const layoutOf = (stats) => ({ profiles: stats.root.profiles, leaderboardV1: stats.root.leaderboardV1, order: stats.root.leaderboardOrderV2 });
+const withStats = (stats) => { const st = new FakeStorage(); st.map.set('state', { root: REALTIME, versions: { '': T0 } }); releasedLayout(st, layoutOf(stats)); return st; };
 const results = {};
 
 // 1. of two copies of one player the one with more games is kept, however old; with equal games the newer one
 {
-  const rich = players(30, (n) => 40 + n);           // the earlier results
-  const storage = withStats(rich);
-  const a = await open(storage); await a._save();      // migrated to the per-player layout
-  // a release that could not see the earlier results started u7 and u9 from nothing, later
-  const later = T0 + 10_000_000;
-  const fresh = await open(storage);
-  fresh.root.profiles.u7 = { nickname: 'p7', updatedAt: later, stats: { points: 2, rankedGames: 1, totalGames: 1, updatedAt: later } };
-  fresh.root.leaderboardV1.u7 = { points: 2, rankedGames: 1, lastActivity: later };
-  fresh.root.profiles.u9 = { nickname: 'p9', updatedAt: later, stats: { points: 2, rankedGames: 1, totalGames: 1, updatedAt: later } };
-  fresh.root.leaderboardV1.u9 = { points: 2, rankedGames: 1, lastActivity: later };
-  fresh.versions.profiles = later; fresh.versions.leaderboardV1 = later;
-  await fresh._save();
-  // the older combined copy comes back (a rollback and a roll forward) with the earlier results
-  storage.map.set('statsState', structuredClone(rich));
-  const b = await open(storage);
-  assert.equal(b.root.leaderboardV1.u7.rankedGames, 47, 'the player with the longer history keeps it');
-  assert.equal(b.root.profiles.u7.stats.rankedGames, 47);
-  assert.equal(b.root.leaderboardV1.u9.rankedGames, 49);
-  // equal games: the newer copy wins
-  const same = withStats(players(5, () => 3));
-  const c = await open(same); await c._save();
-  const old = structuredClone(same.map.get('statsState'));
-  old.root.leaderboardV1.u2 = { ...old.root.leaderboardV1.u2, points: 777, lastActivity: Date.now() + 5000 };
-  old.root.profiles.u2 = { ...old.root.profiles.u2, updatedAt: Date.now() + 5000, stats: { ...old.root.profiles.u2.stats, points: 777, updatedAt: Date.now() + 5000 } };
-  same.map.set('statsState', old);
-  assert.equal((await open(same)).root.leaderboardV1.u2.points, 777);
+  const storage = withStats(players(30, (n) => 40 + n));
+  const incoming = players(30, (n) => 40 + n);
+  incoming.root.leaderboardV1.u7 = { points: 2, rankedGames: 1, lastActivity: T0 + 10_000_000 };   // newer, but started from nothing
+  incoming.root.profiles.u7 = { nickname: 'p7', updatedAt: T0 + 10_000_000, stats: { points: 2, rankedGames: 1, totalGames: 1, updatedAt: T0 + 10_000_000 } };
+  incoming.root.leaderboardV1.u9 = { ...incoming.root.leaderboardV1.u9, points: 777, lastActivity: T0 + 10_000_000 };   // equal games, newer
+  const obj = await open(storage);
+  const res = await (await obj._importStats({ stats: incoming, apply: true })).json();
+  assert.equal(res.ok, true);
+  const after = await open(storage);
+  assert.equal(after.root.leaderboardV1.u7.rankedGames, 47, 'the player with the longer history keeps it');
+  assert.equal(after.root.profiles.u7.stats.rankedGames, 47);
+  assert.equal(after.root.leaderboardV1.u9.points, 777, 'with equal games the newer copy wins');
   results.moreGamesWins = 'ok';
 }
 
@@ -75,7 +63,8 @@ let exported;
   assert.deepEqual(exported.stats.root.profiles, source.root.profiles);
   assert.ok(!('raw' in exported), 'raw only on request');
   const raw = await (await obj._exportStats({ raw: '1' })).json();
-  assert.deepEqual(Object.keys(raw.raw).sort(), ['state', 'statsState']);
+  assert.ok(raw.raw.state && raw.raw['stats:profile:u3'] && raw.raw['stats:leaderboard:u3'] && raw.raw['stats:leaderboard-order-meta'], 'the raw copy holds the stored keys');
+  assert.ok(!('statsState' in raw.raw));
   results.exportReadsOnly = 'ok';
 }
 
@@ -140,7 +129,7 @@ let exported;
       async fetch(url, init) {
         if (!objects.has(id)) {
           const storage = new FakeStorage();
-          if (id === 'global') { storage.map.set('state', { root: REALTIME_VALUE, versions: { '': T0 } }); storage.map.set('statsState', players(12)); }
+          if (id === 'global') { storage.map.set('state', { root: REALTIME_VALUE, versions: { '': T0 } }); releasedLayout(storage, layoutOf(players(12))); }
           stores.set(id, storage);
           objects.set(id, new RealtimeObject({ storage, getWebSockets: () => [], blockConcurrencyWhile: (fn) => fn() }, {}));
         }
