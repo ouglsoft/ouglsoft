@@ -15,7 +15,7 @@ on:
       - "deploy/prepare-pages.mjs"
       - "package.json"
       - "package-lock.json"
-      - ".github/workflows/deploy-dhamet-worker.yml"
+      - ".github/workflows/deploy-worker.yml"
   workflow_dispatch:
     inputs:
       target:
@@ -107,9 +107,36 @@ jobs:
           echo "pages=$pages" >> "$GITHUB_OUTPUT"
           echo "Deployment scope: worker=$worker pages=$pages"
 
+  verify:
+    name: Verify Dhamet before deploy
+    needs: changes
+    if: needs.changes.outputs.worker == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # Refuses a deploy that would leave the stored results out of reach of the new Worker
+      # (renamed Worker, class, binding or D1 database, rewritten migration history).
+      - name: Check the stored-data contract
+        run: node dhamet/worker/storage-contract.mjs
+
+      # Static checks, rules engine, Worker and Durable Object tests (the browser tests need Chrome
+      # and are run before a release with: node dhamet/tests/run-all.mjs).
+      - name: Run Dhamet tests
+        run: node dhamet/tests/run-all.mjs --only=lint,engine,worker
+
   deploy-worker:
     name: Deploy Worker
-    needs: changes
+    needs:
+      - changes
+      - verify
     if: needs.changes.outputs.worker == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -137,11 +164,13 @@ jobs:
     name: Deploy Pages
     needs:
       - changes
+      - verify
       - deploy-worker
     if: >-
       always() &&
       needs.changes.result == 'success' &&
       needs.changes.outputs.pages == 'true' &&
+      (needs.verify.result == 'success' || needs.verify.result == 'skipped') &&
       (needs.deploy-worker.result == 'success' || needs.deploy-worker.result == 'skipped')
     runs-on: ubuntu-latest
     timeout-minutes: 30
