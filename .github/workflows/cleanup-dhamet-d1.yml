@@ -4,6 +4,11 @@ on:
   schedule:
     - cron: "23 2 * * *"
   workflow_dispatch:
+    inputs:
+      clean_actions_history:
+        description: "Also delete older Actions runs (the daily schedule always does)"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -36,12 +41,20 @@ jobs:
       - name: Apply pending D1 migrations
         run: npx wrangler d1 migrations apply dhamet2_test --remote --config dhamet/worker/wrangler.toml
 
+      - name: Count expired rows before cleanup
+        run: |
+          npx wrangler d1 execute dhamet2_test --remote --config dhamet/worker/wrangler.toml --command "SELECT (SELECT COUNT(*) FROM sessions WHERE expires_at <= CAST(strftime('%s','now') AS INTEGER)) AS expired_sessions, (SELECT COUNT(*) FROM password_reset_tokens WHERE expires_at <= CAST(strftime('%s','now') AS INTEGER) OR used_at IS NOT NULL) AS spent_reset_tokens, (SELECT COUNT(*) FROM oauth_states WHERE expires_at <= CAST(strftime('%s','now') AS INTEGER) OR used_at IS NOT NULL) AS spent_signin_tokens, (SELECT COUNT(*) FROM users) AS users_total"
+
       - name: Delete expired D1 data in bounded batches
         run: npx wrangler d1 execute dhamet2_test --remote --config dhamet/worker/wrangler.toml --file dhamet/worker/maintenance/cleanup.sql
 
+      - name: Count expired rows after cleanup
+        run: |
+          npx wrangler d1 execute dhamet2_test --remote --config dhamet/worker/wrangler.toml --command "SELECT (SELECT COUNT(*) FROM sessions WHERE expires_at <= CAST(strftime('%s','now') AS INTEGER)) AS expired_sessions, (SELECT COUNT(*) FROM password_reset_tokens WHERE expires_at <= CAST(strftime('%s','now') AS INTEGER) OR used_at IS NOT NULL) AS spent_reset_tokens, (SELECT COUNT(*) FROM oauth_states WHERE expires_at <= CAST(strftime('%s','now') AS INTEGER) OR used_at IS NOT NULL) AS spent_signin_tokens, (SELECT COUNT(*) FROM users) AS users_total"
+
   cleanup-actions-history:
     name: Keep latest Actions run per workflow
-    if: github.event_name == 'schedule'
+    if: github.event_name == 'schedule' || inputs.clean_actions_history == true
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
