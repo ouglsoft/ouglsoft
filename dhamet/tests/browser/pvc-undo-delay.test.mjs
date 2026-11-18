@@ -42,7 +42,7 @@ try {
 
   // the player undoes the computer's move: it is the computer's turn again, but it does not replay at once
   const undoneAt = Date.now();
-  const undone = await page.evaluate(() => performLocalUndo());
+  const undone = await page.evaluate(() => window.performLocalUndo());
   assert.equal(undone, true);
   const justAfter = await state();
   assert.equal(justAfter.player, justAfter.ai, 'it is the computer\'s turn after the undo');
@@ -55,7 +55,7 @@ try {
   results.notThinkingAfterMs = Date.now() - undoneAt;
 
   // a second undo takes back the player's own move, and the computer never replays
-  const undoneTwice = await page.evaluate(() => performLocalUndo());
+  const undoneTwice = await page.evaluate(() => window.performLocalUndo());
   assert.equal(undoneTwice, true);
   const back = await state();
   assert.equal(back.player, back.human, 'the player is to move again');
@@ -69,7 +69,7 @@ try {
   // left alone, the computer does play after the delay
   await humanMoves();
   await page.waitForFunction(() => Game.player === humanSide() && Game.history.length >= 2, null, { timeout: 20000 });
-  await page.evaluate(() => performLocalUndo());
+  await page.evaluate(() => window.performLocalUndo());
   const t0 = Date.now();
   await page.waitForFunction(() => window.AI.isThinking(), null, { timeout: 20000, polling: 50 });
   const startedAfter = Date.now() - t0;
