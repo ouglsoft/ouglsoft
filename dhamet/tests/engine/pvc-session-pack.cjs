@@ -2,7 +2,10 @@
 // حفظ جلسة الحاسوب: تعبئة سجل التراجع ثم فكّها يعيد السجل كما كان تماماً، وتقلّ الحجم.
 const path = require('path'); const D = path.join(__dirname, '..', '..');
 require('./load.cjs');
-const S = require(path.join(D, 'site/js/modes/pvc-session.js'));
+// The script registers itself on globalThis (as in the browser); it is read from there because, under a
+// package.json with "type": "module" (the repository root has one), require() does not return module.exports.
+require(path.join(D, 'site/js/modes/pvc-session.js'));
+const S = globalThis.DhametPvCSession;
 const assert = require('assert');
 function rng(seed) { return function () { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
 const r = rng(5);
