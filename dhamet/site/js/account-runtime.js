@@ -48,15 +48,23 @@
     } catch (_) { return ''; }
   }
   function pendingKey(uid) { return PVC_PENDING_PREFIX + String(uid || '').trim() + '.v2'; }
+  // When the browser storage is full or unavailable the queue lives in memory
+  // for the life of the page, so a result is not lost just because it could not
+  // be written down.
+  var pvcMemoryPending = {};
   function readPendingPvcResults(uid) {
     var ownerUid = String(uid || currentUid() || '').trim();
     if (!ownerUid) return [];
+    var stored = [];
     try {
       var rows = JSON.parse(localStorage.getItem(pendingKey(ownerUid)) || '[]');
-      return Array.isArray(rows) ? rows.filter(function (row) {
-        return row && row.roundId && String(row.ownerUid || '') === ownerUid;
-      }) : [];
-    } catch (_) { return []; }
+      if (Array.isArray(rows)) stored = rows;
+    } catch (_) { stored = []; }
+    var byRound = {};
+    stored.concat(pvcMemoryPending[ownerUid] || []).forEach(function (row) {
+      if (row && row.roundId && String(row.ownerUid || '') === ownerUid) byRound[String(row.roundId)] = row;
+    });
+    return Object.keys(byRound).map(function (id) { return byRound[id]; });
   }
   function writePendingPvcResults(uid, rows) {
     var ownerUid = String(uid || '').trim();
@@ -64,8 +72,12 @@
     try {
       if (rows && rows.length) localStorage.setItem(pendingKey(ownerUid), JSON.stringify(rows));
       else localStorage.removeItem(pendingKey(ownerUid));
-      return true;
-    } catch (_) { return false; }
+      delete pvcMemoryPending[ownerUid];
+    } catch (_) {
+      if (rows && rows.length) pvcMemoryPending[ownerUid] = rows.slice();
+      else delete pvcMemoryPending[ownerUid];
+    }
+    return true;
   }
   function queuePendingPvcResult(input) {
     var ownerUid = currentUid();
@@ -87,6 +99,11 @@
   function retryablePvcError(error) {
     var status = Number(error && error.status || 0) || 0;
     return !status || status === 429 || status >= 500;
+  }
+  // 401: the session ended. The result is kept and sent after signing in again
+  // (the sign-in listener below flushes it); retrying now could not succeed.
+  function sessionEndedPvcError(error) {
+    return Number(error && error.status || 0) === 401;
   }
   function pvcRetryDelay(error) {
     var serverDelay = Number(error && error.data && error.data.retryAfterMs || 0) || 0;
@@ -121,18 +138,21 @@
     }
     pvcFlushRunning = true;
     var retryError = null;
+    var sessionEnded = false;
     return rows.reduce(function (chain, payload) {
       return chain.then(function () {
-        if (retryError || String(payload.ownerUid || '') !== ownerUid) return;
+        if (retryError || sessionEnded || String(payload.ownerUid || '') !== ownerUid) return;
         return sendPvcResult(payload).then(function () {
           removePendingPvcResult(ownerUid, payload.roundId || payload.pvcRoundId);
         }).catch(function (error) {
-          if (error && error.status === 409) removePendingPvcResult(ownerUid, payload.roundId || payload.pvcRoundId);
+          if (sessionEndedPvcError(error)) sessionEnded = true;
+          else if (error && error.status === 409) removePendingPvcResult(ownerUid, payload.roundId || payload.pvcRoundId);
           else if (retryablePvcError(error)) retryError = error;
           else removePendingPvcResult(ownerUid, payload.roundId || payload.pvcRoundId);
         });
       });
     }, Promise.resolve()).then(function () {
+      if (sessionEnded) return false;
       if (retryError) {
         pvcRetryAttempt += 1;
         schedulePendingPvcFlush(pvcRetryDelay(retryError));
@@ -150,8 +170,10 @@
       removePendingPvcResult(ownerUid, payload.roundId || payload.pvcRoundId);
       return result;
     }).catch(function (error) {
-      if (!retryablePvcError(error)) throw error;
+      var sessionEnded = sessionEndedPvcError(error);
+      if (!sessionEnded && !retryablePvcError(error)) throw error;
       if (!queuePendingPvcResult(payload)) throw new Error('pvc/pending-result-not-saved');
+      if (sessionEnded) return { ok: true, counted: false, pending: true, reason: 'pending_sign_in' };
       pvcRetryAttempt = 0;
       schedulePendingPvcFlush(pvcRetryDelay(error));
       return { ok: true, counted: false, pending: true, reason: 'pending_retry' };

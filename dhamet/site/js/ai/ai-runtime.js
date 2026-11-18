@@ -12,6 +12,12 @@
     return new Error('ai_worker_cancelled');
   }
 
+  // "No usable worker" is not a cancellation: nothing was withdrawn, there is
+  // simply no worker to ask, so the engine's local analysis must answer.
+  function unavailableError() {
+    return new Error('ai_worker_unavailable');
+  }
+
   function createFallbackBridge() {
     return Object.freeze({
       canUse: function () { return false; },
@@ -46,7 +52,7 @@
     const fallbackFn = typeof fallback === 'function' ? fallback : async function () { return null; };
 
     async function runWorkerOnce() {
-      if (!canUseWorker(bridge)) throw cancelledError();
+      if (!canUseWorker(bridge)) throw unavailableError();
       const fn = bridge && bridge[methodName];
       if (typeof fn !== 'function') throw new Error('ai_worker_method_unavailable');
       const value = await fn.apply(bridge, params);
@@ -62,6 +68,7 @@
       // worker on mobile. Terminate that worker and use the bounded local
       // fallback supplied by the engine so the match can continue.
       if (code === 'ai_worker_cancelled') throw error;
+      if (code === 'ai_worker_unavailable') return await fallbackFn.apply(null, params);
       if (code === 'ai_worker_timeout') {
         cancelWorker(bridge);
         return await fallbackFn.apply(null, params);

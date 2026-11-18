@@ -2386,13 +2386,22 @@
     }
 
     async function pickSouflaDecision(pending) {
-      return DhametAIRuntime.callWorkerWithRetry(
-        bridge,
-        'pickSouflaDecision',
-        [pending],
-        async function () { return analyzePenalty(boundedLocalState(), pending); },
-        { accept: (value) => !!value },
-      );
+      try {
+        return await DhametAIRuntime.callWorkerWithRetry(
+          bridge,
+          'pickSouflaDecision',
+          [pending],
+          async function () { return analyzePenalty(boundedLocalState(), pending); },
+          { accept: (value) => !!value },
+        );
+      } catch (error) {
+        if (error && error.message === 'ai_worker_cancelled') throw error;
+        // Same guarantee as requestAnalysis: the pending penalty is always
+        // resolvable. Every listed option is legal by construction.
+        const option = pending && Array.isArray(pending.options) ? pending.options[0] : null;
+        if (option) return { ...option, computerAnalysis: { engine: ENGINE_VERSION, emergencyFallback: true } };
+        throw error;
+      }
     }
 
     function isThinking() {

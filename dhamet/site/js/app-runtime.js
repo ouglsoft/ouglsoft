@@ -102,11 +102,32 @@ if (isPhoneLike()) {
 
 if (!window.__zamatRuntimeDiagnosticsBound) {
   window.__zamatRuntimeDiagnosticsBound = true;
+
+  // Unexpected errors are also sent to analytics as an "exception" event so that
+  // failures on real devices become visible. Each distinct error is sent once and a
+  // page sends at most five; only a short description (no address, no query string)
+  // leaves the device.
+  var reportedExceptions = Object.create(null);
+  var reportedExceptionCount = 0;
+  var reportException = function (kind, text, file, line) {
+    try {
+      var name = String(file || "").split("?")[0].split("/").pop();
+      var description = (kind + ": " + String(text || "unknown") + (name ? " @ " + name + ":" + (line | 0) : "")).slice(0, 150);
+      if (reportedExceptions[description] || reportedExceptionCount >= 5) return;
+      reportedExceptions[description] = true;
+      reportedExceptionCount += 1;
+      if (typeof window.gtag === "function") window.gtag("event", "exception", { description: description, fatal: false });
+    } catch (_) {}
+  };
+
   window.addEventListener('error', function (event) {
     try { console.error('[zamat:runtime-error]', event && event.message || 'unknown', event && event.filename || '', event && event.lineno || 0); } catch (_) {}
+    reportException("error", event && event.message, event && event.filename, event && event.lineno);
   });
   window.addEventListener('unhandledrejection', function (event) {
-    try { console.error('[zamat:unhandled-rejection]', event && event.reason && (event.reason.message || String(event.reason)) || 'unknown'); } catch (_) {}
+    var reason = event && event.reason && (event.reason.message || String(event.reason)) || 'unknown';
+    try { console.error('[zamat:unhandled-rejection]', reason); } catch (_) {}
+    reportException("rejection", reason);
   });
 }
 

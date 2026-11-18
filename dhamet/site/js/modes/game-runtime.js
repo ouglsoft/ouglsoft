@@ -46,8 +46,7 @@ const BOT = DhametRulesShared.BOT;
 
 const __IN_WORKER =
   typeof DedicatedWorkerGlobalScope !== "undefined" &&
-  typeof self !== "undefined" &&
-  self instanceof DedicatedWorkerGlobalScope;
+  globalThis instanceof DedicatedWorkerGlobalScope;
 
 function isOnlineFlippedView() {
   return !!(window.Online && window.Online.isActive && window.Online.mySide === TOP);
@@ -76,8 +75,8 @@ const APP_BASE_PATH = (() => {
   try {
     try {
       const ov =
-        typeof self !== "undefined" && self && typeof self.__APP_BASE_PATH_OVERRIDE === "string"
-          ? self.__APP_BASE_PATH_OVERRIDE
+        typeof globalThis.__APP_BASE_PATH_OVERRIDE === "string"
+          ? globalThis.__APP_BASE_PATH_OVERRIDE
           : "";
       if (ov) return ov;
     } catch {}
@@ -217,11 +216,11 @@ try {
       owner: "js/modes/game-runtime.js",
       residual: true,
     });
-  } else if (typeof self !== "undefined") {
-    self.Game = Game;
-    self.AI_LEVEL_ORDER = AI_LEVEL_ORDER;
-    self.AI_LEVEL_CONFIGS = AI_LEVEL_CONFIGS;
-    self.DhametGameRuntime = Object.freeze({
+  } else {
+    globalThis.Game = Game;
+    globalThis.AI_LEVEL_ORDER = AI_LEVEL_ORDER;
+    globalThis.AI_LEVEL_CONFIGS = AI_LEVEL_CONFIGS;
+    globalThis.DhametGameRuntime = Object.freeze({
       version: "game-runtime-v1",
       owner: "js/modes/game-runtime.js",
       residual: true,
@@ -735,8 +734,39 @@ function hasUnresolvedSoufla() {
   return !!(!Game._souflaApplying && (Game.awaitingPenalty || Game.souflaPending));
 }
 
+// While a soufla right exists, claimable or already being decided, the
+// position is not final: no result may be read from it.
+function souflaBlocksResult() {
+  return hasUnresolvedSoufla() || !!(!Game._souflaApplying && Game.availableSouflaForHuman);
+}
+
+// Starting a move gives a claimable soufla up and settles the position the
+// right was attached to: in local play a result is read from it before the
+// move is played. Online, the server settles it when it receives the move.
+function endsOnSouflaWaiver() {
+  if (window.Online && window.Online.isActive) return false;
+  if (!expireUnclaimedSouflaOnMoveStart()) return false;
+  Turn.start();
+  return !!Game.gameOver;
+}
+
 const Turn = {
   ctx: null,
+
+  // The context of a turn that starts from the current position: the side to
+  // move, its longest captures, and the rollback snapshot of the turn start.
+  buildContext() {
+    const { longestByPiece, Lmax, candidates } = computeLongestForPlayer(Game.player);
+    return {
+      longestByPiece,
+      Lmax,
+      candidates,
+      startedFrom: null,
+      capturesDone: 0,
+      historyPushed: false,
+      snapshot: snapshotState({ includeTurnCtx: false }),
+    };
+  },
 
   start() {
     const promotionQueue = normalizeDeferredPromotionQueue();
@@ -765,17 +795,7 @@ const Turn = {
       return;
     }
 
-    const { longestByPiece, Lmax, candidates } = computeLongestForPlayer(Game.player);
-
-    this.ctx = {
-      longestByPiece,
-      Lmax,
-      candidates,
-      startedFrom: null,
-      capturesDone: 0,
-      historyPushed: false,
-      snapshot: snapshotState({ includeTurnCtx: false }),
-    };
+    this.ctx = this.buildContext();
     try {
       if (typeof Visual !== "undefined" && Visual && typeof Visual.markTurnBoundary === "function")
         Visual.markTurnBoundary();
@@ -1151,7 +1171,12 @@ function restoreSnapshot(snap, opts) {
   Game.availableSouflaForHuman = restoreSouflaPending(snap.availableSouflaForHuman);
 
   try {
-    if (snap.turnCtx && typeof Turn !== "undefined" && Turn) {
+    if (!snap.turnCtx && typeof Turn !== "undefined" && Turn) {
+      // A snapshot without a turn context (an older save): rebuild it from the
+      // restored position when a turn can start there, otherwise leave none so
+      // that the next move starts one. The previous game's context never stays.
+      Turn.ctx = Game.inChain || hasUnresolvedSoufla() ? null : Turn.buildContext();
+    } else if (snap.turnCtx && typeof Turn !== "undefined" && Turn) {
       const tc = snap.turnCtx || {};
       Turn.ctx = {
         longestByPiece: new Map(Array.isArray(tc.longestByPiece) ? tc.longestByPiece : []),
@@ -1412,6 +1437,7 @@ const SessionGame = (() => {
           shouldSkipSave: () => !_isPvCSession(),
           isGameOver: () => !!Game.gameOver,
           persistGameOver: true,
+          onSaveFailed: () => showUiNotice(t("log.save.failed")),
         })
       : null;
 
@@ -1765,7 +1791,7 @@ function checkEndConditions() {
   const outcome = DhametTurnResolutionShared.outcomeAfterResolution(
     Game.board,
     Game.player,
-    hasUnresolvedSoufla(),
+    souflaBlocksResult(),
   );
   if (!outcome || outcome.status === DhametRulesShared.RESULT_ONGOING) return;
 
@@ -1781,7 +1807,6 @@ function checkEndConditions() {
     });
   } catch {}
   try { SessionGame.saveNow(); } catch {}
-  try { UI.showGameOverModal?.(Game.winner); } catch {}
   try {
     Promise.resolve(
       PvCResultRecorder.finalizeAndSubmit({
@@ -1792,6 +1817,9 @@ function checkEndConditions() {
       try { PvCResultRecorder.startNewGame(); } catch {}
     });
   } catch {}
+  // Shown last and unguarded: the result is already queued, and a failure to
+  // draw the dialog must surface instead of being swallowed.
+  UI.showGameOverModal?.(Game.winner);
 }
 
 function scheduleForcedOpeningAutoIfNeeded() {
@@ -2397,18 +2425,17 @@ if (typeof window !== "undefined") window.AI = AI;
           return _plainSide(side);
         };
 
-        const _isSelfActor = (actor) => {
-          try {
-            if (window.Online && window.Online.isActive && window.Online.isSpectator) return false;
-          } catch (_) {}
-          const normalized = _normalizeName(actor);
-          const you = _normalizeName(_t("players.you"));
-          return !!normalized && !!you && normalized.localeCompare(you, undefined, { sensitivity: "accent" }) === 0;
+        // Whether a side is the local player's is decided by the side id, never by
+        // comparing displayed names or translated words.
+        const _isSelfSide = (side) => {
+          if (side !== TOP && side !== BOT) return false;
+          if (window.Online && window.Online.isActive) return !window.Online.isSpectator && side === window.Online.mySide;
+          return side === humanSide();
         };
 
         const _actorMessage = (ev, genericKey, selfKey, vars) => {
           const actor = _normalizeName(ev.actor || _actorFromSide(ev.side));
-          const key = _isSelfActor(actor) && selfKey ? selfKey : genericKey;
+          const key = _isSelfSide(ev.side) && selfKey ? selfKey : genericKey;
           return _t(key, Object.assign({ actor }, vars || {}));
         };
 
@@ -2445,7 +2472,7 @@ if (typeof window !== "undefined") window.AI = AI;
             const from = _isoLtr(_rc(ev.from));
             const to = _isoLtr(_rc(ev.to));
             const n = (ev.captures | 0);
-            const self = _isSelfActor(side);
+            const self = _isSelfSide(ev.side);
             if (n > 0) return _t(self ? "log.turnCaptureSelf" : "log.turnCaptureFmt", { side, from, to, n });
             return _t(self ? "log.turnMoveSelf" : "log.turnMoveFmt", { side, from, to });
           }
@@ -2483,12 +2510,10 @@ if (typeof window !== "undefined") window.AI = AI;
           }
 
           if (ev.kind === "game_result") {
-            const winner = _normalizeName(ev.actor || (ev.winner != null ? _actorFromSide(ev.winner) : ""));
-            if (!winner) return _t("log.gameDraw");
-            if (_isSelfActor(winner)) return _t("log.gameWinnerSelf");
-            const hasSelfSide = _isSelfActor(_actorFromSide(TOP)) || _isSelfActor(_actorFromSide(BOT));
-            if (hasSelfSide) return _t("log.gameLoserSelf");
-            return _t("log.gameWinner", { winner });
+            if (ev.winner !== TOP && ev.winner !== BOT) return _t("log.gameDraw");
+            if (_isSelfSide(ev.winner)) return _t("log.gameWinnerSelf");
+            if (_isSelfSide(TOP) || _isSelfSide(BOT)) return _t("log.gameLoserSelf");
+            return _t("log.gameWinner", { winner: _normalizeName(ev.actor || _actorFromSide(ev.winner)) });
           }
 
           if (ev.kind === "i18n_suffix") {

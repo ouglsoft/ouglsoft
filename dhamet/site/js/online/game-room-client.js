@@ -14,6 +14,36 @@
     try { return JSON.parse(text); } catch (_) { return null; }
   }
 
+  function protocolHeaders() {
+    var headers = { 'content-type': 'application/json' };
+    var live = window.DhametLive;
+    if (live && live.protocolHeader) headers[live.protocolHeader] = String(live.protocol);
+    return headers;
+  }
+
+  // The Worker refuses official game requests from a page of another protocol version
+  // (see DhametLive.protocol). The player reloads; an unsent move waits in the outbox.
+  var reloadPrompted = false;
+  function promptReload() {
+    if (reloadPrompted) return;
+    reloadPrompted = true;
+    var i18n = window.I18N;
+    var modal = window.Modal;
+    if (modal && typeof modal.alert === 'function' && i18n && typeof i18n.text === 'function') {
+      modal.alert({
+        title: i18n.text('errors.versionMismatch.title'),
+        text: i18n.text('errors.versionMismatch.body'),
+        okLabel: i18n.text('errors.versionMismatch.reload'),
+        allowEsc: false,
+        blocking: true,
+        priority: 100,
+        onClick: function () { location.reload(); },
+      });
+    } else {
+      location.reload();
+    }
+  }
+
   function fetchJson(path, payload, options) {
     var opts = options && typeof options === 'object' ? options : {};
     var defaultTimeoutMs = String(path || '').indexOf('/dhamet/api/lobby/') === 0 ? 1600 : 12000;
@@ -26,13 +56,14 @@
     return fetch(path, {
       method: 'POST',
       credentials: 'include',
-      headers: { 'content-type': 'application/json' },
+      headers: protocolHeaders(),
       body: JSON.stringify(payload || {}),
       signal: controller ? controller.signal : undefined,
     }).then(function (res) {
       return res.text().then(function (txt) {
         var data = txt ? safeJson(txt) : {};
         if (!res.ok || (data && data.ok === false)) {
+          if (data && data.error === 'app/version-mismatch') promptReload();
           try {
             if (window.DhametBackupRoute && typeof window.DhametBackupRoute.handleDirective === 'function') {
               window.DhametBackupRoute.handleDirective(data || {});

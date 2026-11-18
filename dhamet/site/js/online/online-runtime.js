@@ -1755,6 +1755,11 @@
           try { this._clearPostMatchSession(); } catch (e) {}
           try { this._stopOpponentAbsenceWatcher && this._stopOpponentAbsenceWatcher(); } catch (e) {}
           try { this._markLocalCommitSettled && this._markLocalCommitSettled(); } catch (e) {}
+          this._pendingSteps = [];
+          // The result is shown next to the position it was decided on: the
+          // official final board is installed before the end screen opens, so
+          // the loser never reads "no pieces left" over a board that still has some.
+          this._installFinalBoard(info.game);
           try { this._unbindGameLiveSubscription && this._unbindGameLiveSubscription(); } catch (e) {}
           try { this._teardownRoomComms && this._teardownRoomComms(); } catch (e) {}
           try { this._teardownGamePresence && this._teardownGamePresence(); } catch (e) {}
@@ -1785,6 +1790,17 @@
 
           try { showOnlineNotice(presentation.text, { allowSpectator: true }); } catch (e) {}
           return true;
+        },
+
+    _installFinalBoard: function (game) {
+          const snap = game && game.state ? game.state.snapshot : null;
+          if (!snap || snap.inChain) return false;
+          try {
+            return this._applyRemoteState(game, { skipFx: false }) !== false;
+          } catch (error) {
+            try { Logger.warn("official_final_board_failed", { gameId: this.gameId, error: String(error && (error.message || error)) }); } catch (_) {}
+            return false;
+          }
         },
 
     _getOpponentInfoFromData: function (data) {
@@ -4969,10 +4985,10 @@
             activeFlight.clientMoveId === String(this._moveCommitClientId)
           ) return activeFlight.promise;
           const epochToken = window.DhametMatchCoordinator ? DhametMatchCoordinator.token() : null;
-          const taskIsCurrent = function () {
+          const taskIsCurrent = () => {
             return !!(
-              self.isActive &&
-              String(self.gameId || "") === expectedGameId &&
+              this.isActive &&
+              String(this.gameId || "") === expectedGameId &&
               (!epochToken || DhametMatchCoordinator.isCurrent(epochToken))
             );
           };
@@ -5067,38 +5083,39 @@
           if (!payload) return;
 
           try { if (!this._awaitingLocalCommit) this._beginLocalCommitWait(); } catch (e) {}
+          // The whole move, including the capture chain played so far, is kept
+          // in the outbox until the server confirms it. Only then is the local
+          // draft dropped, so a lost request never loses the chain.
+          this._savePendingMoveOutbox({
+            gameId: expectedGameId,
+            clientMoveId: this._moveCommitClientId,
+            baseMoveIndex: this._moveCommitBaseIndex,
+            expectedMoveIndex: (Number(this._moveCommitBaseIndex || 0) || 0) + 1,
+            steps: steps,
+            by: move.by,
+            createdAt: nowTs(),
+            attempts: attempt,
+            payload: payload,
+          });
           this._pendingSteps = [];
           this._cachedSouflaPlain = null;
           try { this._clearCaptureDraft && this._clearCaptureDraft(); } catch (e) {}
-          try {
-            self._savePendingMoveOutbox && self._savePendingMoveOutbox({
-              gameId: expectedGameId,
-              clientMoveId: self._moveCommitClientId,
-              baseMoveIndex: self._moveCommitBaseIndex,
-              expectedMoveIndex: (Number(self._moveCommitBaseIndex || 0) || 0) + 1,
-              steps: steps,
-              by: move.by,
-              createdAt: nowTs(),
-              attempts: attempt,
-              payload: payload,
-            });
-          } catch (e) {}
 
-          const retryOrFail = function (err, serverGame, response) {
+          const retryOrFail = (err, serverGame, response) => {
             if (!taskIsCurrent()) return;
-            const clientMoveId = String(self._moveCommitClientId || (payload && payload.clientMoveId) || "");
+            const clientMoveId = String(this._moveCommitClientId || (payload && payload.clientMoveId) || "");
             const remoteMi = Number((serverGame && serverGame.moveIndex) || 0) || 0;
-            const appliedById = !!(serverGame && self._officialGameHasClientMove(serverGame, clientMoveId));
+            const appliedById = !!(serverGame && this._officialGameHasClientMove(serverGame, clientMoveId));
             if (appliedById) {
               try {
-                self._ingestOfficialGame(serverGame, {
+                this._ingestOfficialGame(serverGame, {
                   source: "move-already-applied",
                   gameId: expectedGameId,
                   version: serverGame.__transportVersion,
                   rejectDuplicate: false,
                 });
               } catch (e) {}
-              try { self._markLocalCommitSettled(); } catch (e) {}
+              try { this._markLocalCommitSettled(); } catch (e) {}
               return;
             }
 
@@ -5107,7 +5124,7 @@
               (err && (isPermissionDenied(err) || isNonRetriableGameCommitError(err)))
             );
             if (logicalRejection) {
-              self._moveRetryGaveUp = true;
+              this._moveRetryGaveUp = true;
               try {
                 const details = err ? gameCommitErrorDetails(err) : {
                   status: 200,
@@ -5118,7 +5135,7 @@
                 Logger.warn("official_move_rejected", {
                   gameId: expectedGameId,
                   clientMoveId,
-                  baseMoveIndex: Number(self._moveCommitBaseIndex || 0) || 0,
+                  baseMoveIndex: Number(this._moveCommitBaseIndex || 0) || 0,
                   officialMoveIndex: remoteMi,
                   status: details.status,
                   code: details.code,
@@ -5127,7 +5144,7 @@
                 });
               } catch (e) {}
               try {
-                if (serverGame) self._ingestOfficialGame(serverGame, {
+                if (serverGame) this._ingestOfficialGame(serverGame, {
                   source: "move-commit-rejected",
                   gameId: expectedGameId,
                   version: serverGame.__transportVersion,
@@ -5136,50 +5153,50 @@
                   suppressMoveConflictNotice: true,
                 });
               } catch (e) {}
-              self._pendingSteps = [];
-              self._cachedSouflaPlain = null;
-              try { self._markLocalCommitSettled(); } catch (e) {}
+              this._pendingSteps = [];
+              this._cachedSouflaPlain = null;
+              try { this._markLocalCommitSettled(); } catch (e) {}
               try { if (err) handleDbError(err, null, { ctx: "move.gameRoom" }); } catch (e) {}
               try { showOnlineNotice(window.I18N.translateArgs("status.moveSendFail")); } catch (e) {}
               if (!serverGame) {
-                try { self._forceResync("move-rejected-without-state"); } catch (e) {}
+                try { this._forceResync("move-rejected-without-state"); } catch (e) {}
               }
               return;
             }
 
             const retryable = !!(err && isRetriableGameCommitError(err));
             if (!retryable) {
-              self._moveRetryGaveUp = true;
+              this._moveRetryGaveUp = true;
               try { if (err) handleDbError(err, null, { ctx: "move.gameRoom" }); } catch (e) {}
               try { showOnlineNotice(window.I18N.translateArgs("status.moveSendFail")); } catch (e) {}
-              try { self._forceResync("move-send-unknown-failure"); } catch (e) {}
+              try { this._forceResync("move-send-unknown-failure"); } catch (e) {}
               return;
             }
 
-            self._pendingSteps = steps.concat(self._pendingSteps || []);
+            this._pendingSteps = steps.concat(this._pendingSteps || []);
             const MAX_MOVE_SEND_RETRIES = 3;
             if (attempt >= MAX_MOVE_SEND_RETRIES) {
-              self._moveRetryGaveUp = true;
+              this._moveRetryGaveUp = true;
               try {
-                const outbox = self._readPendingMoveOutbox && self._readPendingMoveOutbox();
+                const outbox = this._readPendingMoveOutbox && this._readPendingMoveOutbox();
                 if (outbox) {
                   outbox.retryGaveUpAt = nowTs();
                   outbox.attempts = attempt;
-                  self._savePendingMoveOutbox(outbox);
+                  this._savePendingMoveOutbox(outbox);
                 }
               } catch (e) {}
               try { if (err) handleDbError(err, null, { ctx: "move.gameRoom" }); } catch (e) {}
               try { showOnlineNotice(window.I18N.translateArgs("status.moveSendFail")); } catch (e) {}
-              try { self._forceResync("move-send-gave-up"); } catch (e) {}
+              try { this._forceResync("move-send-gave-up"); } catch (e) {}
               return;
             }
             try {
-              if (!self._moveRetryNotified) {
-                self._moveRetryNotified = true;
+              if (!this._moveRetryNotified) {
+                this._moveRetryNotified = true;
                 showOnlineNotice(window.I18N.translateArgs("status.moveSendFail"));
               }
             } catch (e) {}
-            try { self._scheduleMoveRetry(_from, _to, nextTurn); } catch (e) {}
+            try { this._scheduleMoveRetry(_from, _to, nextTurn); } catch (e) {}
           };
 
           if (!window.DhametGameRoomClient || typeof window.DhametGameRoomClient.commitMove !== "function") {
@@ -5191,7 +5208,7 @@
           }
 
           return this._commitMoveRequest(payload, expectedGameId, this._moveCommitClientId)
-            .then(function (res) {
+            .then((res) => {
               if (!taskIsCurrent()) return;
               const g = res && res.game ? res.game : null;
               if (!res || res.committed === false) {
@@ -5199,19 +5216,20 @@
                 return;
               }
               try {
-                if (g) self._ingestOfficialGame(g, {
+                // Same ingestion gate as the WebSocket event: whichever of the
+                // two arrives second is recognised as a duplicate and dropped.
+                if (g) this._ingestOfficialGame(g, {
                   source: "move-commit",
                   gameId: expectedGameId,
                   version: res.version,
-                  rejectDuplicate: false,
                 });
               } catch (e) {}
-              try { if (res.moveIndex) self.moveIndex = Number(res.moveIndex) || self.moveIndex || 0; } catch (e) {}
-              try { self._clearPendingMoveOutbox && self._clearPendingMoveOutbox(); } catch (e) {}
-              try { self._markLocalCommitSettled(); } catch (e) {}
-              try { self._touchRoomListActivity(true); } catch (e) {}
+              try { if (res.moveIndex) this.moveIndex = Number(res.moveIndex) || this.moveIndex || 0; } catch (e) {}
+              try { this._clearPendingMoveOutbox && this._clearPendingMoveOutbox(); } catch (e) {}
+              try { this._markLocalCommitSettled(); } catch (e) {}
+              try { this._touchRoomListActivity(true); } catch (e) {}
             })
-            .catch(function (err) {
+            .catch((err) => {
               retryOrFail(err, err && err.data && err.data.game ? err.data.game : null, null);
             });
         },
@@ -5352,6 +5370,14 @@
           } catch (e) {}
         },
 
+    // The request is gone (a new move was played, or it was answered): the
+    // answer prompt shown to the responder must not stay on screen.
+    _closeUndoPromptModal: function () {
+          try {
+            if (Modal.isOpen() && Modal.getBackdropTag() === "undo-request") Modal.close("state-change");
+          } catch (e) {}
+        },
+
     _closeUndoWaitModal: function () {
           try {
             if (!this._undoWaitOpen) {
@@ -5446,6 +5472,7 @@
           const ur = data && data.undoRequest ? data.undoRequest : null;
           if (!ur) {
             this._closeUndoWaitModal();
+            this._closeUndoPromptModal();
             return;
           }
 
@@ -5495,7 +5522,11 @@
               onSecond: () => {
                 this._respondUndo(false);
               },
+              onClose: () => {
+                try { Modal.clearBackdropTag(); } catch (e) {}
+              },
             });
+            try { Modal.setBackdropTag("undo-request"); } catch (e) {}
             return;
           }
     
@@ -5977,9 +6008,9 @@
           const gid = String(gameId || "").trim();
           return {
             off: function () { return true; },
-            once: async function () {
-              const g = await self._readOfficialGame(gid);
-              return self._makeOfficialGameSnapshot(g);
+            once: async () => {
+              const g = await this._readOfficialGame(gid);
+              return this._makeOfficialGameSnapshot(g);
             },
           };
         },

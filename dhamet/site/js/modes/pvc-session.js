@@ -40,6 +40,74 @@
   }
 
 
+  // A saved game keeps one rollback snapshot per turn. Consecutive snapshots
+  // differ in a few fields (the board, the side to move, the last move), so
+  // they are stored as a first full snapshot followed by deltas, with each
+  // board written as one 81-digit string. The saved size then grows by about
+  // a quarter of what full snapshots cost, and nothing is lost.
+  const HISTORY_FORMAT = 'delta-v1';
+
+  function packBoard(board) {
+    if (!Array.isArray(board) || board.length !== 9) return board;
+    let out = '';
+    for (const row of board) {
+      if (!Array.isArray(row) || row.length !== 9) return board;
+      for (const v of row) {
+        if (!Number.isInteger(v) || v < -2 || v > 2) return board;
+        out += String(v + 2);
+      }
+    }
+    return out;
+  }
+
+  function unpackBoard(value) {
+    if (typeof value !== 'string' || value.length !== 81) return value;
+    const rows = [];
+    for (let r = 0; r < 9; r += 1) {
+      const row = [];
+      for (let c = 0; c < 9; c += 1) row.push(Number(value[r * 9 + c]) - 2);
+      rows.push(row);
+    }
+    return rows;
+  }
+
+  function packHistory(history) {
+    const out = [];
+    let prev = null;
+    for (const snap of history) {
+      const cur = Object.assign({}, snap, { board: packBoard(snap.board) });
+      if (!prev) {
+        out.push(cur);
+      } else {
+        const set = {};
+        for (const k of Object.keys(cur)) {
+          if (JSON.stringify(cur[k]) !== JSON.stringify(prev[k])) set[k] = cur[k];
+        }
+        const unset = Object.keys(prev).filter((k) => !Object.prototype.hasOwnProperty.call(cur, k));
+        out.push(unset.length ? { set, unset } : { set });
+      }
+      prev = cur;
+    }
+    return out;
+  }
+
+  function unpackHistory(packed) {
+    const out = [];
+    let prev = null;
+    for (const entry of packed) {
+      let cur;
+      if (!prev) {
+        cur = Object.assign({}, entry);
+      } else {
+        cur = Object.assign({}, prev, entry.set);
+        for (const k of entry.unset || []) delete cur[k];
+      }
+      prev = cur;
+      out.push(Object.assign({}, cur, { board: unpackBoard(cur.board) }));
+    }
+    return out;
+  }
+
   function normalizeSnapshot(snapshot) {
     if (State && typeof State.normalizeSnapshot === 'function') return State.normalizeSnapshot(snapshot);
     const s = safeObject(snapshot);
@@ -54,7 +122,7 @@
     return snapshot ? { snapshot, deferredPromotion: null, capturedOrder: [] } : null;
   }
 
-  function normalizeSaveRecord(input) {
+  function normalizeRecordCore(input) {
     const src = safeObject(input);
     const snapshot = normalizeSnapshot(src.snapshot || (src.sharedState && src.sharedState.snapshot));
     if (!snapshot) return null;
@@ -83,18 +151,35 @@
     out.gameOver = !!src.gameOver;
     out.winner = src.winner == null ? null : Number(src.winner) || 0;
     out.terminationReason = src.terminationReason == null ? null : String(src.terminationReason).slice(0, 120);
-    out.ts = Number(src.ts || Date.now ? Date.now() : new Date().getTime()) || 0;
+    out.ts = Number(src.ts) || Date.now();
     return out;
   }
 
+  // The record as it is stored: the rollback history is packed. Idempotent.
+  function normalizeSaveRecord(input) {
+    const out = normalizeRecordCore(input);
+    if (!out) return null;
+    if (Array.isArray(out.history) && out.historyFormat !== HISTORY_FORMAT) {
+      out.history = packHistory(out.history);
+      out.historyFormat = HISTORY_FORMAT;
+    }
+    return out;
+  }
+
+  // The record as the game uses it: the rollback history is full snapshots,
+  // whether the stored one was packed or an older save with full snapshots.
   function validateRestoreRecord(input, options) {
     const src = safeObject(input);
     const opts = options && typeof options === 'object' ? options : {};
     if (!src || (src.gameOver && !opts.allowGameOver)) return null;
     const snapshot = normalizeSnapshot(src.snapshot || (src.sharedState && src.sharedState.snapshot));
     if (!snapshot) return null;
-    const out = normalizeSaveRecord(Object.assign({}, src, { snapshot }));
+    const out = normalizeRecordCore(Object.assign({}, src, { snapshot }));
     if (!out) return null;
+    if (Array.isArray(out.history) && out.historyFormat === HISTORY_FORMAT) {
+      out.history = unpackHistory(out.history);
+    }
+    delete out.historyFormat;
     return out.gameOver && !opts.allowGameOver ? null : out;
   }
 
@@ -119,21 +204,36 @@
       try { if (storage) storage.removeItem(key()); } catch (_) {}
     }
 
+    // The player is told once when saving starts failing (full storage or a
+    // record over the limit), not on every move, and again only after a save
+    // has succeeded in between.
+    let failing = false;
+
     function saveNow() {
+      if (!isPvC(config.context || null)) return;
+      if (typeof config.shouldSkipSave === 'function' && config.shouldSkipSave()) return;
+      if (typeof config.isGameOver === 'function' && config.isGameOver() && !config.persistGameOver) {
+        clear();
+        return;
+      }
+      if (!storage || typeof config.capture !== 'function') return;
+      let failure = null;
       try {
-        if (!isPvC(config.context || null)) return;
-        if (typeof config.shouldSkipSave === 'function' && config.shouldSkipSave()) return;
-        if (typeof config.isGameOver === 'function' && config.isGameOver() && !config.persistGameOver) {
-          clear();
-          return;
-        }
-        if (!storage || typeof config.capture !== 'function') return;
         const data = normalizeSaveRecord(config.capture());
         if (!data) return;
         const raw = JSON.stringify(data);
-        if (raw && raw.length / 1024 > maxKb) return;
-        storage.setItem(key(), raw);
-      } catch (_) {}
+        if (raw.length / 1024 > maxKb) failure = 'too-large';
+        else storage.setItem(key(), raw);
+      } catch (err) {
+        failure = err && err.name ? err.name : 'storage-error';
+      }
+      if (!failure) {
+        failing = false;
+        return;
+      }
+      if (failing) return;
+      failing = true;
+      if (typeof config.onSaveFailed === 'function') config.onSaveFailed(failure);
     }
 
     function saveSoon() {
@@ -188,6 +288,8 @@
     validateRestoreRecord,
     captureFromRuntime,
     createStorageAdapter,
+    packHistory,
+    unpackHistory,
   });
 
   root.DhametPvCSession = api;

@@ -1123,7 +1123,6 @@ const Input = {
             body: `<div>${t("modals.forcedOpening.body")}</div>`,
             okLabel: t("actions.close"),
             okClassName: "primary",
-            onClick: () => UI.showSettingsModal(prefill),
           });
           return;
         }
@@ -1271,6 +1270,12 @@ const Input = {
         return;
       }
       const [isCap, jumped] = classifyCapture(fromIdx, toIdx);
+      if (endsOnSouflaWaiver()) {
+        Input.selected = null;
+        Visual.setHighlightCells([]);
+        Visual.draw();
+        return;
+      }
       if (isCap) {
         if (!Turn.ctx) Turn.start();
         Turn.beginCapture(fromIdx);
@@ -1378,8 +1383,6 @@ function endKillPressed() {
     return;
   }
 
-  Game.killTimer.stop();
-
   if (isForcedOpeningActive()) {
     const startedFrom =
       Turn.ctx && Turn.ctx.startedFrom != null
@@ -1431,6 +1434,9 @@ function endKillPressed() {
     rememberForcedOpeningExchange(info);
     completeForcedOpeningPly();
   }
+
+  // The capture clock stops only once ending the chain has been accepted.
+  Game.killTimer.stop();
 
   maybeQueueDeferredPromotion(Game.chainPos ?? Game.lastMovedTo);
 
@@ -1655,11 +1661,11 @@ const UI = {
     if (reason === "no_pieces") {
       add(loserSide === humanSide
         ? t("online.endPresentation.reason.selfNoPieces")
-        : formatTpl(t("modals.gameOver.reason.noPieces"), { player: loserName }));
+        : t("modals.gameOver.reason.noPieces", { player: loserName }));
     } else if (reason === "no_legal_moves") {
       add(loserSide === humanSide
         ? t("online.endPresentation.reason.selfNoLegalMoves")
-        : formatTpl(t("modals.gameOver.reason.noLegalMoves"), { player: loserName }));
+        : t("modals.gameOver.reason.noLegalMoves", { player: loserName }));
     } else if (reason === "one_king_each") {
       add(t("modals.gameOver.reason.oneKingEach"));
     }
@@ -2112,7 +2118,6 @@ function performLocalUndo(options) {
       title: t("modals.notice"),
       body: `<div>${t("ui.noUndo")}</div>`,
       okLabel: t("actions.close"),
-      onClick: () => UI.showSettingsModal(prefill),
     });
     return false;
   }
@@ -2282,7 +2287,12 @@ function saveGame() {
   });
   if (!data || data.gameOver) return false;
 
-  localStorage.setItem(MANUAL_PVC_SAVE_KEY, JSON.stringify(data));
+  try {
+    localStorage.setItem(MANUAL_PVC_SAVE_KEY, JSON.stringify(data));
+  } catch {
+    showUiNotice(t("log.save.failed"), t("buttons.save"));
+    return false;
+  }
 
   Modal.alert({
     title: t("buttons.save"),

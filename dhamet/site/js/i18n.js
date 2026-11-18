@@ -285,6 +285,7 @@
       "save": {
         "none": "لا توجد مباراة محفوظة لاستئنافها.",
         "done": "تم حفظ المباراة الحالية.",
+        "failed": "تعذّر حفظ المباراة على هذا الجهاز (التخزين ممتلئ أو المباراة أطول من المسموح). قد يضيع تقدمك إذا حدّثت الصفحة أو أغلقتها.",
         "confirm": "سيؤدي ذلك إلى إنهاء المباراة الحالية وفتح المباراة المحفوظة. هل تريد المتابعة؟",
         "resumed": "تم استئناف المباراة المحفوظة.",
         "error": "تعذر استئناف المباراة المحفوظة."
@@ -556,6 +557,11 @@
       }
     },
     "errors": {
+      "versionMismatch": {
+        "title": "تم تحديث التطبيق",
+        "body": "نُشر إصدار جديد من ظامت ولا يمكن إكمال هذه العملية بالنسخة المفتوحة. أعد تحميل الصفحة؛ مباراتك محفوظة وستُستأنف.",
+        "reload": "إعادة التحميل"
+      },
       "nick": {
         "required": "الاسم المستعار مطلوب.",
         "tooShort": "الاسم المستعار قصير جدًا.",
@@ -849,6 +855,7 @@
       "save": {
         "none": "There is no saved match to resume.",
         "done": "The current match was saved.",
+        "failed": "This match could not be saved on this device (storage is full or the match is too long). Refreshing or closing the page may lose your progress.",
         "confirm": "This will end the current match and open the saved one. Continue?",
         "resumed": "The saved match was resumed.",
         "error": "The saved match could not be resumed."
@@ -1120,6 +1127,11 @@
       }
     },
     "errors": {
+      "versionMismatch": {
+        "title": "The app was updated",
+        "body": "A new version of Dhamet has been published and this action cannot be completed with the open copy. Reload the page; your match is kept and will resume.",
+        "reload": "Reload"
+      },
       "nick": {
         "required": "Nickname is required.",
         "tooShort": "Nickname is too short.",
@@ -1413,6 +1425,7 @@
       "save": {
         "none": "Aucune partie enregistrée ne peut être reprise.",
         "done": "La partie en cours a été enregistrée.",
+        "failed": "Impossible d’enregistrer cette partie sur cet appareil (stockage plein ou partie trop longue). Actualiser ou fermer la page peut faire perdre votre progression.",
         "confirm": "La partie en cours sera terminée et la partie enregistrée sera ouverte. Continuer ?",
         "resumed": "La partie enregistrée a été reprise.",
         "error": "La partie enregistrée n’a pas pu être reprise."
@@ -1684,6 +1697,11 @@
       }
     },
     "errors": {
+      "versionMismatch": {
+        "title": "L'application a été mise à jour",
+        "body": "Une nouvelle version de Dhamet a été publiée et cette action ne peut pas être terminée avec la page ouverte. Rechargez la page ; votre partie est conservée et reprendra.",
+        "reload": "Recharger"
+      },
       "nick": {
         "required": "Le pseudo est requis.",
         "tooShort": "Le pseudo est trop court.",

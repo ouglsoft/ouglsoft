@@ -104,19 +104,6 @@
     return fallbackKey;
   }
 
-  function stopRefreshTimer() {
-    if (_dashRefreshTimer) {
-      clearInterval(_dashRefreshTimer);
-      _dashRefreshTimer = null;
-    }
-    _detachProfileListener();
-  }
-
-  function restartRefreshTimer(uid) {
-    if (!uid) return;
-    load(uid);
-  }
-
   let _allUserIconsPromise = null;
 
   function _iconNumber(path) {
@@ -143,7 +130,6 @@
     return Number.isFinite(n) ? n : null;
   }
 
-  let _dashRefreshTimer = null;
   let _dashDeleting = false;
 
   function fmt(v) {
@@ -562,7 +548,6 @@
 
           busy = true;
           _dashDeleting = true;
-          stopRefreshTimer();
           Modal.setButtonsDisabled(true);
 
           if (usesPasswordProvider) {
@@ -591,7 +576,7 @@
           Modal.setButtonsDisabled(false);
           busy = false;
           _dashDeleting = false;
-          restartRefreshTimer(session && session.uid);
+          if (session && session.uid) load(session.uid);
         }
       },
     });
@@ -649,9 +634,6 @@
     } catch (_) {}
     bind(s);
     load(s.uid);
-    window.addEventListener("beforeunload", function () {
-      stopRefreshTimer();
-    }, { once: true });
   }
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);

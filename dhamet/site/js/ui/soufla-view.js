@@ -21,6 +21,7 @@
       boardIdxFromClient: deps.boardIdxFromClient || root.boardIdxFromClient || (root.DhametBoardGeometry && root.DhametBoardGeometry.clientToBoardIndex),
       rcStr: deps.rcStr || root.rcStr || ((idx) => { const n = Number(idx); return Number.isFinite(n) ? `${Math.floor(n / 9)}.${n % 9}` : ""; }),
       applySouflaDecision: deps.applySouflaDecision || root.applySouflaDecision,
+      Rules: deps.Rules || root.DhametRules,
       UI: deps.UI || root.UI,
     };
   }
@@ -37,6 +38,7 @@
     const valueAt = d.valueAt;
     const boardIdxFromClient = d.boardIdxFromClient;
     const applySouflaDecision = d.applySouflaDecision;
+    const Rules = d.Rules;
     const UI = d.UI;
 
     if (!pending) return;
@@ -225,23 +227,12 @@
 
     function pickOffenderForClickedIdx(clickedIdx) {
       // The violation belongs to the piece, not to the square it occupied when
-      // the capture was ignored. Resolve every recorded offender to the cell
-      // currently occupied by that same piece after the offending move.
+      // the capture was ignored: compare the click with the cell that piece
+      // occupies now, as resolved by the shared rules.
       for (const offenderIdx of offenderSet) {
-        let currentIdx = offenderIdx;
-        try {
-          if (Rules && typeof Rules.resolveOffenderCurrentCell === "function") {
-            const resolved = Rules.resolveOffenderCurrentCell(pending, offenderIdx);
-            if (resolved != null) currentIdx = Number(resolved);
-          } else if (
-            pending.lastPieceIdx != null &&
-            (Number(pending.startedFrom) === Number(offenderIdx) ||
-              Number(pending.lastMoveFrom) === Number(offenderIdx))
-          ) {
-            currentIdx = Number(pending.lastPieceIdx);
-          }
-        } catch {}
-        if (Number(clickedIdx) === Number(currentIdx)) {
+        const resolved = Rules.resolveOffenderCurrentCell(pending, offenderIdx);
+        const currentIdx = resolved != null ? Number(resolved) : Number(offenderIdx);
+        if (Number(clickedIdx) === currentIdx) {
           return { offenderIdx, ringIdx: currentIdx };
         }
       }
