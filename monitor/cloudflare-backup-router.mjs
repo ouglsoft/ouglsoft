@@ -515,6 +515,9 @@ if (shouldDisableMonitor) {
   setGithubOutput('disable_monitor', 'true');
   setGithubOutput('disable_reason', 'capacity-threshold-confirmed');
 }
+// A reading above the threshold that is still waiting for its follow-up confirmations: the
+// workflow runs this script again (after a pause) only while this is "true".
+setGithubOutput('confirmation_pending', forceMode === 'auto' && confirmation && confirmation.state === 'pending' ? 'true' : 'false');
 console.log(JSON.stringify({
   ok: true,
   decision: finalControl.mode || control.mode,
