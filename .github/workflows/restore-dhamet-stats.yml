@@ -1,0 +1,62 @@
+name: Restore Dhamet Results
+
+# Puts a copy made by "Export Dhamet Results" back. It only adds: a player is never removed, and a player
+# already stored is replaced only by a copy that holds more games (or the same games and a newer change).
+# 1. Upload the exported file to the repository as dhamet/restore/dhamet-stats-export.json
+#    (it holds player data: delete it after use).
+# 2. Run this workflow with "apply" unticked and read the report, then run it again with "apply" ticked.
+on:
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: "Tick to really add the results. Unticked, it only reports what would change."
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dhamet-stats-restore
+  cancel-in-progress: false
+
+jobs:
+  restore:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      DHAMET_BACKUP_CONTROL_SECRET: ${{ secrets.DHAMET_BACKUP_CONTROL_SECRET }}
+      DHAMET_API_BASE: ${{ vars.DHAMET_API_BASE || 'https://ouglsoft.com/dhamet/api' }}
+      APPLY: ${{ inputs.apply }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check the secret and the file
+        run: |
+          if [ -z "$DHAMET_BACKUP_CONTROL_SECRET" ]; then
+            echo "::error::The GitHub secret DHAMET_BACKUP_CONTROL_SECRET is not set (it must equal the Cloudflare secret of the same name)."
+            exit 1
+          fi
+          if [ ! -f dhamet/restore/dhamet-stats-export.json ]; then
+            echo "::error::dhamet/restore/dhamet-stats-export.json was not found. Upload the exported file there first."
+            exit 1
+          fi
+
+      - name: Send the file
+        run: |
+          query=""
+          if [ "$APPLY" = "true" ]; then query="?apply=1"; fi
+          status=$(curl -sS -o report.json -w '%{http_code}' --max-time 180 -X POST \
+            -H "x-dhamet-backup-control-secret: $DHAMET_BACKUP_CONTROL_SECRET" \
+            -H "content-type: application/json" \
+            --data-binary @dhamet/restore/dhamet-stats-export.json \
+            "$DHAMET_API_BASE/admin/stats-import$query")
+          echo "HTTP $status"
+          cat report.json
+          echo
+          if [ "$status" != "200" ]; then
+            echo "::error::The import was refused or failed (HTTP $status). Nothing was changed."
+            exit 1
+          fi
+          { echo '### Dhamet results restore'; echo; echo '```json'; cat report.json; echo; echo '```'; } >> "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,71 @@
+name: Export Dhamet Results
+
+# Takes a copy of every player's results, points and ranking out of Cloudflare and keeps it as a file
+# of this run. Run it by hand (Actions > Export Dhamet Results > Run workflow), then download the file from
+# the run page and keep it on your own device: the daily cleanup keeps only the latest run of each workflow.
+on:
+  workflow_dispatch:
+    inputs:
+      include_raw:
+        description: "Also keep the stored data exactly as it is on disk (for diagnosis; larger file)"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dhamet-stats-export
+  cancel-in-progress: false
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      DHAMET_BACKUP_CONTROL_SECRET: ${{ secrets.DHAMET_BACKUP_CONTROL_SECRET }}
+      DHAMET_API_BASE: ${{ vars.DHAMET_API_BASE || 'https://ouglsoft.com/dhamet/api' }}
+      INCLUDE_RAW: ${{ inputs.include_raw }}
+    steps:
+      - name: Check the secret is set
+        run: |
+          if [ -z "$DHAMET_BACKUP_CONTROL_SECRET" ]; then
+            echo "::error::The GitHub secret DHAMET_BACKUP_CONTROL_SECRET is not set (it must equal the Cloudflare secret of the same name)."
+            exit 1
+          fi
+
+      - name: Download the results
+        run: |
+          query=""
+          if [ "$INCLUDE_RAW" = "true" ]; then query="?raw=1"; fi
+          status=$(curl -sS -o dhamet-stats-export.json -w '%{http_code}' --max-time 180 \
+            -H "x-dhamet-backup-control-secret: $DHAMET_BACKUP_CONTROL_SECRET" \
+            "$DHAMET_API_BASE/admin/stats-export$query")
+          echo "HTTP $status"
+          if [ "$status" != "200" ]; then
+            head -c 600 dhamet-stats-export.json || true
+            echo
+            echo "::error::The export was refused or failed (HTTP $status). 401 means the secrets differ or are not set."
+            exit 1
+          fi
+
+      - name: Check the file and show what it holds
+        run: |
+          node --input-type=module -e '
+            import fs from "node:fs";
+            const file = JSON.parse(fs.readFileSync("dhamet-stats-export.json", "utf8"));
+            const c = file && file.counts;
+            if (!file || file.ok !== true || !c) { console.error("::error::The file is not an export."); process.exit(1); }
+            const line = `players with a profile: ${c.profiles}, players in the ranking: ${c.leaderboard}, total points: ${c.points}`;
+            console.log(line);
+            fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `### Dhamet results export\n\n${line}\n\nDownload the file **dhamet-stats-export** below and keep it on your device.\n`);
+            if (!c.profiles && !c.leaderboard) { console.error("::error::The export holds no player. It is not kept as a copy."); process.exit(1); }
+          '
+
+      - name: Keep the file with this run
+        uses: actions/upload-artifact@v4
+        with:
+          name: dhamet-stats-export
+          path: dhamet-stats-export.json
+          retention-days: 30
+          if-no-files-found: error
