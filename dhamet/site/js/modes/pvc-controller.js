@@ -3,7 +3,7 @@
 
   const mode = root.DhametPvCMode || null;
   const match = root.DhametMatchMode || null;
-  const UNDO_RESUME_DELAY_MS = 1200;
+  const UNDO_RESUME_DELAY_MS = 4000;
   let undoResumeTimer = null;
 
   function getGame() {
@@ -93,7 +93,7 @@
     const c = ctxOrDefault(ctx);
     if (!shouldScheduleComputerMove(g, c)) return false;
 
-    const ms = Math.max(250, Math.min(3000, Number(delayMs) || UNDO_RESUME_DELAY_MS));
+    const ms = Math.max(250, Math.min(6000, Number(delayMs) || UNDO_RESUME_DELAY_MS));
     let token = null;
     try {
       token = root.DhametMatchCoordinator && typeof root.DhametMatchCoordinator.token === 'function'

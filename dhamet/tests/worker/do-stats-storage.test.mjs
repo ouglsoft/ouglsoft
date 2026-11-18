@@ -39,7 +39,7 @@ const results = {};
   const storage = new FakeStorage(); const a = await open(storage);
   fill(a, 350); await a._save();
   assert.ok(storage.map.has('statsMeta'));
-  assert.ok(!storage.map.has('statsState'));
+  assert.ok(storage.map.has('statsState'), 'a copy in the older combined form is made for a rollback');
   assert.ok([...storage.map.keys()].filter((k) => k.startsWith('st/profiles/')).length === 350);
   const b = await open(storage);
   assert.deepEqual(statsOf(b), statsOf(a));

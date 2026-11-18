@@ -1197,6 +1197,31 @@ async function backendRouteControlEndpoint(request, env) {
 }
 
 
+// The owner's copy of the results, ranking and players (export), and putting such a copy back (import).
+// Both use the same secret as the backup-route control and are answered 401 without it, which is also
+// the case while that secret is not set.
+async function adminStatsEndpoint(request, env, url, action) {
+  if (!await authorizeBackupControl(request, env)) {
+    return json({ ok: false, error: 'admin/unauthorized' }, 401, { 'cache-control': 'no-store' });
+  }
+  const stub = getRealtimeStub(env, 'global');
+  const headers = { 'content-type': 'application/json', 'x-internal-secret': env.INTERNAL_API_SECRET || '' };
+  let res;
+  if (action === 'export') {
+    const raw = url.searchParams.get('raw') === '1' ? '?raw=1' : '';
+    res = await stub.fetch('https://realtime.internal/api/stats/export' + raw, { method: 'GET', headers });
+  } else {
+    const body = await requestBody(request);
+    res = await stub.fetch('https://realtime.internal/api/stats/import', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ stats: body && body.stats, apply: url.searchParams.get('apply') === '1' }),
+    });
+  }
+  const extra = action === 'export' ? { 'content-disposition': 'attachment; filename="dhamet-stats-export.json"' } : {};
+  return new Response(res.body, { status: res.status, headers: { ...jsonHeaders, ...extra } });
+}
+
 async function healthEndpoint(env) {
   const result = {
     ok: true,
@@ -1229,6 +1254,8 @@ async function routeRequest(request, env, ctx) {
   if (url.pathname === '/api/online-entry' && request.method === 'GET') return onlineEntryEndpoint(request, env);
   if (url.pathname === '/api/backend-route' && request.method === 'GET') return backendRouteStatusEndpoint(env);
   if (url.pathname === '/api/backend-route/control' && request.method === 'POST') return backendRouteControlEndpoint(request, env);
+  if (url.pathname === '/api/admin/stats-export' && request.method === 'GET') return adminStatsEndpoint(request, env, url, 'export');
+  if (url.pathname === '/api/admin/stats-import' && request.method === 'POST') return adminStatsEndpoint(request, env, url, 'import');
   const backupBlock = await maybeBlockNewOfficialOnlineWork(request, url, env, json);
   if (backupBlock) return backupBlock;
   const authLimitedPaths = new Set(['/api/auth/guest', '/api/auth/register', '/api/auth/login', '/api/auth/request-reset', '/api/auth/reset-password']);

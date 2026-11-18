@@ -5887,8 +5887,12 @@
 
           try { this._ensureUnifiedAppPulse && this._ensureUnifiedAppPulse("lobby-ready", false); } catch (e) {}
           let firstResult = false;
+          const enteredAt = Date.now();
           try { firstResult = await this._runUnifiedAppPulse(true, "lobby-enter"); } catch (e) {}
-          const loaded = this._isSuccessfulLobbyPulseResult && this._isSuccessfulLobbyPulseResult(firstResult);
+          let loaded = this._isSuccessfulLobbyPulseResult && this._isSuccessfulLobbyPulseResult(firstResult);
+          if (!loaded && this._lobbyPulseUsesLiveConnection && this._lobbyPulseUsesLiveConnection(firstResult)) {
+            loaded = await this._waitForLobbyViewSince(enteredAt, 6000);
+          }
           if (!loaded) {
             try { this._showLobbyLoadFailure && this._showLobbyLoadFailure(true); } catch (e) {}
           }

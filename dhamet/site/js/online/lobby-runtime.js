@@ -2953,6 +2953,25 @@
           }
         },
 
+    // With the live connection open (or another tab holding it) a refresh is a request on that
+    // connection: it returns no view, the view arrives as the connection's next snapshot.
+    _lobbyPulseUsesLiveConnection: function (result) {
+          return !!(result && result !== true && result.ok !== false && !result.deferred && (result.live === true || result.delegated === true));
+        },
+
+    // True when a lobby view has been applied since `since`, waiting up to `ms` for it.
+    _waitForLobbyViewSince: function (since, ms) {
+          return new Promise((resolve) => {
+            const end = nowTs() + Math.max(0, Number(ms) || 0);
+            const check = () => {
+              if ((Number(this._lastOfficialLobbyViewAt || 0) || 0) >= since) return resolve(true);
+              if (nowTs() >= end) return resolve(false);
+              setTimeout(check, 150);
+            };
+            check();
+          });
+        },
+
     _showLobbyLoadFailure: function (force) {
           try {
             if (typeof document === "undefined") return false;
@@ -2985,8 +3004,10 @@
             if (btn) btn.disabled = true;
             try {
               this._noteLobbyUserActivity && this._noteLobbyUserActivity("manual-lobby-refresh");
+              const requestedAt = nowTs();
               const result = await this._runUnifiedAppPulse(true, "manual-lobby-refresh");
-              const success = this._isSuccessfulLobbyPulseResult(result);
+              let success = this._isSuccessfulLobbyPulseResult(result);
+              if (!success && this._lobbyPulseUsesLiveConnection(result)) success = await this._waitForLobbyViewSince(requestedAt, 6000);
               if (!success) {
                 const replacedLoading = this._showLobbyLoadFailure(false);
                 if (!replacedLoading) {
