@@ -375,6 +375,8 @@
   }
 
   function showSouflaAgainstHuman(decision, pending, deps) {
+    // Giving the right up changes nothing on the board: the computer just plays on.
+    if (decision.kind === "waive") return;
     const d = buildDeps(deps);
     const t = d.t;
     const Modal = d.Modal;

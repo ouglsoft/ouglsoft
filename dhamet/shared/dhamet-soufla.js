@@ -152,7 +152,9 @@
     if (best) fx.redPaths = [{ from: best.from, path: best.path.slice(), jumps: best.jumps.slice() }];
 
     if (decision.kind === 'remove') {
-      fx.removeIdx = decision.offenderIdx;
+      // The offender is named by the cell its turn started from; the piece taken
+      // off the board is the one standing where that turn ended.
+      fx.removeIdx = Rules.resolveOffenderCurrentCell(pending, decision.offenderIdx);
     } else if (decision.kind === 'force') {
       fx.forcePath = [decision.offenderIdx].concat(decision.path || []);
       const nodes = pending.lastMoveFrom != null && Array.isArray(pending.lastMovePath) && pending.lastMovePath.length

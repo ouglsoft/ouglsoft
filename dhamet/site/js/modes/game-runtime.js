@@ -881,7 +881,10 @@ const Turn = {
         if (pending.penalizer === humanSide()) {
           Game.availableSouflaForHuman = pending;
         } else {
+          // The right belongs to the opponent: it is not claimable here, but the
+          // position stays open until the server settles it.
           Game.availableSouflaForHuman = null;
+          Game.souflaPending = pending;
         }
       } else {
         if (pending.penalizer === humanSide()) {
@@ -909,6 +912,7 @@ const Turn = {
                 if (!applySouflaDecision(decision, pending)) {
                   throw new Error("computer/invalid-soufla-decision");
                 }
+                PvCResultRecorder.noteComputerLevel(decision.aiLevel);
                 try {
                   UI.showSouflaAgainstHuman(decision, pending);
                 } catch {}
@@ -936,6 +940,12 @@ const Turn = {
       }
     }
 
+    this.passTurn(endedBy);
+  },
+
+  // The turn of `endedBy` is over and no soufla is left open: the opponent
+  // takes the board.
+  passTurn(endedBy) {
     switchPlayer();
     Turn.start();
     scheduleForcedOpeningAutoIfNeeded();
@@ -1568,7 +1578,21 @@ function souflaRedPaths(decision, pending) {
     : [];
 }
 
+// The penalizer may give the right up (1.7.7): nothing is removed or forced and
+// the turn passes exactly as it would have without a soufla.
+function waiveSouflaRight(pending) {
+  const offender = -pending.penalizer;
+  Game.awaitingPenalty = false;
+  Game.souflaPending = null;
+  Game.availableSouflaForHuman = null;
+  Turn.passTurn(offender);
+  try { UI.updateAll(); } catch (_) {}
+  scheduleComputerMoveIfNeeded();
+  return true;
+}
+
 function applySouflaDecision(requestedDecision, pending) {
+  if (requestedDecision && requestedDecision.kind === "waive" && pending) return waiveSouflaRight(pending);
   const decision = canonicalSouflaDecision(requestedDecision, pending);
   if (!decision || !pending) {
     console.error("Rejected invalid soufla decision", requestedDecision);
@@ -1625,13 +1649,13 @@ function applySouflaDecision(requestedDecision, pending) {
       Game.board = prepared.preActivationBoard;
       Game.deferredPromotions = prepared.preActivationPromotions.map((entry) => ({ ...entry }));
       Game.deferredPromotion = Game.deferredPromotions.length ? { ...Game.deferredPromotions[0] } : null;
-      fxRemoveIdx = decision.offenderIdx;
+      fxRemoveIdx = prepared.removed;
 
       UI.log({
         kind: "soufla_remove",
         actor: resolveTurnActorLabel(pending.penalizer),
         side: pending.penalizer,
-        idx: decision.offenderIdx,
+        idx: prepared.removed,
         ts: Date.now(),
       });
       armSouflaFXPersistence(-pending.penalizer);
@@ -1944,6 +1968,7 @@ function resumePendingGameWorkAfterRestore() {
         if (Game.souflaPending !== pending || !Game.awaitingPenalty || Game.gameOver) return;
         if (window.DhametMatchMode && typeof DhametMatchMode.isPvC === "function" && !DhametMatchMode.isPvC()) return;
         if (!applySouflaDecision(decision, pending)) throw new Error("computer/invalid-restored-soufla-decision");
+        PvCResultRecorder.noteComputerLevel(decision.aiLevel);
         try { UI.showSouflaAgainstHuman(decision, pending); } catch (_) {}
       }).catch((error) => {
         try { console.error("Restored computer soufla analysis failed", error); UI.updateAll(); } catch (_) {}
@@ -2036,6 +2061,15 @@ const PvCResultRecorder = (() => {
     if (mode() !== "vs_cpu") return;
     const state = ensure();
     state.undoCount = Math.max(0, Number(state.undoCount || 0) || 0) + 1;
+  }
+
+  // The level a computer move was actually computed with, which differs from
+  // the selected one whenever the bounded local fallback answered instead.
+  function noteComputerLevel(level) {
+    if (mode() !== "vs_cpu") return;
+    const state = ensure();
+    const used = normalizeAILevel(level);
+    if (!state.aiLevelsUsed.includes(used)) state.aiLevelsUsed.push(used);
   }
 
   function errorReason(error) {
@@ -2159,7 +2193,7 @@ const PvCResultRecorder = (() => {
     if (mode() === "vs_cpu") ensure();
   }
 
-  return Object.freeze({ startNewGame, finalizeAndSubmit, markRestoredFromSave, noteUndo });
+  return Object.freeze({ startNewGame, finalizeAndSubmit, markRestoredFromSave, noteUndo, noteComputerLevel });
 })();
 
 const AI = DhametAIEngine.create({

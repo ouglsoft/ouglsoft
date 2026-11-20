@@ -1404,6 +1404,10 @@
 
     _moveCommitInFlight: null,
 
+    _souflaCommitInFlight: null,
+
+    _outboxReplayAttemptId: null,
+
 
     _viewHooksInstalled: false,
 

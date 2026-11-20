@@ -113,26 +113,49 @@
     return false;
   }
 
+  // Where the player belongs right now: the official lobby, or the backup with
+  // the mode to open it in. Cloudflare is retried before the Firebase mirror is
+  // consulted.
+  async function readRoute() {
+    var mirrorPromise = null;
+    for (var attempt = 0; attempt < WORKER_ATTEMPTS; attempt += 1) {
+      try {
+        var control = await readWorkerControl();
+        if (control.confirmed) return { official: false, backupUrl: control.backupUrl, mode: '1' };
+        if (control.available) return { official: true };
+        return { official: false, backupUrl: control.backupUrl, mode: 'transient' };
+      } catch (_) {
+        // Firebase is consulted only after Cloudflare has actually failed,
+        // avoiding an unnecessary Firebase read during normal operation.
+        if (!mirrorPromise) mirrorPromise = readFirebaseMirror();
+        if (attempt + 1 < WORKER_ATTEMPTS) await delay(RETRY_DELAY_MS);
+      }
+    }
+    var mirror = await (mirrorPromise || readFirebaseMirror());
+    return { official: false, backupUrl: mirror.backupUrl, mode: mirror.confirmed ? '1' : 'transient' };
+  }
+
   async function resolveOnlineEntry() {
     if (resolvingEntry || redirecting) return;
     resolvingEntry = true;
-    var mirrorPromise = null;
     try {
-      for (var attempt = 0; attempt < WORKER_ATTEMPTS; attempt += 1) {
-        try {
-          var control = await readWorkerControl();
-          if (control.confirmed) return redirectToBackup(control.backupUrl, '1');
-          if (control.available) return redirectToOfficial();
-          return redirectToBackup(control.backupUrl, 'transient');
-        } catch (_) {
-          // Firebase is consulted only after Cloudflare has actually failed,
-          // avoiding an unnecessary Firebase read during normal operation.
-          if (!mirrorPromise) mirrorPromise = readFirebaseMirror();
-          if (attempt + 1 < WORKER_ATTEMPTS) await delay(RETRY_DELAY_MS);
-        }
-      }
-      var mirror = await (mirrorPromise || readFirebaseMirror());
-      return redirectToBackup(mirror.backupUrl, mirror.confirmed ? '1' : 'transient');
+      var route = await readRoute();
+      if (route.official) return redirectToOfficial();
+      return redirectToBackup(route.backupUrl, route.mode);
+    } finally {
+      resolvingEntry = false;
+    }
+  }
+
+  // One slow or failed lobby request is not a routing decision. The route is
+  // read first, and the player leaves the official lobby only when it says so
+  // (or cannot be read at all).
+  async function verifyRouteAfterTransportFailure() {
+    if (resolvingEntry || redirecting) return;
+    resolvingEntry = true;
+    try {
+      var route = await readRoute();
+      if (!route.official) redirectToBackup(route.backupUrl, route.mode);
     } finally {
       resolvingEntry = false;
     }
@@ -146,9 +169,9 @@
     if (String(path || '').indexOf('/dhamet/api/lobby/') !== 0) return false;
     var status = Number(error && error.status || 0) || 0;
     if (status > 0 && status < 500 && status !== 429) return false;
-    // This is a per-player transport fallback only. It does not persist or
-    // announce a global capacity decision; later players check again.
-    redirectToBackup(DEFAULT_BACKUP_URL, 'transient');
+    // This is a per-player check only. It does not persist or announce a
+    // global capacity decision; later players check again.
+    verifyRouteAfterTransportFailure();
     return true;
   }
 

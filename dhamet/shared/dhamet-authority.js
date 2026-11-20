@@ -420,7 +420,7 @@
           deferredPromotions: clone(promotionStart.deferredPromotions || []),
           soufla: clone(pending),
         },
-        result: { decision, pending, removed: appliedMeta.removed || null, fx },
+        result: { decision, pending, removed: appliedMeta.removed != null ? appliedMeta.removed : null, fx },
       }));
       if (result && result.terminal && typeof Events.createGameEndedEvent === 'function') {
         events.push(Events.createGameEndedEvent({ result, moveIndex: mi, ply, winner: result.winner, reason: result.reason }));

@@ -2252,7 +2252,10 @@
           // but otherwise expose only the claimable right.
           const choiceOpen = !!(claimable && Game.awaitingPenalty && Game.souflaPending);
           Game.awaitingPenalty = choiceOpen;
-          Game.souflaPending = choiceOpen ? pending : null;
+          // A right owned by the other side still keeps the position open on this
+          // device: no result may be read from it before its owner has used or
+          // waived the right, exactly as on the server.
+          Game.souflaPending = choiceOpen || (pending && !claimable) ? pending : null;
           Game.availableSouflaForHuman = claimable ? pending : null;
           return pending;
         },
@@ -4556,7 +4559,8 @@
                   displayId: this._souflaPressDisplayId(it.actor, baseMoveIndex, offenderIdx),
                 };
                 if (String(data.penalty || decision.kind || "") === "remove") {
-                  return [pressed, { kind: "soufla_remove", actor, side: it.side, idx: offenderIdx, ts, displayId: it.id || "" }];
+                  const removedIdx = data.result && data.result.removed != null ? Number(data.result.removed) : offenderIdx;
+                  return [pressed, { kind: "soufla_remove", actor, side: it.side, idx: removedIdx, ts, displayId: it.id || "" }];
                 }
                 const path = Array.isArray(decision.path) ? decision.path : [];
                 const to = path.length ? path[path.length - 1] : offenderIdx;
@@ -4755,6 +4759,32 @@
           } catch (e) { return false; }
         },
 
+    // A reply only settles the request it answers. The outbox always holds the
+    // newest unconfirmed move, so a late reply for an older move must not clear it.
+    _isMoveCommitOutstanding: function (clientMoveId) {
+          const outbox = this._readPendingMoveOutbox && this._readPendingMoveOutbox();
+          return !!(outbox && String(outbox.clientMoveId || "") === String(clientMoveId || ""));
+        },
+
+    // Single success path for a move confirmation, whether it answers the first
+    // send or a replay after a reload: the official game is installed through the
+    // same cursor-gated ingestion as the live event, and the local wait is closed
+    // only when the confirmed move is still the outstanding one.
+    _settleCommittedMove: function (res, expectedGameId, clientMoveId, source) {
+          const game = res && res.game ? res.game : null;
+          try {
+            if (game) this._ingestOfficialGame(game, {
+              source: source,
+              gameId: expectedGameId,
+              version: res.version,
+            });
+          } catch (e) {}
+          try { this._touchRoomListActivity(true); } catch (e) {}
+          if (!this._isMoveCommitOutstanding(clientMoveId)) return false;
+          try { this._markLocalCommitSettled(); } catch (e) {}
+          return true;
+        },
+
     _reconcileLocalCommitAgainstOfficialGame: function (game, opts) {
           try {
             if (!this._awaitingLocalCommit || !game) return "none";
@@ -4799,11 +4829,12 @@
           const key = gameId + ":" + moveId;
           const existing = this._moveCommitInFlight;
           if (existing && existing.key === key && existing.promise) return existing.promise;
+          // One request at a time: a newer move waits for the earlier request to
+          // finish instead of failing, so a slow reply never costs the player the move.
           if (existing && existing.promise) {
-            const busy = new Error("move-commit-already-in-flight");
-            busy.code = "move-commit-already-in-flight";
-            busy.status = 0;
-            return Promise.reject(busy);
+            const settled = () => undefined;
+            return existing.promise.then(settled, settled).then(() =>
+              this._commitMoveRequest(payload, expectedGameId, clientMoveId));
           }
           const flight = { key, gameId, clientMoveId: moveId, promise: null };
           const promise = Promise.resolve(client.commitMove(payload)).finally(() => {
@@ -4838,19 +4869,17 @@
             const activeFlight = this._moveCommitInFlight;
             const flightKey = String(this.gameId || "") + ":" + clientMoveId;
             if (activeFlight && activeFlight.key === flightKey) return;
-            if (outbox.replayedAfterResync) return;
-            outbox.replayedAfterResync = true;
-            outbox.replayedAt = nowTs();
-            this._savePendingMoveOutbox(outbox);
+            // One replay attempt per page: the marker lives in this page only, so a
+            // reload that interrupted an earlier attempt starts a fresh one.
+            if (this._outboxReplayAttemptId === clientMoveId) return;
+            this._outboxReplayAttemptId = clientMoveId;
             const asyncContext = this._captureAsyncContext(this.gameId);
             this._commitMoveRequest(outbox.payload, this.gameId, clientMoveId)
               .then((res) => {
                 if (!this._isAsyncContextCurrent(asyncContext)) return;
                 const g = res && res.game ? res.game : null;
                 if (res && res.committed !== false) {
-                  try { if (g) this._lastGameData = g; } catch (e) {}
-                  this._clearPendingMoveOutbox();
-                  try { this._markLocalCommitSettled(); } catch (e) {}
+                  this._settleCommittedMove(res, this.gameId, clientMoveId, "outbox-replay");
                   return;
                 }
                 try {
@@ -4883,14 +4912,8 @@
                   return;
                 }
                 if (isRetriableGameCommitError(err)) {
-                  try {
-                    const current = this._readPendingMoveOutbox && this._readPendingMoveOutbox();
-                    if (current && String(current.clientMoveId || "") === clientMoveId) {
-                      current.replayedAfterResync = false;
-                      current.lastReplayFailedAt = nowTs();
-                      this._savePendingMoveOutbox(current);
-                    }
-                  } catch (e) {}
+                  // The next official read may try again.
+                  if (this._outboxReplayAttemptId === clientMoveId) this._outboxReplayAttemptId = null;
                 }
               });
           } catch (e) {}
@@ -5103,7 +5126,9 @@
 
           const retryOrFail = (err, serverGame, response) => {
             if (!taskIsCurrent()) return;
-            const clientMoveId = String(this._moveCommitClientId || (payload && payload.clientMoveId) || "");
+            const clientMoveId = String((payload && payload.clientMoveId) || "");
+            // An answer for a move that is no longer the outstanding one changes nothing.
+            if (!this._isMoveCommitOutstanding(clientMoveId)) return;
             const remoteMi = Number((serverGame && serverGame.moveIndex) || 0) || 0;
             const appliedById = !!(serverGame && this._officialGameHasClientMove(serverGame, clientMoveId));
             if (appliedById) {
@@ -5215,19 +5240,9 @@
                 retryOrFail(null, g, res);
                 return;
               }
-              try {
-                // Same ingestion gate as the WebSocket event: whichever of the
-                // two arrives second is recognised as a duplicate and dropped.
-                if (g) this._ingestOfficialGame(g, {
-                  source: "move-commit",
-                  gameId: expectedGameId,
-                  version: res.version,
-                });
-              } catch (e) {}
-              try { if (res.moveIndex) this.moveIndex = Number(res.moveIndex) || this.moveIndex || 0; } catch (e) {}
-              try { this._clearPendingMoveOutbox && this._clearPendingMoveOutbox(); } catch (e) {}
-              try { this._markLocalCommitSettled(); } catch (e) {}
-              try { this._touchRoomListActivity(true); } catch (e) {}
+              // Same ingestion gate as the WebSocket event: whichever of the
+              // two arrives second is recognised as a duplicate and dropped.
+              this._settleCommittedMove(res, expectedGameId, payload.clientMoveId, "move-commit");
             })
             .catch((err) => {
               retryOrFail(err, err && err.data && err.data.game ? err.data.game : null, null);
@@ -5286,7 +5301,7 @@
             return;
           }
 
-          window.DhametGameRoomClient.commitSouflaDecision(payload)
+          const commit = Promise.resolve(window.DhametGameRoomClient.commitSouflaDecision(payload))
             .then((res) => {
               if (!taskIsCurrent()) return;
               const g = res && res.game ? res.game : null;
@@ -5302,11 +5317,19 @@
                   rejectDuplicate: false,
                 });
               } catch (e) {}
-              try { if (res.moveIndex) this.moveIndex = Number(res.moveIndex) || this.moveIndex || 0; } catch (e) {}
-              try { if (res.ply) this.ply = Number(res.ply) || this.ply || 0; } catch (e) {}
               try { this._touchRoomListActivity(true); } catch (e) {}
             })
             .catch((err) => fail(err, err && err.data && err.data.game ? err.data.game : null));
+          // The penalty is confirmed before the owner's next move is accepted
+          // (hasUnconfirmedSoufla), so the two requests can never reach the
+          // server in the opposite order.
+          this._souflaCommitInFlight = commit;
+          const release = () => { if (this._souflaCommitInFlight === commit) this._souflaCommitInFlight = null; };
+          commit.then(release, release);
+        },
+
+    hasUnconfirmedSoufla: function () {
+          return !!this._souflaCommitInFlight;
         },
 
     _undoWaitKeyOf: function (ur) {
@@ -6661,9 +6684,19 @@
           };
           const coordinator = window.DhametMatchCoordinator;
           if (!coordinator || typeof coordinator.validateCaptureDraft !== "function") return fail("coordinator");
+          // The draft was taken on the position the turn was built on: the
+          // official snapshot with the mover's start-of-turn promotions active.
+          const official = officialData.state.snapshot;
+          const started = window.DhametState.activateDeferredPromotions(official.board, deferredPromotionQueue(officialData.state), Number(official.player));
+          if (!started || !started.ok) return fail("turn-start");
+          const turnStart = Object.assign({}, official, {
+            board: started.board,
+            deferredPromotions: started.deferredPromotions,
+            deferredPromotion: started.deferredPromotion,
+          });
           const validation = coordinator.validateCaptureDraft({
             draft,
-            officialSnapshot: officialData.state.snapshot,
+            officialSnapshot: turnStart,
             gameId: this.gameId,
             moveIndex: officialData.moveIndex,
             mySide: this.mySide,
@@ -6674,7 +6707,7 @@
           if (!validation || !validation.valid) return fail(validation && validation.reason ? validation.reason : "invalid");
 
           try {
-            const rebuilt = Object.assign({}, officialData.state.snapshot, {
+            const rebuilt = Object.assign({}, turnStart, {
               board: validation.board || draft.snapshot.board,
               inChain: true,
               chainPos: Number(validation.steps[validation.steps.length - 1].to),
@@ -6688,7 +6721,7 @@
                 startedFrom: Number(validation.steps[0].from),
                 capturesDone: validation.steps.length,
                 longestByPiece: Array.isArray(draft.snapshot.turnCtx.longestByPiece) ? draft.snapshot.turnCtx.longestByPiece.slice() : [],
-                snapshot: officialData.state.snapshot,
+                snapshot: turnStart,
               },
             });
             restoreSnapshot(rebuilt, { redraw: false, visual: false });

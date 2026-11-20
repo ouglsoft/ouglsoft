@@ -1889,6 +1889,9 @@
     const penalizer = Number(pending && pending.penalizer);
     if (penalizer !== TOP && penalizer !== BOT) return null;
     const source = normalizePosition({ ...(input || {}), player: penalizer });
+    // Giving the right up (1.7.7) leaves the board as it stands: the penalizer
+    // plays on from the position of its own turn start.
+    if (option.kind === 'waive') return source;
     const resolved = TurnResolution.resolveSouflaPenalty({
       currentBoard: R.compact.toBoard(source.board),
       currentDeferredPromotions: source.deferredPromotions,
@@ -1914,8 +1917,11 @@
 
   function analyzePenalty(input, pending, rememberedPlan) {
     const analysisStarted = nowMs();
-    const options = pending && Array.isArray(pending.options) ? pending.options : [];
-    if (!options.length) return null;
+    const penaltyOptions = pending && Array.isArray(pending.options) ? pending.options : [];
+    if (!penaltyOptions.length) return null;
+    // The right may also be given up: that choice is judged by the same search
+    // as removal and force, against the position it leaves.
+    const options = penaltyOptions.concat([{ kind: 'waive' }]);
     const settings = Config.normalizeAdvancedSettings((input && input.settings && input.settings.advanced) || input.settings || {});
     const matchedPlan = matchSouflaPlan(input, pending, rememberedPlan);
     const isPlannedOption = (option) => !!(matchedPlan && option && option.kind === 'force' &&
@@ -2223,31 +2229,46 @@
       } catch (_) {}
     }
 
+    // The level the local fallback computes with when the worker cannot answer.
+    const BOUNDED_LEVEL = 'beginner';
+
     function boundedLocalState() {
       const state = serializeState();
-      const fallbackAdvanced = Config.createDefaultAdvancedSettings('beginner');
+      const fallbackAdvanced = Config.createDefaultAdvancedSettings(BOUNDED_LEVEL);
       return Object.assign({}, state, {
         settings: Object.assign({}, state.settings || {}, { advanced: fallbackAdvanced }),
       });
     }
 
+    function chosenLevel() {
+      return Config.normalizeAdvancedSettings((Game.settings && Game.settings.advanced) || {}).aiLevel;
+    }
+
+    // A computer answer comes from the worker at the chosen level or, when the
+    // worker cannot answer, from the bounded fallback. The answer carries the
+    // level that actually computed it so that the match result can record it
+    // once the answer is adopted.
     async function requestAnalysis() {
+      let level = chosenLevel();
+      const bounded = function () { level = BOUNDED_LEVEL; return boundedLocalState(); };
+      let analysis;
       try {
-        return await DhametAIRuntime.callWorkerWithRetry(
+        analysis = await DhametAIRuntime.callWorkerWithRetry(
           bridge,
           'analyzeTurn',
           [],
-          async function () { return analyzePosition(boundedLocalState()); },
+          async function () { return analyzePosition(bounded()); },
           { accept: (value) => !!(value && value.move && Array.isArray(value.move.path)) },
         );
       } catch (error) {
-        const state = boundedLocalState();
+        const state = bounded();
         const pos = normalizePosition(state);
         const forced = forcedOpeningMove(pos);
         const move = forced || R.compact.firstStrictMove(pos.board, pos.side);
-        if (move) return { move, score: 0, depth: 0, nodes: 0, timeMs: 0, engine: ENGINE_VERSION, emergencyFallback: true };
-        throw error;
+        if (!move) throw error;
+        analysis = { move, score: 0, depth: 0, nodes: 0, timeMs: 0, engine: ENGINE_VERSION, emergencyFallback: true };
       }
+      return Object.assign({}, analysis, { aiLevel: level });
     }
 
     function finishCaptureTurn() {
@@ -2318,6 +2339,7 @@
         if (signature !== positionSignature()) return;
         lastAnalysis = analysis;
         executeMove(analysis.move);
+        if (typeof PvCResultRecorder !== 'undefined' && PvCResultRecorder) PvCResultRecorder.noteComputerLevel(analysis.aiLevel);
         failureSignature = '';
         failureCount = 0;
       } catch (error) {
@@ -2386,12 +2408,15 @@
     }
 
     async function pickSouflaDecision(pending) {
+      let level = chosenLevel();
+      const bounded = function () { level = BOUNDED_LEVEL; return boundedLocalState(); };
+      let decision;
       try {
-        return await DhametAIRuntime.callWorkerWithRetry(
+        decision = await DhametAIRuntime.callWorkerWithRetry(
           bridge,
           'pickSouflaDecision',
           [pending],
-          async function () { return analyzePenalty(boundedLocalState(), pending); },
+          async function () { return analyzePenalty(bounded(), pending); },
           { accept: (value) => !!value },
         );
       } catch (error) {
@@ -2399,9 +2424,11 @@
         // Same guarantee as requestAnalysis: the pending penalty is always
         // resolvable. Every listed option is legal by construction.
         const option = pending && Array.isArray(pending.options) ? pending.options[0] : null;
-        if (option) return { ...option, computerAnalysis: { engine: ENGINE_VERSION, emergencyFallback: true } };
-        throw error;
+        if (!option) throw error;
+        level = BOUNDED_LEVEL;
+        decision = { ...option, computerAnalysis: { engine: ENGINE_VERSION, emergencyFallback: true } };
       }
+      return Object.assign({}, decision, { aiLevel: level });
     }
 
     function isThinking() {

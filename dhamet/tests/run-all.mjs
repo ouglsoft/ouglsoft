@@ -87,7 +87,7 @@ const engine = [
   }],
   ['ai-matches', ['1', '3', 'aivsrand', 'beginner', 'easy', '260', '80', '0.2', '0'], (out) => {
     const [r] = lastJsonLines(out);
-    return [...positive(r, ['games', 'aiMoves']), ...zero(r, ['aiIllegal', 'aiNull', 'aiThrow', 'aiPenaltyBad', 'rejected', 'boardDiverge']), ...(/ISSUES \[\]/.test(out) ? [] : ['the test listed issues'])];
+    return [...positive(r, ['games', 'aiMoves', 'waiveSpots']), ...zero(r, ['aiIllegal', 'aiNull', 'aiThrow', 'aiPenaltyBad', 'rejected', 'boardDiverge', 'waiveMissed', 'waiveMoveBad']), ...(/ISSUES \[\]/.test(out) ? [] : ['the test listed issues'])];
   }],
   ['authority-edge', [], (out) => {
     const lines = out.split('\n');
@@ -120,7 +120,7 @@ const engine = [
   }],
   ['undo-restores-soufla', [], (out) => {
     const [r] = lastJsonLines(out);
-    return [...positive(r, ['tested']), ...equal('rightRestoredAfterUndo', r.rightRestoredAfterUndo, r.rightBefore), ...zero(r, ['rightStillErased']), ...equal('boardRestored', r.boardRestored, r.tested)];
+    return [...positive(r, ['tested', 'penalties', 'removeFxTested']), ...equal('rightRestoredAfterUndo', r.rightRestoredAfterUndo, r.rightBefore), ...zero(r, ['rightStillErased', 'undoOpenAfterPenalty']), ...equal('boardRestored', r.boardRestored, r.tested), ...equal('removeFxOnRemovedCell', r.removeFxOnRemovedCell, r.removeFxTested)];
   }],
   ['waiver-move', [], (out) => {
     const [r] = lastJsonLines(out);

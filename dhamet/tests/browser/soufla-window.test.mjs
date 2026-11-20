@@ -48,8 +48,43 @@ try {
   assert.equal(after.offender, 0, 'the offending piece was removed');
   assert.equal(after.mover, aiValue(setup), 'the computer\'s other piece is untouched');
   assert.equal(after.humanPieces, 2, 'the human lost nothing');
+
+  // The computer may give its right up: nothing is removed or forced, no window opens, and the turn passes
+  // to it exactly as if there had been no Soufla.
+  const waivePage = await openGame(env);
+  const waived = await waivePage.evaluate(async () => {
+    const ai = aiSide(); const human = humanSide();
+    const board = Array.from({ length: 9 }, () => Array(9).fill(0));
+    board[5][5] = human; board[4][4] = ai; board[1][7] = ai; board[7][7] = human; // the capture (5.5 over 4.4) is available to the human
+    Game.board = board; Game.player = human; Game.forcedEnabled = false; Game.forcedPly = 10;
+    Game.deferredPromotions = []; Game.deferredPromotion = null; Game.gameOver = false;
+    let scheduled = 0;
+    // the engine object is frozen: the computer is replaced by one that gives the right up and counts its own turns
+    window.AI = Object.assign({}, AI, { pickSouflaDecision: async () => ({ kind: 'waive', aiLevel: 'beginner' }), scheduleMove: () => { scheduled++; } });
+    Turn.start();
+    applyMove(5 * 9 + 5, 4 * 9 + 5, false, null); // the human moves the same piece forward without capturing
+    Turn.finishTurnAndSoufla();
+    const waiting = !!(Game.awaitingPenalty && Game.souflaPending);
+    const deadline = Date.now() + 3000;
+    while (Game.awaitingPenalty && Date.now() < deadline) await new Promise((r) => setTimeout(r, 25));
+    return {
+      waiting, awaitingPenalty: !!Game.awaitingPenalty, pending: !!Game.souflaPending, computerToMove: Game.player === ai,
+      humanPieces: Game.board.flat().filter((v) => v === human).length, aiPieces: Game.board.flat().filter((v) => v === ai).length,
+      movedPiece: Game.board[4][5] === human, scheduled, modalShown: getComputedStyle(document.getElementById('modalBackdrop')).display !== 'none',
+    };
+  });
+  assert.ok(waived.waiting, 'the computer holds the right until it decides');
+  assert.equal(waived.awaitingPenalty, false, 'the right is settled once the computer gives it up');
+  assert.equal(waived.pending, false);
+  assert.equal(waived.computerToMove, true, 'the turn passed to the computer');
+  assert.equal(waived.humanPieces, 2, 'nothing was removed from the human');
+  assert.equal(waived.aiPieces, 2);
+  assert.equal(waived.movedPiece, true, 'the human\'s move stands');
+  assert.equal(waived.scheduled, 1, 'the computer goes on to play');
+  assert.equal(waived.modalShown, false, 'no penalty window opened');
+
   assert.deepEqual(env.errors, [], 'no page errors: ' + env.errors.join(' | '));
-  console.log(JSON.stringify({ offenderFoundWhereItStands: true, notOffenderRefused: true, removed: true }));
+  console.log(JSON.stringify({ offenderFoundWhereItStands: true, notOffenderRefused: true, removed: true, computerGaveRightUp: true }));
 } finally {
   await env.close();
 }

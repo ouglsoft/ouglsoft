@@ -43,6 +43,7 @@
         "self": "تم تطبيق السوفلة."
       },
       "sendFailed": "تعذر تطبيق السوفلة بسبب مشكلة في الاتصال. تحقق من الإنترنت ثم حاول مرة أخرى.",
+      "confirming": "جارٍ تأكيد عقوبة السوفلة. انتظر لحظة قبل أن تلعب.",
       "summary": {
         "force": "اختار {actor} عقوبة السوفلة ضدك، وأجبرك على تنفيذ المسار المحدد على الرقعة باللون الأخضر.",
         "penaltyTitle": "العقوبة المختارة:",
@@ -613,6 +614,7 @@
         "self": "Soufla applied."
       },
       "sendFailed": "Soufla could not be applied because of a connection problem. Check your internet connection and try again.",
+      "confirming": "The Soufla penalty is being confirmed. Please wait a moment before you play.",
       "summary": {
         "force": "{actor} chose a Soufla penalty against you and forced you to follow the path marked in green on the board.",
         "penaltyTitle": "Selected penalty:",
@@ -1183,6 +1185,7 @@
         "self": "Soufla appliquée."
       },
       "sendFailed": "La Soufla n’a pas pu être appliquée à cause d’un problème de connexion. Vérifiez votre accès à Internet puis réessayez.",
+      "confirming": "La pénalité de Soufla est en cours de confirmation. Patientez un instant avant de jouer.",
       "summary": {
         "force": "{actor} a choisi une sanction de Soufla contre vous et vous a imposé le chemin indiqué en vert sur le plateau.",
         "penaltyTitle": "Sanction choisie :",

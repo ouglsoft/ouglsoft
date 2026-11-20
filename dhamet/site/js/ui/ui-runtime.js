@@ -1031,8 +1031,14 @@ const Input = {
     } catch (_) {}
 
     if (window.Online && window.Online.isActive) {
+      // The penalty owner moves only after the server has confirmed the penalty,
+      // so the decision and the following move reach the server in that order.
       if (Game.player !== window.Online.mySide) {
         showUiNotice(t("status.wait"));
+        return;
+      }
+      if (window.Online.hasUnconfirmedSoufla?.()) {
+        showUiNotice(t("soufla.confirming"));
         return;
       }
     }

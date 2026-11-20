@@ -110,6 +110,9 @@
     if (!snap) return { ok: false, error: 'control/invalid-state' };
     if (snap.inChain) return { ok: false, error: 'control/in-chain' };
     if (Number(g.ply || 0) <= 0) return { ok: false, error: 'control/no-undo' };
+    // A settled penalty (removal or forced capture) is final: the move that
+    // earned it can no longer be taken back.
+    if (g.lastMove && g.lastMove.kind === 'soufla') return { ok: false, error: 'control/undo-closed-after-soufla' };
     const previous = previousStateForUndo(g);
     if (!previous) return { ok: false, error: 'control/missing-previous-state' };
     if (isMandatoryOpeningSnapshot(previous.state && previous.state.snapshot)) {

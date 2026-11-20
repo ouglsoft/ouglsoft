@@ -27,7 +27,7 @@ try {
       const stored = sessionStorage.getItem('zamat.pendingMove.g1');
       seen.push(stored ? JSON.parse(stored).steps.length : 0);
       if (calls <= failures) { const e = new Error('service unavailable'); e.status = 503; e.code = 'http-503'; throw e; }
-      return { ok: true, committed: true, moveIndex: 1, game: null, version: 1 };
+      return { ok: true, committed: true, moveIndex: 1, game: { moveIndex: 1, ply: 1, status: 'active' }, version: 1 };
     };
     Online.isActive = true; Online.gameRef = {}; Online.gameId = 'g1'; Online.myUid = 'u1'; Online.mySide = 1; Online.moveIndex = 0;
     Online._moveRetryGaveUp = false; Online._moveRetryNotified = false; Online._moveCommitClientId = null; Online._moveCommitInFlight = null;
