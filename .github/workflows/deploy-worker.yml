@@ -43,6 +43,7 @@ jobs:
     outputs:
       worker: ${{ steps.scope.outputs.worker }}
       pages: ${{ steps.scope.outputs.pages }}
+      ui: ${{ steps.scope.outputs.ui }}
     steps:
       - name: Checkout repository history
         uses: actions/checkout@v4
@@ -60,12 +61,13 @@ jobs:
           set -euo pipefail
           worker=false
           pages=false
+          ui=false
 
           if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
             case "$MANUAL_TARGET" in
               worker) worker=true ;;
-              pages) pages=true ;;
-              all) worker=true; pages=true ;;
+              pages) pages=true; ui=true ;;
+              all) worker=true; pages=true; ui=true ;;
               *) echo "Unsupported manual target: $MANUAL_TARGET" >&2; exit 1 ;;
             esac
           else
@@ -100,17 +102,25 @@ jobs:
                   pages=true
                   ;;
               esac
+              # The game pages and the shared rules and sync code are what a player
+              # runs: they are tested in a real browser before anything is deployed.
+              case "$changed" in
+                dhamet/site/*|dhamet/shared/*|dhamet/tests/*)
+                  ui=true
+                  ;;
+              esac
             done < <(git diff --name-only "$base" "$GITHUB_SHA")
           fi
 
           echo "worker=$worker" >> "$GITHUB_OUTPUT"
           echo "pages=$pages" >> "$GITHUB_OUTPUT"
-          echo "Deployment scope: worker=$worker pages=$pages"
+          echo "ui=$ui" >> "$GITHUB_OUTPUT"
+          echo "Deployment scope: worker=$worker pages=$pages ui=$ui"
 
   verify:
     name: Verify Dhamet before deploy
     needs: changes
-    if: needs.changes.outputs.worker == 'true'
+    if: needs.changes.outputs.worker == 'true' || needs.changes.outputs.ui == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -127,17 +137,45 @@ jobs:
       - name: Check the stored-data contract
         run: node dhamet/worker/storage-contract.mjs
 
-      # Static checks, rules engine, Worker and Durable Object tests (the browser tests need Chrome
-      # and are run before a release with: node dhamet/tests/run-all.mjs).
+      # Static checks, rules engine, Worker and Durable Object tests.
       - name: Run Dhamet tests
         run: node dhamet/tests/run-all.mjs --only=lint,engine,worker
+
+  verify-ui:
+    name: Verify Dhamet pages in a browser before deploy
+    needs: changes
+    if: needs.changes.outputs.ui == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # Playwright drives the Chrome that ships with the runner; it is not a
+      # dependency of the repository.
+      - name: Install Playwright
+        run: npm install --no-save playwright
+
+      - name: Run Dhamet browser tests
+        run: node dhamet/tests/run-all.mjs --only=browser
 
   deploy-worker:
     name: Deploy Worker
     needs:
       - changes
       - verify
-    if: needs.changes.outputs.worker == 'true'
+      - verify-ui
+    if: >-
+      always() &&
+      needs.changes.result == 'success' &&
+      needs.changes.outputs.worker == 'true' &&
+      needs.verify.result == 'success' &&
+      (needs.verify-ui.result == 'success' || needs.verify-ui.result == 'skipped')
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
@@ -165,12 +203,14 @@ jobs:
     needs:
       - changes
       - verify
+      - verify-ui
       - deploy-worker
     if: >-
       always() &&
       needs.changes.result == 'success' &&
       needs.changes.outputs.pages == 'true' &&
       (needs.verify.result == 'success' || needs.verify.result == 'skipped') &&
+      (needs.verify-ui.result == 'success' || needs.verify-ui.result == 'skipped') &&
       (needs.deploy-worker.result == 'success' || needs.deploy-worker.result == 'skipped')
     runs-on: ubuntu-latest
     timeout-minutes: 30
